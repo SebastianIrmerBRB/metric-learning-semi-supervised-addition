@@ -1,5 +1,6 @@
 import argparse
 import os
+import multiprocessing as mp
 from pathlib import Path
 
 import pytorch_metric_learning.losses as losses
@@ -9,8 +10,6 @@ from tqdm import tqdm
 
 import utils
 from retrieval_model import DinoWrapper
-
-torch.multiprocessing.set_sharing_strategy("file_system")  # Due to annoying "RuntimeError: Too many open files."
 
 DATASETS = ["Cars196", "CUB", "INaturalist2018", "StanfordOnlineProducts"]
 
@@ -100,81 +99,89 @@ parser.add_argument(
     default=Path("default"),
     help="name of directory in which to save the logs, under logs/save_dir",
 )
-args = parser.parse_args()
 
-utils.initialize_logger(args)
+def main():
+    args = parser.parse_args()
 
-model = DinoWrapper(dino_size=args.dino_size, feat_dim=args.feat_dim)
-model = model.to(args.device)
+    torch.multiprocessing.set_sharing_strategy("file_system")  # Due to annoying "RuntimeError: Too many open files."
+    utils.initialize_logger(args)
 
-train_loader, valid_loader, test_loader, train_labels_mapper = utils.setup_datasets(
-    args.dataset, args.batch_size, args.sampler_m
-)
+    model = DinoWrapper(dino_size=args.dino_size, feat_dim=args.feat_dim)
+    model = model.to(args.device)
 
-if args.optim == "adam":
-    optim = torch.optim.Adam(model.parameters(), lr=args.lr)
-elif args.optim == "rmsprop":
-    optim = torch.optim.RMSprop(model.parameters(), lr=args.lr)
+    train_loader, valid_loader, test_loader, train_labels_mapper = utils.setup_datasets(
+        args.dataset, args.batch_size, args.sampler_m
+    )
 
-if args.loss in CLASSIFICATION_LOSSES:
-    # The loss is a classification loss with a learnable matrix, like ArcFaceLoss
-    criterion = getattr(losses, args.loss)(len(set(train_loader.dataset.labels)), model.feat_dim)
-    is_classification = True
     if args.optim == "adam":
-        classifier_optim = torch.optim.Adam(criterion.parameters(), lr=args.classifier_lr)
+        optim = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.optim == "rmsprop":
-        classifier_optim = torch.optim.RMSprop(criterion.parameters(), lr=args.classifier_lr)
-else:
-    # The loss is a standard contrastive loss with no learnable parameter, like Contrastive or Triplet
-    criterion = getattr(losses, args.loss)()
-    is_classification = False
+        optim = torch.optim.RMSprop(model.parameters(), lr=args.lr)
 
-if not is_classification:
-    if args.miner == "no_miner":
-        miner = None
+    if args.loss in CLASSIFICATION_LOSSES:
+        # The loss is a classification loss with a learnable matrix, like ArcFaceLoss
+        criterion = getattr(losses, args.loss)(len(set(train_loader.dataset.labels)), model.feat_dim)
+        is_classification = True
+        if args.optim == "adam":
+            classifier_optim = torch.optim.Adam(criterion.parameters(), lr=args.classifier_lr)
+        elif args.optim == "rmsprop":
+            classifier_optim = torch.optim.RMSprop(criterion.parameters(), lr=args.classifier_lr)
     else:
-        miner = getattr(miners, args.miner)()
+        # The loss is a standard contrastive loss with no learnable parameter, like Contrastive or Triplet
+        criterion = getattr(losses, args.loss)()
+        is_classification = False
 
-# Evaluate off-the-shelf model
-utils.evaluate(model, valid_loader, "valid")
+    if not is_classification:
+        if args.miner == "no_miner":
+            miner = None
+        else:
+            miner = getattr(miners, args.miner)()
 
-patience = 3
-best_precision = 0
-epochs_no_improve = 0
+    # Evaluate off-the-shelf model
+    utils.evaluate(model, valid_loader, "valid")
 
-for num_epoch in range(100):
-    tqdm_bar = tqdm(train_loader)
-    for images, labels in tqdm_bar:
-        with torch.autocast(device_type=args.device, dtype=torch.bfloat16):
-            # Set map labels to start from 0 for classification losses like ArcFaceLoss
-            labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
-            embeddings = model(images.to(args.device))
+    patience = 3
+    best_precision = 0
+    epochs_no_improve = 0
 
-            if not is_classification and miner is not None:
-                miner_outputs = miner(embeddings, labels)
-                loss = criterion(embeddings, labels, miner_outputs)
-            else:
-                loss = criterion(embeddings, labels)
+    for num_epoch in range(100):
+        tqdm_bar = tqdm(train_loader)
+        for images, labels in tqdm_bar:
+            with torch.autocast(device_type=args.device, dtype=torch.bfloat16):
+                # Set map labels to start from 0 for classification losses like ArcFaceLoss
+                labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
+                embeddings = model(images.to(args.device))
 
-        loss.backward()
-        optim.step()
-        optim.zero_grad()
-        if is_classification:
-            classifier_optim.step()
-            classifier_optim.zero_grad()
-        tqdm_bar.desc = f"{loss = :.5f}"
+                if not is_classification and miner is not None:
+                    miner_outputs = miner(embeddings, labels)
+                    loss = criterion(embeddings, labels, miner_outputs)
+                else:
+                    loss = criterion(embeddings, labels)
 
-    cur_precision, _ = utils.evaluate(model, valid_loader, f"valid - epoch {num_epoch:>2}")
+            loss.backward()
+            optim.step()
+            optim.zero_grad()
+            if is_classification:
+                classifier_optim.step()
+                classifier_optim.zero_grad()
+            tqdm_bar.desc = f"{loss = :.5f}"
 
-    if cur_precision > best_precision:
-        best_precision = cur_precision
-        epochs_no_improve = 0
-        torch.save(model.state_dict(), args.log_dir / "best_model.pth")
-    else:
-        epochs_no_improve += 1
-        if epochs_no_improve == patience:
-            model.load_state_dict(torch.load(args.log_dir / "best_model.pth", weights_only=True))
-            break
+        cur_precision, _ = utils.evaluate(model, valid_loader, f"valid - epoch {num_epoch:>2}")
 
-utils.evaluate(model, test_loader, "test")
-os.remove(args.log_dir / "best_model.pth")
+        if cur_precision > best_precision:
+            best_precision = cur_precision
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), args.log_dir / "best_model.pth")
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve == patience:
+                model.load_state_dict(torch.load(args.log_dir / "best_model.pth", weights_only=True))
+                break
+
+    utils.evaluate(model, test_loader, "test")
+    os.remove(args.log_dir / "best_model.pth")
+
+
+if __name__ == "__main__":
+    mp.freeze_support()
+    main()
