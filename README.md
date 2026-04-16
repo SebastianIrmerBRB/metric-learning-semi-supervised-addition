@@ -13,7 +13,7 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 | ☑/2    | 2     | Literaturreview aufbauen                |
 | ☑/2    | 3     | Hypothesen und Variablen definieren     |
 | ☑      | 4     | Evaluationsdesign festlegen             |
-| ☑      | 5     | Datensätze auswählen    |
+| ☑/2    | 5     | Datensätze auswählen    |
 | ☑      | 6     | Baseline-Methoden implementieren        |
 | ☐      | 7     | SSML-Methoden implementieren            |
 | ☑      | 8     | Foundation-Model-Strategien integrieren |
