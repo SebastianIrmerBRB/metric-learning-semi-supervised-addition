@@ -82,7 +82,7 @@ ALL_MINERS = [
 ]
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--batch_size", type=int, default=256, help="batch size")
+parser.add_argument("--batch_size", type=int, default=16, help="batch size")
 parser.add_argument("--lr", type=float, default=1e-6, help="LR")
 parser.add_argument("--classifier_lr", type=float, default=1.0, help="classifier LR (only for classification losses)")
 parser.add_argument("--sampler_m", type=int, default=4, help="M value for MPerClassSampler")
@@ -99,6 +99,10 @@ parser.add_argument(
     default=Path("default"),
     help="name of directory in which to save the logs, under logs/save_dir",
 )
+## What's missing
+# epochs
+# patience
+
 
 def main():
     args = parser.parse_args()
@@ -123,7 +127,7 @@ def main():
         criterion = getattr(losses, args.loss)(len(set(train_loader.dataset.labels)), model.feat_dim)
         is_classification = True
         if args.optim == "adam":
-            classifier_optim = torch.optim.Adam(criterion.parameters(), lr=args.classifier_lr)
+            classifier_optim = torch.optim.Adam(criterion.parameters(), lr=args.classifier_lr) # Why not AdamW?
         elif args.optim == "rmsprop":
             classifier_optim = torch.optim.RMSprop(criterion.parameters(), lr=args.classifier_lr)
     else:
@@ -137,49 +141,74 @@ def main():
         else:
             miner = getattr(miners, args.miner)()
 
-    # Evaluate off-the-shelf model
-    utils.evaluate(model, valid_loader, "valid")
+    metrics_logger = utils.MetricsLogger(args.log_dir, args)
+    best_model_path = args.log_dir / "best_model.pth"
 
-    patience = 3
-    best_precision = 0
-    epochs_no_improve = 0
+    try:
+        # Evaluate off-the-shelf model
+        valid_precision, valid_map = utils.evaluate(model, valid_loader, "valid")
+        metrics_logger.log_eval("valid", valid_precision, valid_map, step=0, epoch=-1)
 
-    for num_epoch in range(100):
-        tqdm_bar = tqdm(train_loader)
-        for images, labels in tqdm_bar:
-            with torch.autocast(device_type=args.device, dtype=torch.bfloat16):
-                # Set map labels to start from 0 for classification losses like ArcFaceLoss
-                labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
-                embeddings = model(images.to(args.device))
+        patience = 3
+        best_precision = -float("inf")
+        epochs_no_improve = 0
+        global_step = 0
+        last_epoch = -1
 
-                if not is_classification and miner is not None:
-                    miner_outputs = miner(embeddings, labels)
-                    loss = criterion(embeddings, labels, miner_outputs)
-                else:
-                    loss = criterion(embeddings, labels)
+        for num_epoch in range(100):
+            last_epoch = num_epoch
+            model.train()
+            epoch_loss = 0.0
+            num_batches = 0
+            tqdm_bar = tqdm(train_loader)
+            for images, labels in tqdm_bar:
+                with torch.autocast(device_type=args.device, dtype=torch.bfloat16):
+                    # Set map labels to start from 0 for classification losses like ArcFaceLoss
+                    labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
+                    embeddings = model(images.to(args.device))
 
-            loss.backward()
-            optim.step()
-            optim.zero_grad()
-            if is_classification:
-                classifier_optim.step()
-                classifier_optim.zero_grad()
-            tqdm_bar.desc = f"{loss = :.5f}"
+                    if not is_classification and miner is not None:
+                        miner_outputs = miner(embeddings, labels)
+                        loss = criterion(embeddings, labels, miner_outputs)
+                    else:
+                        loss = criterion(embeddings, labels)
 
-        cur_precision, _ = utils.evaluate(model, valid_loader, f"valid - epoch {num_epoch:>2}")
+                loss_value = loss.detach().item()
+                loss.backward()
+                optim.step()
+                optim.zero_grad()
+                if is_classification:
+                    classifier_optim.step()
+                    classifier_optim.zero_grad()
+                metrics_logger.log_train_batch(loss_value, num_epoch, global_step)
+                epoch_loss += loss_value
+                num_batches += 1
+                global_step += 1
+                tqdm_bar.desc = f"loss = {loss_value:.5f}"
 
-        if cur_precision > best_precision:
-            best_precision = cur_precision
-            epochs_no_improve = 0
-            torch.save(model.state_dict(), args.log_dir / "best_model.pth")
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve == patience:
-                model.load_state_dict(torch.load(args.log_dir / "best_model.pth", weights_only=True))
-                break
+            if num_batches > 0:
+                metrics_logger.log_train_epoch(epoch_loss / num_batches, num_epoch, global_step)
 
-    utils.evaluate(model, test_loader, "test")
-    os.remove(args.log_dir / "best_model.pth")
+            cur_precision, cur_map = utils.evaluate(model, valid_loader, f"valid - epoch {num_epoch:>2}")
+            metrics_logger.log_eval("valid", cur_precision, cur_map, step=global_step, epoch=num_epoch)
+
+            if cur_precision > best_precision:
+                best_precision = cur_precision
+                epochs_no_improve = 0
+                torch.save(model.state_dict(), best_model_path)
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve == patience:
+                    model.load_state_dict(torch.load(best_model_path, weights_only=True))
+                    break
+
+        test_precision, test_map = utils.evaluate(model, test_loader, "test")
+        metrics_logger.log_eval("test", test_precision, test_map, step=global_step, epoch=last_epoch)
+    finally:
+        metrics_logger.close()
+
+    if best_model_path.exists():
+        os.remove(best_model_path)
 
 
 if __name__ == "__main__":

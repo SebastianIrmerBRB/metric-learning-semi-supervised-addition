@@ -1,4 +1,5 @@
 import copy
+import csv
 import os
 import sys
 import traceback
@@ -16,11 +17,19 @@ from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
+TENSORBOARD_IMPORT_ERROR = None
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError as exc:
+    SummaryWriter = None
+    TENSORBOARD_IMPORT_ERROR = exc
+
 
 def initialize_logger(args):
     start_time = datetime.now()
     logger.remove()
     args.log_dir = Path("logs") / args.save_dir / start_time.strftime("%Y-%m-%d_%H-%M-%S")
+    args.log_dir.mkdir(parents=True, exist_ok=True)
     logger.add(sys.stdout, colorize=True, format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
     logger.add(args.log_dir / "info.log", format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
     logger.add(args.log_dir / "debug.log", level="DEBUG")
@@ -28,6 +37,74 @@ def initialize_logger(args):
     logger.info(" ".join(sys.argv))
     logger.info(f"Arguments: {args}")
     logger.info(f"The outputs are being saved in {args.log_dir}")
+
+
+class MetricsLogger:
+    def __init__(self, log_dir, args):
+        if SummaryWriter is None:
+            raise ImportError(
+                "TensorBoard logging requires the tensorboard package. "
+                "Install it with `pip install -r requirements.txt`."
+            ) from TENSORBOARD_IMPORT_ERROR
+
+        self.log_dir = Path(log_dir)
+        self.csv_path = self.log_dir / "metrics.csv"
+        self.writer = SummaryWriter(log_dir=str(self.log_dir / "tensorboard"))
+        self.csv_file = self.csv_path.open("w", newline="")
+        self.csv_writer = csv.DictWriter(
+            self.csv_file,
+            fieldnames=["step", "epoch", "split", "loss", "precision_at_1", "mean_average_precision_at_r"],
+        )
+        self.csv_writer.writeheader()
+        self.writer.add_text("run/arguments", "\n".join(f"{key}: {value}" for key, value in vars(args).items()), 0)
+        logger.info(f"TensorBoard logs are being saved in {self.log_dir / 'tensorboard'}")
+        logger.info(f"CSV metrics are being saved in {self.csv_path}")
+
+    def log_train_batch(self, loss, epoch, step):
+        self.writer.add_scalar("train/batch_loss", loss, step)
+        self._write_row(step=step, epoch=epoch, split="train_batch", loss=loss)
+
+    def log_train_epoch(self, loss, epoch, step):
+        self.writer.add_scalar("train/epoch_loss", loss, step)
+        self._write_row(step=step, epoch=epoch, split="train_epoch", loss=loss)
+
+    def log_eval(self, split, precision_at_1, mean_average_precision_at_r, step, epoch=None):
+        self.writer.add_scalar(f"{split}/precision_at_1", precision_at_1, step)
+        self.writer.add_scalar(f"{split}/mean_average_precision_at_r", mean_average_precision_at_r, step)
+        self._write_row(
+            step=step,
+            epoch=epoch,
+            split=split,
+            precision_at_1=precision_at_1,
+            mean_average_precision_at_r=mean_average_precision_at_r,
+        )
+
+    def close(self):
+        self.csv_file.close()
+        self.writer.close()
+
+    def _write_row(
+        self,
+        step,
+        epoch,
+        split,
+        loss=None,
+        precision_at_1=None,
+        mean_average_precision_at_r=None,
+    ):
+        self.csv_writer.writerow(
+            {
+                "step": step,
+                "epoch": "" if epoch is None else epoch,
+                "split": split,
+                "loss": "" if loss is None else loss,
+                "precision_at_1": "" if precision_at_1 is None else precision_at_1,
+                "mean_average_precision_at_r": ""
+                if mean_average_precision_at_r is None
+                else mean_average_precision_at_r,
+            }
+        )
+        self.csv_file.flush()
 
 
 def setup_datasets(dataset_name, batch_size, sampler_m):
@@ -64,7 +141,7 @@ def setup_datasets(dataset_name, batch_size, sampler_m):
         f"Train size: {len(train_dataset)}, Validation size: {len(valid_dataset)}, Test size: {len(test_dataset)}"
     )
 
-    sampler = samplers.MPerClassSampler(train_dataset.labels, m=sampler_m, batch_size=batch_size)
+    sampler = samplers.MPerClassSampler(train_dataset.labels, m=sampler_m, batch_size=batch_size) #
     train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8, sampler=sampler)
     valid_loader = DataLoader(valid_dataset, batch_size=32, num_workers=8, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=32, num_workers=8, shuffle=False)
