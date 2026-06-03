@@ -36,7 +36,9 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 ## Documentation (Work in progress, Daten dazu werden noch nicht mit hochgeladen)
 
 - Sampler epoch length: [docs/length_before_new_iter.md](docs/length_before_new_iter.md)
+- Cross-validation and validation modes: [docs/cross_validation.md](docs/cross_validation.md)
 - Semi-supervised FixMatch training: [docs/semi_supervised_fixmatch.md](docs/semi_supervised_fixmatch.md)
+- Semi-supervised sklearn graph baselines: [docs/semi_supervised_sklearn.md](docs/semi_supervised_sklearn.md)
 - Example config values: [docs/example_config.yaml](docs/example_config.yaml)
 
 

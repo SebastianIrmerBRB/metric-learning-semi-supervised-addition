@@ -1,0 +1,17 @@
+{
+  "method": "sklearn_label_spreading",
+  "update_mode": "once",
+  "warmup_epochs": 0,
+  "label_sampling_mode": "global_budget",
+  "labeled_fraction": 0.1,
+  "confidence_threshold": 0.8,
+  "max_unlabeled_samples": null,
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 8,
+  "method_params": {
+    "kernel": "knn",
+    "n_neighbors": 10,
+    "alpha": 0.2,
+    "max_iter": 30
+  }
+}
