@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "n_trials": 4,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_precision_at_1",
+  "study_name": "k_shot_grid",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "grid",
+  "sampler_params": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+    "ssl_config.labeled_per_class": [5]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "method": "faiss_majority_vote_knn",
+  "update_mode": "once",
+  "warmup_epochs": 0,
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 0.5,
+  "labeled_per_class": 2,
+  "confidence_threshold": 0.8,
+  "max_unlabeled_samples": null,
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 8,
+  "method_params": {
+    "n_neighbors": 1
+  },
+  "spaces": {
+    "ssl_config.labeled_per_class": [1, 2, 4, 8]
+  }
+}
