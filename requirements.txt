@@ -2,7 +2,9 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 
 loguru
+matplotlib
 numpy
+pandas
 pytorch_metric_learning>=2.8.1
 scikit-learn
 torch
