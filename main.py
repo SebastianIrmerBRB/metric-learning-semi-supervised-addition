@@ -1,367 +1,216 @@
-import argparse
-import copy
-import csv
-import json
-import os
+# ruff: noqa: F401,F403,F405
+"""Experiment orchestration and executable entry point.
+
+Training, CLI parsing, shared types, and HPO implementation live in focused
+modules. Imports below preserve the historical ``main`` module API.
+"""
+
+
+import math
 import multiprocessing as mp
-from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime
-from pathlib import Path
-from typing import Any
 
-import pytorch_metric_learning.losses as losses
-import pytorch_metric_learning.miners as miners
-import numpy as np
-import torch
-from loguru import logger
-from tqdm import tqdm
-
-import semi_supervised
-import utils
-from retrieval_model import DinoWrapper
-
-DATASETS = ["Cars196", "CUB", "INaturalist2018", "StanfordOnlineProducts", "CIFAR10"]
-
-ALL_LOSSES = [
-    "AngularLoss",
-    "ArcFaceLoss",
-    "BaseMetricLossFunction",
-    "CircleLoss",
-    "ContrastiveLoss",
-    "CosFaceLoss",
-    "DynamicSoftMarginLoss",
-    "FastAPLoss",
-    "GenericPairLoss",
-    "HistogramLoss",
-    "InstanceLoss",
-    "IntraPairVarianceLoss",
-    "LargeMarginSoftmaxLoss",
-    "GeneralizedLiftedStructureLoss",
-    "LiftedStructureLoss",
-    "ManifoldLoss",
-    "MarginLoss",
-    "WeightRegularizerMixin",
-    "MultiSimilarityLoss",
-    "MultipleLosses",
-    "NPairsLoss",
-    "NCALoss",
-    "NormalizedSoftmaxLoss",
-    "NTXentLoss",
-    "P2SGradLoss",
-    "PNPLoss",
-    "ProxyAnchorLoss",
-    "ProxyNCALoss",
-    "RankedListLoss",
-    "SelfSupervisedLoss",
-    "SignalToNoiseRatioContrastiveLoss",
-    "SoftTripleLoss",
-    "SphereFaceLoss",
-    "SubCenterArcFaceLoss",
-    "SupConLoss",
-    "ThresholdConsistentMarginLoss",
-    "TripletMarginLoss",
-    "TupletMarginLoss",
-    "VICRegLoss",
-]
-
-CLASSIFICATION_LOSSES = [
-    "ArcFaceLoss",
-    "CosFaceLoss",
-    "LargeMarginSoftmaxLoss",
-    "WeightRegularizerMixin",
-    "NormalizedSoftmaxLoss",
-    "ProxyAnchorLoss",
-    "ProxyNCALoss",
-    "SoftTripleLoss",
-    "SphereFaceLoss",
-    "SubCenterArcFaceLoss",
-]
-
-ALL_MINERS = [
-    "no_miner",
-    "AngularMiner",
-    "BatchEasyHardMiner",
-    "BatchHardMiner",
-    "DistanceWeightedMiner",
-    "HDCMiner",
-    "MultiSimilarityMiner",
-    "PairMarginMiner",
-    "TripletMarginMiner",
-    "UniformHistogramMiner",
-]
-
-parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--batch_size", type=int, default=16, help="batch size")
-parser.add_argument("--lr", type=float, default=1e-6, help="LR")
-parser.add_argument("--classifier_lr", type=float, default=1.0, help="classifier LR (only for classification losses)")
-parser.add_argument("--sampler_m", type=int, default=4, help="M value for MPerClassSampler")
-parser.add_argument("--dataset", type=utils.normalize_dataset_name, default="Cars196", choices=DATASETS, help="dataset")
-parser.add_argument("--dino_size", type=str, default="l", choices=["s", "b", "l", "g"], help="which Dino to use")
-parser.add_argument("--loss", type=str, default="MultiSimilarityLoss", choices=ALL_LOSSES, help="loss")
-parser.add_argument("--miner", type=str, default="MultiSimilarityMiner", choices=ALL_MINERS, help="miner")
-parser.add_argument("--feat_dim", type=int, default=None, help="Output dimensionality. Set to None to use CLS")
-parser.add_argument("--device", type=str, default="cuda", choices=["cuda", "cpu"], help="device")
-parser.add_argument("--optim", type=str, default="adam", choices=["adam", "rmsprop"], help="optimizer")
-parser.add_argument("--seed", type=int, default=7, help="random seed for dataset splits, sampling, and training")
-parser.add_argument("--epochs", type=int, default=100, help="maximum number of training epochs")
-parser.add_argument("--patience", type=int, default=3, help="early-stopping patience after SSL warmup")
-parser.add_argument("--cv_k", type=int, default=4, help="number of cross-validation folds. Set to 1 to disable CV")
-parser.add_argument(
-    "--cv_mode",
-    type=str,
-    default="group_kfold",
-    choices=utils.CV_MODES,
-    help="sklearn cross-validation splitter to use when cv_k > 1",
-)
-parser.add_argument(
-    "--val_mode",
-    type=str,
-    default=utils.VAL_MODE_ALL,
-    choices=utils.VAL_MODES,
-    help=(
-        "validation data mode. 'all' keeps the current behavior and uses all validation samples; "
-        "'match_train' downsamples validation to roughly the labeled/fractioned training size."
-    ),
-)
-parser.add_argument("--num_workers", type=int, default=1, help="DataLoader worker count for training/evaluation")
-parser.add_argument(
-    "--dataloader_start_method",
-    type=str,
-    default="spawn",
-    choices=utils.DATALOADER_START_METHODS,
-    help="DataLoader multiprocessing start method for CPU runs or CUDA runs with zero workers.",
-)
-parser.add_argument(
-    "--ssl_config",
-    type=Path,
-    default="configs/ssl_faiss_knn.json",
-    help="path to a JSON semi-supervised config. Omit to disable SSL.",
-)
-parser.add_argument(
-    "--hparam_config",
-    type=Path,
-    default=r"C:\Users\Sebastian\PycharmProjects\metric-learning\configs\k_shot_cars.json",
-    help="path to a JSON Optuna hyperparameter search config. Omit to run a single training job.",
-)
-parser.add_argument(
-    "--compare_supervised_ssl",
-    action="store_true",
-    help=(
-        "run two separate Optuna searches with identical budget: a supervised baseline on the labeled "
-        "subset only and an SSL run on the same labeled subset plus unlabeled data"
-    ),
-)
-parser.add_argument(
-    "--mode",
-    type=str,
-    default="supervised",
-    choices=["supervised", "ssl"],
-    help="training mode. supervised uses only the labeled split; ssl uses the labeled split plus unlabeled data.",
-)
-parser.add_argument(
-    "--skip_test_during_hpo",
-    action="store_true",
-    default=True,
-    help="do not evaluate D_test inside Optuna trials; use a final retraining run for test evaluation",
-)
-parser.add_argument(
-    "--label_budget_grid",
-    type=float,
-    nargs="*",
-    default=[1],
-    help="outer experiment grid over SSL labeled_fraction values, for example 0.01 0.05 0.10 0.25 0.50",
-)
-parser.add_argument(
-    "--loss_miner_grid",
-    type=str,
-    nargs="*",
-    default=["MultiSimilarityLoss:MultiSimilarityMiner", "TripletMarginLoss:TripletMarginMiner"],
-    metavar="LOSS:MINER",
-    help=(
-        "outer experiment grid over paired loss/miner choices, for example "
-        "MultiSimilarityLoss:MultiSimilarityMiner TripletMarginLoss:TripletMarginMiner"
-    ),
-)
-parser.add_argument(
-    "--comparison_seeds",
-    type=int,
-    nargs="*",
-    default=None,
-    help="outer experiment grid over split/training seeds, for example 0 1 2 3 4",
-)
-parser.add_argument(
-    "--ssl_label_sampling_modes",
-    type=str,
-    nargs="*",
-    default=["class_subset_k_shot"],
-    choices=sorted(semi_supervised.LABEL_SAMPLING_MODES),
-    help="outer experiment grid over labeled-sample selection modes",
-)
-parser.add_argument(
-    "--save_dir",
-    type=Path,
-    default=Path("default"),
-    help="name of directory in which to save the logs, under logs/save_dir",
-)
+import experiment_hpo as _experiment_hpo
+from experiment_cli import *  # noqa: F403
+from experiment_hpo import *  # noqa: F403
+from experiment_io import *  # noqa: F403
+from experiment_training import *  # noqa: F403
+from experiment_types import *  # noqa: F403
 
 
-@dataclass(frozen=True)
-class TrainingResult:
-    log_dir: Path
-    metrics_csv: Path
-    best_valid_precision_at_1: float
-    best_valid_mean_average_precision_at_r: float
-    test_precision_at_1: float | None
-    test_mean_average_precision_at_r: float | None
-    final_train_loss: float | None
-    last_epoch: int
-    global_step: int
-    cv_k: int = 1
-    cv_mode: str | None = None
-    cv_fold: int | None = None
-    fold_results: list[dict[str, Any]] | None = None
+def make_sampler_spaces_label_budget_aware(args, config):
+    """Preserve the historical patch point while delegating HPO constraints."""
 
-
-@dataclass(frozen=True)
-class HParamSearchConfig:
-    enabled: bool = True
-    n_trials: int = 20
-    timeout: int | None = None
-    direction: str = "maximize"
-    metric: str = "best_valid_precision_at_1"
-    study_name: str | None = None
-    study_dir: str | None = None
-    storage: str | None = None
-    load_if_exists: bool = True
-    sampler: str = "tpe"
-    sampler_params: dict[str, Any] = field(default_factory=dict)
-    pruner: str = "none"
-    pruner_params: dict[str, Any] = field(default_factory=dict)
-    spaces: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self):
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class HParamStudyResult:
-    study_name: str
-    study_dir: Path
-    trials_csv: Path
-    trials_jsonl: Path
-    best_trial_number: int | None
-    best_value: float | None
-    best_params: dict[str, Any] | None
-    best_user_attrs: dict[str, Any] | None
-
-
-@dataclass(frozen=True)
-class ComparisonScenario:
-    name: str
-    labeled_fraction: float
-    labeled_per_class: int | None
-    seed: int
-    label_sampling_mode: str
-    loss: str
-    miner: str
-    ssl_config_path: Path
-
-
-OBJECTIVE_METRICS = {
-    "best_valid_precision_at_1",
-    "best_valid_mean_average_precision_at_r",
-    "test_precision_at_1",
-    "test_mean_average_precision_at_r",
-    "final_train_loss",
-}
-
-COMPARISON_FORBIDDEN_HPARAM_KEYS = {
-    "dataset",
-    "mode",
-    "seed",
-    "cv_k",
-    "cv_mode",
-    "val_mode",
-    "ssl.labeled_fraction",
-    "ssl_config.labeled_fraction",
-    "ssl.label_sampling_mode",
-    "ssl_config.label_sampling_mode",
-    "ssl.max_unlabeled_samples",
-    "ssl_config.max_unlabeled_samples",
-    "ssl.seed",
-    "ssl_config.seed",
-    "ssl.method",
-    "ssl_config.method",
-}
-
-SUPERVISED_SPLIT_SSL_HPARAM_KEYS = {
-    "ssl.labeled_per_class",
-    "ssl_config.labeled_per_class",
-}
+    return _experiment_hpo.make_sampler_spaces_label_budget_aware(
+        args,
+        config,
+        training_label_sets_factory=make_label_budget_training_label_sets,
+    )
 
 
 def main():
-    args = parser.parse_args()
+    """Dispatch the CLI request from the broadest orchestration mode inward."""
+
+    # Experiment-config values replace parser defaults, while explicit CLI
+    # arguments remain the highest-precedence source.
+    args = parse_args_with_experiment_config()
+
+    # A missing --hparam_config produces None.  A present but disabled config is
+    # still loaded so its resolved contents can be written into run metadata.
     hparam_config = load_hparam_config(args.hparam_config)
+    # Comparison and grid modes own their own HPO/training loops, so they must
+    # be handled before the standalone HPO and single-run paths.
     if args.compare_supervised_ssl:
         run_supervised_ssl_comparison(args, hparam_config)
         return
 
     if has_outer_comparison_grid(args):
+        # An outer grid varies experimental conditions such as label budget or
+        # seed.  Each grid point may itself contain an Optuna study.
         run_single_method_grid(args, hparam_config)
         return
 
     if hparam_config is not None and hparam_config.enabled:
+        # In supervised mode, remove SSL-only HPO dimensions while preserving
+        # settings that define which examples belong to the labeled split.
         hparam_config = make_standalone_hparam_config(args, hparam_config)
-        run_hparam_search(args, hparam_config)
+        study_result = run_hparam_search(args, hparam_config)
+        if args.final_test_after_hpo:
+            run_final_from_best_hparam(
+                args,
+                hparam_config,
+                study_result,
+                role=args.mode,
+            )
         return
 
     if hparam_config is not None:
+        # Store disabled HPO configuration for provenance even though this run
+        # will use the command-line/default parameters directly.
         args.hparam_config_resolved = hparam_config.to_dict()
+
+    # The mode may turn an enabled SSL config into a split-only supervised
+    # config.  This keeps label selection identical between comparison methods.
     ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
     ssl_config = resolve_mode_ssl_config(args, ssl_config)
     run_experiment(args, ssl_config)
 
-
-def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
-    if args.cv_k > 1:
-        return run_cross_validation(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
-    return run_training(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
-
-
 def run_supervised_ssl_comparison(args, hparam_config):
+    """Run matched supervised and SSL studies for every outer-grid scenario."""
+
+    # This base config defines both the SSL algorithm and the common label
+    # apportioning rules used by the supervised baseline.
     base_ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
     validate_comparison_setup(args, hparam_config, base_ssl_config)
 
+    # Scenarios are concrete combinations of label budget, sampling mode,
+    # loss/miner, and eval seed.  Their SSL configs are already written to disk.
     scenarios = make_comparison_scenarios(args, base_ssl_config)
     grid_results = []
-    for scenario in scenarios:
-        scenario_args = copy.deepcopy(args)
-        scenario_args.seed = scenario.seed
-        scenario_args.loss = scenario.loss
-        scenario_args.miner = scenario.miner
-        scenario_args.ssl_config = scenario.ssl_config_path
-        if len(scenarios) > 1:
-            scenario_args.save_dir = Path(args.save_dir) / scenario.name
-
-        scenario_ssl_config = semi_supervised.load_ssl_config(scenario.ssl_config_path, default_seed=scenario.seed)
-        grid_results.append(
-            run_single_supervised_ssl_comparison(
-                args=scenario_args,
+    for scenario_group in group_scenarios_by_frozen_config(scenarios):
+        grid_results.extend(
+            run_supervised_ssl_frozen_hparam_group(
+                args=args,
                 hparam_config=hparam_config,
-                ssl_config=scenario_ssl_config,
-                scenario=scenario,
+                base_ssl_config=base_ssl_config,
+                scenario_group=scenario_group,
             )
         )
 
     if len(scenarios) > 1 or has_outer_comparison_grid(args):
+        # The grid summary places all scenario-level metrics and deltas in one
+        # CSV/JSON collection after every scenario has finished.
         write_comparison_grid_summary(Path("logs") / args.save_dir / "comparison_grid", grid_results)
 
+def run_supervised_ssl_frozen_hparam_group(args, hparam_config, base_ssl_config, scenario_group):
+    """Tune supervised and SSL once, then evaluate both with frozen params per seed."""
+
+    reference_scenario = scenario_group[0]
+    group_name, reference_ssl_config_path, reference_ssl_config = write_reference_ssl_config(
+        args=args,
+        base_ssl_config=base_ssl_config,
+        scenario=reference_scenario,
+        grid_dir_name="comparison_grid",
+    )
+    reference_args = make_reference_hpo_args(
+        args=args,
+        group_name=group_name,
+        reference_ssl_config_path=reference_ssl_config_path,
+        scenario=reference_scenario,
+    )
+    comparison_dir = Path("logs") / reference_args.save_dir / "supervised_ssl_comparison"
+    comparison_dir.mkdir(parents=True, exist_ok=True)
+
+    supervised_args = copy.deepcopy(reference_args)
+    supervised_args.mode = "supervised"
+    supervised_args.skip_test_during_hpo = True
+
+    ssl_args = copy.deepcopy(reference_args)
+    ssl_args.mode = "ssl"
+    ssl_args.skip_test_during_hpo = True
+
+    supervised_hparam_config = make_comparison_hparam_config(hparam_config, role="supervised")
+    ssl_hparam_config = make_comparison_hparam_config(hparam_config, role="ssl")
+
+    write_json(
+        comparison_dir / "comparison_setup.json",
+        {
+            "methodology": (
+                "supervised and SSL tune once on a reference support draw; "
+                "the selected hyperparameters are frozen and evaluated on each comparison seed. "
+                "Both methods use the same fixed D_val, D_test, support draws, objective metric, and HPO budget."
+            ),
+            "base_args": namespace_to_dict(reference_args),
+            "eval_seeds": [scenario.seed for scenario in scenario_group],
+            "reference_group": group_name,
+            "reference_ssl_config": reference_ssl_config.to_dict(),
+            "supervised_hparam_config": supervised_hparam_config.to_dict(),
+            "ssl_hparam_config": ssl_hparam_config.to_dict(),
+        },
+    )
+
+    supervised_study = run_hparam_search(supervised_args, supervised_hparam_config)
+    ssl_study = run_hparam_search(ssl_args, ssl_hparam_config)
+
+    group_results = []
+    for scenario in scenario_group:
+        eval_args = make_args_for_scenario(args, scenario)
+        scenario_ssl_config = semi_supervised.load_ssl_config(scenario.ssl_config_path, default_seed=scenario.seed)
+
+        supervised_eval_args = copy.deepcopy(eval_args)
+        supervised_eval_args.mode = "supervised"
+        supervised_final = run_final_from_best_hparam(
+            supervised_eval_args,
+            supervised_hparam_config,
+            supervised_study,
+            role="supervised",
+            summary_stem=f"final_evaluation_{scenario.name}_supervised",
+        )
+
+        ssl_eval_args = copy.deepcopy(eval_args)
+        ssl_eval_args.mode = "ssl"
+        ssl_final = run_final_from_best_hparam(
+            ssl_eval_args,
+            ssl_hparam_config,
+            ssl_study,
+            role="ssl",
+            summary_stem=f"final_evaluation_{scenario.name}_ssl",
+        )
+
+        scenario_comparison_dir = Path("logs") / eval_args.save_dir / "supervised_ssl_comparison"
+        scenario_comparison_dir.mkdir(parents=True, exist_ok=True)
+        write_comparison_summary(
+            comparison_dir=scenario_comparison_dir,
+            args=eval_args,
+            scenario=scenario,
+            ssl_config=scenario_ssl_config,
+            supervised_study=supervised_study,
+            ssl_study=ssl_study,
+            supervised_final=supervised_final,
+            ssl_final=ssl_final,
+        )
+        group_results.append(
+            {
+                "scenario": scenario,
+                "comparison_dir": scenario_comparison_dir,
+                "ssl_config": scenario_ssl_config,
+                "supervised_study": supervised_study,
+                "ssl_study": ssl_study,
+                "supervised_final": supervised_final,
+                "ssl_final": ssl_final,
+                "deltas": make_comparison_deltas(supervised_final, ssl_final),
+            }
+        )
+    return group_results
 
 def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenario):
+    """Tune and retrain both methods while keeping their data split fixed."""
+
     comparison_dir = Path("logs") / args.save_dir / "supervised_ssl_comparison"
     comparison_dir.mkdir(parents=True, exist_ok=True)
 
+    # The two namespaces begin with identical data, model, and HPO settings.
+    # Only mode differs; resolve_mode_ssl_config later disables pseudo-labeling
+    # for the supervised branch while retaining its label split.
     supervised_args = copy.deepcopy(args)
     supervised_args.mode = "supervised"
     supervised_args.skip_test_during_hpo = True
@@ -370,9 +219,13 @@ def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenar
     ssl_args.mode = "ssl"
     ssl_args.skip_test_during_hpo = True
 
+    # SSL-specific search dimensions are removed from the supervised study.
+    # Both studies otherwise retain the same trial budget and common spaces.
     supervised_hparam_config = make_comparison_hparam_config(hparam_config, role="supervised")
     ssl_hparam_config = make_comparison_hparam_config(hparam_config, role="ssl")
 
+    # Write methodology and resolved inputs before doing expensive work.  This
+    # leaves an audit trail even if a later study is interrupted.
     write_json(
         comparison_dir / "comparison_setup.json",
         {
@@ -388,9 +241,13 @@ def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenar
         },
     )
 
+    # Each method gets an independent study with the same HPO budget.  Test
+    # evaluation is disabled during HPO so it cannot influence model selection.
     supervised_study = run_hparam_search(supervised_args, supervised_hparam_config)
     ssl_study = run_hparam_search(ssl_args, ssl_hparam_config)
 
+    # Retraining separates parameter selection from the final reported model.
+    # The best parameters are applied to fresh runs after each study finishes.
     supervised_final = run_final_from_best_hparam(
         supervised_args,
         supervised_hparam_config,
@@ -413,6 +270,8 @@ def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenar
         supervised_final=supervised_final,
         ssl_final=ssl_final,
     )
+    # Return rich Python objects for the outer grid, which later flattens the
+    # relevant values into its aggregate CSV/JSON reports.
     return {
         "scenario": scenario,
         "comparison_dir": comparison_dir,
@@ -424,16 +283,18 @@ def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenar
         "deltas": make_comparison_deltas(supervised_final, ssl_final),
     }
 
-
 def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_grid"):
+    """Expand CLI grid dimensions into concrete, reproducible SSL configs."""
+
+    # None means "do not vary this dimension"; an explicitly empty CLI list is
+    # considered an error because it would silently produce zero experiments.
     label_budgets = args.label_budget_grid
+    has_label_budget_grid = label_budgets is not None
     if label_budgets is None:
         label_budgets = [base_ssl_config.labeled_fraction]
-        use_labeled_per_class = base_ssl_config.labeled_per_class
     else:
         if not label_budgets:
             raise ValueError("--label_budget_grid must include at least one value when provided")
-        use_labeled_per_class = None
 
     seeds = args.comparison_seeds
     if seeds is None:
@@ -441,12 +302,11 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
     elif not seeds:
         raise ValueError("--comparison_seeds must include at least one value when provided")
 
-    label_sampling_modes = args.ssl_label_sampling_modes
-    if label_sampling_modes is None:
-        label_sampling_modes = [base_ssl_config.label_sampling_mode]
-    elif not label_sampling_modes:
-        raise ValueError("--ssl_label_sampling_modes must include at least one value when provided")
+    label_sampling_modes = get_effective_label_sampling_modes(args, base_ssl_config)
+    validate_k_shot_grid_usage(args, label_sampling_modes)
 
+    # A loss and miner are treated as a pair because many losses require a
+    # compatible mining strategy (and classification losses ignore miners).
     loss_miner_pairs = get_loss_miner_pairs(args)
     include_loss_miner_in_name = args.loss_miner_grid is not None
 
@@ -454,61 +314,127 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
     config_dir.mkdir(parents=True, exist_ok=True)
 
     scenarios = []
+    # Names become directory/config filenames, so duplicates would overwrite
+    # outputs and make two distinct requests indistinguishable.
     scenario_names = set()
+    # The nested loops form the Cartesian product of all requested outer-grid
+    # dimensions.  Each generated config is persisted before it is executed.
     for label_sampling_mode in label_sampling_modes:
-        for labeled_fraction in label_budgets:
-            if not (0 < labeled_fraction <= 1):
-                raise ValueError(f"label budget must be in (0, 1], got {labeled_fraction}")
-            for loss_name, miner_name in loss_miner_pairs:
-                for seed in seeds:
-                    scenario_labeled_per_class = use_labeled_per_class
-                    if label_sampling_mode == "class_subset_k_shot" and scenario_labeled_per_class is None:
-                        scenario_labeled_per_class = base_ssl_config.labeled_per_class or 1
-                    scenario_ssl_config = replace(
-                        base_ssl_config,
-                        label_sampling_mode=label_sampling_mode,
-                        labeled_fraction=float(labeled_fraction),
-                        labeled_per_class=scenario_labeled_per_class,
-                        seed=int(seed),
-                    )
-                    semi_supervised.validate_ssl_config(scenario_ssl_config)
-                    scenario_name = make_scenario_name(
-                        scenario_ssl_config,
-                        loss=loss_name if include_loss_miner_in_name else None,
-                        miner=miner_name if include_loss_miner_in_name else None,
-                    )
-                    if scenario_name in scenario_names:
-                        raise ValueError(
-                            f"Duplicate outer-grid scenario name {scenario_name!r}. "
-                            "Check for duplicate label budgets, seeds, label sampling modes, "
-                            "or loss/miner pairs."
+        for label_budget in label_budgets:
+            labeled_fraction, default_labeled_per_class = resolve_scenario_label_budget(
+                label_sampling_mode=label_sampling_mode,
+                label_budget=label_budget,
+                has_label_budget_grid=has_label_budget_grid,
+                base_ssl_config=base_ssl_config,
+            )
+            for scenario_labeled_per_class in get_k_shot_values(
+                label_sampling_mode=label_sampling_mode,
+                default_labeled_per_class=default_labeled_per_class,
+                args=args,
+            ):
+                for loss_name, miner_name in loss_miner_pairs:
+                    for seed in seeds:
+                        # dataclasses.replace creates a new immutable config,
+                        # leaving the shared base config untouched.
+                        scenario_ssl_config = replace(
+                            base_ssl_config,
+                            label_sampling_mode=label_sampling_mode,
+                            labeled_fraction=float(labeled_fraction),
+                            labeled_per_class=scenario_labeled_per_class,
+                            seed=int(seed),
                         )
-                    scenario_names.add(scenario_name)
-                    config_path = config_dir / f"{scenario_name}.json"
-                    write_json(config_path, scenario_ssl_config.to_dict())
-                    scenarios.append(
-                        ComparisonScenario(
-                            name=scenario_name,
-                            labeled_fraction=scenario_ssl_config.labeled_fraction,
-                            labeled_per_class=scenario_ssl_config.labeled_per_class,
-                            seed=scenario_ssl_config.seed,
-                            label_sampling_mode=scenario_ssl_config.label_sampling_mode,
-                            loss=loss_name,
-                            miner=miner_name,
-                            ssl_config_path=config_path,
+                        semi_supervised.validate_ssl_config(scenario_ssl_config)
+                        # Include only dimensions needed to distinguish the
+                        # requested scenarios; this keeps paths readable.
+                        scenario_name = make_scenario_name(
+                            scenario_ssl_config,
+                            loss=loss_name if include_loss_miner_in_name else None,
+                            miner=miner_name if include_loss_miner_in_name else None,
                         )
-                    )
+                        if scenario_name in scenario_names:
+                            raise ValueError(
+                                f"Duplicate outer-grid scenario name {scenario_name!r}. "
+                                "Check for duplicate label budgets, k-shot counts, seeds, "
+                                "label sampling modes, or loss/miner pairs."
+                            )
+                        scenario_names.add(scenario_name)
+                        config_path = config_dir / f"{scenario_name}.json"
+                        # Persist each expanded config so the scenario can be
+                        # rerun independently without reconstructing the grid.
+                        write_json(config_path, scenario_ssl_config.to_dict())
+                        scenarios.append(
+                            ComparisonScenario(
+                                name=scenario_name,
+                                labeled_fraction=scenario_ssl_config.labeled_fraction,
+                                labeled_per_class=scenario_ssl_config.labeled_per_class,
+                                seed=scenario_ssl_config.seed,
+                                label_sampling_mode=scenario_ssl_config.label_sampling_mode,
+                                loss=loss_name,
+                                miner=miner_name,
+                                ssl_config_path=config_path,
+                            )
+                        )
     return scenarios
 
+def resolve_scenario_label_budget(label_sampling_mode, label_budget, has_label_budget_grid, base_ssl_config):
+    # labeled_fraction has different semantics by mode: it can mean a fraction
+    # of samples or a fraction of classes.  It is always constrained to (0, 1].
+    labeled_fraction = float(label_budget)
+    validate_labeled_fraction(labeled_fraction, "label budget")
+    if label_sampling_mode == "class_subset_k_shot":
+        # k controls examples per selected class; default to one-shot if the
+        # base config omitted it.
+        labeled_per_class = base_ssl_config.labeled_per_class or 1
+    else:
+        # When a fraction grid is explicitly supplied, do not let a fixed
+        # per-class count override that grid dimension.
+        labeled_per_class = None if has_label_budget_grid else base_ssl_config.labeled_per_class
+    return labeled_fraction, labeled_per_class
+
+def validate_labeled_fraction(value, name):
+    if not math.isfinite(value) or not (0 < value <= 1):
+        raise ValueError(f"{name} must be in (0, 1], got {value}")
+
+def validate_k_shot_grid_usage(args, label_sampling_modes):
+    k_shot_grid = getattr(args, "k_shot_grid", None)
+    if k_shot_grid is None:
+        return
+    if not k_shot_grid:
+        raise ValueError("--k_shot_grid must include at least one positive integer when provided")
+    if "class_subset_k_shot" not in label_sampling_modes:
+        raise ValueError("--k_shot_grid is only valid when --ssl_label_sampling_modes includes class_subset_k_shot")
+
+def get_k_shot_values(label_sampling_mode, default_labeled_per_class, args):
+    # A k-shot grid is meaningful only for the mode that selects both a class
+    # subset and a fixed number of examples within each selected class.
+    if label_sampling_mode != "class_subset_k_shot":
+        return [default_labeled_per_class]
+    k_shot_grid = getattr(args, "k_shot_grid", None)
+    if k_shot_grid is None:
+        return [default_labeled_per_class]
+    return [validate_k_shot_value(value) for value in k_shot_grid]
+
+def validate_k_shot_value(value):
+    if value <= 0:
+        raise ValueError(f"--k_shot_grid values must be positive integers, got {value}")
+    return int(value)
+
+def get_effective_label_sampling_modes(args, base_ssl_config):
+    label_sampling_modes = args.ssl_label_sampling_modes
+    if label_sampling_modes is None:
+        return [base_ssl_config.label_sampling_mode]
+    if not label_sampling_modes:
+        raise ValueError("--ssl_label_sampling_modes must include at least one value when provided")
+    return label_sampling_modes
 
 def has_outer_comparison_grid(args):
     return (
         args.label_budget_grid is not None
+        or getattr(args, "k_shot_grid", None) is not None
         or args.loss_miner_grid is not None
         or args.comparison_seeds is not None
         or args.ssl_label_sampling_modes is not None
     )
-
 
 def get_loss_miner_pairs(args):
     if args.loss_miner_grid is None:
@@ -517,7 +443,6 @@ def get_loss_miner_pairs(args):
     if not args.loss_miner_grid:
         raise ValueError("--loss_miner_grid must include at least one LOSS:MINER pair when provided")
     return [parse_loss_miner_pair(raw_pair) for raw_pair in args.loss_miner_grid]
-
 
 def parse_loss_miner_pair(raw_pair):
     if ":" in raw_pair:
@@ -532,7 +457,6 @@ def parse_loss_miner_pair(raw_pair):
     validate_loss_miner_pair(loss_name, miner_name, source=f" in --loss_miner_grid entry {raw_pair!r}")
     return loss_name, miner_name
 
-
 def validate_loss_miner_pair(loss_name, miner_name, source="", require_effective_miner=True):
     if loss_name not in ALL_LOSSES:
         raise ValueError(f"loss must be one of {ALL_LOSSES}{source}: {loss_name}")
@@ -542,60 +466,176 @@ def validate_loss_miner_pair(loss_name, miner_name, source="", require_effective
         raise ValueError(
             f"classification loss {loss_name} should be paired with no_miner because miners are ignored{source}"
         )
+    if loss_name == "STMLLoss" and miner_name != "no_miner":
+        raise ValueError(f"STMLLoss must be paired with no_miner because it does not consume labels{source}")
 
+def make_label_budget_name(label_sampling_mode, labeled_fraction, labeled_per_class):
+    if label_sampling_mode == "class_subset_k_shot":
+        label_part = (
+            f"label_{format_float_token(labeled_fraction)}"
+            f"_k_{labeled_per_class}"
+        )
+    elif labeled_per_class is None:
+        label_part = f"label_{format_float_token(labeled_fraction)}"
+    else:
+        label_part = f"per_class_{labeled_per_class}"
+    return label_part
 
 def make_scenario_name(ssl_config, loss=None, miner=None):
-    if ssl_config.label_sampling_mode == "class_subset_k_shot":
-        label_part = (
-            f"label_{format_float_token(ssl_config.labeled_fraction)}"
-            f"_k_{ssl_config.labeled_per_class}"
-        )
-    elif ssl_config.labeled_per_class is None:
-        label_part = f"label_{format_float_token(ssl_config.labeled_fraction)}"
-    else:
-        label_part = f"per_class_{ssl_config.labeled_per_class}"
+    # Encode all varied dimensions into a filesystem-safe, deterministic name.
+    label_part = make_label_budget_name(
+        ssl_config.label_sampling_mode,
+        ssl_config.labeled_fraction,
+        ssl_config.labeled_per_class,
+    )
     parts = [ssl_config.label_sampling_mode, label_part]
     if loss is not None and miner is not None:
+        # Loss/miner are omitted when they are fixed globally to avoid adding
+        # redundant text to every scenario name.
         parts.extend([loss, miner])
     parts.extend(["seed", str(ssl_config.seed)])
     return "_".join(parts)
 
+def make_frozen_hparam_group_name(scenario, reference_seed):
+    label_part = make_label_budget_name(
+        scenario.label_sampling_mode,
+        scenario.labeled_fraction,
+        scenario.labeled_per_class,
+    )
+    parts = [
+        scenario.label_sampling_mode,
+        label_part,
+        scenario.loss,
+        scenario.miner,
+        "tune_seed",
+        str(int(reference_seed)),
+    ]
+    return "_".join(parts)
+
+def scenario_group_key(scenario):
+    return (
+        scenario.label_sampling_mode,
+        scenario.labeled_fraction,
+        scenario.labeled_per_class,
+        scenario.loss,
+        scenario.miner,
+    )
+
+def group_scenarios_by_frozen_config(scenarios):
+    groups_by_key = {}
+    ordered_keys = []
+    for scenario in scenarios:
+        key = scenario_group_key(scenario)
+        if key not in groups_by_key:
+            groups_by_key[key] = []
+            ordered_keys.append(key)
+        groups_by_key[key].append(scenario)
+    return [groups_by_key[key] for key in ordered_keys]
+
+def write_reference_ssl_config(args, base_ssl_config, scenario, grid_dir_name):
+    """Persist the fixed support draw used for HPO for one non-seed scenario."""
+
+    group_name = make_frozen_hparam_group_name(scenario, args.seed)
+    reference_ssl_config = replace(
+        base_ssl_config,
+        label_sampling_mode=scenario.label_sampling_mode,
+        labeled_fraction=float(scenario.labeled_fraction),
+        labeled_per_class=scenario.labeled_per_class,
+        seed=int(args.seed),
+    )
+    semi_supervised.validate_ssl_config(reference_ssl_config)
+    config_dir = Path("logs") / args.save_dir / grid_dir_name / "ssl_configs"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / f"{group_name}.json"
+    write_json(config_path, reference_ssl_config.to_dict())
+    return group_name, config_path, reference_ssl_config
+
+def make_args_for_scenario(args, scenario):
+    scenario_args = copy.deepcopy(args)
+    scenario_args.seed = scenario.seed
+    scenario_args.loss = scenario.loss
+    scenario_args.miner = scenario.miner
+    scenario_args.ssl_config = scenario.ssl_config_path
+    scenario_args.save_dir = Path(args.save_dir) / scenario.name
+    return scenario_args
+
+def make_reference_hpo_args(args, group_name, reference_ssl_config_path, scenario):
+    reference_args = copy.deepcopy(args)
+    reference_args.seed = int(args.seed)
+    reference_args.loss = scenario.loss
+    reference_args.miner = scenario.miner
+    reference_args.ssl_config = reference_ssl_config_path
+    reference_args.save_dir = Path(args.save_dir) / group_name / "hpo"
+    return reference_args
 
 def format_float_token(value):
     return f"{value:g}".replace(".", "p")
 
-
-def is_supervised_mode(args):
-    return getattr(args, "mode", "supervised") == "supervised"
-
-
-def resolve_mode_ssl_config(args, ssl_config):
-    if is_supervised_mode(args):
-        return make_supervised_split_config(ssl_config)
-    if not ssl_config.enabled:
-        raise ValueError("--mode ssl requires an enabled --ssl_config")
-    return ssl_config
-
-
 def run_single_method_grid(args, hparam_config):
+    """Run an outer experiment grid for only the selected training method."""
+
     base_ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
-    validate_single_method_grid_setup(args, hparam_config)
+    validate_single_method_grid_setup(args, hparam_config, base_ssl_config)
 
     scenarios = make_comparison_scenarios(args, base_ssl_config, grid_dir_name="experiment_grid")
+    if hparam_config is not None and hparam_config.enabled:
+        grid_results = run_single_method_frozen_hparam_grid(
+            args=args,
+            hparam_config=hparam_config,
+            base_ssl_config=base_ssl_config,
+            scenarios=scenarios,
+        )
+        write_single_method_grid_summary(Path("logs") / args.save_dir / "experiment_grid", grid_results)
+        return
+
     grid_results = []
     for scenario in scenarios:
-        scenario_args = copy.deepcopy(args)
-        scenario_args.seed = scenario.seed
-        scenario_args.loss = scenario.loss
-        scenario_args.miner = scenario.miner
-        scenario_args.ssl_config = scenario.ssl_config_path
-        scenario_args.save_dir = Path(args.save_dir) / scenario.name
+        scenario_args = make_args_for_scenario(args, scenario)
         grid_results.append(run_single_method_scenario(scenario_args, hparam_config, scenario))
 
     write_single_method_grid_summary(Path("logs") / args.save_dir / "experiment_grid", grid_results)
 
+def run_single_method_frozen_hparam_grid(args, hparam_config, base_ssl_config, scenarios):
+    """Tune once per non-seed scenario, then evaluate frozen params for each seed."""
 
-def validate_single_method_grid_setup(args, hparam_config):
+    grid_results = []
+    for scenario_group in group_scenarios_by_frozen_config(scenarios):
+        reference_scenario = scenario_group[0]
+        group_name, reference_ssl_config_path, _ = write_reference_ssl_config(
+            args=args,
+            base_ssl_config=base_ssl_config,
+            scenario=reference_scenario,
+            grid_dir_name="experiment_grid",
+        )
+        reference_args = make_reference_hpo_args(
+            args=args,
+            group_name=group_name,
+            reference_ssl_config_path=reference_ssl_config_path,
+            scenario=reference_scenario,
+        )
+        scenario_hparam_config = make_standalone_hparam_config(reference_args, hparam_config)
+        study_result = run_hparam_search(reference_args, scenario_hparam_config)
+        for scenario in scenario_group:
+            eval_args = make_args_for_scenario(args, scenario)
+            final_result = run_final_from_best_hparam(
+                eval_args,
+                scenario_hparam_config,
+                study_result,
+                role=eval_args.mode,
+                summary_stem=f"final_evaluation_{scenario.name}_{eval_args.mode}",
+            )
+            grid_results.append(
+                {
+                    "method": eval_args.mode,
+                    "scenario": scenario,
+                    "study": study_result,
+                    "result": final_result,
+                }
+            )
+    return grid_results
+
+def validate_single_method_grid_setup(args, hparam_config, base_ssl_config):
+    validate_k_shot_grid_hparam_setup(args, hparam_config, base_ssl_config)
     if hparam_config is not None and hparam_config.enabled:
         if hparam_config.study_dir is not None or hparam_config.storage is not None:
             raise ValueError(
@@ -603,17 +643,24 @@ def validate_single_method_grid_setup(args, hparam_config):
                 "Leave hparam_config.study_dir and hparam_config.storage as null."
             )
 
-
 def run_single_method_scenario(args, hparam_config, scenario):
     method = args.mode
     if hparam_config is not None and hparam_config.enabled:
         scenario_hparam_config = make_standalone_hparam_config(args, hparam_config)
         study_result = run_hparam_search(args, scenario_hparam_config)
+        final_result = None
+        if args.final_test_after_hpo:
+            final_result = run_final_from_best_hparam(
+                args,
+                scenario_hparam_config,
+                study_result,
+                role=method,
+            )
         return {
             "method": method,
             "scenario": scenario,
             "study": study_result,
-            "result": None,
+            "result": final_result,
         }
 
     if hparam_config is not None:
@@ -628,12 +675,10 @@ def run_single_method_scenario(args, hparam_config, scenario):
         "result": result,
     }
 
-
 def make_standalone_hparam_config(args, config):
     if is_supervised_mode(args):
         return make_comparison_hparam_config(config, role="supervised")
     return config
-
 
 def validate_comparison_setup(args, hparam_config, ssl_config):
     if hparam_config is None or not hparam_config.enabled:
@@ -649,6 +694,7 @@ def validate_comparison_setup(args, hparam_config, ssl_config):
             "The outer comparison grid needs separate Optuna storage per scenario. "
             "Leave hparam_config.study_dir and hparam_config.storage as null."
         )
+    validate_k_shot_grid_hparam_setup(args, hparam_config, ssl_config)
 
     forbidden_keys = sorted(set(hparam_config.spaces) & COMPARISON_FORBIDDEN_HPARAM_KEYS)
     if forbidden_keys:
@@ -668,6 +714,18 @@ def validate_comparison_setup(args, hparam_config, ssl_config):
             "Add at least one non-SSL hyperparameter such as lr, batch_size, sampler_m, or classifier_lr."
         )
 
+def validate_k_shot_grid_hparam_setup(args, hparam_config, base_ssl_config):
+    if hparam_config is None or not hparam_config.enabled or getattr(args, "k_shot_grid", None) is None:
+        return
+    if "class_subset_k_shot" not in get_effective_label_sampling_modes(args, base_ssl_config):
+        return
+
+    forbidden_keys = sorted(set(hparam_config.spaces) & LABELED_PER_CLASS_HPARAM_KEYS)
+    if forbidden_keys:
+        raise ValueError(
+            "For label_sampling_mode='class_subset_k_shot', k-shot settings are controlled by "
+            f"--k_shot_grid. Remove these keys from the HPO spaces: {forbidden_keys}"
+        )
 
 def make_comparison_hparam_config(config, role):
     if role not in {"supervised", "ssl"}:
@@ -691,28 +749,114 @@ def make_comparison_hparam_config(config, role):
     validate_hparam_config(resolved)
     return resolved
 
-
 def append_study_dir_role(study_dir, role):
     if study_dir is None:
         return None
     return str(Path(study_dir) / role)
 
+def run_final_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="final_evaluation"):
+    """Train the winning HPO configuration on all development data and test it."""
 
-def run_final_from_best_hparam(base_args, hparam_config, study_result, role):
+    role = role or "model"
     if study_result.best_params is None:
         raise ValueError(f"No completed {role} HPO trial is available for final retraining")
 
+    epoch_plan = make_final_epoch_plan(study_result)
     final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
     final_args.hparam_config_resolved = hparam_config.to_dict()
     final_args.hparam_params = study_result.best_params
     final_args.hparam_final_from_study = study_result.study_name
     final_args.hparam_final_trial_number = study_result.best_trial_number
-    final_args.evaluate_test = False
+    final_args.hparam_final_epoch_plan = epoch_plan
+    final_args.final_full_train = True
+    final_args.cv_k = 1
+    final_args.epochs = epoch_plan["final_training_epochs"]
+    final_args.evaluate_test = True
     final_args.skip_test_during_hpo = False
     final_args.save_dir = Path(base_args.save_dir) / "final" / role
 
-    return run_experiment(final_args, final_ssl_config)
+    final_result = run_experiment(final_args, final_ssl_config)
+    best_attrs = study_result.best_user_attrs or {}
+    final_result = replace(
+        final_result,
+        best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
+        best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
+    )
+    write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
+    return final_result
 
+def make_final_epoch_plan(study_result):
+    """Choose a fixed final training duration from the best trial's checkpoints."""
+
+    attrs = study_result.best_user_attrs or {}
+    fold_results = attrs.get("fold_results") or []
+    source_results = fold_results if fold_results else [attrs]
+    selected_epoch_key = "selected_epoch"
+    if not source_results or any(result.get(selected_epoch_key) is None for result in source_results):
+        selected_epoch_key = "last_epoch"
+    selected_epochs = [
+        int(result[selected_epoch_key])
+        for result in source_results
+        if result.get(selected_epoch_key) is not None
+    ]
+    if not selected_epochs:
+        raise ValueError("Best HPO trial does not contain epoch information for final retraining")
+
+    training_epoch_counts = [max(0, epoch + 1) for epoch in selected_epochs]
+    mean_training_epochs = float(np.mean(training_epoch_counts))
+    final_training_epochs = int(math.floor(mean_training_epochs + 0.5))
+    return {
+        "source": "cross_validation_folds" if fold_results else "single_validation_run",
+        "epoch_field": selected_epoch_key,
+        "selected_epoch_indices": selected_epochs,
+        "training_epoch_counts": training_epoch_counts,
+        "mean_training_epochs": mean_training_epochs,
+        "rounding": "nearest_integer_half_up",
+        "final_training_epochs": final_training_epochs,
+    }
+
+def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem="final_evaluation"):
+    """Write a compact study-to-final-test audit artifact."""
+
+    summary = {
+        "role": role,
+        "study": hparam_study_result_to_dict(study_result),
+        "epoch_plan": epoch_plan,
+        "final_result": result_to_dict(final_result),
+    }
+    write_json(study_result.study_dir / f"{summary_stem}.json", summary)
+    csv_path = study_result.study_dir / f"{summary_stem}.csv"
+    row = {
+        "role": role,
+        "study_name": study_result.study_name,
+        "best_trial_number": optional_number(study_result.best_trial_number),
+        "best_hpo_value": optional_number(study_result.best_value),
+        "best_params": json.dumps(study_result.best_params, sort_keys=True),
+        "best_valid_precision_at_1": optional_number(
+            (study_result.best_user_attrs or {}).get("best_valid_precision_at_1")
+        ),
+        "best_valid_mean_average_precision_at_r": optional_number(
+            (study_result.best_user_attrs or {}).get("best_valid_mean_average_precision_at_r")
+        ),
+        "epoch_source": epoch_plan["source"],
+        "epoch_field": epoch_plan["epoch_field"],
+        "selected_epoch_indices": json.dumps(epoch_plan["selected_epoch_indices"]),
+        "fold_training_epoch_counts": json.dumps(epoch_plan["training_epoch_counts"]),
+        "mean_training_epochs": epoch_plan["mean_training_epochs"],
+        "final_training_epochs": epoch_plan["final_training_epochs"],
+        "final_log_dir": str(final_result.log_dir),
+        "final_metrics_csv": str(final_result.metrics_csv),
+        "final_train_loss": optional_number(final_result.final_train_loss),
+        "test_precision_at_1": optional_number(final_result.test_precision_at_1),
+        "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+        "selected_epoch": final_result.selected_epoch,
+        "global_step": final_result.global_step,
+    }
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(row.keys()))
+        writer.writeheader()
+        writer.writerow(row)
+    logger.info(f"Final HPO test evaluation summary written to {study_result.study_dir}")
 
 def write_comparison_summary(
     comparison_dir,
@@ -751,7 +895,6 @@ def write_comparison_summary(
     )
     logger.info(f"Comparison summary written to {comparison_dir}")
 
-
 def make_comparison_deltas(supervised_final, ssl_final):
     return {
         "test_precision_at_1": subtract_optional(
@@ -772,7 +915,6 @@ def make_comparison_deltas(supervised_final, ssl_final):
         ),
     }
 
-
 def make_comparison_row(method, study_result, final_result):
     return {
         "method": method,
@@ -787,16 +929,16 @@ def make_comparison_row(method, study_result, final_result):
         "test_mean_average_precision_at_r": ""
         if final_result.test_mean_average_precision_at_r is None
         else final_result.test_mean_average_precision_at_r,
+        "final_training_epochs": max(0, final_result.last_epoch + 1),
+        "selected_epoch": final_result.selected_epoch,
         "last_epoch": final_result.last_epoch,
         "global_step": final_result.global_step,
     }
-
 
 def subtract_optional(left, right):
     if left is None or right is None:
         return None
     return float(left - right)
-
 
 def hparam_study_result_to_dict(result):
     return {
@@ -810,7 +952,6 @@ def hparam_study_result_to_dict(result):
         "best_user_attrs": result.best_user_attrs,
     }
 
-
 def comparison_scenario_to_dict(scenario):
     return {
         "name": scenario.name,
@@ -822,7 +963,6 @@ def comparison_scenario_to_dict(scenario):
         "miner": scenario.miner,
         "ssl_config_path": str(scenario.ssl_config_path),
     }
-
 
 def write_comparison_grid_summary(grid_dir, grid_results):
     grid_dir.mkdir(parents=True, exist_ok=True)
@@ -849,7 +989,6 @@ def write_comparison_grid_summary(grid_dir, grid_results):
     )
     logger.info(f"Comparison grid summary written to {grid_dir}")
 
-
 def write_single_method_grid_summary(grid_dir, grid_results):
     grid_dir.mkdir(parents=True, exist_ok=True)
     rows = [make_single_method_grid_summary_row(result) for result in grid_results]
@@ -875,7 +1014,6 @@ def write_single_method_grid_summary(grid_dir, grid_results):
     )
     logger.info(f"Single-method grid summary written to {grid_dir}")
 
-
 def make_single_method_grid_summary_row(grid_result):
     scenario = grid_result["scenario"]
     method = grid_result["method"]
@@ -899,6 +1037,10 @@ def make_single_method_grid_summary_row(grid_result):
         "best_valid_mean_average_precision_at_r": "",
         "test_precision_at_1": "",
         "test_mean_average_precision_at_r": "",
+        "final_train_loss": "",
+        "final_training_epochs": "",
+        "selected_epoch": "",
+        "global_step": "",
     }
     if study is not None:
         attrs = study.best_user_attrs or {}
@@ -916,6 +1058,19 @@ def make_single_method_grid_summary_row(grid_result):
                 "test_mean_average_precision_at_r": optional_number(attrs.get("test_mean_average_precision_at_r")),
             }
         )
+        if result is not None:
+            row.update(
+                {
+                    "log_dir": str(result.log_dir),
+                    "metrics_csv": str(result.metrics_csv),
+                    "test_precision_at_1": optional_number(result.test_precision_at_1),
+                    "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
+                    "final_train_loss": optional_number(result.final_train_loss),
+                    "final_training_epochs": max(0, result.last_epoch + 1),
+                    "selected_epoch": result.selected_epoch,
+                    "global_step": result.global_step,
+                }
+            )
     else:
         row.update(
             {
@@ -925,10 +1080,13 @@ def make_single_method_grid_summary_row(grid_result):
                 "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
                 "test_precision_at_1": optional_number(result.test_precision_at_1),
                 "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
+                "final_train_loss": optional_number(result.final_train_loss),
+                "final_training_epochs": max(0, result.last_epoch + 1),
+                "selected_epoch": result.selected_epoch,
+                "global_step": result.global_step,
             }
         )
     return row
-
 
 def make_single_method_grid_aggregate_rows(rows):
     group_keys = [
@@ -945,6 +1103,8 @@ def make_single_method_grid_aggregate_rows(rows):
         "best_valid_mean_average_precision_at_r",
         "test_precision_at_1",
         "test_mean_average_precision_at_r",
+        "final_train_loss",
+        "final_training_epochs",
     ]
     groups = {}
     for row in rows:
@@ -969,7 +1129,6 @@ def make_single_method_grid_aggregate_rows(rows):
             aggregate[f"{metric_name}_std"] = optional_number(std_value)
         aggregate_rows.append(aggregate)
     return aggregate_rows
-
 
 def make_grid_summary_row(result):
     scenario = result["scenario"]
@@ -1002,7 +1161,6 @@ def make_grid_summary_row(result):
             deltas["best_valid_mean_average_precision_at_r"]
         ),
     }
-
 
 def make_grid_aggregate_rows(rows):
     group_keys = ["label_sampling_mode", "labeled_fraction", "labeled_per_class", "loss", "miner"]
@@ -1043,7 +1201,6 @@ def make_grid_aggregate_rows(rows):
         aggregate_rows.append(aggregate)
     return aggregate_rows
 
-
 def mean_std(values):
     if not values:
         return None, None
@@ -1051,1116 +1208,8 @@ def mean_std(values):
     std = 0.0 if len(array) == 1 else float(np.std(array, ddof=1))
     return float(np.mean(array)), std
 
-
 def optional_number(value):
     return "" if value is None else value
-
-
-def write_split_manifest(log_dir, dataset_bundle, ssl_config, ssl_split):
-    split_dir = Path(log_dir) / "split"
-    split_dir.mkdir(parents=True, exist_ok=True)
-
-    if ssl_split is None:
-        labeled_positions = np.arange(len(dataset_bundle.train_dataset), dtype=np.int64)
-        unlabeled_positions = np.array([], dtype=np.int64)
-    else:
-        labeled_positions = np.asarray(ssl_split.labeled_positions, dtype=np.int64)
-        unlabeled_positions = np.asarray(ssl_split.unlabeled_positions, dtype=np.int64)
-
-    train_indices = get_subset_indices(dataset_bundle.train_dataset)
-    val_indices = get_subset_indices(dataset_bundle.valid_dataset)
-
-    np.save(split_dir / "labeled_positions.npy", labeled_positions)
-    np.save(split_dir / "unlabeled_positions.npy", unlabeled_positions)
-    np.save(split_dir / "val_indices.npy", val_indices)
-    np.save(split_dir / "train_indices.npy", train_indices)
-    np.save(split_dir / "labeled_indices.npy", positions_to_indices(train_indices, labeled_positions))
-    np.save(split_dir / "unlabeled_indices.npy", positions_to_indices(train_indices, unlabeled_positions))
-
-    write_json(
-        split_dir / "split_info.json",
-        {
-            "ssl_config": ssl_config.to_dict(),
-            "dataset_split": dataset_bundle.split_info,
-            "train_size": len(dataset_bundle.train_dataset),
-            "valid_size": len(dataset_bundle.valid_dataset),
-            "num_labeled": len(labeled_positions),
-            "num_unlabeled": len(unlabeled_positions),
-            "labeled_label_counts": label_counts(dataset_bundle.train_dataset.labels, labeled_positions),
-            "unlabeled_label_counts": label_counts(dataset_bundle.train_dataset.labels, unlabeled_positions),
-        },
-    )
-    write_json(split_dir / "test_info.json", make_test_info(dataset_bundle.test_dataset))
-
-
-def get_subset_indices(dataset):
-    indices = getattr(dataset, "indices", None)
-    if indices is None:
-        return np.arange(len(dataset), dtype=np.int64)
-    return np.asarray(indices, dtype=np.int64)
-
-
-def positions_to_indices(indices, positions):
-    if len(indices) == 0 or len(positions) == 0:
-        return np.array([], dtype=np.int64)
-    return np.asarray(indices, dtype=np.int64)[np.asarray(positions, dtype=np.int64)]
-
-
-def label_counts(labels, positions=None):
-    labels = np.asarray(labels, dtype=np.int64)
-    if positions is not None:
-        labels = labels[np.asarray(positions, dtype=np.int64)]
-    if len(labels) == 0:
-        return {}
-    unique, counts = np.unique(labels, return_counts=True)
-    return {int(label): int(count) for label, count in zip(unique, counts)}
-
-
-def make_test_info(test_dataset):
-    labels = getattr(test_dataset, "labels", None)
-    info = {
-        "size": len(test_dataset),
-        "dataset_type": type(test_dataset).__name__,
-    }
-    if labels is not None:
-        info["num_classes"] = int(len(set(int(label) for label in labels)))
-        info["label_counts"] = label_counts(labels)
-    return info
-
-
-def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fold=None):
-    args.ssl_config_resolved = ssl_config.to_dict()
-    validate_run_args(args, ssl_config)
-    utils.seed_everything(args.seed, device=args.device)
-
-    torch.multiprocessing.set_sharing_strategy("file_system")  # Due to annoying "RuntimeError: Too many open files."
-    utils.initialize_logger(args)
-    write_run_config(args, ssl_config)
-
-    model = DinoWrapper(dino_size=args.dino_size, feat_dim=args.feat_dim)
-    model = model.to(args.device)
-
-    dataset_bundle = utils.setup_dataset_bundle(
-        args.dataset,
-        seed=args.seed,
-        cv_k=args.cv_k if cv_fold is not None else 1,
-        cv_fold=cv_fold,
-        cv_mode=args.cv_mode,
-        val_mode=args.val_mode,
-    )
-    supervised_mode = is_supervised_mode(args)
-    if ssl_config.enabled:
-        ssl_split = semi_supervised.prepare_ssl_split(dataset_bundle.train_dataset, ssl_config)
-    elif supervised_mode:
-        logger.info("Training supervised baseline on the labeled subset from the SSL split config")
-        ssl_split = semi_supervised.prepare_label_split(dataset_bundle.train_dataset, ssl_config)
-    else:
-        ssl_split = None
-    if ssl_split is None:
-        target_train_size = len(dataset_bundle.train_dataset)
-        target_train_num_classes = len(set(int(label) for label in dataset_bundle.train_dataset.labels))
-    else:
-        target_train_size = len(ssl_split.labeled_positions)
-        train_labels = np.asarray(dataset_bundle.train_dataset.labels, dtype=np.int64)
-        target_train_num_classes = int(len(np.unique(train_labels[np.asarray(ssl_split.labeled_positions)])))
-    dataset_bundle = utils.apply_validation_mode(
-        dataset_bundle=dataset_bundle,
-        val_mode=args.val_mode,
-        target_train_size=target_train_size,
-        target_train_num_classes=target_train_num_classes,
-        seed=args.seed,
-    )
-    write_split_manifest(args.log_dir, dataset_bundle, ssl_config, ssl_split)
-    static_train_loader = None
-    warmup_train_loader = None
-    if supervised_mode and not ssl_config.enabled:
-        train_dataset = semi_supervised.build_labeled_training_dataset(
-            train_dataset=dataset_bundle.train_dataset,
-            train_labels_mapper=dataset_bundle.train_labels_mapper,
-            split=ssl_split,
-        )
-        static_train_loader = utils.make_train_loader(
-            train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-        )
-    elif ssl_config.enabled and ssl_config.warmup_epochs > 0:
-        warmup_train_dataset = semi_supervised.build_labeled_training_dataset(
-            train_dataset=dataset_bundle.train_dataset,
-            train_labels_mapper=dataset_bundle.train_labels_mapper,
-            split=ssl_split,
-        )
-        warmup_train_loader = utils.make_train_loader(
-            warmup_train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-        )
-    if static_train_loader is None and ssl_config.update_mode == "once" and ssl_config.warmup_epochs == 0:
-        train_dataset = semi_supervised.build_ssl_training_dataset(
-            model=model,
-            train_dataset=dataset_bundle.train_dataset,
-            train_labels_mapper=dataset_bundle.train_labels_mapper,
-            device=args.device,
-            config=ssl_config,
-            split=ssl_split,
-            start_method=args.dataloader_start_method,
-        )
-        static_train_loader = utils.make_train_loader(
-            train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-        )
-    valid_loader = utils.make_eval_loader(
-        dataset_bundle.valid_dataset,
-        seed=args.seed,
-        num_workers=args.num_workers,
-        start_method=args.dataloader_start_method,
-    )
-    evaluate_test = bool(getattr(args, "evaluate_test", False))
-    test_loader = None
-    if evaluate_test:
-        test_loader = utils.make_eval_loader(
-            dataset_bundle.test_dataset,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-        )
-    train_labels_mapper = dataset_bundle.train_labels_mapper
-
-    if args.optim == "adam":
-        optim = torch.optim.Adam(model.parameters(), lr=args.lr)
-    elif args.optim == "rmsprop":
-        optim = torch.optim.RMSprop(model.parameters(), lr=args.lr)
-
-    if args.loss in CLASSIFICATION_LOSSES:
-        # The loss is a classification loss with a learnable matrix, like ArcFaceLoss
-        criterion = getattr(losses, args.loss)(len(set(dataset_bundle.train_dataset.labels)), model.feat_dim).to(args.device) # moved explicitly to set device
-        is_classification = True
-        if args.optim == "adam":
-            classifier_optim = torch.optim.Adam(criterion.parameters(), lr=args.classifier_lr) # Why not AdamW?
-        elif args.optim == "rmsprop":
-            classifier_optim = torch.optim.RMSprop(criterion.parameters(), lr=args.classifier_lr)
-    else:
-        # The loss is a standard contrastive loss with no learnable parameter, like Contrastive or Triplet
-        criterion = getattr(losses, args.loss)()
-        is_classification = False
-
-    if not is_classification:
-        if args.miner == "no_miner":
-            miner = None
-        else:
-            miner = getattr(miners, args.miner)()
-
-    metrics_logger = utils.MetricsLogger(args.log_dir, args)
-    best_model_path = args.log_dir / "best_model.pth"
-    final_train_loss = None
-    test_precision = None
-    test_map = None
-
-    try:
-        # Evaluate off-the-shelf model
-        valid_precision, valid_map = utils.evaluate(model, valid_loader, "valid", device=args.device)
-        metrics_logger.log_eval("valid", valid_precision, valid_map, step=0, epoch=-1)
-
-        patience = args.patience
-        best_precision = valid_precision
-        best_map = valid_map
-        epochs_no_improve = 0
-        global_step = 0
-        last_epoch = -1
-        torch.save(model.state_dict(), best_model_path)
-
-        for num_epoch in range(args.epochs):
-            last_epoch = num_epoch
-            if ssl_config.enabled and num_epoch < ssl_config.warmup_epochs:
-                train_loader = warmup_train_loader
-            elif ssl_config.update_mode == "every_epoch":
-                train_dataset = semi_supervised.build_ssl_training_dataset(
-                    model=model,
-                    train_dataset=dataset_bundle.train_dataset,
-                    train_labels_mapper=train_labels_mapper,
-                    device=args.device,
-                    config=ssl_config,
-                    split=ssl_split,
-                    epoch=num_epoch,
-                    start_method=args.dataloader_start_method,
-                )
-                train_loader = utils.make_train_loader(
-                    train_dataset,
-                    args.batch_size,
-                    args.sampler_m,
-                    seed=args.seed + num_epoch,
-                    num_workers=args.num_workers,
-                    start_method=args.dataloader_start_method,
-                )
-            else:
-                if static_train_loader is None:
-                    train_dataset = semi_supervised.build_ssl_training_dataset(
-                        model=model,
-                        train_dataset=dataset_bundle.train_dataset,
-                        train_labels_mapper=train_labels_mapper,
-                        device=args.device,
-                        config=ssl_config,
-                        split=ssl_split,
-                        epoch=num_epoch,
-                        start_method=args.dataloader_start_method,
-                    )
-                    static_train_loader = utils.make_train_loader(
-                        train_dataset,
-                        args.batch_size,
-                        args.sampler_m,
-                        seed=args.seed + num_epoch,
-                        num_workers=args.num_workers,
-                        start_method=args.dataloader_start_method,
-                    )
-                train_loader = static_train_loader
-
-            model.train()
-            epoch_loss = 0.0
-            num_batches = 0
-            tqdm_bar = tqdm(train_loader)
-            for images, labels in tqdm_bar:
-                with torch.autocast(device_type=args.device, dtype=torch.bfloat16):
-                    # Set map labels to start from 0 for classification losses like ArcFaceLoss
-                    labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
-                    embeddings = model(images.to(args.device))
-
-                    if not is_classification and miner is not None:
-                        miner_outputs = miner(embeddings, labels)
-                        loss = criterion(embeddings, labels, miner_outputs)
-                    else:
-                        loss = criterion(embeddings, labels)
-
-                loss_value = loss.detach().item()
-                loss.backward()
-                optim.step()
-                optim.zero_grad()
-                if is_classification:
-                    classifier_optim.step()
-                    classifier_optim.zero_grad()
-                metrics_logger.log_train_batch(loss_value, num_epoch, global_step)
-                epoch_loss += loss_value
-                num_batches += 1
-                global_step += 1
-                tqdm_bar.desc = f"loss = {loss_value:.5f}"
-
-            if num_batches > 0:
-                final_train_loss = epoch_loss / num_batches
-                metrics_logger.log_train_epoch(final_train_loss, num_epoch, global_step)
-
-            cur_precision, cur_map = utils.evaluate(model, valid_loader, f"valid - epoch {num_epoch:>2}", device=args.device)
-            metrics_logger.log_eval("valid", cur_precision, cur_map, step=global_step, epoch=num_epoch)
-            best_precision_for_report = max(best_precision, cur_precision)
-            best_map_for_report = max(best_map, cur_map)
-            maybe_report_to_optuna(
-                optuna_trial=optuna_trial,
-                metric=optuna_metric,
-                epoch=num_epoch,
-                train_loss=final_train_loss,
-                valid_precision=cur_precision,
-                valid_map=cur_map,
-                best_precision=best_precision_for_report,
-                best_map=best_map_for_report,
-            )
-
-            is_after_warmup = num_epoch >= ssl_config.warmup_epochs
-
-            if cur_map > best_map:
-                best_map = cur_map
-            if cur_precision > best_precision:
-                best_precision = cur_precision
-                epochs_no_improve = 0
-                torch.save(model.state_dict(), best_model_path)
-            elif is_after_warmup:
-                epochs_no_improve += 1
-                if epochs_no_improve >= patience:
-                    model.load_state_dict(torch.load(best_model_path, weights_only=True))
-                    break
-
-        if evaluate_test:
-            test_precision, test_map = utils.evaluate(model, test_loader, "test", device=args.device)
-            metrics_logger.log_eval("test", test_precision, test_map, step=global_step, epoch=last_epoch)
-        else:
-            logger.info("Skipping test evaluation for this run")
-    finally:
-        metrics_logger.close()
-        if best_model_path.exists():
-            os.remove(best_model_path)
-
-    return TrainingResult(
-        log_dir=args.log_dir,
-        metrics_csv=args.log_dir / "metrics.csv",
-        best_valid_precision_at_1=float(best_precision),
-        best_valid_mean_average_precision_at_r=float(best_map),
-        test_precision_at_1=None if test_precision is None else float(test_precision),
-        test_mean_average_precision_at_r=None if test_map is None else float(test_map),
-        final_train_loss=None if final_train_loss is None else float(final_train_loss),
-        last_epoch=last_epoch,
-        global_step=global_step,
-        cv_k=args.cv_k if cv_fold is not None else 1,
-        cv_mode=args.cv_mode if cv_fold is not None else None,
-        cv_fold=cv_fold,
-    )
-
-
-def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None):
-    validate_run_args(args, ssl_config)
-    cv_run_name = f"cv_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-    cv_relative_dir = Path(args.save_dir) / cv_run_name
-    cv_dir = Path("logs") / cv_relative_dir
-    cv_dir.mkdir(parents=True, exist_ok=True)
-
-    fold_results = []
-    for fold_index in range(args.cv_k):
-        fold_args = copy.deepcopy(args)
-        fold_args.cv_fold = fold_index
-        fold_args.save_dir = cv_relative_dir / f"fold_{fold_index:02d}"
-        result = run_training(
-            fold_args,
-            ssl_config,
-            optuna_trial=None,
-            optuna_metric=None,
-            cv_fold=fold_index,
-        )
-        fold_results.append(result)
-        write_cross_validation_summary(cv_dir, args, fold_results)
-        maybe_report_cv_to_optuna(optuna_trial, optuna_metric, fold_results, fold_index)
-
-    aggregate = aggregate_cross_validation_result(cv_dir, args, fold_results)
-    write_cross_validation_summary(cv_dir, args, fold_results, aggregate)
-    return aggregate
-
-
-def aggregate_cross_validation_result(cv_dir, args, fold_results):
-    fold_dicts = [result_to_dict(result) for result in fold_results]
-    return TrainingResult(
-        log_dir=cv_dir,
-        metrics_csv=cv_dir / "cv_results.csv",
-        best_valid_precision_at_1=mean_metric(fold_results, "best_valid_precision_at_1"),
-        best_valid_mean_average_precision_at_r=mean_metric(
-            fold_results,
-            "best_valid_mean_average_precision_at_r",
-        ),
-        test_precision_at_1=mean_optional_metric(fold_results, "test_precision_at_1"),
-        test_mean_average_precision_at_r=mean_optional_metric(fold_results, "test_mean_average_precision_at_r"),
-        final_train_loss=mean_optional_metric(fold_results, "final_train_loss"),
-        last_epoch=max(result.last_epoch for result in fold_results),
-        global_step=sum(result.global_step for result in fold_results),
-        cv_k=args.cv_k,
-        cv_mode=args.cv_mode,
-        fold_results=fold_dicts,
-    )
-
-
-def mean_metric(results, attr):
-    return float(sum(getattr(result, attr) for result in results) / len(results))
-
-
-def mean_optional_metric(results, attr):
-    values = [getattr(result, attr) for result in results if getattr(result, attr) is not None]
-    if not values:
-        return None
-    return float(sum(values) / len(values))
-
-
-def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
-    rows = [make_cv_summary_row(result) for result in fold_results]
-    if aggregate is not None:
-        rows.append(make_cv_summary_row(aggregate, fold="mean"))
-
-    csv_path = cv_dir / "cv_results.csv"
-    fieldnames = [
-        "fold",
-        "cv_k",
-        "cv_mode",
-        "log_dir",
-        "metrics_csv",
-        "best_valid_precision_at_1",
-        "best_valid_mean_average_precision_at_r",
-        "test_precision_at_1",
-        "test_mean_average_precision_at_r",
-        "final_train_loss",
-        "last_epoch",
-        "global_step",
-    ]
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    write_json(
-        cv_dir / "cv_summary.json",
-        {
-            "args": namespace_to_dict(args),
-            "completed_folds": len(fold_results),
-            "cv_k": args.cv_k,
-            "cv_mode": args.cv_mode,
-            "folds": [result_to_dict(result) for result in fold_results],
-            "aggregate": None if aggregate is None else result_to_dict(aggregate),
-        },
-    )
-
-
-def make_cv_summary_row(result, fold=None):
-    return {
-        "fold": result.cv_fold if fold is None else fold,
-        "cv_k": result.cv_k,
-        "cv_mode": "" if result.cv_mode is None else result.cv_mode,
-        "log_dir": str(result.log_dir),
-        "metrics_csv": str(result.metrics_csv),
-        "best_valid_precision_at_1": result.best_valid_precision_at_1,
-        "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
-        "test_precision_at_1": "" if result.test_precision_at_1 is None else result.test_precision_at_1,
-        "test_mean_average_precision_at_r": ""
-        if result.test_mean_average_precision_at_r is None
-        else result.test_mean_average_precision_at_r,
-        "final_train_loss": "" if result.final_train_loss is None else result.final_train_loss,
-        "last_epoch": result.last_epoch,
-        "global_step": result.global_step,
-    }
-
-
-def maybe_report_cv_to_optuna(optuna_trial, metric, fold_results, fold_index):
-    if optuna_trial is None or metric is None:
-        return
-    partial_result = aggregate_cross_validation_result(Path("."), make_cv_args_stub(fold_results), fold_results)
-    value = getattr(partial_result, metric)
-    if value is None:
-        return
-    optuna_trial.report(float(value), step=fold_index)
-    if optuna_trial.should_prune():
-        import optuna
-
-        raise optuna.TrialPruned()
-
-
-def make_cv_args_stub(fold_results):
-    stub = argparse.Namespace()
-    stub.cv_k = fold_results[0].cv_k
-    stub.cv_mode = fold_results[0].cv_mode
-    return stub
-
-
-def validate_run_args(args, ssl_config):
-    if args.dataset not in DATASETS:
-        raise ValueError(f"dataset must be one of {DATASETS}: {args.dataset}")
-    if args.dino_size not in {"s", "b", "l", "g"}:
-        raise ValueError(f"dino_size must be one of ['s', 'b', 'l', 'g']: {args.dino_size}")
-    if args.loss not in ALL_LOSSES:
-        raise ValueError(f"loss must be one of {ALL_LOSSES}: {args.loss}")
-    if args.miner not in ALL_MINERS:
-        raise ValueError(f"miner must be one of {ALL_MINERS}: {args.miner}")
-    if args.device not in {"cuda", "cpu"}:
-        raise ValueError(f"device must be 'cuda' or 'cpu': {args.device}")
-    if args.optim not in {"adam", "rmsprop"}:
-        raise ValueError(f"optim must be 'adam' or 'rmsprop': {args.optim}")
-    if args.mode not in {"supervised", "ssl"}:
-        raise ValueError("mode must be 'supervised' or 'ssl'")
-    if args.batch_size <= 0:
-        raise ValueError("batch_size must be positive")
-    if args.lr <= 0:
-        raise ValueError("lr must be positive")
-    if args.classifier_lr <= 0:
-        raise ValueError("classifier_lr must be positive")
-    if args.sampler_m <= 0:
-        raise ValueError("sampler_m must be positive")
-    if args.epochs <= 0:
-        raise ValueError("epochs must be positive")
-    if args.patience <= 0:
-        raise ValueError("patience must be positive")
-    if args.cv_k <= 0:
-        raise ValueError("cv_k must be positive")
-    if args.cv_mode not in utils.CV_MODES:
-        raise ValueError(f"cv_mode must be one of {utils.CV_MODES}: {args.cv_mode}")
-    if args.val_mode not in utils.VAL_MODES:
-        raise ValueError(f"val_mode must be one of {utils.VAL_MODES}: {args.val_mode}")
-    if args.feat_dim is not None and args.feat_dim <= 0:
-        raise ValueError("feat_dim must be positive when set")
-    utils.validate_dataloader_settings(
-        device=args.device,
-        num_workers=args.num_workers,
-        ssl_embedding_num_workers=ssl_config.embedding_num_workers if ssl_config.enabled else 0,
-        start_method=args.dataloader_start_method,
-    )
-
-
-def load_hparam_config(config_path):
-    if config_path is None:
-        return None
-
-    path = Path(config_path)
-    with path.open() as config_file:
-        raw_config = json.load(config_file)
-
-    if not isinstance(raw_config, dict):
-        raise ValueError(f"Hyperparameter config must be a JSON object: {path}")
-
-    allowed_keys = set(HParamSearchConfig.__dataclass_fields__)
-    unknown_keys = sorted(set(raw_config) - allowed_keys)
-    if unknown_keys:
-        raise ValueError(f"Unknown hyperparameter config keys in {path}: {unknown_keys}")
-
-    config = HParamSearchConfig(**raw_config)
-    validate_hparam_config(config, path)
-    return config
-
-
-def validate_hparam_config(config, path=None):
-    source = f" in {path}" if path is not None else ""
-    if config.n_trials <= 0:
-        raise ValueError(f"n_trials must be positive{source}")
-    if not config.enabled:
-        return
-    if config.timeout is not None and config.timeout <= 0:
-        raise ValueError(f"timeout must be positive when set{source}")
-    if config.direction not in {"maximize", "minimize"}:
-        raise ValueError(f"direction must be 'maximize' or 'minimize'{source}")
-    if config.metric not in OBJECTIVE_METRICS:
-        raise ValueError(f"metric must be one of {sorted(OBJECTIVE_METRICS)}{source}")
-    if config.sampler not in {"tpe", "random", "grid"}:
-        raise ValueError(f"sampler must be one of ['tpe', 'random', 'grid']{source}")
-    if config.pruner not in {"none", "median", "successive_halving"}:
-        raise ValueError(f"pruner must be one of ['none', 'median', 'successive_halving']{source}")
-    if not isinstance(config.sampler_params, dict):
-        raise ValueError(f"sampler_params must be an object{source}")
-    if not isinstance(config.pruner_params, dict):
-        raise ValueError(f"pruner_params must be an object{source}")
-    if not isinstance(config.spaces, dict) or not config.spaces:
-        raise ValueError(f"spaces must be a non-empty object{source}")
-    for name, spec in config.spaces.items():
-        if name in {"loss", "miner"}:
-            raise ValueError(
-                f"{name!r} is not a valid HPO space key{source}. "
-                f"Set it with --{name} or compare fixed pairs with --loss_miner_grid."
-            )
-        validate_space_spec(name, spec, source)
-
-
-def validate_space_spec(name, spec, source=""):
-    if isinstance(spec, list):
-        if not spec:
-            raise ValueError(f"Search space {name!r} choices must not be empty{source}")
-        return
-    if not isinstance(spec, dict):
-        raise ValueError(f"Search space {name!r} must be an object or a list of categorical choices{source}")
-
-    space_type = spec.get("type", "categorical" if "choices" in spec else None)
-    if space_type == "categorical":
-        choices = spec.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise ValueError(f"Categorical search space {name!r} requires a non-empty choices list{source}")
-    elif space_type in {"float", "int"}:
-        if "low" not in spec or "high" not in spec:
-            raise ValueError(f"{space_type} search space {name!r} requires low and high{source}")
-        if spec["low"] > spec["high"]:
-            raise ValueError(f"{space_type} search space {name!r} low must be <= high{source}")
-        if space_type == "int" and (not isinstance(spec["low"], int) or not isinstance(spec["high"], int)):
-            raise ValueError(f"int search space {name!r} low/high must be integers{source}")
-        if spec.get("step") is not None and spec["step"] <= 0:
-            raise ValueError(f"{space_type} search space {name!r} step must be positive{source}")
-    else:
-        raise ValueError(f"Unknown search space type for {name!r}: {space_type!r}{source}")
-
-
-def run_hparam_search(args, config):
-    try:
-        import optuna
-    except ImportError as exc:
-        raise ImportError(
-            "Optuna hyperparameter search requires the optuna package. "
-            "Install it with `pip install -r requirements.txt`."
-        ) from exc
-
-    if getattr(args, "skip_test_during_hpo", False) and config.metric.startswith("test_"):
-        raise ValueError("Cannot use a test metric as Optuna objective when --skip_test_during_hpo is set")
-
-    study_name = config.study_name or "optuna"
-    study_dir, relative_study_dir = make_study_dir(args.save_dir, study_name, config.study_dir)
-    storage = resolve_optuna_storage(config.storage, study_dir)
-    write_json(
-        study_dir / "study_config.json",
-        {
-            "base_args": namespace_to_dict(args),
-            "hparam_config": config.to_dict(),
-            "resolved_study_name": study_name,
-            "resolved_storage": storage,
-        },
-    )
-
-    sampler = make_optuna_sampler(optuna, config, args.seed)
-    pruner = make_optuna_pruner(optuna, config)
-    study = optuna.create_study(
-        direction=config.direction,
-        study_name=study_name,
-        storage=storage,
-        load_if_exists=config.load_if_exists,
-        sampler=sampler,
-        pruner=pruner,
-    )
-    validate_study_distributions_compatible(optuna, study, config, storage)
-    trials_csv = study_dir / "trials.csv"
-    trials_jsonl = study_dir / "trials.jsonl"
-
-    def objective(trial):
-        trial_args, ssl_config, suggested_params = make_trial_args_and_ssl_config(args, config, trial)
-        trial_args.hparam_config_resolved = config.to_dict()
-        trial_args.hparam_params = suggested_params
-        trial_args.hparam_study_dir = study_dir
-        trial_args.hparam_study_name = study.study_name
-        trial_args.trial_number = trial.number
-        trial_args.evaluate_test = not bool(getattr(args, "skip_test_during_hpo", False))
-        trial_args.save_dir = relative_study_dir / f"trial_{trial.number:04d}"
-
-        trial.set_user_attr("params", suggested_params)
-        trial.set_user_attr("resolved_args", namespace_to_dict(trial_args))
-        trial.set_user_attr("resolved_ssl_config", ssl_config.to_dict())
-
-        result = run_experiment(
-            trial_args,
-            ssl_config,
-            optuna_trial=trial,
-            optuna_metric=config.metric,
-        )
-        result_dict = result_to_dict(result)
-        for key, value in result_dict.items():
-            trial.set_user_attr(key, value)
-        return get_objective_value(result, config.metric)
-
-    def record_trial(study, trial):
-        write_trials_summary(study, trials_csv, trials_jsonl)
-
-    finished_trials = count_finished_trials(optuna, study)
-    remaining_trials = config.n_trials - finished_trials
-    logger.info(
-        f"Starting Optuna study outputs in {study_dir}. "
-        f"Finished trials: {finished_trials}/{config.n_trials}. "
-        f"Remaining this run: {max(remaining_trials, 0)}."
-    )
-    if remaining_trials <= 0:
-        write_trials_summary(study, trials_csv, trials_jsonl)
-        logger.info(f"Optuna study already has {finished_trials} finished trials; no new trials requested.")
-        return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
-
-    study.optimize(
-        objective,
-        n_trials=remaining_trials,
-        timeout=config.timeout,
-        callbacks=[record_trial],
-        gc_after_trial=True,
-    )
-    write_trials_summary(study, trials_csv, trials_jsonl)
-    if any(trial.state.name == "COMPLETE" for trial in study.trials):
-        logger.info(f"Best trial: {study.best_trial.number}, value={study.best_value}, params={study.best_trial.params}")
-    return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
-
-
-def make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl):
-    complete_trials = [trial for trial in study.trials if trial.state.name == "COMPLETE" and trial.value is not None]
-    if not complete_trials:
-        return HParamStudyResult(
-            study_name=study_name,
-            study_dir=study_dir,
-            trials_csv=trials_csv,
-            trials_jsonl=trials_jsonl,
-            best_trial_number=None,
-            best_value=None,
-            best_params=None,
-            best_user_attrs=None,
-        )
-
-    best_trial = study.best_trial
-    return HParamStudyResult(
-        study_name=study_name,
-        study_dir=study_dir,
-        trials_csv=trials_csv,
-        trials_jsonl=trials_jsonl,
-        best_trial_number=best_trial.number,
-        best_value=float(best_trial.value),
-        best_params=dict(best_trial.params),
-        best_user_attrs=dict(best_trial.user_attrs),
-    )
-
-
-def make_study_dir(base_save_dir, study_name, configured_study_dir=None):
-    if configured_study_dir is None:
-        relative_study_dir = Path(base_save_dir) / study_name
-        study_dir = Path("logs") / relative_study_dir
-    else:
-        configured_path = Path(configured_study_dir)
-        if configured_path.is_absolute():
-            study_dir = configured_path
-            relative_study_dir = configured_path
-        else:
-            relative_study_dir = configured_path
-            study_dir = Path("logs") / relative_study_dir
-    study_dir.mkdir(parents=True, exist_ok=True)
-    return study_dir, relative_study_dir
-
-
-def resolve_optuna_storage(configured_storage, study_dir):
-    if configured_storage is not None:
-        return configured_storage
-    storage_path = (Path(study_dir) / "optuna_study.db").resolve()
-    return f"sqlite:///{storage_path.as_posix()}"
-
-
-def count_finished_trials(optuna, study):
-    finished_states = {
-        optuna.trial.TrialState.COMPLETE,
-        optuna.trial.TrialState.PRUNED,
-    }
-    return sum(trial.state in finished_states for trial in study.trials)
-
-
-def make_optuna_sampler(optuna, config, seed):
-    sampler_params = dict(config.sampler_params)
-    if config.sampler in {"tpe", "random"}:
-        sampler_params.setdefault("seed", seed)
-    if config.sampler == "tpe":
-        return optuna.samplers.TPESampler(**sampler_params)
-    if config.sampler == "random":
-        return optuna.samplers.RandomSampler(**sampler_params)
-    if config.sampler == "grid":
-        return optuna.samplers.GridSampler(search_space=make_grid_search_space(config.spaces), **sampler_params)
-    raise ValueError(f"Unsupported Optuna sampler: {config.sampler}")
-
-
-def make_optuna_pruner(optuna, config):
-    pruner_params = dict(config.pruner_params)
-    if config.pruner == "none":
-        return optuna.pruners.NopPruner(**pruner_params)
-    if config.pruner == "median":
-        return optuna.pruners.MedianPruner(**pruner_params)
-    if config.pruner == "successive_halving":
-        return optuna.pruners.SuccessiveHalvingPruner(**pruner_params)
-    raise ValueError(f"Unsupported Optuna pruner: {config.pruner}")
-
-
-def validate_study_distributions_compatible(optuna, study, config, storage):
-    configured_distributions = make_optuna_distributions(optuna, config.spaces)
-    for trial in study.trials:
-        for name, previous_distribution in trial.distributions.items():
-            if name not in configured_distributions:
-                continue
-            configured_distribution = configured_distributions[name]
-            try:
-                optuna.distributions.check_distribution_compatibility(
-                    previous_distribution,
-                    configured_distribution,
-                )
-            except ValueError as exc:
-                raise ValueError(
-                    "Existing Optuna study is incompatible with the current hyperparameter search space. "
-                    f"Study {study.study_name!r} in storage {storage!r} already has parameter {name!r} "
-                    f"with distribution {previous_distribution!r}, but the current config uses "
-                    f"{configured_distribution!r}. Use a new study_name/save_dir/study_dir/storage, "
-                    "restore the old search space, or remove the stale Optuna database."
-                ) from exc
-
-
-def make_optuna_distributions(optuna, spaces):
-    distributions = {}
-    for name, spec in spaces.items():
-        if isinstance(spec, list):
-            distributions[name] = optuna.distributions.CategoricalDistribution(spec)
-            continue
-
-        space_type = spec.get("type", "categorical" if "choices" in spec else None)
-        if space_type == "categorical":
-            distributions[name] = optuna.distributions.CategoricalDistribution(spec["choices"])
-        elif space_type == "float":
-            distributions[name] = optuna.distributions.FloatDistribution(
-                low=spec["low"],
-                high=spec["high"],
-                log=bool(spec.get("log", False)),
-                step=spec.get("step"),
-            )
-        elif space_type == "int":
-            distributions[name] = optuna.distributions.IntDistribution(
-                low=spec["low"],
-                high=spec["high"],
-                log=bool(spec.get("log", False)),
-                step=spec.get("step"),
-            )
-        else:
-            raise ValueError(f"Unsupported search space type for {name!r}: {space_type}")
-    return distributions
-
-
-def make_grid_search_space(spaces):
-    grid = {}
-    for name, spec in spaces.items():
-        if isinstance(spec, list):
-            grid[name] = spec
-        elif spec.get("type", "categorical" if "choices" in spec else None) == "categorical":
-            grid[name] = spec["choices"]
-        else:
-            raise ValueError(f"GridSampler only supports categorical spaces; {name!r} is {spec}")
-    return grid
-
-
-def make_trial_args_and_ssl_config(base_args, config, trial):
-    suggested_params = {}
-    for name, spec in config.spaces.items():
-        suggested_params[name] = suggest_value(trial, name, spec)
-
-    trial_args, ssl_config = make_args_and_ssl_config_from_params(base_args, suggested_params)
-    return trial_args, ssl_config, suggested_params
-
-
-def make_args_and_ssl_config_from_params(base_args, params):
-    trial_args = copy.deepcopy(base_args)
-    ssl_overrides = []
-
-    for name, value in params.items():
-        if is_ssl_override(name):
-            ssl_overrides.append((name, value))
-        else:
-            set_arg_value(trial_args, name, value)
-
-    ssl_config = semi_supervised.load_ssl_config(trial_args.ssl_config, default_seed=trial_args.seed)
-    if ssl_overrides:
-        ssl_dict = ssl_config.to_dict()
-        for name, value in ssl_overrides:
-            path_parts = name.split(".")[1:]
-            set_nested_value(ssl_dict, path_parts, value)
-        ssl_config = semi_supervised.SemiSupervisedConfig(**ssl_dict)
-        semi_supervised.validate_ssl_config(ssl_config)
-
-    ssl_config = resolve_mode_ssl_config(trial_args, ssl_config)
-
-    validate_run_args(trial_args, ssl_config)
-    return trial_args, ssl_config
-
-
-def make_supervised_split_config(ssl_config):
-    config_dict = ssl_config.to_dict()
-    config_dict.update(
-        {
-            "method": "none",
-            "update_mode": "once",
-            "warmup_epochs": 0,
-            "confidence_threshold": 0.0,
-            "method_params": {},
-        }
-    )
-    config = semi_supervised.SemiSupervisedConfig(**config_dict)
-    semi_supervised.validate_ssl_config(config)
-    return config
-
-
-def suggest_value(trial, name, spec):
-    if isinstance(spec, list):
-        return trial.suggest_categorical(name, spec)
-
-    space_type = spec.get("type", "categorical" if "choices" in spec else None)
-    if space_type == "categorical":
-        return trial.suggest_categorical(name, spec["choices"])
-    if space_type == "float":
-        kwargs = {
-            "low": spec["low"],
-            "high": spec["high"],
-            "log": bool(spec.get("log", False)),
-        }
-        if spec.get("step") is not None:
-            kwargs["step"] = spec["step"]
-        return trial.suggest_float(name, **kwargs)
-    if space_type == "int":
-        kwargs = {
-            "low": spec["low"],
-            "high": spec["high"],
-            "log": bool(spec.get("log", False)),
-        }
-        if spec.get("step") is not None:
-            kwargs["step"] = spec["step"]
-        return trial.suggest_int(name, **kwargs)
-    raise ValueError(f"Unsupported search space type for {name!r}: {space_type}")
-
-
-def is_ssl_override(name):
-    return name.startswith("ssl_config.") or name.startswith("ssl.")
-
-
-def set_arg_value(args, name, value):
-    if not hasattr(args, name):
-        raise ValueError(f"Unknown training argument in hyperparameter space: {name}")
-    if name in {"ssl_config", "hparam_config", "save_dir"} and value is not None:
-        value = Path(value)
-    setattr(args, name, value)
-
-
-def set_nested_value(config, path_parts, value):
-    if not path_parts:
-        raise ValueError("SSL override must include a nested config key, for example ssl_config.method_params.n_neighbors")
-    current = config
-    for part in path_parts[:-1]:
-        if not isinstance(current, dict):
-            raise ValueError(f"Cannot set nested SSL config path: {'.'.join(path_parts)}")
-        if part not in current:
-            current[part] = {}
-        current = current[part]
-    if not isinstance(current, dict):
-        raise ValueError(f"Cannot set nested SSL config path: {'.'.join(path_parts)}")
-    current[path_parts[-1]] = value
-
-
-def maybe_report_to_optuna(
-    optuna_trial,
-    metric,
-    epoch,
-    train_loss,
-    valid_precision,
-    valid_map,
-    best_precision,
-    best_map,
-):
-    if optuna_trial is None or metric is None:
-        return
-    value_by_metric = {
-        "best_valid_precision_at_1": best_precision,
-        "best_valid_mean_average_precision_at_r": best_map,
-        "final_train_loss": train_loss,
-    }
-    value = value_by_metric.get(metric)
-    if value is None:
-        return
-    optuna_trial.report(float(value), step=epoch)
-    if optuna_trial.should_prune():
-        import optuna
-
-        raise optuna.TrialPruned()
-
-
-def get_objective_value(result, metric):
-    value = getattr(result, metric)
-    if value is None:
-        raise ValueError(f"Objective metric {metric!r} is None; choose a metric available for this run")
-    return float(value)
-
-
-def result_to_dict(result):
-    return {
-        "log_dir": str(result.log_dir),
-        "metrics_csv": str(result.metrics_csv),
-        "best_valid_precision_at_1": result.best_valid_precision_at_1,
-        "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
-        "test_precision_at_1": result.test_precision_at_1,
-        "test_mean_average_precision_at_r": result.test_mean_average_precision_at_r,
-        "final_train_loss": result.final_train_loss,
-        "last_epoch": result.last_epoch,
-        "global_step": result.global_step,
-        "cv_k": result.cv_k,
-        "cv_mode": result.cv_mode,
-        "cv_fold": result.cv_fold,
-        "fold_results": result.fold_results,
-    }
-
-
-def write_run_config(args, ssl_config):
-    write_json(
-        args.log_dir / "run_config.json",
-        {
-            "args": namespace_to_dict(args),
-            "ssl_config": ssl_config.to_dict(),
-        },
-    )
-
-
-def write_trials_summary(study, csv_path, jsonl_path):
-    trials = list(study.trials)
-    param_names = sorted({name for trial in trials for name in trial.params})
-    scalar_attr_names = sorted(
-        {
-            name
-            for trial in trials
-            for name, value in trial.user_attrs.items()
-            if is_scalar(value) and name not in {"params"}
-        }
-    )
-    fieldnames = [
-        "number",
-        "state",
-        "value",
-        "datetime_start",
-        "datetime_complete",
-        "duration_seconds",
-        *[f"param:{name}" for name in param_names],
-        *[f"attr:{name}" for name in scalar_attr_names],
-    ]
-
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        for trial in trials:
-            row = {
-                "number": trial.number,
-                "state": trial.state.name,
-                "value": "" if trial.value is None else trial.value,
-                "datetime_start": "" if trial.datetime_start is None else trial.datetime_start.isoformat(),
-                "datetime_complete": "" if trial.datetime_complete is None else trial.datetime_complete.isoformat(),
-                "duration_seconds": "" if trial.duration is None else trial.duration.total_seconds(),
-            }
-            for name in param_names:
-                row[f"param:{name}"] = json.dumps(to_jsonable(trial.params.get(name)))
-            for name in scalar_attr_names:
-                row[f"attr:{name}"] = json.dumps(to_jsonable(trial.user_attrs.get(name)))
-            writer.writerow(row)
-
-    with jsonl_path.open("w") as jsonl_file:
-        for trial in trials:
-            jsonl_file.write(json.dumps(serialize_trial(trial), default=str) + "\n")
-
-
-def serialize_trial(trial):
-    return {
-        "number": trial.number,
-        "state": trial.state.name,
-        "value": trial.value,
-        "params": to_jsonable(trial.params),
-        "user_attrs": to_jsonable(trial.user_attrs),
-        "datetime_start": None if trial.datetime_start is None else trial.datetime_start.isoformat(),
-        "datetime_complete": None if trial.datetime_complete is None else trial.datetime_complete.isoformat(),
-        "duration_seconds": None if trial.duration is None else trial.duration.total_seconds(),
-    }
-
-
-def namespace_to_dict(args):
-    return {key: to_jsonable(value) for key, value in vars(args).items()}
-
-
-def to_jsonable(value):
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): to_jsonable(val) for key, val in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [to_jsonable(item) for item in value]
-    if hasattr(value, "item"):
-        try:
-            return to_jsonable(value.item())
-        except (TypeError, ValueError):
-            pass
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    return str(value)
-
-
-def is_scalar(value):
-    return isinstance(value, (str, int, float, bool)) or value is None
-
-
-def write_json(path, data):
-    with Path(path).open("w") as json_file:
-        json.dump(to_jsonable(data), json_file, indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":
