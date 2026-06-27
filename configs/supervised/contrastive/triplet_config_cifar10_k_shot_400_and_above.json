@@ -1,0 +1,61 @@
+{
+  "enabled": true,
+  "n_trials": 50,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "cifar10_k_shot_search",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "tpe",
+  "sampler_params": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+    "lr": {
+      "type": "float",
+      "low": 1e-7,
+      "high": 1e-4,
+      "log": true
+    },
+    "weight_decay": {
+      "type": "float",
+      "low": 1e-6,
+      "high": 1e-2,
+      "log": true
+    },
+    "feat_dim": {
+      "type": "categorical",
+      "choices": [128, 256, 512, null]
+    },
+    "loss.TripletMarginLoss.margin": {
+      "type": "float",
+      "low": 0.01,
+      "high": 0.5
+    },
+    "miner.TripletMarginMiner.type_of_triplets": {
+      "type": "categorical",
+      "choices": ["all", "hard", "semihard", "easy"]
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+        "8:2",
+        "8:4",
+        "16:4",
+        "16:8",
+        "32:8",
+        "32:16",
+        "64:16",
+        "64:32",
+        "128:32",
+        "128:64",
+        "256:64",
+        "256:128",
+        "512:128",
+        "512:256"
+      ]
+    }
+  }
+}

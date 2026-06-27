@@ -184,10 +184,24 @@ VAL_MODE_MATCH_TRAIN = "match_train"
 VAL_MODE_SPLIT_AFTER_APPORTION = "split_after_apportion"
 VAL_MODES = (VAL_MODE_ALL, VAL_MODE_MATCH_TRAIN, VAL_MODE_SPLIT_AFTER_APPORTION)
 POST_APPORTION_VAL_RATIO = 0.2
+QUERY_GALLERY_EVALUATION = "query_gallery"
+SAME_SOURCE_EVALUATION = "same_source"
+EXTERNAL_UNLABELED_FILTER_NONE = "none"
+EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT = "compcars_model_min_count"
+EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER = "compcars_stml_paper"
+EXTERNAL_UNLABELED_FILTERS = (
+    EXTERNAL_UNLABELED_FILTER_NONE,
+    EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT,
+    EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
+)
 
 
 class MPerClassSamplerCapacityError(ValueError):
     """Raised when the selected labels cannot fill one M-per-class batch."""
+
+
+class NonFiniteEmbeddingError(ValueError):
+    """Raised when evaluation embeddings contain NaN or infinite values."""
 
     pass
 
@@ -267,14 +281,36 @@ def get_nested_transform(dataset):
     return getattr(dataset, "transform", None)
 
 
-def append_external_unlabeled_dataset(train_dataset, external_root):
+def append_external_unlabeled_dataset(
+    train_dataset,
+    external_root,
+    external_filter=EXTERNAL_UNLABELED_FILTER_NONE,
+    compcars_min_model_images=100,
+    compcars_strict_paper_counts=False,
+):
     """Append recursively discovered external images to an existing train dataset."""
 
     train_transform = get_nested_transform(train_dataset)
-    external_dataset = local_datasets.RecursiveUnlabeledImageDataset(
-        root=external_root,
-        transform=train_transform,
-    )
+    if external_filter == EXTERNAL_UNLABELED_FILTER_NONE:
+        external_dataset = local_datasets.RecursiveUnlabeledImageDataset(
+            root=external_root,
+            transform=train_transform,
+        )
+    elif external_filter == EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT:
+        external_dataset = local_datasets.CompCarsModelFilteredUnlabeledImageDataset(
+            root=external_root,
+            transform=train_transform,
+            min_images_per_model=compcars_min_model_images,
+        )
+    elif external_filter == EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER:
+        external_dataset = local_datasets.CompCarsSTMLPaperUnlabeledImageDataset(
+            root=external_root,
+            transform=train_transform,
+            min_images_per_model=compcars_min_model_images,
+            strict_paper_counts=compcars_strict_paper_counts,
+        )
+    else:
+        raise ValueError(f"Unknown external_unlabeled_filter: {external_filter}")
     combined = CombinedDataset([train_dataset, external_dataset])
     feature_transform = getattr(train_dataset, "feature_transform", None)
     if feature_transform is not None:
@@ -571,7 +607,12 @@ def optimizer_learning_rates(optimizer, optimizer_name):
 
 
 def normalize_dataset_name(dataset_name):
-    return dataset_name
+    aliases = {
+        "DeepFashionInShopRetrieval": "DeepFashionInShop",
+        "InShop": "DeepFashionInShop",
+        "InShopRetrieval": "DeepFashionInShop",
+    }
+    return aliases.get(dataset_name, dataset_name)
 
 
 def get_dataset_class(dataset_name):
@@ -582,6 +623,8 @@ def get_dataset_class(dataset_name):
         return local_datasets.CIFAR10
     if dataset_name == "CIFAR100":
         return local_datasets.CIFAR100
+    if dataset_name == "DeepFashionInShop":
+        return local_datasets.DeepFashionInShop
 
     return getattr(datasets, dataset_name)
 
@@ -603,6 +646,8 @@ def is_dataset_ready(dataset_name, data_root):
     if dataset_name == "CIFAR100":
         cifar_root = data_root / "cifar-100-python"
         return all((cifar_root / filename).exists() for filename in ("train", "test", "meta"))
+    if dataset_name == "DeepFashionInShop":
+        return local_datasets.DeepFashionInShop.find_metadata_file(data_root) is not None
 
     return data_root.exists()
 
@@ -722,17 +767,26 @@ def setup_dataset_bundle(
     else:
         # The default metric-learning holdout splits by class, testing whether
         # embeddings generalize to validation classes unseen during training.
-        train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes(
-            train_val_dataset,
-            seed=data_split_seed,
-        )
-        split_label = "holdout"
+        if dataset_name == "CIFAR100" and cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
+            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes_superclass_balanced(
+                train_val_dataset,
+                seed=data_split_seed,
+            )
+            split_label = "superclass-balanced holdout"
+        else:
+            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes(
+                train_val_dataset,
+                seed=data_split_seed,
+            )
+            split_label = "holdout"
         split_info = make_holdout_split_info(
             train_val_dataset=train_val_dataset,
             train_dataset=train_dataset,
             valid_dataset=valid_dataset,
             val_mode=val_mode,
         )
+        if split_label == "superclass-balanced holdout":
+            split_info["holdout_strategy"] = "superclass_balanced_by_cifar100_superclass"
     split_info["dataset_protocol"] = protocol_info
     # Training keeps augmented images for optimization but exposes a separate
     # deterministic transform for pseudo-label feature extraction.
@@ -1006,14 +1060,27 @@ def load_dataset_protocol_sources(
             imbalance_factor=cifar_imbalance_factor,
             seed=seed,
         )
+        test_dataset = dataset_cls(root=str(data_root), split="test", transform=test_transform, download=False)
+        protocol_info = {
+            "name": DATASET_PROTOCOL_OFFICIAL,
+            "source": "official_train_test_splits",
+            "cifar_long_tail": imbalance_info,
+        }
+        query_indices = getattr(test_dataset, "query_indices", None)
+        gallery_indices = getattr(test_dataset, "gallery_indices", None)
+        if query_indices is not None and gallery_indices is not None:
+            protocol_info.update(
+                {
+                    "source": "official_train_query_gallery_splits",
+                    "test_retrieval_mode": QUERY_GALLERY_EVALUATION,
+                    "num_test_queries": int(len(query_indices)),
+                    "num_test_gallery": int(len(gallery_indices)),
+                }
+            )
         return (
             train_val_dataset,
-            dataset_cls(root=str(data_root), split="test", transform=test_transform, download=False),
-            {
-                "name": DATASET_PROTOCOL_OFFICIAL,
-                "source": "official_train_test_splits",
-                "cifar_long_tail": imbalance_info,
-            },
+            test_dataset,
+            protocol_info,
         )
 
     if dataset_protocol == DATASET_PROTOCOL_CIFAR_BALANCED_FRACTION:
@@ -1347,6 +1414,20 @@ def split_dataset_by_classes(train_val_dataset, split_ratio=0.8, seed=0):
     return train_dataset, val_dataset, train_labels_mapper
 
 
+def split_dataset_by_classes_superclass_balanced(train_val_dataset, split_ratio=0.8, seed=0):
+    """Create a CIFAR-100 class holdout that keeps every superclass in train."""
+
+    labels = np.asarray(train_val_dataset.labels, dtype=np.int64)
+    superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
+    train_indices, val_indices = split_positions_superclass_balanced_holdout(
+        labels=labels,
+        superclass_labels=superclass_labels,
+        split_ratio=split_ratio,
+        seed=seed,
+    )
+    return make_train_valid_subsets(train_val_dataset, train_indices, val_indices)
+
+
 def apply_validation_mode(dataset_bundle, val_mode, target_train_size, target_train_num_classes, seed):
     """Optionally downsample validation to resemble the labeled training set."""
 
@@ -1415,11 +1496,11 @@ def apply_post_apportion_validation_split(
     seed=0,
     val_ratio=POST_APPORTION_VAL_RATIO,
 ):
-    """Split validation from the selected labeled budget and remap positions.
+    """Create a class-disjoint validation holdout after label apportioning.
 
-    Validation samples are removed from the training subset.  Unlabeled
-    positions remain eligible for SSL, except where they refer to a removed
-    validation sample.
+    Validation classes are chosen from the apportioned/labeled pool. Every
+    source-train sample from those classes is moved to validation, and unlabeled
+    candidates from those classes are removed from the SSL pool.
     """
 
     # Keep references to the old subset and its aligned labels/indices. Every
@@ -1438,17 +1519,38 @@ def apply_post_apportion_validation_split(
     else:
         unlabeled_positions = np.asarray(unlabeled_positions, dtype=np.int64)
 
-    # Split only the apportioned/labeled pool. Unlabeled candidates are not
-    # allowed to become validation examples because their labels are hidden.
-    train_labeled_positions, valid_positions = split_positions_stratified_by_label(
+    # Choose validation classes using only the apportioned/labeled pool.
+    # Validation itself is limited to those held-out apportioned samples, while
+    # all other source-train samples from validation classes are excluded from
+    # train and SSL.
+    train_labeled_positions, valid_labeled_positions = split_positions_class_disjoint_by_label(
         positions=apportioned_positions,
         labels=labels,
         val_ratio=val_ratio,
         seed=seed,
     )
-    # Remove validation positions from the full old training subset. This keeps
-    # all other samples, including SSL unlabeled candidates, in the new train set.
-    valid_position_set = set(int(position) for position in valid_positions)
+    valid_labels = set(int(label) for label in labels[valid_labeled_positions])
+    valid_positions = np.asarray(sorted(int(position) for position in valid_labeled_positions), dtype=np.int64)
+    excluded_validation_class_positions = np.asarray(
+        [
+            int(position)
+            for position, label in enumerate(labels)
+            if int(label) in valid_labels
+        ],
+        dtype=np.int64,
+    )
+    train_unlabeled_positions = np.asarray(
+        [
+            int(position)
+            for position in unlabeled_positions
+            if int(labels[int(position)]) not in valid_labels
+        ],
+        dtype=np.int64,
+    )
+    excluded_unlabeled_count = len(unlabeled_positions) - len(train_unlabeled_positions)
+    excluded_validation_class_train_count = len(excluded_validation_class_positions) - len(valid_positions)
+    # Remove every validation-class sample from the rebuilt training subset.
+    valid_position_set = set(int(position) for position in excluded_validation_class_positions)
     remaining_train_positions = np.asarray(
         [
             int(position)
@@ -1457,6 +1559,13 @@ def apply_post_apportion_validation_split(
         ],
         dtype=np.int64,
     )
+    train_labels = set(int(label) for label in labels[remaining_train_positions])
+    overlapping_labels = train_labels & valid_labels
+    if overlapping_labels:
+        raise RuntimeError(
+            "Post-apportion validation split produced overlapping train/validation classes: "
+            f"{sorted(overlapping_labels)}"
+        )
     # remaining_train_positions address the old subset.  Build a translation
     # table before replacing it so callers can keep using their split arrays.
     old_to_new_position = {
@@ -1490,7 +1599,7 @@ def apply_post_apportion_validation_split(
     # The caller's SSL split must now address the rebuilt train subset, not the
     # old positions used to create validation.
     remapped_labeled_positions = remap_positions(train_labeled_positions, old_to_new_position)
-    remapped_unlabeled_positions = remap_positions(unlabeled_positions, old_to_new_position)
+    remapped_unlabeled_positions = remap_positions(train_unlabeled_positions, old_to_new_position)
     update_post_apportion_validation_info(
         dataset_bundle=dataset_bundle,
         val_ratio=val_ratio,
@@ -1501,15 +1610,22 @@ def apply_post_apportion_validation_split(
         selected_train_num_classes=count_labels_at_positions(labels, train_labeled_positions),
         selected_valid_size=len(valid_positions),
         selected_valid_num_classes=count_labels_at_positions(labels, valid_positions),
+        selected_valid_labeled_size=len(valid_labeled_positions),
+        excluded_unlabeled_size=excluded_unlabeled_count,
+        excluded_validation_class_train_size=excluded_validation_class_train_count,
+        class_disjoint=True,
     )
     logger.info(
         "Validation mode split_after_apportion: "
-        f"split {len(apportioned_positions)} apportioned labeled samples across "
+        "class-disjoint holdout split "
+        f"{len(apportioned_positions)} apportioned labeled samples across "
         f"{count_labels_at_positions(labels, apportioned_positions)} classes into "
         f"{len(remapped_labeled_positions)} train samples across "
-        f"{count_labels_at_positions(labels, train_labeled_positions)} classes and "
-        f"{len(valid_positions)} validation samples across "
-        f"{count_labels_at_positions(labels, valid_positions)} classes"
+        f"{count_labels_at_positions(labels, train_labeled_positions)} classes; "
+        f"validation has {len(valid_positions)} apportioned samples across "
+        f"{count_labels_at_positions(labels, valid_positions)} held-out classes; "
+        f"excluded {excluded_unlabeled_count} unlabeled candidates and "
+        f"{excluded_validation_class_train_count} additional source-train samples from validation classes"
     )
     return dataset_bundle, remapped_labeled_positions, remapped_unlabeled_positions
 
@@ -1681,8 +1797,8 @@ def unique_sorted_positions(position_groups):
     return np.asarray(sorted(set(positions)), dtype=np.int64)
 
 
-def split_positions_stratified_by_label(positions, labels, val_ratio, seed):
-    """Split each represented class while retaining samples on both sides."""
+def split_positions_class_disjoint_by_label(positions, labels, val_ratio, seed):
+    """Split supplied positions by whole class labels."""
 
     if not 0 < val_ratio < 1:
         raise ValueError(f"val_ratio must be in (0, 1), got {val_ratio}")
@@ -1695,31 +1811,35 @@ def split_positions_stratified_by_label(positions, labels, val_ratio, seed):
     # selected_labels is aligned one-to-one with positions, not with the full
     # source dataset.
     selected_labels = np.asarray(labels, dtype=np.int64)[positions]
-    train_positions = []
-    valid_positions = []
-
-    for label in np.unique(selected_labels):
-        # Boolean indexing retrieves original training-subset positions for this
-        # class from the apportioned pool.
-        class_positions = positions[selected_labels == label]
-        if len(class_positions) < 2:
-            raise ValueError(
-                "val_mode='split_after_apportion' requires at least two apportioned samples per class; "
-                f"class {int(label)} has {len(class_positions)}"
+    unique_labels = np.unique(selected_labels)
+    if len(unique_labels) < 2:
+        raise ValueError(
+            "val_mode='split_after_apportion' requires at least two apportioned classes "
+            "for a class-disjoint validation split"
         )
-        class_positions = rng.permutation(class_positions)
-        # Clamp the count so every class contributes at least one validation
-        # sample and still leaves at least one sample for training.
-        valid_count = max(1, int(round(len(class_positions) * val_ratio)))
-        valid_count = min(valid_count, len(class_positions) - 1)
-        # The shuffled prefix goes to validation and the remainder stays in
-        # labeled training.
-        valid_positions.extend(class_positions[:valid_count])
-        train_positions.extend(class_positions[valid_count:])
+    shuffled_labels = rng.permutation(unique_labels)
+    train_class_count = int(len(shuffled_labels) * (1.0 - val_ratio))
+    train_class_count = min(max(train_class_count, 1), len(shuffled_labels) - 1)
+    train_labels = set(int(label) for label in shuffled_labels[:train_class_count])
+    valid_labels = set(int(label) for label in shuffled_labels[train_class_count:])
+
+    train_positions = positions[np.isin(selected_labels, list(train_labels))]
+    valid_positions = positions[np.isin(selected_labels, list(valid_labels))]
 
     return (
         np.asarray(sorted(int(position) for position in train_positions), dtype=np.int64),
         np.asarray(sorted(int(position) for position in valid_positions), dtype=np.int64),
+    )
+
+
+def split_positions_stratified_by_label(positions, labels, val_ratio, seed):
+    """Legacy name for the post-apportion class-disjoint holdout splitter."""
+
+    return split_positions_class_disjoint_by_label(
+        positions=positions,
+        labels=labels,
+        val_ratio=val_ratio,
+        seed=seed,
     )
 
 
@@ -1737,15 +1857,11 @@ def cifar100_superclass_labels_for_fine_labels(fine_labels):
     )
 
 
-def make_superclass_balanced_group_folds(labels, superclass_labels, cv_k, seed=0, max_attempts=1000):
-    """Grouped folds that preserve at least one fine class per superclass in train."""
-
+def build_class_groups_by_superclass(labels, superclass_labels):
     labels = np.asarray(labels, dtype=np.int64)
     superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
     if len(labels) != len(superclass_labels):
         raise ValueError("labels and superclass_labels must have the same length")
-    if cv_k <= 1:
-        raise ValueError("cv_k must be greater than 1 for cross-validation")
 
     group_positions = {}
     group_to_superclass = {}
@@ -1760,6 +1876,104 @@ def make_superclass_balanced_group_folds(labels, superclass_labels, cv_k, seed=0
                 f"to exactly one superclass; class {label} maps to both "
                 f"{previous_superclass} and {superclass}"
             )
+    return group_positions, group_to_superclass
+
+
+def split_positions_superclass_balanced_holdout(
+    labels,
+    superclass_labels,
+    split_ratio=0.8,
+    seed=0,
+    max_attempts=1000,
+):
+    """Class-disjoint holdout that leaves each represented superclass in train."""
+
+    if not 0 < split_ratio < 1:
+        raise ValueError(f"split_ratio must be in (0, 1), got {split_ratio}")
+
+    labels = np.asarray(labels, dtype=np.int64)
+    group_positions, group_to_superclass = build_class_groups_by_superclass(labels, superclass_labels)
+    total_groups = len(group_positions)
+    target_train_groups = int(total_groups * split_ratio)
+    target_val_groups = total_groups - target_train_groups
+    if target_train_groups <= 0 or target_val_groups <= 0:
+        raise ValueError(
+            "class holdout requires at least one training class and one validation class; "
+            f"got {target_train_groups} train and {target_val_groups} validation classes"
+        )
+
+    groups_by_superclass = {}
+    for group, superclass in group_to_superclass.items():
+        groups_by_superclass.setdefault(int(superclass), []).append(int(group))
+    max_val_groups_by_superclass = {
+        int(superclass): max(0, len(groups) - 1)
+        for superclass, groups in groups_by_superclass.items()
+    }
+    max_total_val_groups = sum(max_val_groups_by_superclass.values())
+    if target_val_groups > max_total_val_groups:
+        raise ValueError(
+            "Cannot build a superclass-balanced holdout with the requested split_ratio: "
+            f"need {target_val_groups} validation classes but can hold out at most "
+            f"{max_total_val_groups} while preserving every represented superclass in training"
+        )
+
+    group_items = [
+        (int(group), int(group_to_superclass[group]), len(group_positions[group]))
+        for group in sorted(group_positions)
+    ]
+    for attempt in range(max_attempts):
+        rng = np.random.default_rng(seed + attempt)
+        val_groups = set()
+        val_superclass_counts = {}
+        shuffled_items = [group_items[int(index)] for index in rng.permutation(len(group_items))]
+
+        for group, superclass, _group_size in shuffled_items:
+            if len(val_groups) >= target_val_groups:
+                break
+            superclass_count = val_superclass_counts.get(superclass, 0)
+            if superclass_count >= max_val_groups_by_superclass[superclass]:
+                continue
+            val_groups.add(group)
+            val_superclass_counts[superclass] = superclass_count + 1
+
+        if len(val_groups) == target_val_groups:
+            break
+    else:
+        raise RuntimeError(
+            "Could not build superclass-balanced class holdout after "
+            f"{max_attempts} attempts"
+        )
+
+    val_positions = []
+    for group in sorted(val_groups):
+        val_positions.extend(group_positions[int(group)])
+    val_positions = np.asarray(sorted(val_positions), dtype=np.int64)
+    val_position_set = set(int(position) for position in val_positions)
+    all_positions = np.arange(len(labels), dtype=np.int64)
+    train_positions = np.asarray(
+        [int(position) for position in all_positions if int(position) not in val_position_set],
+        dtype=np.int64,
+    )
+
+    train_superclasses = set(int(superclass) for superclass in np.asarray(superclass_labels)[train_positions])
+    missing_superclasses = set(groups_by_superclass) - train_superclasses
+    if missing_superclasses:
+        raise RuntimeError(
+            "Superclass-balanced holdout failed to preserve training superclasses: "
+            f"{sorted(missing_superclasses)}"
+        )
+    return train_positions, val_positions
+
+
+def make_superclass_balanced_group_folds(labels, superclass_labels, cv_k, seed=0, max_attempts=1000):
+    """Grouped folds that preserve at least one fine class per superclass in train."""
+
+    labels = np.asarray(labels, dtype=np.int64)
+    superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
+    if cv_k <= 1:
+        raise ValueError("cv_k must be greater than 1 for cross-validation")
+
+    group_positions, group_to_superclass = build_class_groups_by_superclass(labels, superclass_labels)
 
     if cv_k > len(group_positions):
         raise ValueError(
@@ -2076,11 +2290,18 @@ def update_post_apportion_validation_info(
     selected_train_num_classes,
     selected_valid_size,
     selected_valid_num_classes,
+    selected_valid_labeled_size=None,
+    excluded_unlabeled_size=0,
+    excluded_validation_class_train_size=0,
+    class_disjoint=False,
 ):
     if dataset_bundle.split_info is None:
         dataset_bundle.split_info = {}
     dataset_bundle.split_info["validation_mode"] = {
         "mode": VAL_MODE_SPLIT_AFTER_APPORTION,
+        "strategy": "class_disjoint_holdout_after_label_apportion"
+        if class_disjoint
+        else "sample_stratified_after_label_apportion",
         "val_ratio": float(val_ratio),
         "original_train_size": int(original_train_size),
         "apportioned_size": int(apportioned_size),
@@ -2089,6 +2310,13 @@ def update_post_apportion_validation_info(
         "selected_train_num_classes": int(selected_train_num_classes),
         "selected_valid_size": int(selected_valid_size),
         "selected_valid_num_classes": int(selected_valid_num_classes),
+        "selected_valid_labeled_size": int(
+            selected_valid_size if selected_valid_labeled_size is None else selected_valid_labeled_size
+        ),
+        "excluded_unlabeled_size": int(excluded_unlabeled_size),
+        "excluded_validation_class_train_size": int(excluded_validation_class_train_size),
+        "unlabeled_exclusion_scope": "validation_classes" if class_disjoint else "validation_positions",
+        "class_disjoint": bool(class_disjoint),
     }
 
 
@@ -2239,8 +2467,8 @@ def make_train_valid_subsets(train_val_dataset, train_indices, val_indices):
     return train_dataset, val_dataset, train_labels_mapper
 
 
-def evaluate(model, eval_loader, name="test set", device="cuda", return_per_class=False):
-    """Embed a dataset and compute retrieval Precision@1 and MAP@R."""
+def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
+    """Embed a dataset once, returning NumPy embeddings and labels."""
 
     # eval() disables training-only behavior such as dropout and updates to
     # normalization statistics.
@@ -2255,12 +2483,95 @@ def evaluate(model, eval_loader, name="test set", device="cuda", return_per_clas
             forward_cached = getattr(model, "forward_cached", None)
             embeddings = model(images.to(device)) if forward_cached is None else forward_cached(images, device)
             all_embeddings.append(embeddings.cpu().numpy().astype(np.float32))
-            all_labels.append(labels.cpu())
+            all_labels.append(labels.cpu().numpy())
     # Concatenate all embeddings and labels
-    # AccuracyCalculator expects one matrix/vector spanning the full evaluation
-    # dataset rather than a list of batches.
     all_embeddings = np.concatenate(all_embeddings)
     all_labels = np.concatenate(all_labels)
+    validate_finite_embeddings(all_embeddings, name)
+    return all_embeddings, all_labels
+
+
+def validate_finite_embeddings(all_embeddings, name="test set"):
+    if not np.isfinite(all_embeddings).all():
+        total_values = int(all_embeddings.size)
+        nonfinite_values = int(total_values - np.isfinite(all_embeddings).sum())
+        nan_values = int(np.isnan(all_embeddings).sum())
+        inf_values = int(np.isinf(all_embeddings).sum())
+        raise NonFiniteEmbeddingError(
+            f"{name} produced non-finite embeddings before retrieval metric calculation: "
+            f"{nonfinite_values}/{total_values} values are non-finite "
+            f"({nan_values} NaN, {inf_values} +/-Inf). "
+            "This usually indicates that the model diverged for the current hyperparameters."
+        )
+
+
+def get_query_gallery_indices(dataset, num_embeddings):
+    """Return query/gallery indices when a dataset exposes a retrieval split."""
+
+    if dataset is None:
+        return None
+    query_indices = getattr(dataset, "query_indices", None)
+    gallery_indices = getattr(dataset, "gallery_indices", None)
+    if query_indices is None or gallery_indices is None:
+        return None
+
+    query_indices = np.asarray(query_indices, dtype=np.int64)
+    gallery_indices = np.asarray(gallery_indices, dtype=np.int64)
+    if query_indices.ndim != 1 or gallery_indices.ndim != 1:
+        raise ValueError("query_indices and gallery_indices must be one-dimensional")
+    if len(query_indices) == 0 or len(gallery_indices) == 0:
+        raise ValueError("query/gallery evaluation requires non-empty query and gallery partitions")
+    max_index = max(int(query_indices.max()), int(gallery_indices.max()))
+    min_index = min(int(query_indices.min()), int(gallery_indices.min()))
+    if min_index < 0 or max_index >= num_embeddings:
+        raise ValueError("query_indices/gallery_indices are out of range for the evaluated embeddings")
+    return query_indices, gallery_indices
+
+
+def make_evaluation_embedding_sets(all_embeddings, all_labels, dataset=None):
+    """Build query/reference arrays for same-source or query-gallery retrieval."""
+
+    all_embeddings = np.asarray(all_embeddings, dtype=np.float32)
+    all_labels = np.asarray(all_labels).reshape(-1)
+    if len(all_embeddings) != len(all_labels):
+        raise ValueError("embeddings and labels must have the same length")
+
+    query_gallery_indices = get_query_gallery_indices(dataset, len(all_embeddings))
+    if query_gallery_indices is None:
+        return {
+            "mode": SAME_SOURCE_EVALUATION,
+            "query_embeddings": all_embeddings,
+            "query_labels": all_labels,
+            "reference_embeddings": None,
+            "reference_labels": None,
+            "ref_includes_query": True,
+        }
+
+    query_indices, gallery_indices = query_gallery_indices
+    return {
+        "mode": QUERY_GALLERY_EVALUATION,
+        "query_embeddings": all_embeddings[query_indices],
+        "query_labels": all_labels[query_indices],
+        "reference_embeddings": all_embeddings[gallery_indices],
+        "reference_labels": all_labels[gallery_indices],
+        "ref_includes_query": False,
+    }
+
+
+def evaluate_embeddings(all_embeddings, all_labels, name="test set", return_per_class=False, dataset=None):
+    """Compute retrieval Precision@1 and MAP@R from precomputed embeddings."""
+
+    # AccuracyCalculator expects one matrix/vector spanning the full evaluation
+    # dataset rather than a list of batches.
+    all_embeddings = np.asarray(all_embeddings, dtype=np.float32)
+    all_labels = np.asarray(all_labels).reshape(-1)
+    validate_finite_embeddings(all_embeddings, name)
+    evaluation_sets = make_evaluation_embedding_sets(all_embeddings, all_labels, dataset=dataset)
+    query_embeddings = evaluation_sets["query_embeddings"]
+    query_labels = evaluation_sets["query_labels"]
+    reference_embeddings = evaluation_sets["reference_embeddings"]
+    reference_labels = evaluation_sets["reference_labels"]
+    ref_includes_query = evaluation_sets["ref_includes_query"]
     # Retrieval metrics compare each embedding with the rest of this evaluation
     # set; no classifier head is used.
     accuracy_calculator = AccuracyCalculator(
@@ -2269,9 +2580,20 @@ def evaluate(model, eval_loader, name="test set", device="cuda", return_per_clas
         k="max_bin_count",
         device=torch.device("cpu"),
     )
-    accuracy = accuracy_calculator.get_accuracy(all_embeddings, all_labels)
+    accuracy = accuracy_calculator.get_accuracy(
+        query_embeddings,
+        query_labels,
+        reference=reference_embeddings,
+        reference_labels=reference_labels,
+        ref_includes_query=ref_includes_query,
+    )
     if return_per_class:
-        per_class_metrics = make_per_class_retrieval_metrics(all_labels, accuracy)
+        per_class_metrics = make_per_class_retrieval_metrics(
+            query_labels,
+            accuracy,
+            reference_labels=reference_labels,
+            ref_includes_query=ref_includes_query,
+        )
         precision_at_1 = weighted_per_class_metric(per_class_metrics, "precision_at_1")
         mean_average_precision_at_r = weighted_per_class_metric(
             per_class_metrics,
@@ -2282,20 +2604,292 @@ def evaluate(model, eval_loader, name="test set", device="cuda", return_per_clas
         per_class_metrics = None
         precision_at_1 = accuracy["precision_at_1"]
         mean_average_precision_at_r = accuracy["mean_average_precision_at_r"]
+    if evaluation_sets["mode"] == QUERY_GALLERY_EVALUATION:
+        logger.info(
+            f"{name}: query-gallery retrieval with {len(query_labels)} queries and "
+            f"{len(reference_labels)} gallery images"
+        )
     logger.info(f"{name}: Precision@1 = {precision_at_1*100:.1f} , MAP@R = {mean_average_precision_at_r*100:.1f}")
     if return_per_class:
         return precision_at_1, mean_average_precision_at_r, per_class_metrics
     return precision_at_1, mean_average_precision_at_r
 
 
-def make_per_class_retrieval_metrics(labels, accuracy):
+def evaluate(model, eval_loader, name="test set", device="cuda", return_per_class=False):
+    """Embed a dataset and compute retrieval Precision@1 and MAP@R."""
+
+    all_embeddings, all_labels = extract_eval_embeddings(model, eval_loader, name=name, device=device)
+    return evaluate_embeddings(
+        all_embeddings,
+        all_labels,
+        name=name,
+        return_per_class=return_per_class,
+        dataset=getattr(eval_loader, "dataset", None),
+    )
+
+
+def class_names_for_labels(dataset, labels):
+    classes = dataset_classes(dataset)
+    if classes is None:
+        return [""] * len(labels)
+    names = []
+    for label in labels:
+        label_index = int(label)
+        if 0 <= label_index < len(classes):
+            names.append(str(classes[label_index]))
+        else:
+            names.append("")
+    return names
+
+
+def cifar100_superclass_names_for_labels(superclass_labels):
+    names = []
+    for superclass_label in superclass_labels:
+        superclass_index = int(superclass_label)
+        if 0 <= superclass_index < len(CIFAR100_SUPERCLASS_NAMES):
+            names.append(CIFAR100_SUPERCLASS_NAMES[superclass_index])
+        else:
+            names.append("")
+    return names
+
+
+def load_sop_superclass_metadata(data_root=None):
+    data_root = Path("data") / "StanfordOnlineProducts" if data_root is None else Path(data_root)
+    sop_root = data_root
+    if sop_root.name != "Stanford_Online_Products":
+        sop_root = sop_root / "Stanford_Online_Products"
+
+    rows_by_file_class_id = {}
+    for filename in ("Ebay_train.txt", "Ebay_test.txt"):
+        path = sop_root / filename
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines()[1:]:
+            columns = line.split()
+            if len(columns) < 4:
+                continue
+            class_id = int(columns[1])
+            super_class_id = int(columns[2])
+            super_class_name = Path(columns[3]).parts[0].replace("_final", "")
+            rows_by_file_class_id[class_id] = {
+                "super_class_id": super_class_id,
+                "super_class_name": super_class_name,
+            }
+    return rows_by_file_class_id
+
+
+def align_sop_superclass_metadata(labels, rows_by_file_class_id):
+    labels = np.asarray(labels, dtype=np.int64).reshape(-1)
+    if not rows_by_file_class_id:
+        return None
+
+    unique_labels = set(int(label) for label in labels)
+    file_class_ids = set(int(label) for label in rows_by_file_class_id)
+    if unique_labels <= file_class_ids:
+        label_to_file_class_id = {label: label for label in unique_labels}
+    elif {label + 1 for label in unique_labels} <= file_class_ids:
+        label_to_file_class_id = {label: label + 1 for label in unique_labels}
+    else:
+        return None
+
+    superclass_labels = []
+    superclass_names = []
+    for label in labels:
+        metadata = rows_by_file_class_id[label_to_file_class_id[int(label)]]
+        superclass_labels.append(int(metadata["super_class_id"]))
+        superclass_names.append(str(metadata["super_class_name"]))
+    return np.asarray(superclass_labels, dtype=np.int64), superclass_names
+
+
+def pacmap_plot_groups(labels, dataset=None, dataset_name=None):
+    labels = np.asarray(labels, dtype=np.int64).reshape(-1)
+    normalized_name = normalize_dataset_name(dataset_name) if dataset_name is not None else None
+
+    if normalized_name == "CIFAR100":
+        superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
+        return {
+            "labels": superclass_labels,
+            "names": cifar100_superclass_names_for_labels(superclass_labels),
+            "basis": "superclass",
+            "legend_title": "superclass",
+        }
+
+    if normalized_name == "StanfordOnlineProducts":
+        sop_groups = align_sop_superclass_metadata(labels, load_sop_superclass_metadata())
+        if sop_groups is not None:
+            superclass_labels, superclass_names = sop_groups
+            return {
+                "labels": superclass_labels,
+                "names": superclass_names,
+                "basis": "superclass",
+                "legend_title": "superclass",
+            }
+        logger.warning(
+            "SOP superclass metadata was not found or did not align with dataset labels; using class labels"
+        )
+
+    return {
+        "labels": labels,
+        "names": class_names_for_labels(dataset, labels) if dataset is not None else [""] * len(labels),
+        "basis": "label",
+        "legend_title": "label",
+    }
+
+
+def dataset_classes(dataset):
+    if dataset is None:
+        return None
+    classes = getattr(dataset, "classes", None)
+    if classes is not None:
+        return classes
+    nested_dataset = getattr(dataset, "dataset", None)
+    if nested_dataset is not None:
+        return dataset_classes(nested_dataset)
+    return None
+
+
+def write_pacmap_visualization(
+    embeddings,
+    labels,
+    output_dir,
+    stem="test_pacmap",
+    title="Test embeddings - PacMAP",
+    dataset=None,
+    dataset_name=None,
+):
+    """Write PacMAP 2D coordinates and a plot-group-colored scatter plot."""
+
+    try:
+        import pacmap
+    except ImportError as exc:
+        raise ImportError(
+            "PacMAP visualization requires the pacmap package. "
+            "Install it with `pip install -r requirements.txt`."
+        ) from exc
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    import matplotlib.pyplot as plt
+
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    labels = np.asarray(labels).reshape(-1)
+    if embeddings.ndim != 2:
+        raise ValueError("PacMAP visualization requires an embedding matrix")
+    if len(embeddings) != len(labels):
+        raise ValueError("PacMAP embeddings and labels must have the same number of samples")
+    if len(embeddings) < 2:
+        raise ValueError("PacMAP visualization requires at least two test embeddings")
+
+    coordinates = np.asarray(pacmap.PaCMAP().fit_transform(embeddings), dtype=np.float32)
+    if coordinates.ndim != 2 or coordinates.shape[1] < 2:
+        raise ValueError(f"PacMAP returned coordinates with shape {coordinates.shape}, expected [N, 2]")
+    coordinates = coordinates[:, :2]
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    coordinates_path = output_dir / f"{stem}.csv"
+    plot_path = output_dir / f"{stem}.png"
+    class_names = class_names_for_labels(dataset, labels) if dataset is not None else [""] * len(labels)
+    plot_groups = pacmap_plot_groups(labels, dataset=dataset, dataset_name=dataset_name)
+    plot_group_labels = np.asarray(plot_groups["labels"], dtype=np.int64).reshape(-1)
+    plot_group_names = list(plot_groups["names"])
+    if len(plot_group_labels) != len(labels) or len(plot_group_names) != len(labels):
+        raise ValueError("PacMAP plot-group metadata must align with embeddings and labels")
+
+    with coordinates_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=[
+                "sample_position",
+                "label",
+                "class_name",
+                "plot_group_label",
+                "plot_group_name",
+                "pacmap_x",
+                "pacmap_y",
+            ],
+        )
+        writer.writeheader()
+        for sample_position, (label, class_name, group_label, group_name, coordinate) in enumerate(
+            zip(labels, class_names, plot_group_labels, plot_group_names, coordinates)
+        ):
+            writer.writerow(
+                {
+                    "sample_position": sample_position,
+                    "label": int(label),
+                    "class_name": class_name,
+                    "plot_group_label": int(group_label),
+                    "plot_group_name": group_name,
+                    "pacmap_x": float(coordinate[0]),
+                    "pacmap_y": float(coordinate[1]),
+                }
+            )
+
+    unique_labels = np.unique(plot_group_labels)
+    fig, ax = plt.subplots(figsize=(9, 7))
+    if len(unique_labels) <= 20:
+        color_map = plt.get_cmap("tab20", len(unique_labels))
+        for color_index, label in enumerate(unique_labels):
+            mask = plot_group_labels == label
+            names_for_label = sorted(set(name for name in np.asarray(plot_group_names, dtype=object)[mask] if name))
+            legend_label = names_for_label[0] if names_for_label else str(int(label))
+            ax.scatter(
+                coordinates[mask, 0],
+                coordinates[mask, 1],
+                s=9,
+                alpha=0.78,
+                linewidths=0,
+                color=color_map(color_index),
+                label=legend_label,
+            )
+        ax.legend(title=str(plot_groups["legend_title"]), loc="best", markerscale=1.8, fontsize="small")
+    else:
+        scatter = ax.scatter(
+            coordinates[:, 0],
+            coordinates[:, 1],
+            c=plot_group_labels.astype(float),
+            s=7,
+            alpha=0.78,
+            linewidths=0,
+            cmap="turbo",
+        )
+        fig.colorbar(scatter, ax=ax, label=str(plot_groups["legend_title"]))
+
+    ax.set_title(title)
+    ax.set_xlabel("PacMAP 1")
+    ax.set_ylabel("PacMAP 2")
+    ax.grid(alpha=0.18, linewidth=0.6)
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160)
+    plt.close(fig)
+
+    return {
+        "coordinates": coordinates_path,
+        "plot": plot_path,
+        "sample_count": int(len(labels)),
+        "color_basis": str(plot_groups["basis"]),
+    }
+
+
+def make_per_class_retrieval_metrics(labels, accuracy, reference_labels=None, ref_includes_query=True):
     """Map AccuracyCalculator's sorted per-class values back to class labels."""
 
     labels = np.asarray(labels).reshape(-1)
     unique_labels, counts = np.unique(labels, return_counts=True)
-    # Same-source retrieval excludes singleton classes because they have no
-    # relevant reference after the query itself is removed.
-    eligible = [(label, int(count)) for label, count in zip(unique_labels, counts) if count > 1]
+    if ref_includes_query:
+        # Same-source retrieval excludes singleton classes because they have no
+        # relevant reference after the query itself is removed.
+        eligible = [(label, int(count)) for label, count in zip(unique_labels, counts) if count > 1]
+    else:
+        reference_labels = np.asarray(reference_labels).reshape(-1)
+        reference_label_set = set(reference_labels.tolist())
+        eligible = [
+            (label, int(count))
+            for label, count in zip(unique_labels, counts)
+            if label in reference_label_set
+        ]
     precision_values = accuracy["precision_at_1"]
     map_values = accuracy["mean_average_precision_at_r"]
     if not (len(eligible) == len(precision_values) == len(map_values)):

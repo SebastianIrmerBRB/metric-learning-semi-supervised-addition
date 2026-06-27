@@ -16,6 +16,10 @@ from experiment_types import (
 from retrieval_model import BACKBONE_TUNING_FULL, normalize_backbone_tuning
 
 DEFAULT_DATA_SPLIT_SEED = 7
+DEFAULT_SUPPORT_SEED = semi_supervised.DEFAULT_SUPPORT_SEED
+FINAL_TEST_VISUALIZATION_NONE = "none"
+FINAL_TEST_VISUALIZATION_PACMAP = "pacmap"
+FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, FINAL_TEST_VISUALIZATION_PACMAP)
 
 
 def parse_json_object(value):
@@ -29,12 +33,26 @@ def parse_json_object(value):
     return parsed
 
 
+def parse_non_negative_int(value):
+    """Parse an integer value that may be zero."""
+
+    if isinstance(value, bool):
+        raise argparse.ArgumentTypeError("value must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("value must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be non-negative")
+    return parsed
+
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument(
     "--experiment_config",
     "--experiment-config",
     type=Path,
-    default=Path(r"C:\Users\Sebastian\PycharmProjects\metric-learning\configs\experiments\class/cifar100_config.json"),
+    default=Path(r"C:\Users\Sebastian\PycharmProjects\metric-learning\configs\experiments\class/cars196.json"),
     help=(
         "top-level JSON config containing CLI argument values. "
         "Explicit CLI arguments override values from this file."
@@ -120,7 +138,7 @@ parser.add_argument(
     type=str,
     default="MultiSimilarityLoss",
     choices=ALL_LOSSES,
-    help="supervised loss used before a loss-driven SSL method starts",
+    help="supervised loss used during labeled-only SSL warmup epochs",
 )
 parser.add_argument(
     "--warmup_miner",
@@ -156,7 +174,27 @@ parser.add_argument(
     help="device: cpu, cuda, or an indexed CUDA device such as cuda:2",
 )
 parser.add_argument("--optim", type=str, default="adamw", choices=["adamw", "adam", "rmsprop"], help="optimizer")
-parser.add_argument("--seed", type=int, default=7, help="random seed for support sampling and training")
+parser.add_argument("--seed", type=int, default=7, help="random seed for training/runtime randomness")
+parser.add_argument(
+    "--hparam_seed",
+    "--hparam-seed",
+    "--hpo_seed",
+    "--hpo-seed",
+    dest="hparam_seed",
+    type=int,
+    default=None,
+    help="seed for Optuna HPO samplers. Defaults to --seed.",
+)
+parser.add_argument(
+    "--tpe_startup_trials",
+    "--tpe-startup-trials",
+    type=parse_non_negative_int,
+    default=None,
+    help=(
+        "number of random startup trials for Optuna's TPE sampler. "
+        "None uses the HPO config or Optuna default."
+    ),
+)
 parser.add_argument(
     "--data_split_seed",
     type=int,
@@ -164,6 +202,16 @@ parser.add_argument(
     help=(
         "seed for dataset protocol, train/validation, and validation downsampling splits. "
         f"Defaults to {DEFAULT_DATA_SPLIT_SEED} and is independent of --seed."
+    ),
+)
+parser.add_argument(
+    "--support_seed",
+    "--support-seed",
+    type=int,
+    default=None,
+    help=(
+        "seed for labeled support/sample selection. "
+        f"Defaults to {DEFAULT_SUPPORT_SEED} and is independent of --seed."
     ),
 )
 parser.add_argument("--epochs", type=int, default=1000, help="maximum number of training epochs")
@@ -206,19 +254,60 @@ parser.add_argument(
     help="path to a JSON semi-supervised config. Omit to disable SSL.",
 )
 parser.add_argument(
+    "--unlabeled_source",
+    choices=["split", "external", "split_and_external"],
+    default=None,
+    help=(
+        "SSL unlabeled pool: the current train split, an external recursive image directory, "
+        "or both. None preserves legacy STML-specific settings."
+    ),
+)
+parser.add_argument(
+    "--external_unlabeled_dir",
+    type=Path,
+    default=None,
+    help="recursive external image directory used as unlabeled SSL data, such as a local Fashion200K root",
+)
+parser.add_argument(
+    "--external_unlabeled_filter",
+    type=str,
+    default=utils.EXTERNAL_UNLABELED_FILTER_NONE,
+    choices=utils.EXTERNAL_UNLABELED_FILTERS,
+    help=(
+        "optional filtering applied to external unlabeled images. "
+        "compcars_model_min_count keeps CompCars model-level categories with enough images; "
+        "compcars_stml_paper reproduces the STML CompCars subset and checks for 16,537 images "
+        "across 145 model classes."
+    ),
+)
+parser.add_argument(
+    "--compcars_min_model_images",
+    type=int,
+    default=100,
+    help="minimum images per inferred CompCars model class for CompCars external-unlabeled filters",
+)
+parser.add_argument(
+    "--compcars_strict_paper_counts",
+    action="store_true",
+    default=False,
+    help=(
+        "fail CompCars STML-paper filtering unless the filtered pool has exactly "
+        "16,537 images across 145 model classes"
+    ),
+)
+parser.add_argument(
     "--stml_unlabeled_source",
     choices=["split", "external", "split_and_external"],
     default="split",
     help=(
-        "STML unlabeled pool: the current train split, an external recursive image directory, "
-        "or both. 'split' preserves the existing behavior."
+        "Deprecated alias for --unlabeled_source used by older STML configs."
     ),
 )
 parser.add_argument(
     "--stml_external_unlabeled_dir",
     type=Path,
     default=None,
-    help="recursive external image directory used by STML, such as a local CompCars image root",
+    help="Deprecated alias for --external_unlabeled_dir used by older STML configs.",
 )
 parser.add_argument(
     "--hparam_config",
@@ -246,6 +335,13 @@ parser.add_argument(
     help="do not evaluate D_test inside Optuna trials; use a final retraining run for test evaluation",
 )
 parser.add_argument(
+    "--evaluate_test",
+    "--evaluate-test",
+    action="store_true",
+    default=False,
+    help="evaluate D_test after a direct non-HPO training run",
+)
+parser.add_argument(
     "--final_test_after_hpo",
     action="store_true",
     default=False,
@@ -253,6 +349,26 @@ parser.add_argument(
         "after each HPO study, train the best configuration once on the full development set "
         "for the selected mean fold epoch count and evaluate D_test"
     ),
+)
+parser.add_argument(
+    "--final_test_top_n",
+    type=int,
+    default=1,
+    help="number of highest-value completed HPO trials to run final-test evaluation for",
+)
+parser.add_argument(
+    "--final_test_trial_numbers",
+    type=int,
+    nargs="*",
+    default=None,
+    help="specific completed HPO trial numbers to run final-test evaluation for",
+)
+parser.add_argument(
+    "--final_test_visualization",
+    "--final-test-visualization",
+    choices=FINAL_TEST_VISUALIZATION_MODES,
+    default=FINAL_TEST_VISUALIZATION_PACMAP,
+    help="optional final D_test embedding visualization artifact to create after test evaluation",
 )
 parser.add_argument(
     "--label_budget_grid",
@@ -281,7 +397,10 @@ parser.add_argument(
     type=int,
     nargs="*",
     default=None,
-    help="outer experiment grid over run seeds for support sampling and training, for example 0 1 2 3 4",
+    help=(
+        "outer experiment grid over runtime, dataset-split, labeled-support, "
+        "and HPO sampler seeds, for example 0 1 2 3 4"
+    ),
 )
 parser.add_argument(
     "--ssl_label_sampling_modes",
@@ -305,9 +424,23 @@ def parse_args_with_experiment_config(argv=None):
     namespace = argparse.Namespace(**config_values)
     args = parser.parse_args(argv, namespace=namespace)
     normalize_backbone_tuning_args(args)
+    resolve_hparam_seed(args)
     resolve_data_split_seed(args)
+    resolve_support_seed(args)
     if config_path is not None:
         args.experiment_config_resolved = config_values
+    return args
+
+def get_hparam_seed(args):
+    """Return the seed used by Optuna's stochastic samplers."""
+
+    hparam_seed = getattr(args, "hparam_seed", None)
+    return int(getattr(args, "seed", 7)) if hparam_seed is None else int(hparam_seed)
+
+def resolve_hparam_seed(args):
+    """Default HPO sampling to the runtime seed unless explicitly separated."""
+
+    args.hparam_seed = get_hparam_seed(args)
     return args
 
 def resolve_data_split_seed(args):
@@ -315,6 +448,18 @@ def resolve_data_split_seed(args):
 
     if getattr(args, "data_split_seed", None) is None:
         args.data_split_seed = DEFAULT_DATA_SPLIT_SEED
+    return args
+
+def get_support_seed(args):
+    """Return the fixed seed used for labeled support selection."""
+
+    support_seed = getattr(args, "support_seed", None)
+    return DEFAULT_SUPPORT_SEED if support_seed is None else int(support_seed)
+
+def resolve_support_seed(args):
+    """Keep labeled support selection independent from the run seed."""
+
+    args.support_seed = get_support_seed(args)
     return args
 
 def normalize_backbone_tuning_args(args):

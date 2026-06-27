@@ -5,6 +5,7 @@ loguru
 matplotlib
 numpy
 pandas
+pacmap
 pytorch_metric_learning>=2.8.1
 scikit-learn
 torch

@@ -1,18 +1,41 @@
 {
   "enabled": true,
-  "n_trials": 4,
+  "n_trials": 50,
   "timeout": null,
   "direction": "maximize",
-  "metric": "best_valid_precision_at_1",
-  "study_name": "k_shot_grid",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "k_shot_search",
   "study_dir": null,
   "storage": null,
   "load_if_exists": true,
-  "sampler": "grid",
+  "sampler": "tpe",
   "sampler_params": {},
   "pruner": "none",
   "pruner_params": {},
   "spaces": {
-    "ssl_config.labeled_per_class": [5]
+    "lr": {
+      "type": "float",
+      "low": 1e-7,
+      "high": 1e-5,
+      "log": true
+    },
+    "batch_size": {
+      "type": "categorical",
+      "choices": [16, 32, 64, 128, 256, 512]
+    },
+    "sampler_m": {
+      "type": "categorical",
+      "choices": [1, 2, 4, 8, 16, 32, 64]
+    },
+    "ssl_config.confidence_threshold": {
+      "type": "float",
+      "low": 0.5,
+      "high": 0.95
+    },
+    "ssl_config.method_params.n_neighbors": {
+      "type": "int",
+      "low": 1,
+      "high": 20
+    }
   }
 }

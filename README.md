@@ -54,3 +54,25 @@ Long-tailed CIFAR generation is adapted from
 [richardaecn/class-balanced-loss](https://github.com/richardaecn/class-balanced-loss)
 by Yin Cui et al. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the
 upstream MIT license and citation details.
+
+## Download DeepInFashion
+
+1. kaggle datasets download -d hserdaraltan/deepfashion-inshop-clothes-retrieval -p data/DeepFashionInShop --unzip
+2. then download the list partion  ```gdown --fuzzy "https://drive.google.com/file/d/0B7EVK8r0v71pYVBqLXpRVjhHeWM/view?usp=drive_link&resourcekey=0-rxJ2QcImN-IRo_Bv9QSXmg" -O list_eval_partition.txt```
+3. put the list partition in data/DeepFashionInShop/In-shop Clothes Retrieval Benchmark/Eval
+4. put the img_highres files into data/DeepFashionInShop/In-shop Clothes Retrieval Benchmark/Eval/Img 
+
+## In-Shop With Fashion200K Unlabeled Images
+
+External unlabeled images can be appended to SSL runs without changing the
+official In-Shop query/gallery test set. Put Fashion200K images under a
+recursive image root such as `data/Fashion200K`, then run:
+
+```powershell
+python main.py --experiment_config configs/experiments/class/in-shop-fashion200k.json
+```
+
+The config uses `unlabeled_source: split_and_external`, so pseudo-label SSL sees
+both the In-Shop unlabeled candidates from the training split and all images
+found below `external_unlabeled_dir`. Use `unlabeled_source: external` to train
+with only the external unlabeled pool.

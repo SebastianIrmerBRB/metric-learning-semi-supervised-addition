@@ -1,0 +1,25 @@
+{
+  "save_dir": "sop_baseline_check",
+  "dataset": "StanfordOnlineProducts",
+  "dataset_protocol": "official",
+  "val_mode": "split_after_apportion",
+  "cv_k": 4,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "supervised",
+  "length_before_new_iter": 10000,
+  "ssl_config": "configs/ssl_faiss_knn.json",
+  "hparam_config": "configs/supervised/classification/proxy_anchor.json",
+  "label_budget_grid": [
+    0.01, 0.05, 0.1, 0.25, 0.5
+  ],
+  "k_shot_grid": null,
+  "ssl_label_sampling_modes": [
+    "class_subset"
+  ],
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "comparison_seeds": [
+    7
+  ]
+}

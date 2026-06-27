@@ -54,7 +54,7 @@ def main():
         # settings that define which examples belong to the labeled split.
         hparam_config = make_standalone_hparam_config(args, hparam_config)
         study_result = run_hparam_search(args, hparam_config)
-        if args.final_test_after_hpo:
+        if should_run_final_hparam_evaluation(args):
             run_final_from_best_hparam(
                 args,
                 hparam_config,
@@ -70,7 +70,11 @@ def main():
 
     # The mode may turn an enabled SSL config into a split-only supervised
     # config.  This keeps label selection identical between comparison methods.
-    ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     ssl_config = resolve_mode_ssl_config(args, ssl_config)
     run_experiment(args, ssl_config)
 
@@ -79,20 +83,31 @@ def run_supervised_ssl_comparison(args, hparam_config):
 
     # This base config defines both the SSL algorithm and the common label
     # apportioning rules used by the supervised baseline.
-    base_ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    base_ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     validate_comparison_setup(args, hparam_config, base_ssl_config)
 
     # Scenarios are concrete combinations of label budget, sampling mode,
-    # loss/miner, and eval seed.  Their SSL configs are already written to disk.
+    # loss/miner, and comparison seed.  Each seed owns a full supervised/SSL HPO
+    # pair because it changes both the dataset split and the labeled support draw.
     scenarios = make_comparison_scenarios(args, base_ssl_config)
     grid_results = []
-    for scenario_group in group_scenarios_by_frozen_config(scenarios):
-        grid_results.extend(
-            run_supervised_ssl_frozen_hparam_group(
-                args=args,
-                hparam_config=hparam_config,
-                base_ssl_config=base_ssl_config,
-                scenario_group=scenario_group,
+    for scenario in scenarios:
+        scenario_args = make_args_for_scenario(args, scenario)
+        scenario_ssl_config = semi_supervised.load_ssl_config(
+            scenario_args.ssl_config,
+            default_seed=scenario_args.seed,
+            default_support_seed=get_support_seed(scenario_args),
+        )
+        grid_results.append(
+            run_single_supervised_ssl_comparison(
+                scenario_args,
+                hparam_config,
+                scenario_ssl_config,
+                scenario,
             )
         )
 
@@ -154,7 +169,11 @@ def run_supervised_ssl_frozen_hparam_group(args, hparam_config, base_ssl_config,
     group_results = []
     for scenario in scenario_group:
         eval_args = make_args_for_scenario(args, scenario)
-        scenario_ssl_config = semi_supervised.load_ssl_config(scenario.ssl_config_path, default_seed=scenario.seed)
+        scenario_ssl_config = semi_supervised.load_ssl_config(
+            scenario.ssl_config_path,
+            default_seed=eval_args.seed,
+            default_support_seed=get_support_seed(eval_args),
+        )
 
         supervised_eval_args = copy.deepcopy(eval_args)
         supervised_eval_args.mode = "supervised"
@@ -296,10 +315,11 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
         if not label_budgets:
             raise ValueError("--label_budget_grid must include at least one value when provided")
 
-    seeds = args.comparison_seeds
-    if seeds is None:
-        seeds = [base_ssl_config.seed]
-    elif not seeds:
+    comparison_seeds = args.comparison_seeds
+    has_comparison_seed_grid = comparison_seeds is not None
+    if comparison_seeds is None:
+        comparison_seeds = [None]
+    elif not comparison_seeds:
         raise ValueError("--comparison_seeds must include at least one value when provided")
 
     label_sampling_modes = get_effective_label_sampling_modes(args, base_ssl_config)
@@ -333,7 +353,19 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                 args=args,
             ):
                 for loss_name, miner_name in loss_miner_pairs:
-                    for seed in seeds:
+                    for comparison_seed in comparison_seeds:
+                        if comparison_seed is None:
+                            scenario_seed = int(base_ssl_config.seed)
+                            run_seed = None
+                            data_split_seed = int(getattr(args, "data_split_seed", DEFAULT_DATA_SPLIT_SEED))
+                            support_seed = int(base_ssl_config.support_seed)
+                            hparam_seed = int(get_hparam_seed(args))
+                        else:
+                            scenario_seed = int(comparison_seed)
+                            run_seed = scenario_seed
+                            data_split_seed = int(comparison_seed)
+                            support_seed = int(comparison_seed)
+                            hparam_seed = int(comparison_seed)
                         # dataclasses.replace creates a new immutable config,
                         # leaving the shared base config untouched.
                         scenario_ssl_config = replace(
@@ -341,7 +373,8 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                             label_sampling_mode=label_sampling_mode,
                             labeled_fraction=float(labeled_fraction),
                             labeled_per_class=scenario_labeled_per_class,
-                            seed=int(seed),
+                            seed=scenario_seed,
+                            support_seed=support_seed,
                         )
                         semi_supervised.validate_ssl_config(scenario_ssl_config)
                         # Include only dimensions needed to distinguish the
@@ -350,6 +383,7 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                             scenario_ssl_config,
                             loss=loss_name if include_loss_miner_in_name else None,
                             miner=miner_name if include_loss_miner_in_name else None,
+                            comparison_seed=scenario_seed if has_comparison_seed_grid else None,
                         )
                         if scenario_name in scenario_names:
                             raise ValueError(
@@ -367,11 +401,15 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                                 name=scenario_name,
                                 labeled_fraction=scenario_ssl_config.labeled_fraction,
                                 labeled_per_class=scenario_ssl_config.labeled_per_class,
-                                seed=scenario_ssl_config.seed,
+                                seed=scenario_seed,
                                 label_sampling_mode=scenario_ssl_config.label_sampling_mode,
                                 loss=loss_name,
                                 miner=miner_name,
                                 ssl_config_path=config_path,
+                                run_seed=run_seed,
+                                data_split_seed=data_split_seed,
+                                support_seed=scenario_ssl_config.support_seed,
+                                hparam_seed=hparam_seed,
                             )
                         )
     return scenarios
@@ -481,7 +519,7 @@ def make_label_budget_name(label_sampling_mode, labeled_fraction, labeled_per_cl
         label_part = f"per_class_{labeled_per_class}"
     return label_part
 
-def make_scenario_name(ssl_config, loss=None, miner=None):
+def make_scenario_name(ssl_config, loss=None, miner=None, comparison_seed=None):
     # Encode all varied dimensions into a filesystem-safe, deterministic name.
     label_part = make_label_budget_name(
         ssl_config.label_sampling_mode,
@@ -493,10 +531,22 @@ def make_scenario_name(ssl_config, loss=None, miner=None):
         # Loss/miner are omitted when they are fixed globally to avoid adding
         # redundant text to every scenario name.
         parts.extend([loss, miner])
+    if comparison_seed is not None:
+        parts.extend(["comparison_seed", str(int(comparison_seed))])
+        return "_".join(parts)
+    if (
+        ssl_config.support_seed is not None
+        and ssl_config.seed is not None
+        and int(ssl_config.support_seed) != int(ssl_config.seed)
+    ):
+        parts.extend(["support_seed", str(int(ssl_config.support_seed))])
     parts.extend(["seed", str(ssl_config.seed)])
     return "_".join(parts)
 
-def make_frozen_hparam_group_name(scenario, reference_seed):
+def make_frozen_hparam_group_name(scenario, reference_seed, support_seed=None):
+    if support_seed is None:
+        support_seed = scenario.support_seed
+    tune_seed = reference_seed if support_seed is None else support_seed
     label_part = make_label_budget_name(
         scenario.label_sampling_mode,
         scenario.labeled_fraction,
@@ -508,8 +558,10 @@ def make_frozen_hparam_group_name(scenario, reference_seed):
         scenario.loss,
         scenario.miner,
         "tune_seed",
-        str(int(reference_seed)),
+        str(int(tune_seed)),
     ]
+    if support_seed is not None and int(reference_seed) != int(support_seed):
+        parts.extend(["run_seed", str(int(reference_seed))])
     return "_".join(parts)
 
 def scenario_group_key(scenario):
@@ -519,6 +571,10 @@ def scenario_group_key(scenario):
         scenario.labeled_per_class,
         scenario.loss,
         scenario.miner,
+        scenario.run_seed,
+        scenario.data_split_seed,
+        scenario.support_seed,
+        scenario.hparam_seed,
     )
 
 def group_scenarios_by_frozen_config(scenarios):
@@ -535,13 +591,20 @@ def group_scenarios_by_frozen_config(scenarios):
 def write_reference_ssl_config(args, base_ssl_config, scenario, grid_dir_name):
     """Persist the fixed support draw used for HPO for one non-seed scenario."""
 
-    group_name = make_frozen_hparam_group_name(scenario, args.seed)
+    support_seed = scenario.support_seed if scenario.support_seed is not None else base_ssl_config.support_seed
+    run_seed = scenario.run_seed if scenario.run_seed is not None else args.seed
+    group_name = make_frozen_hparam_group_name(
+        scenario,
+        run_seed,
+        support_seed=support_seed,
+    )
     reference_ssl_config = replace(
         base_ssl_config,
         label_sampling_mode=scenario.label_sampling_mode,
         labeled_fraction=float(scenario.labeled_fraction),
         labeled_per_class=scenario.labeled_per_class,
-        seed=int(args.seed),
+        seed=run_seed if scenario.run_seed is not None else base_ssl_config.seed,
+        support_seed=support_seed,
     )
     semi_supervised.validate_ssl_config(reference_ssl_config)
     config_dir = Path("logs") / args.save_dir / grid_dir_name / "ssl_configs"
@@ -552,7 +615,14 @@ def write_reference_ssl_config(args, base_ssl_config, scenario, grid_dir_name):
 
 def make_args_for_scenario(args, scenario):
     scenario_args = copy.deepcopy(args)
-    scenario_args.seed = scenario.seed
+    if scenario.run_seed is not None:
+        scenario_args.seed = int(scenario.run_seed)
+    if scenario.data_split_seed is not None:
+        scenario_args.data_split_seed = int(scenario.data_split_seed)
+    if scenario.support_seed is not None:
+        scenario_args.support_seed = int(scenario.support_seed)
+    if scenario.hparam_seed is not None:
+        scenario_args.hparam_seed = int(scenario.hparam_seed)
     scenario_args.loss = scenario.loss
     scenario_args.miner = scenario.miner
     scenario_args.ssl_config = scenario.ssl_config_path
@@ -561,7 +631,14 @@ def make_args_for_scenario(args, scenario):
 
 def make_reference_hpo_args(args, group_name, reference_ssl_config_path, scenario):
     reference_args = copy.deepcopy(args)
-    reference_args.seed = int(args.seed)
+    if scenario.run_seed is not None:
+        reference_args.seed = int(scenario.run_seed)
+    if scenario.data_split_seed is not None:
+        reference_args.data_split_seed = int(scenario.data_split_seed)
+    if scenario.support_seed is not None:
+        reference_args.support_seed = int(scenario.support_seed)
+    if scenario.hparam_seed is not None:
+        reference_args.hparam_seed = int(scenario.hparam_seed)
     reference_args.loss = scenario.loss
     reference_args.miner = scenario.miner
     reference_args.ssl_config = reference_ssl_config_path
@@ -574,7 +651,11 @@ def format_float_token(value):
 def run_single_method_grid(args, hparam_config):
     """Run an outer experiment grid for only the selected training method."""
 
-    base_ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    base_ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     validate_single_method_grid_setup(args, hparam_config, base_ssl_config)
 
     scenarios = make_comparison_scenarios(args, base_ssl_config, grid_dir_name="experiment_grid")
@@ -617,13 +698,15 @@ def run_single_method_frozen_hparam_grid(args, hparam_config, base_ssl_config, s
         study_result = run_hparam_search(reference_args, scenario_hparam_config)
         for scenario in scenario_group:
             eval_args = make_args_for_scenario(args, scenario)
-            final_result = run_final_from_best_hparam(
-                eval_args,
-                scenario_hparam_config,
-                study_result,
-                role=eval_args.mode,
-                summary_stem=f"final_evaluation_{scenario.name}_{eval_args.mode}",
-            )
+            final_result = None
+            if should_run_final_hparam_evaluation(args):
+                final_result = run_final_from_best_hparam(
+                    eval_args,
+                    scenario_hparam_config,
+                    study_result,
+                    role=eval_args.mode,
+                    summary_stem=f"final_evaluation_{scenario.name}_{eval_args.mode}",
+                )
             grid_results.append(
                 {
                     "method": eval_args.mode,
@@ -649,7 +732,7 @@ def run_single_method_scenario(args, hparam_config, scenario):
         scenario_hparam_config = make_standalone_hparam_config(args, hparam_config)
         study_result = run_hparam_search(args, scenario_hparam_config)
         final_result = None
-        if args.final_test_after_hpo:
+        if should_run_final_hparam_evaluation(args):
             final_result = run_final_from_best_hparam(
                 args,
                 scenario_hparam_config,
@@ -665,7 +748,11 @@ def run_single_method_scenario(args, hparam_config, scenario):
 
     if hparam_config is not None:
         args.hparam_config_resolved = hparam_config.to_dict()
-    ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     ssl_config = resolve_mode_ssl_config(args, ssl_config)
     result = run_experiment(args, ssl_config)
     return {
@@ -754,8 +841,177 @@ def append_study_dir_role(study_dir, role):
         return None
     return str(Path(study_dir) / role)
 
+def get_final_test_top_n(args):
+    top_n = int(getattr(args, "final_test_top_n", 1))
+    if top_n <= 0:
+        raise ValueError("final_test_top_n must be positive")
+    return top_n
+
+def get_final_test_trial_numbers(args):
+    trial_numbers = getattr(args, "final_test_trial_numbers", None)
+    if trial_numbers is None:
+        return None
+    if not trial_numbers:
+        raise ValueError("final_test_trial_numbers must include at least one trial number when provided")
+    return [int(trial_number) for trial_number in trial_numbers]
+
+def should_run_final_hparam_evaluation(args):
+    return (
+        bool(getattr(args, "final_test_after_hpo", False))
+        or get_final_test_top_n(args) > 1
+        or get_final_test_trial_numbers(args) is not None
+    )
+
 def run_final_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="final_evaluation"):
-    """Train the winning HPO configuration on all development data and test it."""
+    """Train selected HPO configuration(s) on all development data and test them."""
+
+    trial_numbers = get_final_test_trial_numbers(base_args)
+    if trial_numbers is not None:
+        return run_final_from_selected_hparams(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            trial_numbers=trial_numbers,
+            summary_stem=summary_stem,
+        )
+
+    top_n = get_final_test_top_n(base_args)
+    if top_n > 1:
+        return run_final_from_top_hparams(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            top_n=top_n,
+            summary_stem=summary_stem,
+        )
+
+    return run_single_final_from_hparam(
+        base_args,
+        hparam_config,
+        study_result,
+        role,
+        summary_stem=summary_stem,
+    )
+
+def get_completed_hparam_trials(study_result, role):
+    completed_trials = list(getattr(study_result, "completed_trials", None) or [])
+    if not completed_trials and study_result.best_params is not None:
+        completed_trials = [
+            {
+                "trial_number": study_result.best_trial_number,
+                "value": study_result.best_value,
+                "params": study_result.best_params,
+                "user_attrs": study_result.best_user_attrs or {},
+            }
+        ]
+    if not completed_trials:
+        raise ValueError(f"No completed {role or 'model'} HPO trial is available for final retraining")
+    return completed_trials
+
+def run_final_from_selected_hparams(
+    base_args,
+    hparam_config,
+    study_result,
+    role,
+    trial_numbers,
+    summary_stem="final_evaluation",
+):
+    """Run final-test evaluation for explicitly selected completed HPO trial numbers."""
+
+    completed_trials = get_completed_hparam_trials(study_result, role)
+    trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
+    missing_trials = [trial_number for trial_number in trial_numbers if trial_number not in trials_by_number]
+    if missing_trials:
+        available_trials = sorted(trials_by_number)
+        raise ValueError(
+            f"Selected final-test trial(s) are not completed in study {study_result.study_name!r}: "
+            f"{missing_trials}. Available completed trial numbers: {available_trials}"
+        )
+
+    evaluated = []
+    for trial_number in trial_numbers:
+        trial = trials_by_number[int(trial_number)]
+        trial_summary_stem = f"{summary_stem}_trial_{int(trial_number):04d}"
+        final_result = run_single_final_from_hparam(
+            base_args,
+            hparam_config,
+            make_study_result_for_completed_trial(study_result, trial),
+            role,
+            summary_stem=trial_summary_stem,
+        )
+        evaluated.append(
+            {
+                "trial": trial,
+                "summary_stem": trial_summary_stem,
+                "final_result": final_result,
+            }
+        )
+
+    write_hparam_selected_final_evaluation_summary(
+        study_result=study_result,
+        evaluated=evaluated,
+        role=role,
+        trial_numbers=trial_numbers,
+        summary_stem=summary_stem,
+    )
+    return evaluated[0]["final_result"]
+
+def run_final_from_top_hparams(base_args, hparam_config, study_result, role, top_n, summary_stem="final_evaluation"):
+    """Run final-test evaluation for the top-N completed HPO trials by objective value."""
+
+    completed_trials = get_completed_hparam_trials(study_result, role)
+    completed_trials = sorted(
+        completed_trials,
+        key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])),
+    )
+    selected_trials = completed_trials[:top_n]
+    if len(selected_trials) < top_n:
+        logger.warning(
+            f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
+        )
+
+    evaluated = []
+    for trial_index, trial in enumerate(selected_trials):
+        trial_study_result = make_study_result_for_completed_trial(study_result, trial)
+        trial_number = trial["trial_number"]
+        trial_summary_stem = summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial_number:04d}"
+        final_result = run_single_final_from_hparam(
+            base_args,
+            hparam_config,
+            trial_study_result,
+            role,
+            summary_stem=trial_summary_stem,
+        )
+        evaluated.append(
+            {
+                "trial": trial,
+                "summary_stem": trial_summary_stem,
+                "final_result": final_result,
+            }
+        )
+
+    write_hparam_top_final_evaluation_summary(
+        study_result=study_result,
+        evaluated=evaluated,
+        role=role,
+        requested_top_n=top_n,
+        summary_stem=summary_stem,
+    )
+    return evaluated[0]["final_result"]
+
+def make_study_result_for_completed_trial(study_result, trial):
+    return replace(
+        study_result,
+        best_trial_number=trial["trial_number"],
+        best_value=trial["value"],
+        best_params=trial["params"],
+        best_user_attrs=trial.get("user_attrs") or {},
+    )
+
+def run_single_final_from_hparam(base_args, hparam_config, study_result, role, summary_stem="final_evaluation"):
+    """Train one HPO configuration on all development data and test it."""
 
     role = role or "model"
     if study_result.best_params is None:
@@ -847,8 +1103,14 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         "final_log_dir": str(final_result.log_dir),
         "final_metrics_csv": str(final_result.metrics_csv),
         "final_train_loss": optional_number(final_result.final_train_loss),
+        "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
+        "epoch0_test_mean_average_precision_at_r": optional_number(
+            final_result.epoch0_test_mean_average_precision_at_r
+        ),
         "test_precision_at_1": optional_number(final_result.test_precision_at_1),
         "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+        "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
+        "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
         "selected_epoch": final_result.selected_epoch,
         "global_step": final_result.global_step,
     }
@@ -857,6 +1119,116 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         writer.writeheader()
         writer.writerow(row)
     logger.info(f"Final HPO test evaluation summary written to {study_result.study_dir}")
+
+def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, requested_top_n, summary_stem):
+    """Write one summary for all top-N final-test evaluations."""
+
+    top_stem = f"{summary_stem}_top_{requested_top_n}"
+    rows = []
+    for item in evaluated:
+        trial = item["trial"]
+        final_result = item["final_result"]
+        rows.append(
+            {
+                "role": role,
+                "study_name": study_result.study_name,
+                "trial_number": trial["trial_number"],
+                "hpo_value": optional_number(trial["value"]),
+                "params": json.dumps(trial["params"], sort_keys=True),
+                "summary_stem": item["summary_stem"],
+                "final_log_dir": str(final_result.log_dir),
+                "final_metrics_csv": str(final_result.metrics_csv),
+                "final_train_loss": optional_number(final_result.final_train_loss),
+                "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
+                "epoch0_test_mean_average_precision_at_r": optional_number(
+                    final_result.epoch0_test_mean_average_precision_at_r
+                ),
+                "test_precision_at_1": optional_number(final_result.test_precision_at_1),
+                "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+                "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
+                "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
+                "selected_epoch": final_result.selected_epoch,
+                "global_step": final_result.global_step,
+            }
+        )
+
+    write_json(
+        study_result.study_dir / f"{top_stem}.json",
+        {
+            "role": role,
+            "study": hparam_study_result_to_dict(study_result),
+            "requested_top_n": requested_top_n,
+            "evaluations": [
+                {
+                    "trial": item["trial"],
+                    "summary_stem": item["summary_stem"],
+                    "final_result": result_to_dict(item["final_result"]),
+                }
+                for item in evaluated
+            ],
+        },
+    )
+    csv_path = study_result.study_dir / f"{top_stem}.csv"
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    logger.info(f"Top-{requested_top_n} final HPO test evaluation summary written to {study_result.study_dir}")
+
+def write_hparam_selected_final_evaluation_summary(study_result, evaluated, role, trial_numbers, summary_stem):
+    """Write one summary for explicitly selected final-test evaluations."""
+
+    selected_stem = f"{summary_stem}_selected_trials"
+    rows = []
+    for item in evaluated:
+        trial = item["trial"]
+        final_result = item["final_result"]
+        rows.append(
+            {
+                "role": role,
+                "study_name": study_result.study_name,
+                "trial_number": trial["trial_number"],
+                "hpo_value": optional_number(trial["value"]),
+                "params": json.dumps(trial["params"], sort_keys=True),
+                "summary_stem": item["summary_stem"],
+                "final_log_dir": str(final_result.log_dir),
+                "final_metrics_csv": str(final_result.metrics_csv),
+                "final_train_loss": optional_number(final_result.final_train_loss),
+                "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
+                "epoch0_test_mean_average_precision_at_r": optional_number(
+                    final_result.epoch0_test_mean_average_precision_at_r
+                ),
+                "test_precision_at_1": optional_number(final_result.test_precision_at_1),
+                "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+                "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
+                "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
+                "selected_epoch": final_result.selected_epoch,
+                "global_step": final_result.global_step,
+            }
+        )
+
+    write_json(
+        study_result.study_dir / f"{selected_stem}.json",
+        {
+            "role": role,
+            "study": hparam_study_result_to_dict(study_result),
+            "trial_numbers": trial_numbers,
+            "evaluations": [
+                {
+                    "trial": item["trial"],
+                    "summary_stem": item["summary_stem"],
+                    "final_result": result_to_dict(item["final_result"]),
+                }
+                for item in evaluated
+            ],
+        },
+    )
+    csv_path = study_result.study_dir / f"{selected_stem}.csv"
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    logger.info(f"Selected-trial final HPO test evaluation summary written to {study_result.study_dir}")
 
 def write_comparison_summary(
     comparison_dir,
@@ -897,6 +1269,14 @@ def write_comparison_summary(
 
 def make_comparison_deltas(supervised_final, ssl_final):
     return {
+        "epoch0_test_precision_at_1": subtract_optional(
+            ssl_final.epoch0_test_precision_at_1,
+            supervised_final.epoch0_test_precision_at_1,
+        ),
+        "epoch0_test_mean_average_precision_at_r": subtract_optional(
+            ssl_final.epoch0_test_mean_average_precision_at_r,
+            supervised_final.epoch0_test_mean_average_precision_at_r,
+        ),
         "test_precision_at_1": subtract_optional(
             ssl_final.test_precision_at_1,
             supervised_final.test_precision_at_1,
@@ -925,10 +1305,18 @@ def make_comparison_row(method, study_result, final_result):
         "final_log_dir": str(final_result.log_dir),
         "best_valid_precision_at_1": final_result.best_valid_precision_at_1,
         "best_valid_mean_average_precision_at_r": final_result.best_valid_mean_average_precision_at_r,
+        "epoch0_test_precision_at_1": ""
+        if final_result.epoch0_test_precision_at_1 is None
+        else final_result.epoch0_test_precision_at_1,
+        "epoch0_test_mean_average_precision_at_r": ""
+        if final_result.epoch0_test_mean_average_precision_at_r is None
+        else final_result.epoch0_test_mean_average_precision_at_r,
         "test_precision_at_1": "" if final_result.test_precision_at_1 is None else final_result.test_precision_at_1,
         "test_mean_average_precision_at_r": ""
         if final_result.test_mean_average_precision_at_r is None
         else final_result.test_mean_average_precision_at_r,
+        "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
+        "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
         "final_training_epochs": max(0, final_result.last_epoch + 1),
         "selected_epoch": final_result.selected_epoch,
         "last_epoch": final_result.last_epoch,
@@ -950,6 +1338,7 @@ def hparam_study_result_to_dict(result):
         "best_value": result.best_value,
         "best_params": result.best_params,
         "best_user_attrs": result.best_user_attrs,
+        "completed_trials": result.completed_trials,
     }
 
 def comparison_scenario_to_dict(scenario):
@@ -957,7 +1346,11 @@ def comparison_scenario_to_dict(scenario):
         "name": scenario.name,
         "labeled_fraction": scenario.labeled_fraction,
         "labeled_per_class": scenario.labeled_per_class,
-        "seed": scenario.seed,
+        "comparison_seed": scenario.seed,
+        "run_seed": scenario.run_seed,
+        "data_split_seed": scenario.data_split_seed,
+        "support_seed": scenario.support_seed,
+        "hparam_seed": scenario.hparam_seed,
         "label_sampling_mode": scenario.label_sampling_mode,
         "loss": scenario.loss,
         "miner": scenario.miner,
@@ -1028,7 +1421,11 @@ def make_single_method_grid_summary_row(grid_result):
         "labeled_per_class": "" if scenario.labeled_per_class is None else scenario.labeled_per_class,
         "loss": scenario.loss,
         "miner": scenario.miner,
-        "seed": scenario.seed,
+        "comparison_seed": scenario.seed,
+        "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
+        "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
+        "support_seed": "" if scenario.support_seed is None else scenario.support_seed,
+        "hparam_seed": "" if scenario.hparam_seed is None else scenario.hparam_seed,
         "best_trial_number": "",
         "best_hpo_value": "",
         "log_dir": "",
@@ -1037,6 +1434,10 @@ def make_single_method_grid_summary_row(grid_result):
         "best_valid_mean_average_precision_at_r": "",
         "test_precision_at_1": "",
         "test_mean_average_precision_at_r": "",
+        "test_pacmap_coordinates": "",
+        "test_pacmap_plot": "",
+        "epoch0_test_precision_at_1": "",
+        "epoch0_test_mean_average_precision_at_r": "",
         "final_train_loss": "",
         "final_training_epochs": "",
         "selected_epoch": "",
@@ -1063,8 +1464,14 @@ def make_single_method_grid_summary_row(grid_result):
                 {
                     "log_dir": str(result.log_dir),
                     "metrics_csv": str(result.metrics_csv),
+                    "epoch0_test_precision_at_1": optional_number(result.epoch0_test_precision_at_1),
+                    "epoch0_test_mean_average_precision_at_r": optional_number(
+                        result.epoch0_test_mean_average_precision_at_r
+                    ),
                     "test_precision_at_1": optional_number(result.test_precision_at_1),
                     "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
+                    "test_pacmap_coordinates": optional_path(result.test_pacmap_coordinates),
+                    "test_pacmap_plot": optional_path(result.test_pacmap_plot),
                     "final_train_loss": optional_number(result.final_train_loss),
                     "final_training_epochs": max(0, result.last_epoch + 1),
                     "selected_epoch": result.selected_epoch,
@@ -1078,8 +1485,14 @@ def make_single_method_grid_summary_row(grid_result):
                 "metrics_csv": str(result.metrics_csv),
                 "best_valid_precision_at_1": result.best_valid_precision_at_1,
                 "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
+                "epoch0_test_precision_at_1": optional_number(result.epoch0_test_precision_at_1),
+                "epoch0_test_mean_average_precision_at_r": optional_number(
+                    result.epoch0_test_mean_average_precision_at_r
+                ),
                 "test_precision_at_1": optional_number(result.test_precision_at_1),
                 "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
+                "test_pacmap_coordinates": optional_path(result.test_pacmap_coordinates),
+                "test_pacmap_plot": optional_path(result.test_pacmap_plot),
                 "final_train_loss": optional_number(result.final_train_loss),
                 "final_training_epochs": max(0, result.last_epoch + 1),
                 "selected_epoch": result.selected_epoch,
@@ -1101,6 +1514,8 @@ def make_single_method_grid_aggregate_rows(rows):
         "best_hpo_value",
         "best_valid_precision_at_1",
         "best_valid_mean_average_precision_at_r",
+        "epoch0_test_precision_at_1",
+        "epoch0_test_mean_average_precision_at_r",
         "test_precision_at_1",
         "test_mean_average_precision_at_r",
         "final_train_loss",
@@ -1142,8 +1557,24 @@ def make_grid_summary_row(result):
         "labeled_per_class": "" if scenario.labeled_per_class is None else scenario.labeled_per_class,
         "loss": scenario.loss,
         "miner": scenario.miner,
-        "seed": scenario.seed,
+        "comparison_seed": scenario.seed,
+        "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
+        "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
+        "support_seed": "" if scenario.support_seed is None else scenario.support_seed,
+        "hparam_seed": "" if scenario.hparam_seed is None else scenario.hparam_seed,
         "comparison_dir": str(result["comparison_dir"]),
+        "supervised_epoch0_test_precision_at_1": optional_number(supervised_final.epoch0_test_precision_at_1),
+        "ssl_epoch0_test_precision_at_1": optional_number(ssl_final.epoch0_test_precision_at_1),
+        "delta_epoch0_test_precision_at_1": optional_number(deltas["epoch0_test_precision_at_1"]),
+        "supervised_epoch0_test_mean_average_precision_at_r": optional_number(
+            supervised_final.epoch0_test_mean_average_precision_at_r
+        ),
+        "ssl_epoch0_test_mean_average_precision_at_r": optional_number(
+            ssl_final.epoch0_test_mean_average_precision_at_r
+        ),
+        "delta_epoch0_test_mean_average_precision_at_r": optional_number(
+            deltas["epoch0_test_mean_average_precision_at_r"]
+        ),
         "supervised_test_precision_at_1": optional_number(supervised_final.test_precision_at_1),
         "ssl_test_precision_at_1": optional_number(ssl_final.test_precision_at_1),
         "delta_test_precision_at_1": optional_number(deltas["test_precision_at_1"]),
@@ -1152,6 +1583,10 @@ def make_grid_summary_row(result):
         ),
         "ssl_test_mean_average_precision_at_r": optional_number(ssl_final.test_mean_average_precision_at_r),
         "delta_test_mean_average_precision_at_r": optional_number(deltas["test_mean_average_precision_at_r"]),
+        "supervised_test_pacmap_coordinates": optional_path(supervised_final.test_pacmap_coordinates),
+        "supervised_test_pacmap_plot": optional_path(supervised_final.test_pacmap_plot),
+        "ssl_test_pacmap_coordinates": optional_path(ssl_final.test_pacmap_coordinates),
+        "ssl_test_pacmap_plot": optional_path(ssl_final.test_pacmap_plot),
         "supervised_best_valid_precision_at_1": supervised_final.best_valid_precision_at_1,
         "ssl_best_valid_precision_at_1": ssl_final.best_valid_precision_at_1,
         "delta_best_valid_precision_at_1": optional_number(deltas["best_valid_precision_at_1"]),
@@ -1165,6 +1600,12 @@ def make_grid_summary_row(result):
 def make_grid_aggregate_rows(rows):
     group_keys = ["label_sampling_mode", "labeled_fraction", "labeled_per_class", "loss", "miner"]
     metric_names = [
+        "supervised_epoch0_test_precision_at_1",
+        "ssl_epoch0_test_precision_at_1",
+        "delta_epoch0_test_precision_at_1",
+        "supervised_epoch0_test_mean_average_precision_at_r",
+        "ssl_epoch0_test_mean_average_precision_at_r",
+        "delta_epoch0_test_mean_average_precision_at_r",
         "supervised_test_precision_at_1",
         "ssl_test_precision_at_1",
         "delta_test_precision_at_1",
@@ -1210,6 +1651,10 @@ def mean_std(values):
 
 def optional_number(value):
     return "" if value is None else value
+
+
+def optional_path(value):
+    return "" if value is None else str(value)
 
 
 if __name__ == "__main__":

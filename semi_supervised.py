@@ -13,6 +13,7 @@ dataset, not indices in the original source dataset.
 import copy
 import json
 import math
+import time
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -38,8 +39,36 @@ import metric_losses
 
 UNLABELED_TARGET = -1
 UPDATE_MODES = {"once", "every_epoch"}
-LABEL_SAMPLING_MODES = {"per_class_min", "global_budget", "class_subset", "class_subset_k_shot"}
+PSEUDO_LABEL_DIAGNOSTICS_MODES = {"off", "log", "save"}
+LABEL_SAMPLING_MODES = {
+    "per_class_min",
+    "per_class_imbalanced",
+    "global_budget",
+    "class_subset",
+    "class_subset_k_shot",
+}
 LOSS_DRIVEN_METHODS = {"stml"}
+DEFAULT_SUPPORT_SEED = 7
+
+
+def _sync_timing_device(device):
+    if torch.device(device).type == "cuda":
+        torch.cuda.synchronize()
+
+
+def _timing_now(device):
+    _sync_timing_device(device)
+    return time.perf_counter()
+
+
+def _timing_start(device, timings):
+    return _timing_now(device) if timings is not None else None
+
+
+def _record_timing(timings, name, start, device):
+    if timings is None or start is None:
+        return
+    timings[name] = timings.get(name, 0.0) + (_timing_now(device) - start)
 
 
 @dataclass(frozen=True)
@@ -53,7 +82,9 @@ class SemiSupervisedConfig:
     labeled_fraction: float = 1.0
     labeled_per_class: int | None = None
     seed: int | None = None
+    support_seed: int | None = DEFAULT_SUPPORT_SEED
     confidence_threshold: float = 0.0
+    pseudo_label_diagnostics_mode: str = "save"
     max_unlabeled_samples: int | None = None
     embedding_batch_size: int = 32
     embedding_num_workers: int = 8
@@ -85,10 +116,15 @@ class PseudoLabelResult:
 
 
 class PseudoLabelDiagnosticsTracker:
-    """Persist pseudo-label quality, distribution, and stability diagnostics."""
+    """Track pseudo-label quality, distribution, and stability diagnostics."""
 
-    def __init__(self, log_dir):
-        self.path = Path(log_dir) / "pseudo_label_diagnostics.jsonl"
+    def __init__(self, log_dir, mode="save"):
+        if mode not in PSEUDO_LABEL_DIAGNOSTICS_MODES - {"off"}:
+            raise ValueError(
+                f"pseudo-label diagnostics mode must be one of {sorted(PSEUDO_LABEL_DIAGNOSTICS_MODES - {'off'})}"
+            )
+        self.mode = mode
+        self.path = Path(log_dir) / "pseudo_label_diagnostics.jsonl" if mode == "save" else None
         self.previous_raw = None
         self.previous_accepted = None
         self.generation_index = 0
@@ -111,8 +147,9 @@ class PseudoLabelDiagnosticsTracker:
             "accepted_changes_from_previous_generation": accepted_changes,
             "audit_note": "Hidden labels are used only for post-prediction diagnostics, never for pseudo-label generation.",
         }
-        with self.path.open("a") as jsonl_file:
-            jsonl_file.write(json.dumps(record, sort_keys=True) + "\n")
+        if self.path is not None:
+            with self.path.open("a") as jsonl_file:
+                jsonl_file.write(json.dumps(record, sort_keys=True) + "\n")
 
         logger.info(
             "Pseudo-label diagnostics: "
@@ -220,25 +257,29 @@ class BaseSemiSupervisedMethod:
 
 
 class CombinedTrainingLoader:
-    """Pair every regularizer batch with a labeled supervised batch."""
+    """Pair every supervised batch with one regularizer batch."""
 
     def __init__(self, supervised_loader, regularizer_loader):
         if len(supervised_loader) == 0:
             raise ValueError("regularized training requires at least one supervised batch")
+        if len(regularizer_loader) == 0:
+            raise ValueError("regularized training requires at least one regularizer batch")
         self.supervised_loader = supervised_loader
         self.regularizer_loader = regularizer_loader
 
     def __len__(self):
-        return len(self.regularizer_loader)
+        return len(self.supervised_loader)
 
     def __iter__(self):
-        supervised_iterator = iter(self.supervised_loader)
-        for regularizer_batch in self.regularizer_loader:
+        regularizer_iterator = iter(self.regularizer_loader)
+
+        for supervised_batch in self.supervised_loader:
             try:
-                supervised_batch = next(supervised_iterator)
+                regularizer_batch = next(regularizer_iterator)
             except StopIteration:
-                supervised_iterator = iter(self.supervised_loader)
-                supervised_batch = next(supervised_iterator)
+                regularizer_iterator = iter(self.regularizer_loader)
+                regularizer_batch = next(regularizer_iterator)
+
             yield supervised_batch, regularizer_batch
 
 
@@ -282,6 +323,56 @@ class LRMLGraphBatchSampler(torch.utils.data.Sampler):
 
     def __len__(self):
         return int(math.ceil(self.num_samples / self.queries_per_batch))
+
+
+class WeightedGraphBatchSampler(torch.utils.data.Sampler):
+    """Sample graph-centered node batches from a weighted symmetric adjacency."""
+
+    def __init__(self, adjacency, batch_size, seed):
+        adjacency = adjacency.tocsr()
+        if adjacency.shape[0] != adjacency.shape[1]:
+            raise ValueError("weighted graph adjacency must be square")
+        if adjacency.shape[0] < 2:
+            raise ValueError("graph regularization requires at least two graph samples")
+        if batch_size < 2:
+            raise ValueError("graph regularization requires batch_size >= 2")
+
+        self.adjacency = adjacency
+        self.num_samples = int(adjacency.shape[0])
+        self.batch_size = int(batch_size)
+        self.generator = utils.make_torch_generator(seed)
+        row_counts = np.diff(adjacency.indptr)
+        self.query_nodes = np.flatnonzero(row_counts > 0).astype(np.int64)
+        if len(self.query_nodes) == 0:
+            raise ValueError("graph regularization requires at least one edge")
+
+    def __iter__(self):
+        query_order = torch.randperm(len(self.query_nodes), generator=self.generator)
+        max_neighbors = self.batch_size - 1
+        for order_index in query_order.tolist():
+            query = int(self.query_nodes[order_index])
+            start = int(self.adjacency.indptr[query])
+            end = int(self.adjacency.indptr[query + 1])
+            neighbors = self.adjacency.indices[start:end]
+            if len(neighbors) > max_neighbors:
+                selected_offsets = torch.randperm(len(neighbors), generator=self.generator)[:max_neighbors].numpy()
+                selected_neighbors = neighbors[selected_offsets]
+            else:
+                selected_offsets = torch.randperm(len(neighbors), generator=self.generator).numpy()
+                selected_neighbors = neighbors[selected_offsets]
+
+            batch_indices = [query]
+            seen = {query}
+            for neighbor in selected_neighbors.tolist():
+                neighbor = int(neighbor)
+                if neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                batch_indices.append(neighbor)
+            yield batch_indices
+
+    def __len__(self):
+        return int(len(self.query_nodes))
 
 
 class BaseTrainingRegularizer:
@@ -333,7 +424,7 @@ class BaseTrainingRegularizer:
             + self.regularizer_weight * regularization_loss
         )
 
-    def compute_loss(self, student_model, state, batch, device):
+    def compute_loss(self, student_model, state, batch, device, timings=None):
         raise NotImplementedError
 
     def after_optimizer_step(self, student_model, state):
@@ -370,9 +461,11 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         "normalized_laplacian": True, # paper adopts the normalized Laplacian in practice
         "normalize_embeddings": True, # DML standard; keeps the energy bounded
         "graph_on": "all",            # "all" (labeled + unlabeled) or "unlabeled"
+        "graph_update_mode": "every_epoch",
         "reduction": "mean",          # "mean" over intra-batch edges, or "sum"
     }
     GRAPH_ON_CHOICES = {"all", "unlabeled"}
+    GRAPH_UPDATE_MODE_CHOICES = {"once", "every_epoch"}
     REDUCTION_CHOICES = {"mean", "sum"}
 
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
@@ -390,13 +483,20 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self.graph_on = str(merged["graph_on"])
         if self.graph_on not in self.GRAPH_ON_CHOICES:
             raise ValueError(f"lrml graph_on must be one of {sorted(self.GRAPH_ON_CHOICES)}")
+        self.graph_update_mode = str(merged["graph_update_mode"])
+        if self.graph_update_mode not in self.GRAPH_UPDATE_MODE_CHOICES:
+            raise ValueError(
+                f"lrml graph_update_mode must be one of {sorted(self.GRAPH_UPDATE_MODE_CHOICES)}"
+            )
         self.reduction = str(merged["reduction"])
         if self.reduction not in self.REDUCTION_CHOICES:
             raise ValueError(f"lrml reduction must be one of {sorted(self.REDUCTION_CHOICES)}")
 
         self.dataset = None
         self.graph_positions = None
+        self.neighbor_indices = None
         self.adjacency = None   # scipy CSR, symmetric binary W
+        self.degrees = None
         self.node_scale = None  # torch tensor, 1/sqrt(deg) or ones
 
     def validate_run_args(self, args):
@@ -418,6 +518,10 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             raise ValueError("LRML regularization requires at least two graph samples")
         self.graph_positions = positions
         self.dataset = LRMLGraphDataset(train_dataset, positions)
+        self.neighbor_indices = None
+        self.adjacency = None
+        self.degrees = None
+        self.node_scale = None
         return self.dataset
 
     def make_loader(
@@ -427,47 +531,64 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         if self.dataset is None or self.graph_positions is None:
             raise RuntimeError("build_dataset must be called before make_loader")
 
-        embeddings = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=self.graph_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=seed,
-            start_method=start_method,
-            desc=f"LRML graph embeddings - epoch {epoch}",
-            embedding_kind="default",
+        has_cached_graph = (
+            self.neighbor_indices is not None
+            and self.adjacency is not None
+            and self.degrees is not None
+            and self.node_scale is not None
         )
+        if self.graph_update_mode == "once" and has_cached_graph:
+            self.node_scale = self.node_scale.to(device)
+            logger.info(
+                "Reusing LRML graph: "
+                f"{self.adjacency.shape[0]} nodes, {self.adjacency.nnz // 2} undirected edges, "
+                f"mean_degree={float(self.degrees.mean()):.2f}, "
+                f"normalized_laplacian={self.normalized_laplacian}"
+            )
+        else:
+            embeddings = extract_embeddings(
+                model=model,
+                dataset=train_dataset,
+                positions=self.graph_positions,
+                device=device,
+                batch_size=config.embedding_batch_size,
+                num_workers=config.embedding_num_workers,
+                seed=seed,
+                start_method=start_method,
+                desc=f"LRML graph embeddings - epoch {epoch}",
+                embedding_kind="default",
+            )
 
-        neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
-            embeddings, n_neighbors=self.n_neighbors, normalize=self.normalize_embeddings,
-        )
-        self.adjacency = adjacency
-        scale = (
-            1.0 / np.sqrt(np.maximum(degrees, 1.0))
-            if self.normalized_laplacian
-            else np.ones(len(degrees), dtype=np.float64)
-        )
-        self.node_scale = torch.as_tensor(scale, dtype=torch.float32, device=device)
+            neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
+                embeddings, n_neighbors=self.n_neighbors, normalize=self.normalize_embeddings,
+            )
+            self.neighbor_indices = neighbor_indices
+            self.adjacency = adjacency
+            self.degrees = degrees
+            scale = (
+                1.0 / np.sqrt(np.maximum(degrees, 1.0))
+                if self.normalized_laplacian
+                else np.ones(len(degrees), dtype=np.float64)
+            )
+            self.node_scale = torch.as_tensor(scale, dtype=torch.float32, device=device)
+            logger.info(
+                "Built LRML graph: "
+                f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected edges, "
+                f"mean_degree={float(degrees.mean()):.2f}, "
+                f"normalized_laplacian={self.normalized_laplacian}"
+            )
 
         sampler = LRMLGraphBatchSampler(
-            neighbor_indices=neighbor_indices, batch_size=batch_size, seed=seed,
+            neighbor_indices=self.neighbor_indices, batch_size=batch_size, seed=seed,
         )
         regularizer_loader = DataLoader(
             self.dataset,
             batch_sampler=sampler,
             **utils.make_dataloader_kwargs(num_workers, seed, start_method),
         )
-        logger.info(
-            "Built LRML graph: "
-            f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected edges, "
-            f"mean_degree={float(degrees.mean()):.2f}, "
-            f"normalized_laplacian={self.normalized_laplacian}"
-        )
         return CombinedTrainingLoader(supervised_loader, regularizer_loader)
 
-    def compute_loss(self, student_model, state, batch, device):
+    def compute_loss(self, student_model, state, batch, device, timings=None):
         images, node_ids = batch
         embeddings = student_model(images.to(device))
         if self.normalize_embeddings:
@@ -487,6 +608,171 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         squared_distances = (differences * differences).sum(dim=1)
         energy = (edge_weight * squared_distances).sum()
         return energy / float(len(rows)) if self.reduction == "mean" else energy
+
+
+class SLRMMLRegularizer(BaseTrainingRegularizer):
+    """Deep single-modality SLRMML/SLRML graph regularizer.
+
+    The paper's linear projection ``U^T x`` is replaced by the network embedding
+    ``f(x)``.  The regularizer therefore evaluates
+
+        tr(Z^T L^s Z) = sum_{i<j} W^s_ij ||z_i - z_j||^2
+
+    on mini-batches induced from the semisupervised graph.  ``W^u`` is the
+    symmetrized kNN graph with edge weight ``1/N_k``.  ``W^l`` connects only the
+    known labeled samples from the SSL split when their labels match, with edge
+    weight ``1/(2N_S)``.  Unlabeled labels remain hidden and contribute only
+    through ``W^u``.
+    """
+
+    name = "slrmml"
+
+    DEFAULT_PARAMS = {
+        "n_neighbors": 6,
+        "normalize_embeddings": True,
+        "reduction": "mean",
+    }
+    REDUCTION_CHOICES = {"mean", "sum"}
+
+    def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
+        super().__init__(regularizer_weight=regularizer_weight, supervised_weight=supervised_weight)
+        unknown = sorted(set(params) - set(self.DEFAULT_PARAMS))
+        if unknown:
+            raise ValueError(f"Unknown slrmml regularizer_params: {unknown}")
+        merged = {**self.DEFAULT_PARAMS, **params}
+
+        self.n_neighbors = int(merged["n_neighbors"])
+        if self.n_neighbors <= 0:
+            raise ValueError("slrmml n_neighbors must be positive")
+        self.normalize_embeddings = bool(merged["normalize_embeddings"])
+        self.reduction = str(merged["reduction"])
+        if self.reduction not in self.REDUCTION_CHOICES:
+            raise ValueError(f"slrmml reduction must be one of {sorted(self.REDUCTION_CHOICES)}")
+
+        self.dataset = None
+        self.graph_positions = None
+        self.graph_labels = None
+        self.adjacency = None
+        self.positive_pair_count = 0
+
+    def validate_run_args(self, args):
+        if args.batch_size < 2:
+            raise ValueError("SLRMML regularization requires batch_size >= 2")
+        if getattr(args, "use_cache", False):
+            raise ValueError(
+                "SLRMML regularization augments graph nodes per step and cannot use "
+                "backbone caching; set use_cache=False"
+            )
+
+    def build_dataset(self, train_dataset, split):
+        positions = np.unique(
+            np.concatenate([split.labeled_positions, split.unlabeled_positions]).astype(np.int64)
+        )
+        if len(positions) < 2:
+            raise ValueError("SLRMML regularization requires at least two graph samples")
+        self.graph_positions = positions
+        self.graph_labels = make_slrmml_graph_labels(
+            train_dataset=train_dataset,
+            graph_positions=positions,
+            labeled_positions=split.labeled_positions,
+        )
+        self.dataset = LRMLGraphDataset(train_dataset, positions)
+        return self.dataset
+
+    def make_loader(
+        self, model, train_dataset, supervised_loader, device, config,
+        batch_size, seed, num_workers, start_method, epoch,
+    ):
+        if self.dataset is None or self.graph_positions is None or self.graph_labels is None:
+            raise RuntimeError("build_dataset must be called before make_loader")
+
+        total_start = time.perf_counter()
+        embeddings_start = time.perf_counter()
+        embeddings = extract_embeddings(
+            model=model,
+            dataset=train_dataset,
+            positions=self.graph_positions,
+            device=device,
+            batch_size=config.embedding_batch_size,
+            num_workers=config.embedding_num_workers,
+            seed=seed,
+            start_method=start_method,
+            desc=f"SLRMML graph embeddings - epoch {epoch}",
+            embedding_kind="default",
+        )
+        embeddings_seconds = time.perf_counter() - embeddings_start
+
+        graph_start = time.perf_counter()
+        _, adjacency, degrees, positive_pair_count = build_slrmml_semisupervised_graph(
+            embeddings=embeddings,
+            labels=self.graph_labels,
+            n_neighbors=self.n_neighbors,
+            normalize=self.normalize_embeddings,
+        )
+        graph_seconds = time.perf_counter() - graph_start
+        self.adjacency = adjacency
+        self.positive_pair_count = positive_pair_count
+
+        loader_start = time.perf_counter()
+        sampler = WeightedGraphBatchSampler(
+            adjacency=adjacency,
+            batch_size=batch_size,
+            seed=seed,
+        )
+        regularizer_loader = DataLoader(
+            self.dataset,
+            batch_sampler=sampler,
+            **utils.make_dataloader_kwargs(num_workers, seed, start_method),
+        )
+        loader_seconds = time.perf_counter() - loader_start
+        total_seconds = time.perf_counter() - total_start
+        logger.info(
+            "Built SLRMML graph: "
+            f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected weighted edges, "
+            f"mean_degree={float(degrees.mean()):.4f}, "
+            f"positive_pairs={positive_pair_count}, "
+            f"n_neighbors={self.n_neighbors}, "
+            f"timing_embeddings={embeddings_seconds:.4f}s, "
+            f"timing_graph={graph_seconds:.4f}s, "
+            f"timing_loader={loader_seconds:.4f}s, "
+            f"timing_total={total_seconds:.4f}s"
+        )
+        return CombinedTrainingLoader(supervised_loader, regularizer_loader)
+
+    def compute_loss(self, student_model, state, batch, device, timings=None):
+        images, node_ids = batch
+
+        t0 = _timing_start(device, timings)
+        embeddings = student_model(images.to(device))
+        _record_timing(timings, "slrmml_forward", t0, device)
+
+        if self.normalize_embeddings:
+            t0 = _timing_start(device, timings)
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+            _record_timing(timings, "slrmml_normalize", t0, device)
+
+        t0 = _timing_start(device, timings)
+        rows, cols, weights = induced_subgraph_edges(self.adjacency, node_ids.numpy())
+        _record_timing(timings, "slrmml_subgraph_edges", t0, device)
+        if len(rows) == 0:
+            t0 = _timing_start(device, timings)
+            zero_loss = embeddings.sum() * 0.0
+            _record_timing(timings, "slrmml_zero_loss", t0, device)
+            return zero_loss
+
+        t0 = _timing_start(device, timings)
+        row_index = torch.as_tensor(rows, dtype=torch.long, device=device)
+        col_index = torch.as_tensor(cols, dtype=torch.long, device=device)
+        edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device)
+        _record_timing(timings, "slrmml_tensor_prep", t0, device)
+
+        t0 = _timing_start(device, timings)
+        differences = embeddings[row_index] - embeddings[col_index]
+        squared_distances = (differences * differences).sum(dim=1)
+        energy = (edge_weight * squared_distances).sum()
+        loss = energy / float(len(rows)) if self.reduction == "mean" else energy
+        _record_timing(timings, "slrmml_energy", t0, device)
+        return loss
 
 class STMLRegularizer(BaseTrainingRegularizer):
     """Use the existing STML objective as an unlabeled regularization term."""
@@ -586,7 +872,7 @@ class STMLRegularizer(BaseTrainingRegularizer):
         logger.info("Initialized STML EMA teacher from the supervised student")
         return teacher_model.to(device)
 
-    def compute_loss(self, student_model, teacher_model, batch, device):
+    def compute_loss(self, student_model, teacher_model, batch, device, timings=None):
         images, _, instance_ids = batch
         if not isinstance(images, (list, tuple)) or len(images) != self.num_views:
             raise ValueError(f"STML batches must contain {self.num_views} augmented views per sample")
@@ -855,6 +1141,7 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
         "cg_rtol": 1e-5,
         "cg_max_iter": 1000,
         "edge_batch_size": 65536,
+        "linear_solver": "auto",
     }
 
     def __init__(self, name="mixed_label_propagation"):
@@ -895,15 +1182,15 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
             ]
         )
         num_classes = int(labels.max()) + 1
-        probabilities, confidences = mixed_label_propagation(
+        normalized_scores, confidences = mixed_label_propagation(
             features=features,
             targets=targets,
             num_classes=num_classes,
             **params,
         )
         unlabeled_start = len(split.labeled_positions)
-        unlabeled_probabilities = probabilities[unlabeled_start:]
-        pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
+        unlabeled_scores = normalized_scores[unlabeled_start:]
+        pseudo_labels = np.argmax(unlabeled_scores, axis=1).astype(np.int64)
         unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
         logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(unlabeled_confidences)}")
         return PseudoLabelResult(
@@ -926,6 +1213,8 @@ def validate_mixed_label_propagation_params(params):
         raise ValueError("mixed_label_propagation cg_max_iter must be positive")
     if int(params["edge_batch_size"]) <= 0:
         raise ValueError("mixed_label_propagation edge_batch_size must be positive")
+    if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
+        raise ValueError("mixed_label_propagation linear_solver must be one of ['auto', 'cholmod', 'cg']")
 
 
 def mixed_label_propagation(
@@ -940,8 +1229,9 @@ def mixed_label_propagation(
     cg_rtol=1e-5,
     cg_max_iter=1000,
     edge_batch_size=65536,
+    linear_solver="auto",
 ):
-    """Run equations (14)-(24) and return mixed-LP probabilities/confidences."""
+    """Run equations (14)-(24) and return mixed-LP scores/confidences."""
 
     features = np.asarray(features, dtype=np.float32)
     targets = np.asarray(targets, dtype=np.int64)
@@ -972,6 +1262,7 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="initial label propagation",
+        solver=str(linear_solver),
     )
 
     dissimilarity = make_dissimilarity_affinity(
@@ -996,10 +1287,12 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="mixed label propagation",
+        solver=str(linear_solver),
     )
-    probabilities = normalize_mixed_label_rows(mixed_labels)
-    confidences = entropy_confidence(probabilities)
-    return probabilities.astype(np.float32), confidences.astype(np.float32)
+    normalized_scores = normalize_mixed_label_rows(mixed_labels)
+    confidence_probabilities = mixed_label_confidence_probabilities(normalized_scores)
+    confidences = entropy_confidence(confidence_probabilities)
+    return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
 def build_lrml_knn_graph(embeddings, n_neighbors, normalize):
     """Build the paper's binary symmetric kNN graph (the W_ij definition) with FAISS.
@@ -1059,6 +1352,95 @@ def build_lrml_knn_graph(embeddings, n_neighbors, normalize):
     symmetric.eliminate_zeros()
     degrees = np.asarray(symmetric.sum(axis=1), dtype=np.float64).ravel()
     return neighbor_indices, symmetric, degrees
+
+
+def make_slrmml_graph_labels(train_dataset, graph_positions, labeled_positions):
+    """Return graph-node labels with unlabeled nodes masked as unknown."""
+
+    dataset_labels = np.asarray(train_dataset.labels, dtype=np.int64)
+    graph_positions = np.asarray(graph_positions, dtype=np.int64)
+    labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
+    if len(dataset_labels) < len(train_dataset):
+        raise ValueError("SLRMML requires train_dataset.labels to align with train_dataset")
+    graph_labels = np.full(len(graph_positions), UNLABELED_TARGET, dtype=np.int64)
+    if len(labeled_positions) == 0:
+        return graph_labels
+
+    graph_order = {int(position): index for index, position in enumerate(graph_positions.tolist())}
+    for position in labeled_positions.tolist():
+        graph_index = graph_order.get(int(position))
+        if graph_index is None:
+            continue
+        graph_labels[graph_index] = int(dataset_labels[int(position)])
+    return graph_labels
+
+
+def build_slrmml_supervised_graph(labels):
+    """Build SLRMML's supervised same-class adjacency W^l.
+
+    Labels equal to ``UNLABELED_TARGET`` are treated as unknown and receive no
+    supervised edges.  ``N_S`` is the number of unordered positive pairs among
+    known labeled samples.
+    """
+
+    labels = np.asarray(labels, dtype=np.int64)
+    if labels.ndim != 1:
+        raise ValueError("slrmml labels must be a vector")
+
+    row_parts = []
+    col_parts = []
+    positive_pair_count = 0
+    known_labels = labels[labels != UNLABELED_TARGET]
+    for label in np.unique(known_labels):
+        class_indices = np.flatnonzero(labels == int(label)).astype(np.int64)
+        if len(class_indices) < 2:
+            continue
+        local_rows, local_cols = np.triu_indices(len(class_indices), k=1)
+        rows = class_indices[local_rows]
+        cols = class_indices[local_cols]
+        row_parts.append(rows)
+        col_parts.append(cols)
+        positive_pair_count += int(len(rows))
+
+    if positive_pair_count == 0:
+        empty = sparse.csr_matrix((len(labels), len(labels)), dtype=np.float64)
+        return empty, 0
+
+    rows = np.concatenate(row_parts).astype(np.int64)
+    cols = np.concatenate(col_parts).astype(np.int64)
+    weight = 1.0 / (2.0 * float(positive_pair_count))
+    data = np.full(2 * positive_pair_count, weight, dtype=np.float64)
+    supervised = sparse.coo_matrix(
+        (data, (np.concatenate([rows, cols]), np.concatenate([cols, rows]))),
+        shape=(len(labels), len(labels)),
+        dtype=np.float64,
+    ).tocsr()
+    return supervised, positive_pair_count
+
+
+def build_slrmml_semisupervised_graph(embeddings, labels, n_neighbors, normalize):
+    """Build SLRMML's W^s = W^u + W^l graph for one modality."""
+
+    neighbor_indices, unsupervised, _ = build_lrml_knn_graph(
+        embeddings=embeddings,
+        n_neighbors=n_neighbors,
+        normalize=normalize,
+    )
+    actual_neighbors = int(neighbor_indices.shape[1])
+    if actual_neighbors <= 0:
+        raise ValueError("slrmml graph needs at least one neighbor per sample")
+    unsupervised = unsupervised.copy().tocsr()
+    unsupervised.data[:] = 1.0 / float(actual_neighbors)
+
+    supervised, positive_pair_count = build_slrmml_supervised_graph(labels)
+    if supervised.shape != unsupervised.shape:
+        raise ValueError("slrmml labels must be aligned with embeddings")
+
+    semisupervised = (unsupervised + supervised).tocsr()
+    semisupervised.setdiag(0)
+    semisupervised.eliminate_zeros()
+    degrees = np.asarray(semisupervised.sum(axis=1), dtype=np.float64).ravel()
+    return neighbor_indices, semisupervised, degrees, positive_pair_count
 
 
 def induced_subgraph_edges(adjacency, node_ids):
@@ -1192,7 +1574,7 @@ def stable_softmax(values):
 
 
 def normalize_mixed_label_rows(values):
-    """Convert propagated scores to the paper's L1-normalized probabilities."""
+    """Convert propagated scores to the paper's L1-normalized class scores."""
 
     l1_norms = np.linalg.norm(values, ord=1, axis=1, keepdims=True)
     zero_rows = np.flatnonzero(l1_norms.ravel() == 0)
@@ -1202,6 +1584,45 @@ def normalize_mixed_label_rows(values):
             f"as specified by the paper: {zero_rows[:10].tolist()}"
         )
     return values / l1_norms
+
+
+def mixed_label_confidence_probabilities(normalized_scores):
+    """Project signed mixed-LP scores to a simplex before entropy confidence."""
+
+    normalized_scores = np.asarray(normalized_scores, dtype=np.float64)
+    if normalized_scores.ndim != 2:
+        raise ValueError("normalized_scores must be a matrix")
+    if normalized_scores.shape[1] <= 1:
+        return np.ones_like(normalized_scores, dtype=np.float64)
+    if not np.all(np.isfinite(normalized_scores)):
+        raise RuntimeError("Mixed label propagation produced non-finite normalized class scores")
+
+    negative = normalized_scores < 0
+    if np.any(negative):
+        negative_rows = np.flatnonzero(np.any(negative, axis=1))
+        logger.warning(
+            "Mixed label propagation produced signed normalized class scores for "
+            f"{len(negative_rows)} rows; clipping negative mass before entropy confidence "
+            f"(min={float(normalized_scores.min()):.6g})"
+        )
+
+    probabilities = np.clip(normalized_scores, 0.0, None)
+    row_sums = probabilities.sum(axis=1, keepdims=True)
+    zero_rows = np.flatnonzero(row_sums.ravel() == 0)
+    if len(zero_rows) > 0:
+        shifted = normalized_scores[zero_rows] - normalized_scores[zero_rows].min(axis=1, keepdims=True)
+        shifted_sums = shifted.sum(axis=1, keepdims=True)
+        constant_rows = shifted_sums.ravel() == 0
+        if np.any(~constant_rows):
+            valid_rows = zero_rows[~constant_rows]
+            probabilities[valid_rows] = shifted[~constant_rows] / shifted_sums[~constant_rows]
+            row_sums[valid_rows] = 1.0
+        if np.any(constant_rows):
+            uniform_rows = zero_rows[constant_rows]
+            probabilities[uniform_rows] = 1.0 / normalized_scores.shape[1]
+            row_sums[uniform_rows] = 1.0
+
+    return probabilities / row_sums
 
 
 def entropy_confidence(probabilities):
@@ -1248,6 +1669,8 @@ def majority_vote(label_rows):
 REGULARIZER_REGISTRY = {
     "stml": STMLRegularizer,
     "lrml": LRMLRegularizer,
+    "slrmml": SLRMMLRegularizer,
+    "slrml": SLRMMLRegularizer,
 }
 
 
@@ -1272,12 +1695,15 @@ METHOD_REGISTRY = {
 }
 
 
-def load_ssl_config(config_path, default_seed=0):
-    """Load a JSON SSL config and fill in a missing seed from the run seed."""
+def load_ssl_config(config_path, default_seed=0, default_support_seed=None):
+    """Load a JSON SSL config and fill in missing runtime/support seeds."""
+
+    if default_support_seed is None:
+        default_support_seed = DEFAULT_SUPPORT_SEED
 
     if config_path is None:
-        # No config means fully supervised defaults with the run seed attached.
-        return SemiSupervisedConfig(seed=default_seed)
+        # No config means fully supervised defaults with resolved seeds attached.
+        return SemiSupervisedConfig(seed=default_seed, support_seed=default_support_seed)
 
     path = Path(config_path)
     with path.open() as config_file:
@@ -1299,9 +1725,13 @@ def load_ssl_config(config_path, default_seed=0):
     # default.
     config = SemiSupervisedConfig(**raw_config)
     if config.seed is None:
-        # Tie split randomness to the outer run seed unless the SSL config
-        # explicitly asks for a different split seed.
+        # Runtime SSL randomness follows the outer run seed unless the SSL
+        # config explicitly asks for a different seed.
         config = replace(config, seed=default_seed)
+    if "support_seed" not in raw_config or config.support_seed is None:
+        # Labeled support selection has its own seed so run-seed sweeps do not
+        # silently change which samples are labeled.
+        config = replace(config, support_seed=default_support_seed)
     validate_ssl_config(config, path)
     return config
 
@@ -1337,22 +1767,29 @@ def validate_ssl_config(config, path=None):
         )
     if config.seed is None:
         raise ValueError(f"seed must be resolved before validation{source}")
+    if config.support_seed is None:
+        raise ValueError(f"support_seed must be resolved before validation{source}")
     if config.labeled_per_class is None and not (0 < config.labeled_fraction <= 1):
         raise ValueError(f"labeled_fraction must be in (0, 1]{source}")
     if config.labeled_per_class is not None and config.labeled_per_class <= 0:
         raise ValueError(f"labeled_per_class must be positive{source}")
     if config.labeled_per_class is not None and config.label_sampling_mode not in {
         "per_class_min",
+        "per_class_imbalanced",
         "class_subset_k_shot",
     }:
         raise ValueError(
-            f"labeled_per_class is only supported with label_sampling_mode='per_class_min' "
-            f"or 'class_subset_k_shot'{source}"
+            f"labeled_per_class is only supported with label_sampling_mode='per_class_min', "
+            f"'per_class_imbalanced', or 'class_subset_k_shot'{source}"
         )
     if config.label_sampling_mode == "class_subset_k_shot" and config.labeled_per_class is None:
         raise ValueError(f"class_subset_k_shot requires labeled_per_class to set k-shot{source}")
     if not (0 <= config.confidence_threshold <= 1):
         raise ValueError(f"confidence_threshold must be in [0, 1]{source}")
+    if config.pseudo_label_diagnostics_mode not in PSEUDO_LABEL_DIAGNOSTICS_MODES:
+        raise ValueError(
+            f"pseudo_label_diagnostics_mode must be one of {sorted(PSEUDO_LABEL_DIAGNOSTICS_MODES)}{source}"
+        )
     if config.max_unlabeled_samples is not None and config.max_unlabeled_samples <= 0:
         raise ValueError(f"max_unlabeled_samples must be positive{source}")
     if config.embedding_batch_size <= 0:
@@ -1385,6 +1822,17 @@ def is_pseudo_label_method(config):
     return method is not None and method.generates_pseudo_labels
 
 
+def make_pseudo_label_diagnostics_tracker(log_dir, config):
+    if not is_pseudo_label_method(config):
+        return None
+    if config.pseudo_label_diagnostics_mode == "off":
+        return None
+    return PseudoLabelDiagnosticsTracker(
+        log_dir,
+        mode=config.pseudo_label_diagnostics_mode,
+    )
+
+
 def prepare_ssl_split(train_dataset, config):
     """Create the labeled/unlabeled split only when SSL is enabled."""
 
@@ -1407,7 +1855,7 @@ def prepare_label_split(train_dataset, config):
         labeled_fraction=config.labeled_fraction,
         labeled_per_class=config.labeled_per_class,
         max_unlabeled_samples=config.max_unlabeled_samples,
-        seed=config.seed,
+        seed=config.support_seed,
     )
     # Count class coverage after selection because some sampling modes expose
     # only a subset of classes.
@@ -1471,6 +1919,9 @@ def build_ssl_training_dataset(
         epoch=epoch,
         start_method=start_method,
     )
+
+    #### TODO: this is porbably not faithfully implemented. Check this again for e. g. MLPPL
+
     # Filter before merging so low-confidence/invalid predictions never affect
     # sampler class counts or training batches.
     pseudo_labels = filter_pseudo_labels(
@@ -1578,6 +2029,15 @@ def select_labeled_positions(labels, label_sampling_mode, labeled_fraction, labe
             labeled_per_class=labeled_per_class,
             rng=rng,
         )
+    if label_sampling_mode == "per_class_imbalanced":
+        # Keep every class visible, but randomize how much of each class is
+        # labeled while preserving the per_class_min total budget.
+        return select_per_class_imbalanced_labeled_positions(
+            labels=labels,
+            labeled_fraction=labeled_fraction,
+            labeled_per_class=labeled_per_class,
+            rng=rng,
+        )
     if label_sampling_mode == "global_budget":
         # labeled_fraction controls the total number of labeled samples.
         return select_global_budget_labeled_positions(
@@ -1616,6 +2076,12 @@ def make_permuted_positions_by_label(labels, rng):
     return positions_by_label
 
 
+def per_class_min_count(class_size, labeled_fraction, labeled_per_class):
+    if labeled_per_class is None:
+        return max(1, int(round(class_size * labeled_fraction)))
+    return min(int(labeled_per_class), int(class_size))
+
+
 def select_per_class_min_labeled_positions(labels, labeled_fraction, labeled_per_class, rng):
     """Label a fraction or fixed count within every represented class."""
 
@@ -1624,18 +2090,77 @@ def select_per_class_min_labeled_positions(labels, labeled_fraction, labeled_per
     unlabeled_by_label = {}
 
     for label, class_positions in positions_by_label.items():
-        if labeled_per_class is None:
-            # round approximates the requested per-class fraction; max(1, ...)
-            # guarantees every class remains represented in labeled training.
-            num_labeled = max(1, int(round(len(class_positions) * labeled_fraction)))
-        else:
-            # Classes smaller than k contribute all available samples.
-            num_labeled = min(labeled_per_class, len(class_positions))
+        # round approximates the requested per-class fraction; max(1, ...)
+        # guarantees every class remains represented in labeled training.  With
+        # a fixed k, classes smaller than k contribute all available samples.
+        num_labeled = per_class_min_count(
+            class_size=len(class_positions),
+            labeled_fraction=labeled_fraction,
+            labeled_per_class=labeled_per_class,
+        )
 
         # Because class_positions was shuffled, its prefix is a random labeled
         # subset and the suffix is the same class's unlabeled pool.
         labeled_positions.extend(class_positions[:num_labeled])
         unlabeled_by_label[int(label)] = class_positions[num_labeled:]
+
+    return labeled_positions, unlabeled_by_label
+
+
+def select_per_class_imbalanced_labeled_positions(labels, labeled_fraction, labeled_per_class, rng):
+    """Label every class with bounded random skew around per_class_min counts."""
+
+    positions_by_label = make_permuted_positions_by_label(labels, rng)
+    label_order = np.asarray(list(positions_by_label), dtype=np.int64)
+    baseline_counts = np.asarray(
+        [
+            per_class_min_count(
+                class_size=len(positions_by_label[int(label)]),
+                labeled_fraction=labeled_fraction,
+                labeled_per_class=labeled_per_class,
+            )
+            for label in label_order
+        ],
+        dtype=np.int64,
+    )
+    class_sizes = np.asarray(
+        [len(positions_by_label[int(label)]) for label in label_order],
+        dtype=np.int64,
+    )
+    total_labeled = int(baseline_counts.sum())
+    lower_counts = np.maximum(1, np.floor(0.5 * baseline_counts).astype(np.int64))
+    upper_counts = np.minimum(class_sizes, np.ceil(2.0 * baseline_counts).astype(np.int64))
+    selected_counts = lower_counts.copy()
+    capacities = upper_counts - selected_counts
+    remaining = int(total_labeled - selected_counts.sum())
+    random_weights = baseline_counts.astype(np.float64) * rng.lognormal(
+        mean=0.0,
+        sigma=0.6,
+        size=len(label_order),
+    )
+
+    while remaining > 0 and np.any(capacities > 0):
+        active_indices = np.flatnonzero(capacities > 0)
+        active_weights = random_weights[active_indices]
+        if not np.isfinite(active_weights).all() or active_weights.sum() <= 0:
+            active_weights = np.ones(len(active_indices), dtype=np.float64)
+        probabilities = active_weights / active_weights.sum()
+        selected_index = int(rng.choice(active_indices, p=probabilities))
+        selected_counts[selected_index] += 1
+        capacities[selected_index] -= 1
+        remaining -= 1
+
+    labeled_positions = []
+    unlabeled_by_label = {}
+    counts_by_label = {
+        int(label): int(count)
+        for label, count in zip(label_order, selected_counts)
+    }
+    for label, class_positions in positions_by_label.items():
+        label = int(label)
+        num_labeled = counts_by_label[label]
+        labeled_positions.extend(class_positions[:num_labeled])
+        unlabeled_by_label[label] = class_positions[num_labeled:]
 
     return labeled_positions, unlabeled_by_label
 

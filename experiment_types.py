@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-DATASETS = ["Cars196", "StanfordOnlineProducts", "CIFAR10", "CIFAR100"] # "INaturalist2018", "CUB",
+DATASETS = ["Cars196", "CUB", "DeepFashionInShop", "CIFAR100"]
 
 ALL_LOSSES = [
     "AngularLoss",
@@ -99,6 +99,9 @@ COMPARISON_FORBIDDEN_HPARAM_KEYS = {
     "cifar_test_fraction",
     "mode",
     "seed",
+    "hparam_seed",
+    "data_split_seed",
+    "support_seed",
     "cv_k",
     "cv_mode",
     "val_mode",
@@ -110,6 +113,8 @@ COMPARISON_FORBIDDEN_HPARAM_KEYS = {
     "ssl_config.max_unlabeled_samples",
     "ssl.seed",
     "ssl_config.seed",
+    "ssl.support_seed",
+    "ssl_config.support_seed",
     "ssl.method",
     "ssl_config.method",
 }
@@ -136,6 +141,8 @@ SAMPLER_CAPACITY_HPARAM_KEYS = {
     "cifar_train_fraction",
     "cifar_test_fraction",
     "seed",
+    "data_split_seed",
+    "support_seed",
     "cv_k",
     "cv_mode",
     "val_mode",
@@ -147,6 +154,8 @@ SAMPLER_CAPACITY_HPARAM_KEYS = {
     "ssl_config.labeled_per_class",
     "ssl.seed",
     "ssl_config.seed",
+    "ssl.support_seed",
+    "ssl_config.support_seed",
 }
 
 SUPERVISED_SPLIT_SSL_HPARAM_KEYS = {
@@ -167,10 +176,14 @@ class TrainingResult:
     last_epoch: int
     selected_epoch: int
     global_step: int
+    epoch0_test_precision_at_1: float | None = None
+    epoch0_test_mean_average_precision_at_r: float | None = None
     cv_k: int = 1
     cv_mode: str | None = None
     cv_fold: int | None = None
     fold_results: list[dict[str, Any]] | None = None
+    test_pacmap_coordinates: Path | None = None
+    test_pacmap_plot: Path | None = None
 
 @dataclass(frozen=True)
 class HParamSearchConfig:
@@ -186,6 +199,7 @@ class HParamSearchConfig:
     storage: str | None = None
     load_if_exists: bool = True
     sampler: str = "tpe"
+    tpe_startup_trials: int | None = None
     sampler_params: dict[str, Any] = field(default_factory=dict)
     pruner: str = "none"
     pruner_params: dict[str, Any] = field(default_factory=dict)
@@ -206,6 +220,7 @@ class HParamStudyResult:
     best_value: float | None
     best_params: dict[str, Any] | None
     best_user_attrs: dict[str, Any] | None
+    completed_trials: list[dict[str, Any]] | None = None
 
 @dataclass(frozen=True)
 class ComparisonScenario:
@@ -219,3 +234,7 @@ class ComparisonScenario:
     loss: str
     miner: str
     ssl_config_path: Path
+    run_seed: int | None = None
+    data_split_seed: int | None = None
+    support_seed: int | None = None
+    hparam_seed: int | None = None
