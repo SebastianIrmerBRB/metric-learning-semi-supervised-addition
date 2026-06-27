@@ -6,7 +6,11 @@ import csv
 import os
 from dataclasses import replace
 from datetime import datetime
+from numbers import Real
 from pathlib import Path
+
+import time
+from collections import defaultdict
 
 import numpy as np
 import pytorch_metric_learning.losses as losses
@@ -18,7 +22,13 @@ from tqdm import tqdm
 import metric_losses
 import semi_supervised
 import utils
-from experiment_cli import DEFAULT_DATA_SPLIT_SEED, normalize_backbone_tuning_args
+from experiment_cli import (
+    DEFAULT_DATA_SPLIT_SEED,
+    FINAL_TEST_VISUALIZATION_MODES,
+    FINAL_TEST_VISUALIZATION_NONE,
+    FINAL_TEST_VISUALIZATION_PACMAP,
+    normalize_backbone_tuning_args,
+)
 from experiment_io import namespace_to_dict, result_to_dict, write_json
 from experiment_types import (
     ALL_LOSSES,
@@ -31,6 +41,32 @@ from experiment_types import (
     TrainingResult,
 )
 from retrieval_model import BACKBONE_TUNING_FROZEN, DinoWrapper
+
+BATCH_EASY_HARD_MINER_STRATEGIES = {"all", "easy", "hard", "semihard"}
+BATCH_EASY_HARD_DEFAULT_POS_STRATEGY = "easy"
+BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY = "semihard"
+BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
+
+def _sync_if_cuda(device):
+    if torch.device(device).type == "cuda":
+        torch.cuda.synchronize()
+
+
+def _now(device):
+    _sync_if_cuda(device)
+    return time.perf_counter()
+
+
+def _timing_enabled(args):
+    return bool(getattr(args, "debug_batch_timing", True))
+
+
+def _timing_interval(args):
+    return int(getattr(args, "debug_batch_timing_interval", 5))
+
+
+def _add_time(timings, name, start, end):
+    timings[name] += end - start
 
 def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
     """Run either one holdout training job or all requested CV folds."""
@@ -102,6 +138,16 @@ def get_selection_metric_value(selection_metric, precision_at_1, mean_average_pr
         return mean_average_precision_at_r
     raise ValueError(f"Unknown selection metric: {selection_metric}")
 
+def uses_ssl_warmup_objective(ssl_config):
+    """Return whether this run has labeled-only SSL warmup epochs."""
+
+    return ssl_config.enabled and ssl_config.warmup_epochs > 0
+
+def is_ssl_warmup_epoch(ssl_config, num_epoch):
+    """Return whether the current epoch should use the warmup objective."""
+
+    return ssl_config.enabled and num_epoch < ssl_config.warmup_epochs
+
 def write_split_manifest(log_dir, dataset_bundle, ssl_config, ssl_split):
     """Persist the exact split so an experiment can be audited or reproduced.
 
@@ -153,17 +199,49 @@ def write_split_manifest(log_dir, dataset_bundle, ssl_config, ssl_split):
     write_json(split_dir / "test_info.json", make_test_info(dataset_bundle.test_dataset))
 
 
-def configure_stml_unlabeled_pool(args, dataset_bundle, ssl_split):
-    """Optionally replace or extend STML's split-derived unlabeled candidates."""
+def resolve_unlabeled_source_args(args):
+    """Return the generic external-unlabeled source and root, honoring old STML args."""
 
-    source = getattr(args, "stml_unlabeled_source", "split")
+    source = getattr(args, "unlabeled_source", None)
+    legacy_source = getattr(args, "stml_unlabeled_source", "split")
+    if source is None:
+        source = legacy_source
+    elif legacy_source != "split" and legacy_source != source:
+        raise ValueError(
+            "unlabeled_source and stml_unlabeled_source disagree: "
+            f"{source!r} != {legacy_source!r}"
+        )
+
+    external_dir = getattr(args, "external_unlabeled_dir", None)
+    legacy_external_dir = getattr(args, "stml_external_unlabeled_dir", None)
+    if external_dir is None:
+        external_dir = legacy_external_dir
+    elif legacy_external_dir is not None and Path(external_dir) != Path(legacy_external_dir):
+        raise ValueError(
+            "external_unlabeled_dir and stml_external_unlabeled_dir disagree: "
+            f"{external_dir} != {legacy_external_dir}"
+        )
+
+    return source, external_dir
+
+
+def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
+    """Optionally replace or extend split-derived unlabeled candidates."""
+
+    source, external_dir = resolve_unlabeled_source_args(args)
+    external_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
     if source == "split":
         return dataset_bundle, ssl_split
+    if ssl_split is None:
+        raise ValueError(f"unlabeled_source={source!r} requires a semi-supervised split")
 
     internal_train_size = len(dataset_bundle.train_dataset)
     combined_dataset, external_dataset = utils.append_external_unlabeled_dataset(
         dataset_bundle.train_dataset,
-        args.stml_external_unlabeled_dir,
+        external_dir,
+        external_filter=external_filter,
+        compcars_min_model_images=getattr(args, "compcars_min_model_images", 100),
+        compcars_strict_paper_counts=getattr(args, "compcars_strict_paper_counts", False),
     )
     external_positions = np.arange(
         internal_train_size,
@@ -182,19 +260,49 @@ def configure_stml_unlabeled_pool(args, dataset_bundle, ssl_split):
     )
     if dataset_bundle.split_info is None:
         dataset_bundle.split_info = {}
-    dataset_bundle.split_info["stml_unlabeled_pool"] = {
+    dataset_bundle.split_info["external_unlabeled_pool"] = {
         "source": source,
-        "external_root": str(args.stml_external_unlabeled_dir),
+        "external_root": str(external_dir),
         "internal_train_size": int(internal_train_size),
         "internal_unlabeled_size": int(len(internal_unlabeled_positions)),
         "external_unlabeled_size": int(len(external_dataset)),
+        "external_dataset_type": type(external_dataset).__name__,
+        "external_unlabeled_filter": external_filter,
     }
+    filter_info = getattr(external_dataset, "filter_info", None)
+    if filter_info is not None:
+        dataset_bundle.split_info["external_unlabeled_pool"]["filter_info"] = filter_info
+        logger.info(
+            "External unlabeled filter: "
+            f"mode={filter_info.get('mode')}, "
+            f"candidate_source={filter_info.get('candidate_source')}, "
+            f"kept={filter_info.get('kept_images')} images / "
+            f"{filter_info.get('kept_model_classes')} model classes, "
+            f"dropped={filter_info.get('dropped_images')} images / "
+            f"{filter_info.get('dropped_model_classes')} model classes"
+        )
+        if filter_info.get("matches_expected_counts") is False:
+            logger.warning(
+                "External unlabeled filter did not match documented STML CompCars counts: "
+                f"expected={filter_info.get('expected_images')} images / "
+                f"{filter_info.get('expected_model_classes')} model classes, "
+                f"got={filter_info.get('kept_images')} images / "
+                f"{filter_info.get('kept_model_classes')} model classes. "
+                f"Nearest thresholds={filter_info.get('nearest_count_thresholds')}"
+            )
     logger.info(
-        "STML unlabeled pool: "
+        "External unlabeled pool: "
         f"source={source}, {len(internal_unlabeled_positions)} internal candidates, "
-        f"{len(external_dataset)} external candidates from {args.stml_external_unlabeled_dir}"
+        f"{len(external_dataset)} external candidates from {external_dir}, "
+        f"filter={external_filter}"
     )
     return dataset_bundle, ssl_split
+
+
+def configure_stml_unlabeled_pool(args, dataset_bundle, ssl_split):
+    """Compatibility wrapper for the old STML-specific external pool hook."""
+
+    return configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
 
 
 def get_subset_indices(dataset):
@@ -230,6 +338,12 @@ def make_test_info(test_dataset):
     if labels is not None:
         info["num_classes"] = int(len(set(int(label) for label in labels)))
         info["label_counts"] = label_counts(labels)
+    query_indices = getattr(test_dataset, "query_indices", None)
+    gallery_indices = getattr(test_dataset, "gallery_indices", None)
+    if query_indices is not None and gallery_indices is not None:
+        info["retrieval_mode"] = "query_gallery"
+        info["num_queries"] = int(len(query_indices))
+        info["num_gallery"] = int(len(gallery_indices))
     return info
 
 def get_data_split_seed(args):
@@ -303,10 +417,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         f"Backbone tuning: {args.backbone_tuning}. Cache: {args.use_cache}."
     )
     write_run_config(args, ssl_config)
-    pseudo_label_diagnostics = (
-        semi_supervised.PseudoLabelDiagnosticsTracker(args.log_dir)
-        if semi_supervised.is_pseudo_label_method(ssl_config)
-        else None
+    pseudo_label_diagnostics = semi_supervised.make_pseudo_label_diagnostics_tracker(
+        args.log_dir,
+        ssl_config,
     )
 
     # For a normal run this creates one holdout split.  During CV, cv_fold tells
@@ -359,7 +472,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 dataset_bundle=dataset_bundle,
                 labeled_positions=labeled_positions,
                 unlabeled_positions=unlabeled_positions,
-                seed=args.seed,
+                seed=ssl_config.support_seed,
             )
         else:
             dataset_bundle, labeled_positions, unlabeled_positions = utils.apply_apportioned_cross_validation_split(
@@ -370,7 +483,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 cv_k=args.cv_k,
                 cv_fold=cv_fold,
                 cv_mode=args.cv_mode,
-                seed=args.seed,
+                seed=ssl_config.support_seed,
             )
         if ssl_split is not None:
             ssl_split = semi_supervised.SemiSupervisedSplit(
@@ -394,10 +507,10 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             val_mode=args.val_mode,
             target_train_size=target_train_size,
             target_train_num_classes=target_train_num_classes,
-            seed=data_split_seed,
+            seed=ssl_config.support_seed,
         )
-    if loss_driven_ssl or (regularizer is not None and regularizer.name == "stml"):
-        dataset_bundle, ssl_split = configure_stml_unlabeled_pool(args, dataset_bundle, ssl_split)
+    if ssl_config.enabled:
+        dataset_bundle, ssl_split = configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
     # Persist both subset-relative positions and source-dataset indices before
     # training so the exact experiment split is recoverable.
     write_split_manifest(args.log_dir, dataset_bundle, ssl_config, ssl_split)
@@ -508,13 +621,13 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         optim = torch.optim.Adam(
             trainable_model_parameters,
             lr=args.lr,
-            weight_decay=args.weight_decay,
+            # weight_decay=args.weight_decay,
         )
     elif args.optim == "rmsprop":
         optim = torch.optim.RMSprop(
             trainable_model_parameters,
             lr=args.lr,
-            weight_decay=args.weight_decay,
+            # weight_decay=args.weight_decay,
         )
     num_train_classes = len(dataset_bundle.train_labels_mapper)
     criterion, is_classification, miner, classifier_optim = make_training_loss_components(
@@ -530,7 +643,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     warmup_is_classification = False
     warmup_miner = None
     warmup_classifier_optim = None
-    if loss_driven_ssl and ssl_config.warmup_epochs > 0:
+    if uses_ssl_warmup_objective(ssl_config):
         warmup_criterion, warmup_is_classification, warmup_miner, warmup_classifier_optim = (
             make_training_loss_components(
                 args=args,
@@ -555,6 +668,10 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     final_train_loss = None
     test_precision = None
     test_map = None
+    test_pacmap_coordinates = None
+    test_pacmap_plot = None
+    epoch0_test_precision = None
+    epoch0_test_map = None
     best_precision = None
     best_map = None
     selected_epoch = -1
@@ -595,6 +712,23 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             )
         else:
             logger.info(f"Training final full-development model for exactly {args.epochs} epochs")
+
+        if evaluate_test and final_full_train:
+            epoch0_test_precision, epoch0_test_map, epoch0_test_per_class = utils.evaluate(
+                model,
+                test_loader,
+                "test epoch 0 - no optimization",
+                device=args.device,
+                return_per_class=True,
+            )
+            metrics_logger.log_eval(
+                "epoch0_test",
+                epoch0_test_precision,
+                epoch0_test_map,
+                step=0,
+                epoch=0,
+                per_class_metrics=epoch0_test_per_class,
+            )
 
         for num_epoch in range(args.epochs):
             last_epoch = num_epoch
@@ -689,14 +823,14 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     )
                 train_loader = static_train_loader
 
-            legacy_stml_active = loss_driven_ssl and num_epoch >= ssl_config.warmup_epochs
-            regularization_active = regularized_ssl and num_epoch >= ssl_config.warmup_epochs
-            use_legacy_warmup = loss_driven_ssl and not legacy_stml_active
-            active_criterion = warmup_criterion if use_legacy_warmup else criterion
-            active_is_classification = warmup_is_classification if use_legacy_warmup else is_classification
-            active_miner = warmup_miner if use_legacy_warmup else miner
-            active_classifier_optim = warmup_classifier_optim if use_legacy_warmup else classifier_optim
-            loss_phase = "warmup" if use_legacy_warmup else args.loss
+            warmup_active = is_ssl_warmup_epoch(ssl_config, num_epoch)
+            legacy_stml_active = loss_driven_ssl and not warmup_active
+            regularization_active = regularized_ssl and not warmup_active
+            active_criterion = warmup_criterion if warmup_active else criterion
+            active_is_classification = warmup_is_classification if warmup_active else is_classification
+            active_miner = warmup_miner if warmup_active else miner
+            active_classifier_optim = warmup_classifier_optim if warmup_active else classifier_optim
+            loss_phase = f"warmup ({args.warmup_loss})" if warmup_active else args.loss
             if regularization_active:
                 loss_phase = f"{args.loss} + {regularizer.name} regularization"
             logger.info(f"Epoch {num_epoch}: training with {loss_phase}")
@@ -717,8 +851,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             num_batches = 0
             zero_loss_batches = 0
             epoch_miner_totals = {}
-            tqdm_bar = tqdm(train_loader)
-            for batch in tqdm_bar:
+            tqdm_bar = tqdm(total=len(train_loader))
+            train_iter = iter(train_loader)
+            epoch_timings = defaultdict(float)
+
+            for batch_idx in range(len(train_loader)):
+                timing = _timing_enabled(args)
+
+                t0 = _now(args.device) if timing else None
+                batch = next(train_iter)
+                t1 = _now(args.device) if timing else None
                 if legacy_stml_active:
                     images, _, instance_ids = batch
                     if not isinstance(images, (list, tuple)) or len(images) != active_criterion.num_views:
@@ -730,25 +872,51 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 else:
                     supervised_batch, regularizer_batch = batch if regularization_active else (batch, None)
                     images, labels, sample_weights = unpack_training_batch(supervised_batch)
+
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "unpack_batch", t0, t1)
                 # Autocast reduces memory/compute cost while leaving parameters
                 # and the optimizer responsible for their normal precision.
                 with torch.autocast(device_type=torch.device(args.device).type, dtype=torch.bfloat16):
                     miner_outputs = None
                     supervised_loss = None
                     regularization_loss = None
+
                     if legacy_stml_active:
+                        t0 = _now(args.device) if timing else None
                         student_g, student_f = model.forward_stml_cached(images, args.device)
                         with torch.no_grad():
                             teacher_g = teacher_model.forward_stml_teacher_cached(images, args.device)
+                        t1 = _now(args.device) if timing else None
+                        if timing:
+                            _add_time(epoch_timings, "forward", t0, t1)
+
+                        t0 = _now(args.device) if timing else None
                         loss = active_criterion(student_f, student_g, teacher_g, instance_ids)
+                        t1 = _now(args.device) if timing else None
+                        if timing:
+                            _add_time(epoch_timings, "loss", t0, t1)
+
                     else:
+                        t0 = _now(args.device) if timing else None
                         embeddings = (
                             model.forward_cached(images, args.device)
                             if args.use_cache
                             else model(images.to(args.device))
                         )
+                        t1 = _now(args.device) if timing else None
+                        if timing:
+                            _add_time(epoch_timings, "forward", t0, t1)
+
+                        t0 = _now(args.device) if timing else None
                         labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
                         sample_weights = sample_weights.to(args.device)
+                        t1 = _now(args.device) if timing else None
+                        if timing:
+                            _add_time(epoch_timings, "label_weight_prep", t0, t1)
+
+                        t0 = _now(args.device) if timing else None
                         if getattr(active_criterion, "supports_sample_weights", False):
                             supervised_loss = active_criterion(embeddings, labels, sample_weights=sample_weights)
                         elif not active_is_classification and active_miner is not None:
@@ -756,22 +924,39 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                             supervised_loss = active_criterion(embeddings, labels, miner_outputs)
                         else:
                             supervised_loss = active_criterion(embeddings, labels)
+                        t1 = _now(args.device) if timing else None
+                        if timing:
+                            _add_time(epoch_timings, "miner_and_loss", t0, t1)
 
                         if regularization_active:
+                            t0 = _now(args.device) if timing else None
                             regularization_loss = regularizer.compute_loss(
                                 student_model=model,
                                 state=regularizer_state,
                                 batch=regularizer_batch,
                                 device=args.device,
+                                timings=epoch_timings if timing else None,
                             )
                             loss = regularizer.combine_losses(supervised_loss, regularization_loss)
+                            t1 = _now(args.device) if timing else None
+                            if timing:
+                                _add_time(epoch_timings, "regularization_loss", t0, t1)
                         else:
                             loss = supervised_loss
 
+                t0 = _now(args.device) if timing else None
                 loss_value = loss.detach().item()
-                # Backpropagate through the model/loss, apply one update, then
-                # clear gradients so they do not accumulate into the next batch.
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "loss_item", t0, t1)
+
+                t0 = _now(args.device) if timing else None
                 loss.backward()
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "backward", t0, t1)
+
+                t0 = _now(args.device) if timing else None
                 miner_diagnostics = utils.summarize_miner_outputs(miner_outputs)
                 batch_diagnostics = {
                     "train/zero_loss_batch": float(loss_value == 0.0),
@@ -790,13 +975,21 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     batch_diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
                 if regularization_loss is not None:
                     batch_diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "diagnostics", t0, t1)
+
+                t0 = _now(args.device) if timing else None
                 optim.step()
                 optim.zero_grad()
                 if active_is_classification:
-                    # Classification losses may own learnable proxy/classifier
-                    # parameters that require a separate optimizer update.
                     active_classifier_optim.step()
                     active_classifier_optim.zero_grad()
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "optimizer_step", t0, t1)
+
+                t0 = _now(args.device) if timing else None
                 if legacy_stml_active:
                     update_ema_teacher(
                         teacher_model,
@@ -806,20 +999,42 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     )
                 if regularization_active:
                     regularizer.after_optimizer_step(model, regularizer_state)
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "post_step_hooks", t0, t1)
+
+                t0 = _now(args.device) if timing else None
                 metrics_logger.log_train_batch(
                     loss_value,
                     num_epoch,
                     global_step,
                     diagnostics=batch_diagnostics,
                 )
+                t1 = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "metrics_logging", t0, t1)
+
                 epoch_loss += loss_value
                 num_batches += 1
                 zero_loss_batches += int(loss_value == 0.0)
                 for name, value in miner_diagnostics.items():
                     epoch_miner_totals[name] = epoch_miner_totals.get(name, 0) + value
                 global_step += 1
-                tqdm_bar.desc = f"loss = {loss_value:.5f}"
+                tqdm_bar.set_description(f"loss = {loss_value:.5f}")
+                tqdm_bar.update(1)
 
+                if timing and (batch_idx + 1) % _timing_interval(args) == 0:
+                    denom = batch_idx + 1
+                    logger.info(
+                        "Batch timing "
+                        f"epoch={num_epoch} batch={batch_idx + 1}/{len(train_loader)} "
+                        f"phase={loss_phase}: "
+                        + ", ".join(
+                            f"{name}={total / denom:.4f}s"
+                            for name, total in sorted(epoch_timings.items())
+                        )
+                    )
+            tqdm_bar.close()
             if num_batches > 0:
                 # The epoch metric is an unweighted mean of batch loss values.
                 final_train_loss = epoch_loss / num_batches
@@ -908,12 +1123,18 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             # the last epoch's potentially overfit model.
             model.load_state_dict(torch.load(best_model_path, weights_only=True))
         if evaluate_test:
-            test_precision, test_map, test_per_class = utils.evaluate(
+            test_embeddings, test_labels = utils.extract_eval_embeddings(
                 model,
                 test_loader,
                 "test",
                 device=args.device,
+            )
+            test_precision, test_map, test_per_class = utils.evaluate_embeddings(
+                test_embeddings,
+                test_labels,
+                name="test",
                 return_per_class=True,
+                dataset=dataset_bundle.test_dataset,
             )
             metrics_logger.log_eval(
                 "test",
@@ -923,6 +1144,22 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 epoch=last_epoch,
                 per_class_metrics=test_per_class,
             )
+            if (
+                getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
+                == FINAL_TEST_VISUALIZATION_PACMAP
+            ):
+                pacmap_artifacts = utils.write_pacmap_visualization(
+                    test_embeddings,
+                    test_labels,
+                    output_dir=args.log_dir,
+                    stem="test_pacmap",
+                    title=f"{args.dataset} final test embeddings - PacMAP",
+                    dataset=dataset_bundle.test_dataset,
+                    dataset_name=args.dataset,
+                )
+                test_pacmap_coordinates = pacmap_artifacts["coordinates"]
+                test_pacmap_plot = pacmap_artifacts["plot"]
+                logger.info(f"PacMAP final test visualization written to {test_pacmap_plot}")
         else:
             logger.info("Skipping test evaluation for this run")
     finally:
@@ -947,9 +1184,13 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         last_epoch=last_epoch,
         selected_epoch=selected_epoch,
         global_step=global_step,
+        epoch0_test_precision_at_1=None if epoch0_test_precision is None else float(epoch0_test_precision),
+        epoch0_test_mean_average_precision_at_r=None if epoch0_test_map is None else float(epoch0_test_map),
         cv_k=args.cv_k if cv_fold is not None else 1,
         cv_mode=args.cv_mode if cv_fold is not None else None,
         cv_fold=cv_fold,
+        test_pacmap_coordinates=test_pacmap_coordinates,
+        test_pacmap_plot=test_pacmap_plot,
     )
 
 def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None):
@@ -1041,6 +1282,8 @@ def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
         "best_valid_mean_average_precision_at_r",
         "test_precision_at_1",
         "test_mean_average_precision_at_r",
+        "test_pacmap_coordinates",
+        "test_pacmap_plot",
         "final_train_loss",
         "last_epoch",
         "selected_epoch",
@@ -1078,6 +1321,10 @@ def make_cv_summary_row(result, fold=None):
         "test_mean_average_precision_at_r": ""
         if result.test_mean_average_precision_at_r is None
         else result.test_mean_average_precision_at_r,
+        "test_pacmap_coordinates": ""
+        if result.test_pacmap_coordinates is None
+        else str(result.test_pacmap_coordinates),
+        "test_pacmap_plot": "" if result.test_pacmap_plot is None else str(result.test_pacmap_plot),
         "final_train_loss": "" if result.final_train_loss is None else result.final_train_loss,
         "last_epoch": result.last_epoch,
         "selected_epoch": result.selected_epoch,
@@ -1136,21 +1383,36 @@ def validate_run_args(args, ssl_config):
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
     stml_regularization = regularizer is not None and regularizer.name == "stml"
-    stml_unlabeled_source = getattr(args, "stml_unlabeled_source", "split")
-    stml_external_unlabeled_dir = getattr(args, "stml_external_unlabeled_dir", None)
-    if stml_unlabeled_source == "split" and stml_external_unlabeled_dir is not None:
+    validate_effective_miner_params(args.loss, args.miner, args.miner_params, "miner")
+    if uses_ssl_warmup_objective(ssl_config):
+        validate_warmup_loss_args(args)
+    unlabeled_source, external_unlabeled_dir = resolve_unlabeled_source_args(args)
+    external_unlabeled_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
+    if external_unlabeled_filter not in utils.EXTERNAL_UNLABELED_FILTERS:
         raise ValueError(
-            "stml_external_unlabeled_dir requires stml_unlabeled_source='external' or 'split_and_external'"
+            "external_unlabeled_filter must be one of "
+            f"{utils.EXTERNAL_UNLABELED_FILTERS}: {external_unlabeled_filter}"
         )
-    if stml_unlabeled_source != "split":
-        if args.dataset != "Cars196":
-            raise ValueError("External STML unlabeled data is currently supported only for Cars196")
-        if stml_external_unlabeled_dir is None:
-            raise ValueError(f"stml_unlabeled_source={stml_unlabeled_source!r} requires stml_external_unlabeled_dir")
-        if not Path(stml_external_unlabeled_dir).is_dir():
-            raise ValueError(f"stml_external_unlabeled_dir does not exist: {stml_external_unlabeled_dir}")
-        if not is_supervised_mode(args) and not (loss_driven_ssl or stml_regularization):
-            raise ValueError("External STML unlabeled data requires legacy STML or the STML regularizer")
+    if getattr(args, "compcars_min_model_images", 100) <= 0:
+        raise ValueError("compcars_min_model_images must be positive")
+    if (
+        getattr(args, "compcars_strict_paper_counts", False)
+        and external_unlabeled_filter != utils.EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER
+    ):
+        raise ValueError("compcars_strict_paper_counts requires external_unlabeled_filter='compcars_stml_paper'")
+    if unlabeled_source == "split" and external_unlabeled_dir is not None:
+        raise ValueError(
+            "external_unlabeled_dir requires unlabeled_source='external' or 'split_and_external'"
+        )
+    if unlabeled_source == "split" and external_unlabeled_filter != utils.EXTERNAL_UNLABELED_FILTER_NONE:
+        raise ValueError("external_unlabeled_filter requires unlabeled_source='external' or 'split_and_external'")
+    if unlabeled_source != "split" and not is_supervised_mode(args):
+        if external_unlabeled_dir is None:
+            raise ValueError(f"unlabeled_source={unlabeled_source!r} requires external_unlabeled_dir")
+        if not Path(external_unlabeled_dir).is_dir():
+            raise ValueError(f"external_unlabeled_dir does not exist: {external_unlabeled_dir}")
+        if not ssl_config.enabled:
+            raise ValueError("External unlabeled data requires --mode ssl with an enabled SSL config")
     if args.loss == "STMLLoss":
         if not loss_driven_ssl:
             raise ValueError("STMLLoss requires an SSL config with method='stml'")
@@ -1168,13 +1430,6 @@ def validate_run_args(args, ssl_config):
             raise ValueError(f"Invalid parameters for loss STMLLoss: {args.loss_params}") from exc
         if args.batch_size % stml_loss.num_neighbors != 0:
             raise ValueError("STMLLoss requires batch_size to be divisible by loss_params.num_neighbors")
-        if ssl_config.warmup_epochs > 0:
-            if args.warmup_loss not in ALL_LOSSES or args.warmup_loss == "STMLLoss":
-                raise ValueError("warmup_loss must be a standard supervised loss")
-            if args.warmup_miner not in ALL_MINERS:
-                raise ValueError(f"warmup_miner must be one of {ALL_MINERS}: {args.warmup_miner}")
-            if args.warmup_loss in CLASSIFICATION_LOSSES and args.warmup_miner != "no_miner":
-                raise ValueError("classification warmup_loss requires warmup_miner='no_miner'")
     elif loss_driven_ssl:
         raise ValueError(f"SSL method {ssl_config.method!r} requires loss='STMLLoss'")
     if regularizer is not None:
@@ -1215,6 +1470,9 @@ def validate_run_args(args, ssl_config):
         raise ValueError(f"val_mode must be one of {utils.VAL_MODES}: {args.val_mode}")
     if args.selection_metric not in SELECTION_METRICS:
         raise ValueError(f"selection_metric must be one of {SELECTION_METRICS}: {args.selection_metric}")
+    final_test_visualization = getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
+    if final_test_visualization not in FINAL_TEST_VISUALIZATION_MODES:
+        raise ValueError(f"final_test_visualization must be one of {FINAL_TEST_VISUALIZATION_MODES}")
     if args.feat_dim is not None and args.feat_dim <= 0:
         raise ValueError("feat_dim must be positive when set")
     regularizer_provides_projection = (
@@ -1233,6 +1491,92 @@ def validate_run_args(args, ssl_config):
         ssl_embedding_num_workers=ssl_config.embedding_num_workers if ssl_config.enabled else 0,
         start_method=args.dataloader_start_method,
     )
+
+def validate_effective_miner_params(loss_name, miner_name, miner_params, param_name):
+    """Validate miner params only when the training loop will actually use the miner."""
+
+    if miner_name == "no_miner" or loss_name in CLASSIFICATION_LOSSES or loss_name == "STMLLoss":
+        return
+    try:
+        validate_named_miner_params(miner_name, miner_params)
+    except ValueError as exc:
+        raise ValueError(f"Invalid parameters for {param_name} {miner_name}: {exc}") from exc
+
+
+def validate_warmup_loss_args(args):
+    """Validate the supervised objective used during labeled-only SSL warmup."""
+
+    if args.warmup_loss not in ALL_LOSSES or args.warmup_loss == "STMLLoss":
+        raise ValueError("warmup_loss must be a standard supervised loss")
+    if args.warmup_miner not in ALL_MINERS:
+        raise ValueError(f"warmup_miner must be one of {ALL_MINERS}: {args.warmup_miner}")
+    if args.warmup_loss in CLASSIFICATION_LOSSES and args.warmup_miner != "no_miner":
+        raise ValueError("classification warmup_loss requires warmup_miner='no_miner'")
+    validate_effective_miner_params(
+        args.warmup_loss,
+        args.warmup_miner,
+        args.warmup_miner_params,
+        "warmup_miner",
+    )
+
+
+def validate_named_miner_params(name, params=None):
+    """Return validated/normalized miner constructor params."""
+
+    params = dict(params or {})
+    if name == "BatchEasyHardMiner":
+        return validate_batch_easy_hard_miner_params(params)
+    return params
+
+
+def validate_batch_easy_hard_miner_params(params):
+    params = dict(params or {})
+    pos_strategy = validate_batch_easy_hard_strategy(
+        params.get("pos_strategy", BATCH_EASY_HARD_DEFAULT_POS_STRATEGY),
+        "pos_strategy",
+    )
+    neg_strategy = validate_batch_easy_hard_strategy(
+        params.get("neg_strategy", BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY),
+        "neg_strategy",
+    )
+
+    if pos_strategy == "semihard" and neg_strategy == "semihard":
+        raise ValueError("pos_strategy and neg_strategy cannot both be 'semihard'")
+    if pos_strategy == "semihard" and neg_strategy == "all":
+        raise ValueError("neg_strategy cannot be 'all' when pos_strategy is 'semihard'")
+    if pos_strategy == "all" and neg_strategy == "semihard":
+        raise ValueError("pos_strategy cannot be 'all' when neg_strategy is 'semihard'")
+
+    for range_name in BATCH_EASY_HARD_RANGE_PARAMS:
+        if range_name in params:
+            params[range_name] = validate_batch_easy_hard_allowed_range(params[range_name], range_name)
+    return params
+
+
+def validate_batch_easy_hard_strategy(value, name):
+    if value not in BATCH_EASY_HARD_MINER_STRATEGIES:
+        allowed = sorted(BATCH_EASY_HARD_MINER_STRATEGIES)
+        raise ValueError(f"{name} must be one of {allowed}: {value!r}")
+    return value
+
+
+def validate_batch_easy_hard_allowed_range(value, name):
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError(f"{name} must be null or a two-value range")
+    lower, upper = value
+    if (
+        isinstance(lower, bool)
+        or isinstance(upper, bool)
+        or not isinstance(lower, Real)
+        or not isinstance(upper, Real)
+    ):
+        raise ValueError(f"{name} bounds must be numeric")
+    if lower > upper:
+        raise ValueError(f"{name} lower bound must be <= upper bound")
+    return (lower, upper)
+
 
 def make_loss(args, num_classes=None, embedding_size=None):
     """Construct the selected loss with HPO-resolved constructor parameters."""
@@ -1296,9 +1640,9 @@ def make_optimizer(args, parameters, lr):
     if args.optim == "adamw":
         return torch.optim.AdamW(parameters, lr=lr, weight_decay=args.weight_decay)
     if args.optim == "adam":
-        return torch.optim.Adam(parameters, lr=lr, weight_decay=args.weight_decay)
+        return torch.optim.Adam(parameters, lr=lr, ) # weight_decay=args.weight_decay
     if args.optim == "rmsprop":
-        return torch.optim.RMSprop(parameters, lr=lr, weight_decay=args.weight_decay)
+        return torch.optim.RMSprop(parameters, lr=lr, ) #weight_decay=args.weight_decay
     raise ValueError(f"Unknown optimizer: {args.optim}")
 
 
@@ -1374,12 +1718,13 @@ def make_named_miner(name, params=None):
 
     if name == "no_miner":
         return None
-    params = dict(params or {})
+    raw_params = dict(params or {})
+    params = validate_named_miner_params(name, raw_params)
     logger.info(f"Miner: {name}, params={params}")
     try:
         return getattr(miners, name)(**params)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid parameters for miner {name}: {params}") from exc
+        raise ValueError(f"Invalid parameters for miner {name}: {raw_params}") from exc
 
 def make_supervised_split_config(ssl_config):
     # Preserve label-selection settings and seed so the supervised baseline

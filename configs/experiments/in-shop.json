@@ -1,0 +1,28 @@
+{
+  "save_dir": "in_ship",
+  "dataset": "DeepFashionInShop",
+  "length_before_new_iter": 20706,
+  "dataset_protocol": "official",
+  "val_mode": "split_after_apportion",
+  "cv_k": 1,
+  "final_test_after_hpo": true,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "supervised",
+  "patience": 5,
+  "epochs": 200,
+  "ssl_config": "configs/ssl_faiss_knn.json",
+  "hparam_config": "configs/supervised/classification/cars_first_task.json",
+  "label_budget_grid": [
+    1
+  ],
+  "k_shot_grid": [
+        2,4
+  ],
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:BatchEasyHardMiner", "MultiSimilarityLoss:MultiSimilarityMiner", "CircleLoss:MultiSimilarityMiner"
+  ]
+}
+

@@ -100,6 +100,7 @@ Method-specific parameters live in JSON instead of argparse so new SSL methods d
   "labeled_fraction": 0.1,
   "labeled_per_class": null,
   "confidence_threshold": 0.8,
+  "pseudo_label_diagnostics_mode": "save",
   "max_unlabeled_samples": null,
   "embedding_batch_size": 32,
   "embedding_num_workers": 8,
@@ -121,6 +122,7 @@ Common fields:
 - `labeled_fraction`: budget used by `label_sampling_mode`.
 - `labeled_per_class`: fixed labeled sample count per class. Supported with `label_sampling_mode: "per_class_min"` and required by `label_sampling_mode: "class_subset_k_shot"`.
 - `confidence_threshold`: drops pseudo-labels below this confidence when the method provides confidences.
+- `pseudo_label_diagnostics_mode`: controls pseudo-label audit diagnostics for methods that generate pseudo-labels. Use `save` to write `pseudo_label_diagnostics.jsonl`, `log` to only log summaries, or `off` to skip diagnostics.
 - `max_unlabeled_samples`: optional cap applied after all non-labeled training samples are selected as unlabeled candidates.
 - `embedding_batch_size`: batch size for extracting DINO embeddings used by SSL.
 - `embedding_num_workers`: worker count for SSL embedding extraction.
@@ -159,7 +161,7 @@ The default `--val_mode all` keeps the current behavior and evaluates on the ful
 Use `--val_mode match_train` when the validation set should mirror the labeled/fractioned training size and class count.
 For example, if the SSL/supervised split produces 522 labeled training samples across 90 labels, `match_train` samples about 522 validation examples across about 90 existing validation classes.
 With the default holdout split, train and validation classes remain disjoint.
-Use `--val_mode split_after_apportion` when the labeled/fractioned training subset should be selected before validation is carved out. This creates a stratified validation split using a 20% validation ratio from the apportioned labeled samples, so the train loader keeps the full apportioned label count instead of losing labels to an earlier holdout.
+Use `--val_mode split_after_apportion` when the labeled/fractioned training subset should be selected before validation is carved out. This holds out 20% of the apportioned classes for validation and removes those validation classes from the unlabeled pool.
 
 ## Extension Points
 

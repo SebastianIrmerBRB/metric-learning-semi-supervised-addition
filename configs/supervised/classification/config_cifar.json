@@ -1,0 +1,93 @@
+{
+  "enabled": true,
+  "n_trials": 30,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "adada",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "tpe",
+  "sampler_params": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+    "lr": {
+      "type": "float",
+      "low": 1e-7,
+      "high": 1e-4,
+      "log": true
+    },
+    "classifier_lr": {
+      "type": "float",
+      "low": 1e-4,
+      "high": 1e+2,
+      "log": true
+    },
+    "weight_decay": {
+      "type": "float",
+      "low": 1e-6,
+      "high": 1e-2,
+      "log": true
+    },
+    "loss.ArcFaceLoss.scale": {
+      "type": "float",
+      "low": 40,
+      "high": 250.0
+    },
+    "loss.ArcFaceLoss.margin": {
+      "type": "float",
+      "low": 15,
+      "high": 30.0,
+      "log": true
+    },
+    "loss.ProxyAnchorLoss.alpha": {
+      "type": "float",
+      "low": 0.1,
+      "high": 100.0
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "type": "float",
+      "low": 0.0001,
+      "high": 1.0,
+      "log": true
+    },
+    "feat_dim": {
+      "type": "categorical",
+      "choices": [768]
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+        "16:1",
+        "16:2",
+        "32:1",
+        "32:2",
+        "32:4",
+        "64:1",
+        "64:2",
+        "64:4",
+        "64:8",
+        "128:1",
+        "128:2",
+        "128:4",
+        "128:8",
+        "128:16",
+        "256:1",
+        "256:2",
+        "256:4",
+        "256:8",
+        "256:16",
+        "256:32",
+        "512:1",
+        "512:2",
+        "512:4",
+        "512:8",
+        "512:16",
+        "512:32",
+        "512:64"
+      ]
+    }
+  }
+}

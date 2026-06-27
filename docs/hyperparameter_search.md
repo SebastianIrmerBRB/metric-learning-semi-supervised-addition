@@ -41,6 +41,7 @@ Search-wide Optuna settings live at the top level, while tuned parameters live u
   "storage": null,
   "load_if_exists": true,
   "sampler": "tpe",
+  "tpe_startup_trials": null,
   "sampler_params": {},
   "pruner": "none",
   "pruner_params": {},
@@ -76,6 +77,7 @@ Top-level fields:
 - `storage`: optional Optuna storage URL. If omitted, the script creates a SQLite DB in the study directory.
 - `load_if_exists`: when `true`, rerunning the same study resumes from the existing storage.
 - `sampler`: `tpe`, `random`, or `grid`.
+- `tpe_startup_trials`: optional number of random startup trials before TPE uses its model. `null` uses `sampler_params.n_startup_trials` or the Optuna default. `--tpe-startup-trials` / the experiment-config `tpe_startup_trials` key overrides this field.
 - `sampler_params`: extra keyword arguments passed to the sampler.
 - `pruner`: `none`, `median`, `successive_halving`, or `hyperband`.
 - `pruner_params`: extra keyword arguments passed to the pruner.
@@ -106,6 +108,7 @@ Class-qualified keys such as `loss.TripletMarginLoss.margin` apply only when tha
 The exact keys `loss` and `miner` remain fixed training choices. Set them explicitly with `--loss` and `--miner`, or compare fixed pairs outside Optuna.
 Before a study starts, categorical constructor parameters for each selected loss/miner are checked together against the real constructor. If some Cartesian-product combinations are invalid, the runner automatically samples from one joint categorical space containing only valid combinations. Invalid combinations therefore do not consume trials.
 This automatic filtering applies to categorical choices. Continuous cross-parameter constraints cannot be exhaustively enumerated and should be represented through a categorical set of valid combinations instead.
+Categorical constructor choices that are not scalar, such as range lists, are also converted into a joint serialized Optuna parameter so they can be stored safely.
 Use the reserved `batch_sampler` key when `batch_size` and `sampler_m` must be sampled together.
 Its choices are strings formatted as `"batch_size:sampler_m"`, for example `"32:16"`.
 Do not include `batch_size` or `sampler_m` separately when using `batch_sampler`.
@@ -144,6 +147,19 @@ Examples:
     "choices": ["all", "hard", "semihard", "easy"]
   }
 }
+```
+
+`BatchEasyHardMiner` has local validation for its strategy rules:
+
+- `pos_strategy` and `neg_strategy` must each be one of `all`, `easy`, `hard`, or `semihard`.
+- They cannot both be `semihard`.
+- `semihard` cannot be paired with `all` in either direction.
+- `allowed_pos_range` and `allowed_neg_range` must be `null` or a two-number range.
+
+For an exhaustive miner-only grid over all valid strategy pairs and finite range choices, use:
+
+```bash
+python main.py --miner BatchEasyHardMiner --hparam_config configs/hparam_batch_easy_hard_miner.json
 ```
 
 Supported space types:
@@ -312,6 +328,11 @@ Both studies use the same validation set, test set, objective metric, and `n_tri
 During HPO, test evaluation is disabled automatically.
 After both studies finish, the best validation configuration from each study is retrained once more and evaluated on `D_test`.
 
+When `--comparison_seeds` is supplied, each value is applied to both
+the runtime `seed`, `data_split_seed`, `support_seed`, and `hparam_seed`.
+Each comparison-seed scenario runs a full supervised HPO study and a full SSL HPO
+study with those seeds.
+
 Outputs are written under:
 
 ```text
@@ -333,6 +354,9 @@ For methodological consistency, comparison mode rejects HPO spaces that would ch
 - `dataset`
 - `mode`
 - `seed`
+- `hparam_seed`
+- `data_split_seed`
+- `support_seed`
 - `cv_k`
 - `cv_mode`
 - `val_mode`
@@ -506,6 +530,11 @@ python main.py `
 ```
 
 The equivalent experiment-config field is `"final_test_after_hpo": true`.
+Set `"final_test_top_n": 5` to run the same final-test evaluation for the five
+completed HPO trials with the highest objective values. The default is `1`,
+which preserves the previous best-trial-only behavior.
+Set `"final_test_trial_numbers": [6, 11]` to evaluate specific completed trial
+numbers instead of selecting by objective value.
 
 The HPO trials continue to skip the test set. After a study finishes, the
 runner:
@@ -514,9 +543,11 @@ runner:
 2. reads the validation-selected checkpoint epoch from each fold;
 3. averages the corresponding training epoch counts and rounds to the nearest
    integer;
-4. trains one fresh model with the best hyperparameters on the complete
+4. evaluates the freshly initialized epoch-0 model once on the held-out test
+   set, before any optimizer step;
+5. trains one fresh model with the best hyperparameters on the complete
    development/training pool, without validation or early stopping;
-5. evaluates that final model once on the held-out test set.
+6. evaluates that final model once on the held-out test set.
 
 For non-CV HPO, the selected epoch from the single validation run supplies the
 final duration. Older resumed studies that do not contain `selected_epoch`
@@ -528,6 +559,15 @@ Each study directory receives:
 final_evaluation.json
 final_evaluation.csv
 ```
+
+When `final_test_top_n` is greater than 1, the best trial still writes the
+legacy `final_evaluation.*` files. Additional selected trials write
+`final_evaluation_trial_XXXX.*`, and the combined table is written to
+`final_evaluation_top_N.*`.
+
+When `final_test_trial_numbers` is set, each selected trial writes
+`final_evaluation_trial_XXXX.*`, and the combined table is written to
+`final_evaluation_selected_trials.*`.
 
 These files record the best trial and parameters, fold epoch counts, mean and
 rounded final epoch count, final run directory, final train loss, optimizer

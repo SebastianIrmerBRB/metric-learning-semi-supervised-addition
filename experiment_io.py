@@ -15,10 +15,16 @@ def result_to_dict(result):
         "last_epoch": result.last_epoch,
         "selected_epoch": result.selected_epoch,
         "global_step": result.global_step,
+        "epoch0_test_precision_at_1": result.epoch0_test_precision_at_1,
+        "epoch0_test_mean_average_precision_at_r": result.epoch0_test_mean_average_precision_at_r,
         "cv_k": result.cv_k,
         "cv_mode": result.cv_mode,
         "cv_fold": result.cv_fold,
         "fold_results": result.fold_results,
+        "test_pacmap_coordinates": None
+        if result.test_pacmap_coordinates is None
+        else str(result.test_pacmap_coordinates),
+        "test_pacmap_plot": None if result.test_pacmap_plot is None else str(result.test_pacmap_plot),
     }
 
 def namespace_to_dict(args):

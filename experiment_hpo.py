@@ -13,7 +13,12 @@ from loguru import logger
 
 import semi_supervised
 import utils
-from experiment_cli import normalize_backbone_tuning_args
+from experiment_cli import (
+    FINAL_TEST_VISUALIZATION_NONE,
+    get_hparam_seed,
+    get_support_seed,
+    normalize_backbone_tuning_args,
+)
 from experiment_io import is_scalar, namespace_to_dict, result_to_dict, to_jsonable, write_json
 from experiment_training import (
     get_loss_class,
@@ -21,6 +26,7 @@ from experiment_training import (
     resolve_loss_driven_supervised_args,
     resolve_mode_ssl_config,
     run_experiment,
+    validate_named_miner_params,
     validate_run_args,
 )
 from experiment_types import (
@@ -76,6 +82,10 @@ def validate_hparam_config(config, path=None):
         raise ValueError(f"metric must be one of {sorted(OBJECTIVE_METRICS)}{source}")
     if config.sampler not in {"tpe", "random", "grid"}:
         raise ValueError(f"sampler must be one of ['tpe', 'random', 'grid']{source}")
+    if config.tpe_startup_trials is not None:
+        validate_tpe_startup_trials(config.tpe_startup_trials, source)
+        if config.sampler != "tpe":
+            raise ValueError(f"tpe_startup_trials only applies when sampler is 'tpe'{source}")
     if config.pruner not in {"none", "median", "successive_halving", "hyperband"}:
         raise ValueError(f"pruner must be one of ['none', 'median', 'successive_halving', 'hyperband']{source}")
     if not isinstance(config.sampler_params, dict):
@@ -102,6 +112,10 @@ def validate_hparam_config(config, path=None):
             )
         validate_component_override_name(name, source)
         validate_space_spec(name, spec, source)
+
+def validate_tpe_startup_trials(value, source=""):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"tpe_startup_trials must be a non-negative integer{source}")
 
 def validate_space_spec(name, spec, source=""):
     if isinstance(spec, list):
@@ -198,6 +212,7 @@ def run_hparam_search(args, config):
 
     args = resolve_loss_driven_supervised_args(args)
     config = filter_component_hparam_config(args, config)
+    config = filter_loss_dependent_hparam_config(args, config)
     config = make_backbone_tuning_spaces_aware(args, config)
     config = make_sampler_spaces_k_shot_aware(args, config)
     config = make_sampler_spaces_label_budget_aware(args, config)
@@ -219,11 +234,13 @@ def run_hparam_search(args, config):
     study_name = config.study_name or "optuna"
     study_dir, relative_study_dir = make_study_dir(args.save_dir, study_name, config.study_dir)
     storage = resolve_optuna_storage(config.storage, study_dir)
+    resolved_tpe_startup_trials = resolve_tpe_startup_trials(args, config)
     write_json(
         study_dir / "study_config.json",
         {
             "base_args": namespace_to_dict(args),
             "hparam_config": config.to_dict(),
+            "resolved_tpe_startup_trials": resolved_tpe_startup_trials,
             "resolved_study_name": study_name,
             "resolved_storage": storage,
         },
@@ -231,7 +248,12 @@ def run_hparam_search(args, config):
 
     # The sampler proposes values; the pruner can stop weak trials based on
     # intermediate reports from epochs or CV folds.
-    sampler = make_optuna_sampler(optuna, config, args.seed)
+    sampler = make_optuna_sampler(
+        optuna,
+        config,
+        get_hparam_seed(args),
+        tpe_startup_trials=resolved_tpe_startup_trials,
+    )
     pruner = make_optuna_pruner(optuna, config)
     study = optuna.create_study(
         direction=config.direction,
@@ -260,6 +282,7 @@ def run_hparam_search(args, config):
         # Comparisons suppress test evaluation during HPO. Standalone studies
         # may opt in, but validation metrics remain the usual objective.
         trial_args.evaluate_test = not bool(getattr(args, "skip_test_during_hpo", False))
+        trial_args.final_test_visualization = FINAL_TEST_VISUALIZATION_NONE
         trial_args.save_dir = relative_study_dir / f"trial_{trial.number:04d}"
 
         # User attributes make the persistent trial self-describing without
@@ -279,6 +302,11 @@ def run_hparam_search(args, config):
             # Some sampled batch/sampler/label-budget combinations cannot form
             # one M-per-class batch. Prune those combinations without aborting
             # the entire study.
+            trial.set_user_attr("pruned_reason", str(exc))
+            raise optuna.TrialPruned(str(exc)) from exc
+        except utils.NonFiniteEmbeddingError as exc:
+            # Divergent hyperparameters can produce NaN/Inf embeddings during
+            # validation. Treat them as invalid trials instead of aborting HPO.
             trial.set_user_attr("pruned_reason", str(exc))
             raise optuna.TrialPruned(str(exc)) from exc
         # Store all artifacts and metrics on the trial, then return only the
@@ -333,9 +361,11 @@ def make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_js
             best_value=None,
             best_params=None,
             best_user_attrs=None,
+            completed_trials=[],
         )
 
     best_trial = study.best_trial
+    completed_trial_dicts = make_completed_hparam_trial_dicts(complete_trials)
     return HParamStudyResult(
         study_name=study_name,
         study_dir=study_dir,
@@ -345,7 +375,21 @@ def make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_js
         best_value=float(best_trial.value),
         best_params=expand_joint_component_params(dict(best_trial.params)),
         best_user_attrs=dict(best_trial.user_attrs),
+        completed_trials=completed_trial_dicts,
     )
+
+def make_completed_hparam_trial_dicts(complete_trials):
+    """Return completed trials sorted by highest objective value first."""
+
+    return [
+        {
+            "trial_number": trial.number,
+            "value": float(trial.value),
+            "params": expand_joint_component_params(dict(trial.params)),
+            "user_attrs": dict(trial.user_attrs),
+        }
+        for trial in sorted(complete_trials, key=lambda trial: (-float(trial.value), trial.number))
+    ]
 
 def make_study_dir(base_save_dir, study_name, configured_study_dir=None):
     # Return both the physical path and the path passed as save_dir. The latter
@@ -400,11 +444,24 @@ def recover_unfinished_trials(optuna, study):
         )
     return recovered
 
-def make_optuna_sampler(optuna, config, seed):
+def resolve_tpe_startup_trials(args, config):
+    value = getattr(args, "tpe_startup_trials", None)
+    if value is None:
+        value = config.tpe_startup_trials
+    if value is None:
+        return None
+    validate_tpe_startup_trials(value)
+    if config.sampler != "tpe":
+        raise ValueError("tpe_startup_trials only applies when sampler is 'tpe'")
+    return int(value)
+
+def make_optuna_sampler(optuna, config, seed, tpe_startup_trials=None):
     sampler_params = dict(config.sampler_params)
     if config.sampler in {"tpe", "random"}:
         sampler_params.setdefault("seed", seed)
     if config.sampler == "tpe":
+        if tpe_startup_trials is not None:
+            sampler_params["n_startup_trials"] = int(tpe_startup_trials)
         return optuna.samplers.TPESampler(**sampler_params)
     if config.sampler == "random":
         return optuna.samplers.RandomSampler(**sampler_params)
@@ -526,7 +583,11 @@ def make_args_and_ssl_config_from_params(base_args, params):
         else:
             set_arg_value(trial_args, name, value)
 
-    ssl_config = semi_supervised.load_ssl_config(trial_args.ssl_config, default_seed=trial_args.seed)
+    ssl_config = semi_supervised.load_ssl_config(
+        trial_args.ssl_config,
+        default_seed=trial_args.seed,
+        default_support_seed=get_support_seed(trial_args),
+    )
     if ssl_overrides:
         # Convert the immutable dataclass to a mutable dictionary, apply nested
         # overrides, and then rebuild/validate a new dataclass instance.
@@ -586,6 +647,20 @@ def filter_component_hparam_config(args, config):
     }
     return replace(config, spaces=spaces)
 
+def filter_loss_dependent_hparam_config(args, config):
+    """Remove HPO spaces for optimizer knobs unused by the fixed loss."""
+
+    if getattr(args, "loss", None) in CLASSIFICATION_LOSSES or "classifier_lr" not in config.spaces:
+        return config
+
+    spaces = dict(config.spaces)
+    del spaces["classifier_lr"]
+    logger.info(
+        f"Excluded classifier_lr from HPO because loss {getattr(args, 'loss', None)!r} "
+        "does not use a classifier optimizer."
+    )
+    return replace(config, spaces=spaces)
+
 def make_backbone_tuning_spaces_aware(args, config):
     """Remove projectionless choices that cannot train with a frozen backbone."""
 
@@ -625,7 +700,11 @@ def make_backbone_tuning_spaces_aware(args, config):
 def make_sampler_spaces_k_shot_aware(args, config):
     """Remove sampler choices that would repeat examples within a k-shot class."""
 
-    ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     if ssl_config.label_sampling_mode != "class_subset_k_shot" or ssl_config.labeled_per_class is None:
         return config
 
@@ -691,7 +770,11 @@ def make_sampler_spaces_label_budget_aware(args, config, training_label_sets_fac
         )
         return config
 
-    ssl_config = semi_supervised.load_ssl_config(args.ssl_config, default_seed=args.seed)
+    ssl_config = semi_supervised.load_ssl_config(
+        args.ssl_config,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
     if ssl_config.label_sampling_mode not in {"class_subset", "class_subset_k_shot"}:
         return config
 
@@ -747,6 +830,7 @@ def make_label_budget_training_label_sets(args, ssl_config):
             dataset_bundle.train_dataset.labels,
             split.labeled_positions,
             original_labels=getattr(dataset_bundle.train_dataset, "orig_labels", None),
+            support_seed=ssl_config.support_seed,
         )
 
     training_label_sets = []
@@ -770,11 +854,12 @@ def make_label_budget_training_label_sets(args, ssl_config):
         training_label_sets.append(labels[np.asarray(split.labeled_positions, dtype=np.int64)])
     return training_label_sets
 
-def make_post_apportion_training_label_sets(args, labels, labeled_positions, original_labels=None):
+def make_post_apportion_training_label_sets(args, labels, labeled_positions, original_labels=None, support_seed=None):
     """Return labeled training labels after each post-apportion validation split."""
 
     labels = np.asarray(labels, dtype=np.int64)
     labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
+    split_seed = get_support_seed(args) if support_seed is None else int(support_seed)
     if args.cv_mode == utils.CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
         if original_labels is None:
             raise ValueError(
@@ -793,17 +878,17 @@ def make_post_apportion_training_label_sets(args, labels, labeled_positions, ori
                 cv_k=args.cv_k,
                 cv_fold=fold_index,
                 cv_mode=args.cv_mode,
-                seed=args.seed,
+                seed=split_seed,
                 superclass_labels=superclass_labels,
             )
             training_label_sets.append(labels[train_positions])
         return training_label_sets
 
-    train_positions, _ = utils.split_positions_stratified_by_label(
+    train_positions, _ = utils.split_positions_class_disjoint_by_label(
         positions=labeled_positions,
         labels=labels,
         val_ratio=utils.POST_APPORTION_VAL_RATIO,
-        seed=args.seed,
+        seed=split_seed,
     )
     return [labels[train_positions]]
 
@@ -878,7 +963,8 @@ def make_component_spaces_constraint_aware(args, config):
             else:
                 invalid_combinations.append((combination, error))
 
-        if not invalid_combinations:
+        needs_joint_space = bool(invalid_combinations) or component_choices_require_joint_space(choices_by_name)
+        if not needs_joint_space:
             continue
         if not valid_combinations:
             example_error = invalid_combinations[0][1]
@@ -898,6 +984,11 @@ def make_component_spaces_constraint_aware(args, config):
         )
 
     return replace(config, spaces=spaces)
+
+def component_choices_require_joint_space(choices_by_name):
+    """Optuna categorical distributions are scalar; joint JSON strings carry complex values."""
+
+    return any(not is_scalar(choice) for choices in choices_by_name for choice in choices)
 
 def is_categorical_space(spec):
     return isinstance(spec, list) or (
@@ -921,7 +1012,11 @@ def validate_component_combination(args, component, combination):
             else:
                 loss_class(**params)
         else:
-            getattr(miners, candidate_args.miner)(**dict(getattr(candidate_args, "miner_params", {})))
+            params = validate_named_miner_params(
+                candidate_args.miner,
+                dict(getattr(candidate_args, "miner_params", {})),
+            )
+            getattr(miners, candidate_args.miner)(**params)
     except (TypeError, ValueError) as exc:
         return str(exc)
     return None

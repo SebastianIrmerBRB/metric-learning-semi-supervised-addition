@@ -1,0 +1,25 @@
+{
+  "save_dir": "cadas196",
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "val_mode": "match_train",
+  "cv_k": 1,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "supervised",
+  "length_before_new_iter": 10000,
+  "seed": 7,
+  "ssl_config": "configs/ssl_faiss_knn.json",
+  "hparam_config": null,
+  "label_budget_grid": [
+    0.05, 0.1, 0.25
+  ],
+  "ssl_label_sampling_modes": [
+    "per_class_imbalanced"
+  ],
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "comparison_seeds": [
+    8
+  ]
+}

@@ -4,12 +4,11 @@
   "timeout": null,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "metric_learning_search",
+  "study_name": "cifar10_k_shot_search",
   "study_dir": null,
   "storage": null,
   "load_if_exists": true,
   "sampler": "tpe",
-  "tpe_startup_trials": null,
   "sampler_params": {},
   "pruner": "none",
   "pruner_params": {},
@@ -17,16 +16,33 @@
     "lr": {
       "type": "float",
       "low": 1e-7,
-      "high": 1e-5,
+      "high": 1e-4,
       "log": true
     },
-    "batch_size": {
-      "type": "categorical",
-      "choices": [16, 32, 64, 128, 256, 512]
+    "weight_decay": {
+      "type": "float",
+      "low": 1e-6,
+      "high": 1e-2,
+      "log": true
     },
-    "sampler_m": {
+    "feat_dim": {
       "type": "categorical",
-      "choices": [1, 2, 4, 8, 16, 32, 64]
+      "choices": [128, 256, 512, null]
+    },
+    "batch_sampler": {
+      "type": "categorical",
+  "choices": [
+    "32:1",
+    "64:1",
+    "128:1",
+    "256:1",
+    "512:1",
+    "32:2",
+    "64:2",
+    "128:2",
+    "256:2",
+    "512:2"
+  ]
     },
     "ssl_config.confidence_threshold": {
       "type": "float",
