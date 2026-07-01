@@ -127,7 +127,10 @@ parser.add_argument(
     "--use_cache",
     dest="use_cache",
     action="store_true",
-    help="reuse persistent deterministic frozen-backbone features from data/backbone_cache",
+    help=(
+        "use deterministic frozen-backbone features; supervised frozen runs precompute one in-memory "
+        "feature tensor per active dataset, while other supported modes use the persistent backbone cache"
+    ),
 )
 parser.add_argument("--loss", type=str, default="MultiSimilarityLoss", choices=ALL_LOSSES, help="loss")
 parser.add_argument("--miner", type=str, default="MultiSimilarityMiner", choices=ALL_MINERS, help="miner")
@@ -246,6 +249,24 @@ parser.add_argument(
     default="spawn",
     choices=utils.DATALOADER_START_METHODS,
     help="DataLoader multiprocessing start method for CPU runs or CUDA runs with zero workers.",
+)
+parser.add_argument(
+    "--debug_batch_timing",
+    action="store_true",
+    default=False,
+    help="log detailed per-batch timing; this synchronizes CUDA and should stay off for benchmarks",
+)
+parser.add_argument(
+    "--debug_batch_timing_interval",
+    type=int,
+    default=5,
+    help="number of batches between debug timing log lines when --debug_batch_timing is enabled",
+)
+parser.add_argument(
+    "--frozen_feature_batch_size",
+    type=int,
+    default=None,
+    help="batch size for one-time frozen-backbone feature extraction; defaults to --batch_size",
 )
 parser.add_argument(
     "--ssl_config",

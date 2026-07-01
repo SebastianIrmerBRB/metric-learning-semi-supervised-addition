@@ -11,6 +11,7 @@ dataset, not indices in the original source dataset.
 """
 
 import copy
+import csv
 import json
 import math
 import time
@@ -40,6 +41,8 @@ import metric_losses
 UNLABELED_TARGET = -1
 UPDATE_MODES = {"once", "every_epoch"}
 PSEUDO_LABEL_DIAGNOSTICS_MODES = {"off", "log", "save"}
+GRAPH_DIAGNOSTICS_MODES = {"off", "save"}
+GRAPH_DIAGNOSTICS_LAYOUTS = {"pacmap", "pca"}
 LABEL_SAMPLING_MODES = {
     "per_class_min",
     "per_class_imbalanced",
@@ -85,6 +88,11 @@ class SemiSupervisedConfig:
     support_seed: int | None = DEFAULT_SUPPORT_SEED
     confidence_threshold: float = 0.0
     pseudo_label_diagnostics_mode: str = "save"
+    graph_diagnostics_mode: str = "off"
+    graph_diagnostics_max_nodes: int = 400
+    graph_diagnostics_max_edges: int = 2000
+    graph_diagnostics_max_labels: int = 80
+    graph_diagnostics_layout: str = "pacmap"
     max_unlabeled_samples: int | None = None
     embedding_batch_size: int = 32
     embedding_num_workers: int = 8
@@ -113,6 +121,20 @@ class PseudoLabelResult:
     positions: np.ndarray
     mapped_labels: np.ndarray
     confidences: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class GraphDiagnosticsRequest:
+    """Output settings for one graph visualization."""
+
+    output_dir: Path
+    slug: str
+    title: str
+    max_nodes: int
+    max_edges: int
+    max_labels: int
+    seed: int
+    layout: str = "pacmap"
 
 
 class PseudoLabelDiagnosticsTracker:
@@ -151,16 +173,380 @@ class PseudoLabelDiagnosticsTracker:
             with self.path.open("a") as jsonl_file:
                 jsonl_file.write(json.dumps(record, sort_keys=True) + "\n")
 
+        accepted_correctness = accepted_summary.get("confidence_correctness")
+        accepted_auc = (
+            None if not accepted_correctness else accepted_correctness.get("auc")
+        )
+        accepted_auc_text = "n/a" if accepted_auc is None else f"{accepted_auc:.3f}"
+
         logger.info(
             "Pseudo-label diagnostics: "
             f"raw={raw_summary['count']}, accepted={accepted_summary['count']}, "
             f"accepted_audit_accuracy={format_optional_metric(accepted_summary['audit_accuracy'])}, "
+            f"accepted_confidence_auc={accepted_auc_text}, "
             f"accepted_confidence_mean={format_optional_metric(accepted_summary['confidence']['mean'])}, "
             f"accepted_changes={format_change_summary(accepted_changes)}"
         )
         self.previous_raw = pseudo_labels_to_position_map(raw_pseudo_labels)
         self.previous_accepted = pseudo_labels_to_position_map(accepted_pseudo_labels)
         self.generation_index += 1
+
+
+def _safe_diagnostic_slug(value):
+    text = str(value).strip().lower()
+    cleaned = [ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in text]
+    slug = "".join(cleaned).strip("_")
+    return slug or "graph"
+
+
+def make_graph_diagnostics_request(config, log_dir, name, epoch=None, title=None):
+    if config.graph_diagnostics_mode != "save" or log_dir is None:
+        return None
+
+    epoch_slug = "initial" if epoch is None else f"epoch_{int(epoch):04d}"
+    seed = int(config.seed if config.seed is not None else 0)
+    if epoch is not None:
+        seed += int(epoch)
+    return GraphDiagnosticsRequest(
+        output_dir=Path(log_dir) / "graph_diagnostics",
+        slug=_safe_diagnostic_slug(f"{name}_{epoch_slug}"),
+        title=title or str(name),
+        max_nodes=int(config.graph_diagnostics_max_nodes),
+        max_edges=int(config.graph_diagnostics_max_edges),
+        max_labels=int(config.graph_diagnostics_max_labels),
+        seed=seed,
+        layout=str(config.graph_diagnostics_layout),
+    )
+
+
+def dataset_labels_for_positions(train_dataset, positions):
+    labels = getattr(train_dataset, "labels", None)
+    if labels is None:
+        return None
+    labels = np.asarray(labels, dtype=np.int64)
+    positions = np.asarray(positions, dtype=np.int64)
+    if len(positions) == 0:
+        return np.array([], dtype=np.int64)
+    if int(positions.max()) >= len(labels):
+        return None
+    return labels[positions]
+
+
+def maybe_save_graph_diagnostics(
+    request,
+    embeddings,
+    adjacency,
+    positions,
+    labels=None,
+    known_mask=None,
+):
+    """Write a graph PNG and sampled edge CSV without affecting training."""
+
+    if request is None:
+        return None
+    try:
+        return save_graph_diagnostics(
+            request=request,
+            embeddings=embeddings,
+            adjacency=adjacency,
+            positions=positions,
+            labels=labels,
+            known_mask=known_mask,
+        )
+    except Exception as exc:  # pragma: no cover - diagnostics must not stop training
+        logger.warning(f"Could not save graph diagnostics {request.slug}: {exc}")
+        return None
+
+
+def save_graph_diagnostics(
+    request,
+    embeddings,
+    adjacency,
+    positions,
+    labels=None,
+    known_mask=None,
+):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logger.warning("matplotlib is not installed; skipping graph diagnostics PNG")
+        return None
+
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    positions = np.asarray(positions, dtype=np.int64)
+    adjacency = adjacency.tocsr()
+    num_nodes = adjacency.shape[0]
+    if adjacency.shape[0] != adjacency.shape[1]:
+        raise ValueError("graph diagnostics adjacency must be square")
+    if len(embeddings) != num_nodes or len(positions) != num_nodes:
+        raise ValueError("graph diagnostics embeddings, positions, and adjacency must align")
+
+    labels = None if labels is None else np.asarray(labels, dtype=np.int64)
+    if labels is not None and len(labels) != num_nodes:
+        labels = None
+    known_mask = None if known_mask is None else np.asarray(known_mask, dtype=bool)
+    if known_mask is not None and len(known_mask) != num_nodes:
+        known_mask = None
+
+    rng = np.random.default_rng(request.seed)
+    node_indices = choose_graph_diagnostic_nodes(
+        adjacency=adjacency,
+        max_nodes=request.max_nodes,
+        rng=rng,
+    )
+    sampled_adjacency = adjacency[node_indices][:, node_indices]
+    edge_rows, edge_cols, edge_weights, full_edge_count = sample_graph_diagnostic_edges(
+        adjacency=sampled_adjacency,
+        max_edges=request.max_edges,
+        rng=rng,
+    )
+
+    request.output_dir.mkdir(parents=True, exist_ok=True)
+    png_path = request.output_dir / f"{request.slug}.png"
+    csv_path = request.output_dir / f"{request.slug}_sampled_edges.csv"
+
+    coords, projection_name = project_graph_embeddings_2d(
+        embeddings[node_indices],
+        layout=request.layout,
+        seed=request.seed,
+    )
+    fig, ax = plt.subplots(figsize=(9, 7))
+    for row, col, weight in zip(edge_rows, edge_cols, edge_weights):
+        alpha = 0.12 + 0.35 * min(abs(float(weight)), 1.0)
+        ax.plot(
+            [coords[row, 0], coords[col, 0]],
+            [coords[row, 1], coords[col, 1]],
+            color="#8a8f98",
+            linewidth=0.45,
+            alpha=alpha,
+            zorder=1,
+        )
+
+    sampled_labels = None if labels is None else labels[node_indices]
+    sampled_known = None if known_mask is None else known_mask[node_indices]
+    scatter_graph_nodes(ax, coords, sampled_labels, sampled_known)
+    if len(node_indices) <= request.max_labels:
+        for local_index, position in enumerate(positions[node_indices]):
+            ax.text(
+                coords[local_index, 0],
+                coords[local_index, 1],
+                str(int(position)),
+                fontsize=6,
+                alpha=0.82,
+                zorder=5,
+            )
+
+    total_edges = sparse.triu(adjacency, k=1).nnz
+    ax.set_title(
+        f"{request.title}\n"
+        f"showing {len(node_indices)}/{num_nodes} samples and "
+        f"{len(edge_rows)}/{total_edges} undirected edges"
+    )
+    ax.set_xlabel(f"{projection_name} 1")
+    ax.set_ylabel(f"{projection_name} 2")
+    ax.tick_params(labelsize=8)
+    ax.legend(loc="best")
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=160)
+    plt.close(fig)
+
+    write_graph_edge_csv(
+        csv_path=csv_path,
+        node_indices=node_indices,
+        edge_rows=edge_rows,
+        edge_cols=edge_cols,
+        edge_weights=edge_weights,
+        positions=positions,
+        labels=labels,
+        known_mask=known_mask,
+    )
+    logger.info(
+        "Saved graph diagnostics: "
+        f"png={png_path}, sampled_edges={csv_path}, "
+        f"sampled_nodes={len(node_indices)}, sampled_edges={len(edge_rows)}, "
+        f"available_sampled_edges={full_edge_count}, projection={projection_name}"
+    )
+    return png_path
+
+
+def choose_graph_diagnostic_nodes(adjacency, max_nodes, rng):
+    num_nodes = adjacency.shape[0]
+    if num_nodes <= max_nodes:
+        return np.arange(num_nodes, dtype=np.int64)
+
+    upper = sparse.triu(adjacency, k=1).tocoo()
+    if upper.nnz == 0:
+        return np.sort(rng.choice(num_nodes, size=max_nodes, replace=False)).astype(np.int64)
+
+    sampled_edge_count = min(max_nodes, upper.nnz)
+    edge_indices = rng.choice(upper.nnz, size=sampled_edge_count, replace=False)
+    endpoints = np.unique(np.concatenate([upper.row[edge_indices], upper.col[edge_indices]]))
+    if len(endpoints) > max_nodes:
+        endpoints = rng.choice(endpoints, size=max_nodes, replace=False)
+    elif len(endpoints) < max_nodes:
+        remaining = np.setdiff1d(np.arange(num_nodes, dtype=np.int64), endpoints, assume_unique=False)
+        fill = rng.choice(remaining, size=max_nodes - len(endpoints), replace=False)
+        endpoints = np.concatenate([endpoints, fill])
+    return np.sort(endpoints.astype(np.int64))
+
+
+def sample_graph_diagnostic_edges(adjacency, max_edges, rng):
+    upper = sparse.triu(adjacency, k=1).tocoo()
+    if upper.nnz == 0:
+        return (
+            np.array([], dtype=np.int64),
+            np.array([], dtype=np.int64),
+            np.array([], dtype=np.float64),
+            0,
+        )
+    if upper.nnz <= max_edges:
+        chosen = np.arange(upper.nnz, dtype=np.int64)
+    else:
+        chosen = np.sort(rng.choice(upper.nnz, size=max_edges, replace=False))
+    return (
+        upper.row[chosen].astype(np.int64),
+        upper.col[chosen].astype(np.int64),
+        upper.data[chosen].astype(np.float64),
+        int(upper.nnz),
+    )
+
+
+def project_graph_embeddings_2d(embeddings, layout="pacmap", seed=0):
+    embeddings = np.asarray(embeddings, dtype=np.float64)
+    if embeddings.ndim != 2:
+        raise ValueError("graph diagnostic embeddings must be a matrix")
+    if len(embeddings) == 0:
+        return np.zeros((0, 2), dtype=np.float64), "PCA"
+    if layout == "pacmap" and len(embeddings) >= 20:
+        try:
+            import pacmap
+
+            n_neighbors = min(10, len(embeddings) - 1)
+            coordinates = pacmap.PaCMAP(
+                n_components=2,
+                n_neighbors=n_neighbors,
+            ).fit_transform(np.ascontiguousarray(embeddings, dtype=np.float32))
+            coordinates = np.asarray(coordinates, dtype=np.float64)
+            if coordinates.ndim == 2 and coordinates.shape[1] >= 2:
+                return coordinates[:, :2], "PaCMAP"
+            logger.warning(
+                f"PaCMAP returned coordinates with shape {coordinates.shape}; falling back to PCA"
+            )
+        except Exception as exc:
+            logger.warning(f"PaCMAP graph projection failed; falling back to PCA: {exc}")
+
+    centered = embeddings - embeddings.mean(axis=0, keepdims=True)
+    if embeddings.shape[1] == 1:
+        return (
+            np.column_stack([centered[:, 0], np.zeros(len(centered), dtype=np.float64)]),
+            "PCA",
+        )
+    _, _, vh = np.linalg.svd(centered, full_matrices=False)
+    coords = centered @ vh[:2].T
+    if coords.shape[1] == 1:
+        coords = np.column_stack([coords[:, 0], np.zeros(len(coords), dtype=np.float64)])
+    return coords, "PCA"
+
+
+def scatter_graph_nodes(ax, coords, labels, known_mask):
+    if labels is None:
+        if known_mask is None:
+            ax.scatter(coords[:, 0], coords[:, 1], s=18, color="#4e79a7", alpha=0.78, label="samples", zorder=3)
+            return
+        labels = np.zeros(len(coords), dtype=np.int64)
+
+    if known_mask is None:
+        ax.scatter(
+            coords[:, 0],
+            coords[:, 1],
+            c=labels,
+            cmap="tab20",
+            s=18,
+            alpha=0.78,
+            linewidths=0,
+            label="samples",
+            zorder=3,
+        )
+        return
+
+    unlabeled = ~known_mask
+    if np.any(unlabeled):
+        ax.scatter(
+            coords[unlabeled, 0],
+            coords[unlabeled, 1],
+            c=labels[unlabeled],
+            cmap="tab20",
+            marker="o",
+            s=18,
+            alpha=0.48,
+            linewidths=0,
+            label="unlabeled",
+            zorder=3,
+        )
+    if np.any(known_mask):
+        ax.scatter(
+            coords[known_mask, 0],
+            coords[known_mask, 1],
+            c=labels[known_mask],
+            cmap="tab20",
+            marker="D",
+            s=32,
+            alpha=0.92,
+            edgecolors="#111111",
+            linewidths=0.35,
+            label="labeled",
+            zorder=4,
+        )
+
+
+def write_graph_edge_csv(
+    csv_path,
+    node_indices,
+    edge_rows,
+    edge_cols,
+    edge_weights,
+    positions,
+    labels,
+    known_mask,
+):
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(
+            csv_file,
+            fieldnames=[
+                "source_graph_node",
+                "target_graph_node",
+                "source_position",
+                "target_position",
+                "weight",
+                "source_label",
+                "target_label",
+                "source_kind",
+                "target_kind",
+            ],
+        )
+        writer.writeheader()
+        for row, col, weight in zip(edge_rows, edge_cols, edge_weights):
+            source = int(node_indices[int(row)])
+            target = int(node_indices[int(col)])
+            writer.writerow(
+                {
+                    "source_graph_node": source,
+                    "target_graph_node": target,
+                    "source_position": int(positions[source]),
+                    "target_position": int(positions[target]),
+                    "weight": float(weight),
+                    "source_label": "" if labels is None else int(labels[source]),
+                    "target_label": "" if labels is None else int(labels[target]),
+                    "source_kind": graph_node_kind(known_mask, source),
+                    "target_kind": graph_node_kind(known_mask, target),
+                }
+            )
+
+
+def graph_node_kind(known_mask, node):
+    if known_mask is None:
+        return ""
+    return "labeled" if bool(known_mask[int(node)]) else "unlabeled"
 
 
 class RelabeledSubset(Dataset):
@@ -252,7 +638,17 @@ class BaseSemiSupervisedMethod:
     def validate_config(self, config, source=""):
         return None
 
-    def generate_pseudo_labels(self, model, train_dataset, split, device, config, epoch=None, start_method="spawn"):
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
         raise NotImplementedError
 
 
@@ -412,6 +808,7 @@ class BaseTrainingRegularizer:
         num_workers,
         start_method,
         epoch,
+        log_dir=None,
     ):
         raise NotImplementedError
 
@@ -494,6 +891,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
 
         self.dataset = None
         self.graph_positions = None
+        self.graph_known_mask = None
         self.neighbor_indices = None
         self.adjacency = None   # scipy CSR, symmetric binary W
         self.degrees = None
@@ -517,6 +915,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         if len(positions) < 2:
             raise ValueError("LRML regularization requires at least two graph samples")
         self.graph_positions = positions
+        self.graph_known_mask = np.isin(positions, np.asarray(split.labeled_positions, dtype=np.int64))
         self.dataset = LRMLGraphDataset(train_dataset, positions)
         self.neighbor_indices = None
         self.adjacency = None
@@ -527,6 +926,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
     def make_loader(
         self, model, train_dataset, supervised_loader, device, config,
         batch_size, seed, num_workers, start_method, epoch,
+        log_dir=None,
     ):
         if self.dataset is None or self.graph_positions is None:
             raise RuntimeError("build_dataset must be called before make_loader")
@@ -561,6 +961,20 @@ class LRMLRegularizer(BaseTrainingRegularizer):
 
             neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
                 embeddings, n_neighbors=self.n_neighbors, normalize=self.normalize_embeddings,
+            )
+            maybe_save_graph_diagnostics(
+                request=make_graph_diagnostics_request(
+                    config=config,
+                    log_dir=log_dir,
+                    name=f"{self.name}_knn",
+                    epoch=epoch,
+                    title="LRML symmetric kNN graph",
+                ),
+                embeddings=embeddings,
+                adjacency=adjacency,
+                positions=self.graph_positions,
+                labels=dataset_labels_for_positions(train_dataset, self.graph_positions),
+                known_mask=self.graph_known_mask,
             )
             self.neighbor_indices = neighbor_indices
             self.adjacency = adjacency
@@ -652,6 +1066,7 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         self.dataset = None
         self.graph_positions = None
         self.graph_labels = None
+        self.graph_known_mask = None
         self.adjacency = None
         self.positive_pair_count = 0
 
@@ -676,12 +1091,14 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             graph_positions=positions,
             labeled_positions=split.labeled_positions,
         )
+        self.graph_known_mask = self.graph_labels != UNLABELED_TARGET
         self.dataset = LRMLGraphDataset(train_dataset, positions)
         return self.dataset
 
     def make_loader(
         self, model, train_dataset, supervised_loader, device, config,
         batch_size, seed, num_workers, start_method, epoch,
+        log_dir=None,
     ):
         if self.dataset is None or self.graph_positions is None or self.graph_labels is None:
             raise RuntimeError("build_dataset must be called before make_loader")
@@ -710,6 +1127,20 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             normalize=self.normalize_embeddings,
         )
         graph_seconds = time.perf_counter() - graph_start
+        maybe_save_graph_diagnostics(
+            request=make_graph_diagnostics_request(
+                config=config,
+                log_dir=log_dir,
+                name=f"{self.name}_semisupervised",
+                epoch=epoch,
+                title="SLRMML semisupervised graph",
+            ),
+            embeddings=embeddings,
+            adjacency=adjacency,
+            positions=self.graph_positions,
+            labels=dataset_labels_for_positions(train_dataset, self.graph_positions),
+            known_mask=self.graph_known_mask,
+        )
         self.adjacency = adjacency
         self.positive_pair_count = positive_pair_count
 
@@ -837,6 +1268,7 @@ class STMLRegularizer(BaseTrainingRegularizer):
         num_workers,
         start_method,
         epoch,
+        log_dir=None,
     ):
         if self.dataset is None:
             raise RuntimeError("build_dataset must be called before make_loader")
@@ -960,7 +1392,17 @@ class SklearnGraphSSLMethod(BaseSemiSupervisedMethod):
         self.estimator_cls = estimator_cls
         self.default_params = default_params
 
-    def generate_pseudo_labels(self, model, train_dataset, split, device, config, epoch=None, start_method="spawn"):
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
         """Fit a graph SSL estimator on embeddings and predict unlabeled nodes."""
 
         if len(split.unlabeled_positions) == 0:
@@ -1036,7 +1478,17 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         self.name = name
         self.n_neighbors = n_neighbors
 
-    def generate_pseudo_labels(self, model, train_dataset, split, device, config, epoch=None, start_method="spawn"):
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
         if len(split.unlabeled_positions) == 0:
             # Return an empty, correctly typed result that downstream code can
             # concatenate/filter without special handling.
@@ -1107,6 +1559,31 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         # neighbor_indices has shape [num_unlabeled, k] and contains row offsets
         # into labeled_embeddings/labeled_targets.
         similarities, neighbor_indices = index.search(unlabeled_embeddings, k)
+        request = make_graph_diagnostics_request(
+            config=config,
+            log_dir=log_dir,
+            name=f"{self.name}_labeled_knn",
+            epoch=epoch,
+            title=f"{self.name} unlabeled-to-labeled FAISS kNN graph",
+        )
+        if request is not None:
+            graph_rows = np.repeat(np.arange(len(split.unlabeled_positions), dtype=np.int64) + num_labeled, k)
+            graph_cols = neighbor_indices.reshape(-1).astype(np.int64)
+            graph_values = np.maximum(similarities.reshape(-1).astype(np.float64), 0.0)
+            graph = sparse.coo_matrix(
+                (graph_values, (graph_rows, graph_cols)),
+                shape=(len(ssl_positions), len(ssl_positions)),
+                dtype=np.float64,
+            ).tocsr()
+            graph = (graph + graph.T).tocsr()
+            maybe_save_graph_diagnostics(
+                request=request,
+                embeddings=np.vstack([labeled_embeddings, unlabeled_embeddings]),
+                adjacency=graph,
+                positions=ssl_positions,
+                labels=labels[ssl_positions],
+                known_mask=np.arange(len(ssl_positions)) < num_labeled,
+            )
 
         # Advanced indexing turns neighbor row offsets into a label matrix with
         # the same [num_unlabeled, k] shape.
@@ -1142,12 +1619,30 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
         "cg_max_iter": 1000,
         "edge_batch_size": 65536,
         "linear_solver": "auto",
+        # How the signed, L1-normalized propagated scores G~ are projected to a
+        # simplex before the entropy confidence omega. "softmax" mirrors the
+        # paper's edge-weight confidence (Eqs. 20-21) and is well-defined on
+        # signed scores; "clip" is the legacy clip-negatives-then-renormalize
+        # path, kept only for ablation. confidence_temperature is the softmax
+        # temperature; None reuses `temperature` (the paper's lambda).
+        "confidence_projection": "softmax",
+        "confidence_temperature": None,
     }
 
     def __init__(self, name="mixed_label_propagation"):
         self.name = name
 
-    def generate_pseudo_labels(self, model, train_dataset, split, device, config, epoch=None, start_method="spawn"):
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
         if len(split.unlabeled_positions) == 0:
             return PseudoLabelResult(
                 positions=np.array([], dtype=np.int64),
@@ -1186,6 +1681,18 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
             features=features,
             targets=targets,
             num_classes=num_classes,
+            graph_diagnostics={
+                "request": make_graph_diagnostics_request(
+                    config=config,
+                    log_dir=log_dir,
+                    name=f"{self.name}_affinity",
+                    epoch=epoch,
+                    title=f"{self.name} symmetric affinity graph",
+                ),
+                "positions": ssl_positions,
+                "labels": labels[ssl_positions],
+                "known_mask": targets != UNLABELED_TARGET,
+            },
             **params,
         )
         unlabeled_start = len(split.labeled_positions)
@@ -1215,6 +1722,13 @@ def validate_mixed_label_propagation_params(params):
         raise ValueError("mixed_label_propagation edge_batch_size must be positive")
     if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
         raise ValueError("mixed_label_propagation linear_solver must be one of ['auto', 'cholmod', 'cg']")
+    if str(params["confidence_projection"]) not in {"softmax", "clip"}:
+        raise ValueError("mixed_label_propagation confidence_projection must be one of ['softmax', 'clip']")
+    confidence_temperature = params["confidence_temperature"]
+    if confidence_temperature is not None and (
+        not np.isfinite(float(confidence_temperature)) or float(confidence_temperature) <= 0
+    ):
+        raise ValueError("mixed_label_propagation confidence_temperature must be positive when set")
 
 
 def mixed_label_propagation(
@@ -1230,6 +1744,9 @@ def mixed_label_propagation(
     cg_max_iter=1000,
     edge_batch_size=65536,
     linear_solver="auto",
+    confidence_projection="softmax",
+    confidence_temperature=None,
+    graph_diagnostics=None,
 ):
     """Run equations (14)-(24) and return mixed-LP scores/confidences."""
 
@@ -1248,6 +1765,15 @@ def mixed_label_propagation(
         raise ValueError("labeled targets must be in [0, num_classes)")
 
     affinity = make_mixed_label_affinity(features, n_neighbors=n_neighbors, gamma=gamma)
+    if graph_diagnostics is not None:
+        maybe_save_graph_diagnostics(
+            request=graph_diagnostics.get("request"),
+            embeddings=features,
+            adjacency=affinity,
+            positions=graph_diagnostics.get("positions"),
+            labels=graph_diagnostics.get("labels"),
+            known_mask=graph_diagnostics.get("known_mask"),
+        )
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
     laplacian = sparse.diags(degrees) - affinity
     anchors = sparse.diags(np.where(labeled, float(mu), 0.0))
@@ -1262,7 +1788,6 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="initial label propagation",
-        solver=str(linear_solver),
     )
 
     dissimilarity = make_dissimilarity_affinity(
@@ -1287,10 +1812,18 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="mixed label propagation",
-        solver=str(linear_solver),
     )
     normalized_scores = normalize_mixed_label_rows(mixed_labels)
-    confidence_probabilities = mixed_label_confidence_probabilities(normalized_scores)
+    # None reuses the propagation temperature (the paper's lambda) so the softmax
+    # projection shares the edge-confidence scale by default.
+    resolved_confidence_temperature = (
+        float(temperature) if confidence_temperature is None else float(confidence_temperature)
+    )
+    confidence_probabilities = mixed_label_confidence_probabilities(
+        normalized_scores,
+        projection=str(confidence_projection),
+        temperature=resolved_confidence_temperature,
+    )
     confidences = entropy_confidence(confidence_probabilities)
     return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
@@ -1586,8 +2119,24 @@ def normalize_mixed_label_rows(values):
     return values / l1_norms
 
 
-def mixed_label_confidence_probabilities(normalized_scores):
-    """Project signed mixed-LP scores to a simplex before entropy confidence."""
+def mixed_label_confidence_probabilities(normalized_scores, projection="softmax", temperature=4.0):
+    """Project the signed, L1-normalized mixed-LP scores to a simplex for Eq. (21).
+
+    Mixed LP produces *signed* G* because the dissimilarity term makes the system
+    matrix non-M-matrix, so G~ = G*/||G*||_1 is not a probability vector and the
+    paper's confidence omega = 1 - H(G~)/log C is undefined on it. The paper itself
+    computes its other confidence (the edge weights, Eqs. 20-21) on a *softmax*,
+    which is always a valid distribution, so we mirror that here.
+
+    projection:
+      - "softmax" (default): p_i = softmax(temperature * G~_i). A strong negative
+        score lowers a class's probability rather than being erased, and because
+        G~ is L1-normalized the input scale is fixed, so one temperature is
+        comparable across rows and epochs.
+      - "clip" (legacy, ablation only): clip negatives to zero then renormalize.
+        This manufactures over-confidence -- e.g. [0.6, -0.5, -0.1] collapses to
+        [1, 0, 0], yielding omega = 1 on a row the propagation was conflicted on.
+    """
 
     normalized_scores = np.asarray(normalized_scores, dtype=np.float64)
     if normalized_scores.ndim != 2:
@@ -1596,6 +2145,19 @@ def mixed_label_confidence_probabilities(normalized_scores):
         return np.ones_like(normalized_scores, dtype=np.float64)
     if not np.all(np.isfinite(normalized_scores)):
         raise RuntimeError("Mixed label propagation produced non-finite normalized class scores")
+
+    if projection == "softmax":
+        tau = float(temperature)
+        if not np.isfinite(tau) or tau <= 0:
+            raise ValueError("confidence temperature must be finite and positive")
+        return stable_softmax(tau * normalized_scores)
+    if projection == "clip":
+        return _clip_negative_confidence_probabilities(normalized_scores)
+    raise ValueError(f"Unknown confidence projection: {projection!r} (expected 'softmax' or 'clip')")
+
+
+def _clip_negative_confidence_probabilities(normalized_scores):
+    """Legacy projection: clip negative mass to zero, then renormalize per row."""
 
     negative = normalized_scores < 0
     if np.any(negative):
@@ -1790,6 +2352,20 @@ def validate_ssl_config(config, path=None):
         raise ValueError(
             f"pseudo_label_diagnostics_mode must be one of {sorted(PSEUDO_LABEL_DIAGNOSTICS_MODES)}{source}"
         )
+    if config.graph_diagnostics_mode not in GRAPH_DIAGNOSTICS_MODES:
+        raise ValueError(
+            f"graph_diagnostics_mode must be one of {sorted(GRAPH_DIAGNOSTICS_MODES)}{source}"
+        )
+    if config.graph_diagnostics_max_nodes <= 0:
+        raise ValueError(f"graph_diagnostics_max_nodes must be positive{source}")
+    if config.graph_diagnostics_max_edges <= 0:
+        raise ValueError(f"graph_diagnostics_max_edges must be positive{source}")
+    if config.graph_diagnostics_max_labels < 0:
+        raise ValueError(f"graph_diagnostics_max_labels must be non-negative{source}")
+    if config.graph_diagnostics_layout not in GRAPH_DIAGNOSTICS_LAYOUTS:
+        raise ValueError(
+            f"graph_diagnostics_layout must be one of {sorted(GRAPH_DIAGNOSTICS_LAYOUTS)}{source}"
+        )
     if config.max_unlabeled_samples is not None and config.max_unlabeled_samples <= 0:
         raise ValueError(f"max_unlabeled_samples must be positive{source}")
     if config.embedding_batch_size <= 0:
@@ -1882,6 +2458,7 @@ def build_ssl_training_dataset(
     epoch=None,
     start_method="spawn",
     diagnostics_tracker=None,
+    log_dir=None,
 ):
     """Generate, filter, and merge pseudo-labels with the true labeled subset."""
 
@@ -1918,9 +2495,10 @@ def build_ssl_training_dataset(
         config,
         epoch=epoch,
         start_method=start_method,
+        log_dir=log_dir,
     )
 
-    #### TODO: this is porbably not faithfully implemented. Check this again for e. g. MLPPL
+    #### TODO: this is probably not faithfully implemented. Check this again for e. g. MLPPL
 
     # Filter before merging so low-confidence/invalid predictions never affect
     # sampler class counts or training batches.
@@ -2300,6 +2878,83 @@ def filter_pseudo_labels(pseudo_labels, confidence_threshold, valid_mapped_label
     )
 
 
+def _average_ranks(values):
+    """Return 1-based ranks with ties broken to their average (Mann-Whitney AUC)."""
+
+    values = np.asarray(values, dtype=np.float64)
+    order = np.argsort(values, kind="mergesort")
+    sorted_values = values[order]
+    n = len(values)
+    sorted_ranks = np.empty(n, dtype=np.float64)
+    index = 0
+    while index < n:
+        end = index
+        while end + 1 < n and sorted_values[end + 1] == sorted_values[index]:
+            end += 1
+        sorted_ranks[index : end + 1] = (index + end) / 2.0 + 1.0
+        index = end + 1
+    ranks = np.empty(n, dtype=np.float64)
+    ranks[order] = sorted_ranks
+    return ranks
+
+
+def confidence_correctness_diagnostics(correct, confidences, num_buckets=10):
+    """Measure whether the confidence weight omega actually ranks correctness.
+
+    The paper's per-sample loss weighting only protects training if confident
+    pseudo-labels are more likely to be correct. This returns:
+      - ``auc``: P(omega of a correct label > omega of an incorrect one), tie-aware.
+        0.5 means omega is uninformative (the failure mode where confident-but-wrong
+        labels get full weight); values well above 0.5 mean omega is usable.
+      - ``buckets``: equal-count groups ordered low->high omega, each with its count,
+        omega range/mean, and audit accuracy. A monotone accuracy rise across buckets
+        confirms omega is calibrated; a flat profile means it is not.
+    Returns None when confidences are absent or correctness is single-class.
+    """
+
+    if confidences is None:
+        return None
+    correct = np.asarray(correct, dtype=bool)
+    confidences = np.asarray(confidences, dtype=np.float64)
+    n = len(correct)
+    if n == 0 or len(confidences) != n:
+        return None
+
+    n_correct = int(correct.sum())
+    n_wrong = n - n_correct
+    if n_correct == 0 or n_wrong == 0:
+        auc = None
+    else:
+        ranks = _average_ranks(confidences)
+        auc = float(
+            (ranks[correct].sum() - n_correct * (n_correct + 1) / 2.0) / (n_correct * n_wrong)
+        )
+
+    num_buckets = max(1, min(int(num_buckets), n))
+    order = np.argsort(confidences, kind="mergesort")
+    confidence_sorted = confidences[order]
+    correct_sorted = correct[order]
+    edges = np.linspace(0, n, num_buckets + 1).astype(int)
+    buckets = []
+    for bucket_index in range(num_buckets):
+        low, high = int(edges[bucket_index]), int(edges[bucket_index + 1])
+        if high <= low:
+            continue
+        segment_confidence = confidence_sorted[low:high]
+        buckets.append(
+            {
+                "quantile": f"{low / n:.2f}-{high / n:.2f}",
+                "count": int(high - low),
+                "confidence_min": float(segment_confidence.min()),
+                "confidence_max": float(segment_confidence.max()),
+                "confidence_mean": float(segment_confidence.mean()),
+                "accuracy": float(correct_sorted[low:high].mean()),
+            }
+        )
+
+    return {"auc": auc, "n_correct": n_correct, "n_wrong": n_wrong, "buckets": buckets}
+
+
 def summarize_pseudo_label_result(pseudo_labels, true_labels):
     """Return JSON-safe distribution and hidden-label audit metrics."""
 
@@ -2310,10 +2965,12 @@ def summarize_pseudo_label_result(pseudo_labels, true_labels):
         true_class_counts = {}
         correct_counts_by_true_class = {}
         audit_accuracy_by_true_class = {}
+        confidence_correctness = None
     else:
         audit_labels = true_labels[positions]
         correct = predicted_labels == audit_labels
         audit_accuracy = float(np.mean(correct))
+        confidence_correctness = confidence_correctness_diagnostics(correct, pseudo_labels.confidences)
         true_class_counts = count_values(audit_labels)
         correct_counts_by_true_class = {
             str(int(label)): int(correct[audit_labels == label].sum())
@@ -2332,6 +2989,7 @@ def summarize_pseudo_label_result(pseudo_labels, true_labels):
         "audit_accuracy": audit_accuracy,
         "audit_accuracy_by_true_class": audit_accuracy_by_true_class,
         "confidence": summarize_numeric_values(pseudo_labels.confidences),
+        "confidence_correctness": confidence_correctness,
     }
 
 
@@ -2500,7 +3158,12 @@ def extract_embeddings(
             # only images/embeddings for the unlabeled candidate pool.
             if embedding_kind == "default":
                 forward_cached = getattr(model, "forward_cached", None)
-                embeddings = model(images.to(device)) if forward_cached is None else forward_cached(images, device)
+                embeddings = utils.forward_model_inputs(
+                    model,
+                    images,
+                    device,
+                    use_cache=forward_cached is not None,
+                )
             elif embedding_kind == "stml_g":
                 forward_stml_cached = getattr(model, "forward_stml_cached", None)
                 if forward_stml_cached is None:
@@ -2523,7 +3186,7 @@ def make_feature_dataset(dataset):
     # Copy before changing transforms so the real training dataset continues to
     # use stochastic augmentation.
     feature_dataset = copy.deepcopy(dataset)
-    feature_transform = getattr(dataset, "feature_transform", None)
+    feature_transform = utils.get_nested_feature_transform(dataset)
     if feature_transform is not None:
         set_nested_transform(feature_dataset, feature_transform)
     return feature_dataset
