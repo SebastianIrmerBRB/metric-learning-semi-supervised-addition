@@ -238,15 +238,22 @@ class DinoWrapper(nn.Module):
         """Project frozen DINO embeddings, loading or creating per-sample cache entries."""
 
         if not self.use_cache:
-            return self(images.to(device))
+            return self(images.to(device, non_blocking=True))
         features = self._load_or_compute_cached_backbone_features(images, device)
         return self.project_features(features)
+
+    def forward_backbone_cached(self, images, device):
+        """Return raw frozen DINO features, optionally using the persistent cache."""
+
+        if not self.use_cache:
+            return self.forward_backbone(images.to(device, non_blocking=True))
+        return self._load_or_compute_cached_backbone_features(images, device)
 
     def forward_stml_cached(self, images, device):
         """Return both STML heads, optionally from cached backbone features."""
 
         if not self.use_cache:
-            return self.forward_stml(images.to(device))
+            return self.forward_stml(images.to(device, non_blocking=True))
         features = self._load_or_compute_cached_backbone_features(images, device)
         return self.project_stml_features(features)
 
@@ -254,7 +261,7 @@ class DinoWrapper(nn.Module):
         """Return teacher g, optionally from cached backbone features."""
 
         if not self.use_cache:
-            return self.forward_stml_teacher(images.to(device))
+            return self.forward_stml_teacher(images.to(device, non_blocking=True))
         features = self._load_or_compute_cached_backbone_features(images, device)
         return self.project_stml_teacher_features(features)
 
@@ -306,7 +313,7 @@ class DinoWrapper(nn.Module):
         if missing_indices:
             self._cache_stats["batches_with_misses"] += 1
             self._cache_stats["miss_samples"] += len(missing_indices)
-            missing_images = cpu_images[missing_indices].to(device)
+            missing_images = cpu_images[missing_indices].to(device, non_blocking=True)
             missing_features = self.forward_backbone(missing_images).detach().cpu()
             for index, feature in zip(missing_indices, missing_features):
                 # A row sliced from a batch retains the batch's entire storage.
@@ -323,7 +330,7 @@ class DinoWrapper(nn.Module):
         else:
             self._cache_stats["fully_cached_batches"] += 1
 
-        return torch.stack(cached_features).to(device)
+        return torch.stack(cached_features).to(device, non_blocking=True)
 
     def _cache_key(self, image):
         digest = hashlib.sha256()

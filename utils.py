@@ -410,7 +410,13 @@ def validate_dataloader_settings(device, num_workers, ssl_embedding_num_workers,
             )
 
 
-def make_dataloader_kwargs(num_workers, seed, start_method, persistent_workers=False):
+def make_dataloader_kwargs(
+    num_workers,
+    seed,
+    start_method,
+    persistent_workers=False,
+    pin_memory=False,
+):
     """Build the shared deterministic multiprocessing options for DataLoaders."""
 
     num_workers = effective_num_workers(num_workers)
@@ -420,6 +426,7 @@ def make_dataloader_kwargs(num_workers, seed, start_method, persistent_workers=F
         "num_workers": num_workers,
         "worker_init_fn": seed_worker,
         "generator": make_torch_generator(seed),
+        "pin_memory": bool(pin_memory),
     }
     if num_workers > 0:
         # persistent_workers avoids process startup each epoch, but it cannot be
@@ -588,15 +595,21 @@ def summarize_miner_outputs(miner_outputs):
 def gradient_l2_norm(parameters):
     """Compute the global L2 norm of currently populated gradients."""
 
-    squared_norm = 0.0
-    has_gradient = False
+    gradients = []
     for parameter in parameters:
         if parameter.grad is None:
             continue
-        has_gradient = True
-        gradient = parameter.grad.detach().float()
-        squared_norm += float(torch.sum(gradient * gradient).item())
-    return squared_norm**0.5 if has_gradient else None
+        gradients.append(parameter.grad.detach())
+    if not gradients:
+        return None
+
+    if hasattr(torch, "_foreach_norm"):
+        norms = torch._foreach_norm([gradient.float() for gradient in gradients], 2.0)
+    else:
+        norms = [torch.linalg.vector_norm(gradient.float(), ord=2) for gradient in gradients]
+    device = norms[0].device
+    total_norm = torch.linalg.vector_norm(torch.stack([norm.to(device) for norm in norms]), ord=2)
+    return float(total_norm.item())
 
 
 def optimizer_learning_rates(optimizer, optimizer_name):
@@ -819,6 +832,7 @@ def make_train_loader(
     start_method="spawn",
     persistent_workers=True,
     length_before_new_iter=None,
+    pin_memory=False,
 ):
     """Create a loader whose batches contain ``sampler_m`` samples per class."""
 
@@ -840,7 +854,13 @@ def make_train_loader(
         train_dataset,
         batch_size=batch_size,
         sampler=sampler,
-        **make_dataloader_kwargs(num_workers, seed, start_method, persistent_workers=persistent_workers),
+        **make_dataloader_kwargs(
+            num_workers,
+            seed,
+            start_method,
+            persistent_workers=persistent_workers,
+            pin_memory=pin_memory,
+        ),
     )
     logger.info(
         "Train loader: "
@@ -896,6 +916,7 @@ def make_stml_train_loader(
     seed,
     num_workers=8,
     start_method="spawn",
+    pin_memory=False,
 ):
     """Create the nearest-neighbor batch loader used by STML."""
 
@@ -908,7 +929,13 @@ def make_stml_train_loader(
     loader = DataLoader(
         train_dataset,
         batch_sampler=sampler,
-        **make_dataloader_kwargs(num_workers, seed, start_method, persistent_workers=False),
+        **make_dataloader_kwargs(
+            num_workers,
+            seed,
+            start_method,
+            persistent_workers=False,
+            pin_memory=pin_memory,
+        ),
     )
     logger.info(
         f"STML train loader: {len(train_dataset)} samples, {neighbors_per_query} neighbors/query, "
@@ -965,20 +992,197 @@ def make_sampler_epoch_length(dataset_size, batch_size, length_before_new_iter=N
     return max(batch_size, int(np.ceil(dataset_size / batch_size) * batch_size))
 
 
-def make_eval_loader(dataset, batch_size=32, seed=0, num_workers=8, start_method="spawn"):
+def make_eval_loader(dataset, batch_size=32, seed=0, num_workers=8, start_method="spawn", pin_memory=False):
     # Evaluation traverses every item exactly once in dataset order.
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        **make_dataloader_kwargs(num_workers, seed, start_method, persistent_workers=True),
+        **make_dataloader_kwargs(
+            num_workers,
+            seed,
+            start_method,
+            persistent_workers=True,
+            pin_memory=pin_memory,
+        ),
+    )
+
+
+class PrecomputedBackboneFeatureDataset(Dataset):
+    """Dataset backed by fixed backbone features instead of image tensors."""
+
+    def __init__(
+        self,
+        features,
+        labels,
+        dense_labels=None,
+        sample_weights=None,
+        source_dataset=None,
+    ):
+        features = torch.as_tensor(features, dtype=torch.float32).cpu()
+        if features.ndim != 2:
+            raise ValueError("precomputed backbone features must be a 2D tensor")
+        if len(features) != len(labels):
+            raise ValueError("features and labels must have the same length")
+        self.features = features.contiguous()
+        self.orig_labels = [int(label) for label in labels]
+        if dense_labels is None:
+            dense_labels = self.orig_labels
+        if len(dense_labels) != len(self.orig_labels):
+            raise ValueError("dense_labels must match labels length")
+        self.labels = [int(label) for label in dense_labels]
+        if sample_weights is None:
+            self.sample_weights = None
+        else:
+            sample_weights = torch.as_tensor(sample_weights, dtype=torch.float32).cpu()
+            if len(sample_weights) != len(self.orig_labels):
+                raise ValueError("sample_weights must match labels length")
+            self.sample_weights = sample_weights.contiguous()
+
+        if source_dataset is not None:
+            for attr_name in ("classes", "query_indices", "gallery_indices"):
+                if hasattr(source_dataset, attr_name):
+                    setattr(self, attr_name, getattr(source_dataset, attr_name))
+
+    def __len__(self):
+        return len(self.features)
+
+    def __getitem__(self, index):
+        if self.sample_weights is None:
+            return self.features[index], self.orig_labels[index]
+        return self.features[index], self.orig_labels[index], self.sample_weights[index]
+
+
+def get_nested_feature_transform(dataset):
+    """Return the deterministic feature transform attached under wrapper datasets."""
+
+    feature_transform = getattr(dataset, "feature_transform", None)
+    if feature_transform is not None:
+        return feature_transform
+    if isinstance(dataset, Subset):
+        return get_nested_feature_transform(dataset.dataset)
+    if isinstance(dataset, CombinedDataset):
+        for child_dataset in dataset.datasets:
+            feature_transform = get_nested_feature_transform(child_dataset)
+            if feature_transform is not None:
+                return feature_transform
+        return None
+    child_dataset = getattr(dataset, "dataset", None)
+    if child_dataset is not None and child_dataset is not dataset:
+        return get_nested_feature_transform(child_dataset)
+    return None
+
+
+def make_feature_transform_dataset(dataset, require_feature_transform=False):
+    """Copy a dataset and force its deterministic feature transform."""
+
+    feature_dataset = copy.deepcopy(dataset)
+    feature_transform = get_nested_feature_transform(feature_dataset)
+    if feature_transform is None and require_feature_transform:
+        raise ValueError("Frozen feature precompute requires a deterministic feature_transform")
+    if feature_transform is not None:
+        set_nested_transform(feature_dataset, feature_transform)
+    return feature_dataset
+
+
+def split_optional_weight_batch(batch):
+    if len(batch) == 2:
+        inputs, labels = batch
+        return inputs, labels, None
+    if len(batch) == 3:
+        inputs, labels, sample_weights = batch
+        return inputs, labels, sample_weights
+    raise ValueError(f"Expected a 2- or 3-item batch, got {len(batch)} items")
+
+
+def is_precomputed_feature_batch(inputs):
+    return torch.is_tensor(inputs) and inputs.ndim == 2
+
+
+def forward_model_inputs(model, inputs, device, use_cache=False):
+    """Forward either image batches or precomputed backbone feature batches."""
+
+    if is_precomputed_feature_batch(inputs) and hasattr(model, "project_features"):
+        return model.project_features(inputs.to(device, non_blocking=True))
+    if use_cache and hasattr(model, "forward_cached"):
+        return model.forward_cached(inputs, device)
+    return model(inputs.to(device, non_blocking=True))
+
+
+def precompute_backbone_feature_dataset(
+    model,
+    dataset,
+    device,
+    batch_size,
+    seed,
+    num_workers,
+    start_method,
+    desc,
+    pin_memory=False,
+    require_feature_transform=False,
+):
+    """Extract frozen raw backbone features once and keep dataset labels aligned."""
+
+    if not hasattr(model, "forward_backbone"):
+        raise AttributeError("Model does not expose forward_backbone for feature precompute")
+    feature_dataset = make_feature_transform_dataset(
+        dataset,
+        require_feature_transform=require_feature_transform,
+    )
+    loader = DataLoader(
+        feature_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        **make_dataloader_kwargs(
+            num_workers,
+            seed,
+            start_method,
+            persistent_workers=False,
+            pin_memory=pin_memory,
+        ),
+    )
+
+    was_training = model.training
+    model.eval()
+    all_features = []
+    all_labels = []
+    all_sample_weights = []
+    saw_sample_weights = False
+    with torch.no_grad():
+        for batch in tqdm(loader, desc=desc):
+            images, labels, sample_weights = split_optional_weight_batch(batch)
+            forward_backbone_cached = getattr(model, "forward_backbone_cached", None)
+            if forward_backbone_cached is None:
+                features = model.forward_backbone(images.to(device, non_blocking=True))
+            else:
+                features = forward_backbone_cached(images, device)
+            all_features.append(features.detach().float().cpu())
+            all_labels.append(torch.as_tensor(labels, dtype=torch.long).cpu())
+            if sample_weights is not None:
+                saw_sample_weights = True
+                all_sample_weights.append(torch.as_tensor(sample_weights, dtype=torch.float32).cpu())
+    if was_training:
+        model.train()
+
+    features = torch.cat(all_features, dim=0)
+    labels = torch.cat(all_labels, dim=0).tolist()
+    dense_labels = getattr(dataset, "labels", None)
+    if dense_labels is not None and len(dense_labels) != len(labels):
+        raise ValueError("dataset.labels must align with the precomputed feature rows")
+    sample_weights = torch.cat(all_sample_weights, dim=0) if saw_sample_weights else None
+    return PrecomputedBackboneFeatureDataset(
+        features=features,
+        labels=labels,
+        dense_labels=dense_labels,
+        sample_weights=sample_weights,
+        source_dataset=dataset,
     )
 
 
 def use_feature_transform_for_training(dataset):
     """Replace stochastic training augmentation with the deterministic feature transform."""
 
-    feature_transform = getattr(dataset, "feature_transform", None)
+    feature_transform = get_nested_feature_transform(dataset)
     if feature_transform is None:
         raise ValueError("Cached frozen-backbone training requires a deterministic feature_transform")
     set_nested_transform(dataset, feature_transform)
@@ -2171,6 +2375,10 @@ def set_nested_transform(dataset, transform):
         for child_dataset in dataset.datasets:
             set_nested_transform(child_dataset, transform)
         return
+    child_dataset = getattr(dataset, "dataset", None)
+    if child_dataset is not None and child_dataset is not dataset:
+        set_nested_transform(child_dataset, transform)
+        return
     if hasattr(dataset, "transform"):
         dataset.transform = transform
 
@@ -2481,7 +2689,12 @@ def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
             # Keep only CPU NumPy embeddings after each batch to free accelerator
             # memory before processing the next batch.
             forward_cached = getattr(model, "forward_cached", None)
-            embeddings = model(images.to(device)) if forward_cached is None else forward_cached(images, device)
+            embeddings = forward_model_inputs(
+                model,
+                images,
+                device,
+                use_cache=forward_cached is not None,
+            )
             all_embeddings.append(embeddings.cpu().numpy().astype(np.float32))
             all_labels.append(labels.cpu().numpy())
     # Concatenate all embeddings and labels

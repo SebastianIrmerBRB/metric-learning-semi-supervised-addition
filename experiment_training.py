@@ -58,7 +58,7 @@ def _now(device):
 
 
 def _timing_enabled(args):
-    return bool(getattr(args, "debug_batch_timing", True))
+    return bool(getattr(args, "debug_batch_timing", False))
 
 
 def _timing_interval(args):
@@ -67,6 +67,44 @@ def _timing_interval(args):
 
 def _add_time(timings, name, start, end):
     timings[name] += end - start
+
+
+def use_cuda_pin_memory(device):
+    return torch.device(device).type == "cuda"
+
+
+def should_precompute_frozen_features(args, ssl_config):
+    return (
+        bool(getattr(args, "use_cache", False))
+        and args.backbone_tuning == BACKBONE_TUNING_FROZEN
+        and is_supervised_mode(args)
+        and not ssl_config.enabled
+    )
+
+
+def get_frozen_feature_batch_size(args):
+    batch_size = getattr(args, "frozen_feature_batch_size", None)
+    return int(args.batch_size if batch_size is None else batch_size)
+
+
+def make_label_lookup_tensor(train_labels_mapper, device):
+    label_ids = [int(label) for label in train_labels_mapper]
+    if not label_ids or min(label_ids) < 0:
+        return None
+    max_label = max(label_ids)
+    if max_label > 10_000_000:
+        return None
+    lookup = torch.full((max_label + 1,), -1, dtype=torch.long, device=device)
+    for original_label, mapped_label in train_labels_mapper.items():
+        lookup[int(original_label)] = int(mapped_label)
+    return lookup
+
+
+def map_training_labels(labels, label_lookup, train_labels_mapper, device):
+    if torch.is_tensor(labels) and label_lookup is not None:
+        labels = labels.to(device, dtype=torch.long, non_blocking=True)
+        return label_lookup[labels]
+    return torch.tensor([train_labels_mapper[int(label)] for label in labels], device=device, dtype=torch.long)
 
 def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
     """Run either one holdout training job or all requested CV folds."""
@@ -382,6 +420,10 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
     stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
+    supervised_mode = is_supervised_mode(args)
+    precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
+    model_use_cache = bool(args.use_cache)
+    pin_memory = use_cuda_pin_memory(args.device)
 
     # DataLoader workers can otherwise exhaust the process file-descriptor
     # limit when Torch shares many tensor-backed batches between processes.
@@ -401,12 +443,15 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         dino_size=args.dino_size,
         feat_dim=args.feat_dim,
         backbone_tuning=args.backbone_tuning,
-        use_cache=args.use_cache,
+        use_cache=model_use_cache,
         cache_dir=Path("data") / args.dataset / "backbone_cache",
         **regularizer_model_kwargs,
     )
     model = model.to(args.device)
     args.backbone_cache_dir = None if model.cache_dir is None else model.cache_dir
+    args.model_uses_backbone_cache = model_use_cache
+    args.frozen_feature_precompute = precompute_frozen_features
+    args.frozen_feature_batch_size_resolved = get_frozen_feature_batch_size(args)
     args.model_total_parameters = sum(parameter.numel() for parameter in model.parameters())
     args.model_trainable_parameters = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
@@ -414,7 +459,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     logger.info(
         "Model parameters: "
         f"{args.model_trainable_parameters:,} trainable / {args.model_total_parameters:,} total. "
-        f"Backbone tuning: {args.backbone_tuning}. Cache: {args.use_cache}."
+        f"Backbone tuning: {args.backbone_tuning}. Cache: {model_use_cache}. "
+        f"Frozen feature precompute: {precompute_frozen_features}."
     )
     write_run_config(args, ssl_config)
     pseudo_label_diagnostics = semi_supervised.make_pseudo_label_diagnostics_tracker(
@@ -444,8 +490,13 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         # Training therefore uses the same deterministic transform as feature
         # extraction instead of stochastic RandAugment.
         utils.use_feature_transform_for_training(dataset_bundle.train_dataset)
-        logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
-    supervised_mode = is_supervised_mode(args)
+        if precompute_frozen_features:
+            logger.info(
+                "Frozen feature precompute enabled: training uses deterministic transforms and "
+                "one in-memory backbone feature tensor per active dataset"
+            )
+        else:
+            logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
     # Even the supervised baseline uses the SSL config's label-selection rules
     # so supervised and SSL runs receive exactly the same labeled examples.
     if ssl_config.enabled:
@@ -526,6 +577,19 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             train_labels_mapper=dataset_bundle.train_labels_mapper,
             split=ssl_split,
         )
+        if precompute_frozen_features:
+            train_dataset = utils.precompute_backbone_feature_dataset(
+                model=model,
+                dataset=train_dataset,
+                device=args.device,
+                batch_size=get_frozen_feature_batch_size(args),
+                seed=args.seed,
+                num_workers=args.num_workers,
+                start_method=args.dataloader_start_method,
+                desc="precompute frozen train features",
+                pin_memory=pin_memory,
+                require_feature_transform=True,
+            )
         static_train_loader = utils.make_train_loader(
             train_dataset,
             args.batch_size,
@@ -534,6 +598,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             length_before_new_iter=args.length_before_new_iter,
             num_workers=args.num_workers,
             start_method=args.dataloader_start_method,
+            pin_memory=pin_memory,
         )
     elif ssl_config.enabled and (ssl_config.warmup_epochs > 0 or regularized_ssl):
         # Regularization methods keep this labeled loader active after warm-up
@@ -551,6 +616,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             length_before_new_iter=args.length_before_new_iter,
             num_workers=args.num_workers,
             start_method=args.dataloader_start_method,
+            pin_memory=pin_memory,
         )
     if loss_driven_ssl:
         loss_driven_train_dataset = semi_supervised.build_loss_driven_training_dataset(
@@ -572,6 +638,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             split=ssl_split,
             start_method=args.dataloader_start_method,
             diagnostics_tracker=pseudo_label_diagnostics,
+            log_dir=args.log_dir,
         )
         static_train_loader = utils.make_train_loader(
             train_dataset,
@@ -581,31 +648,61 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             length_before_new_iter=args.length_before_new_iter,
             num_workers=args.num_workers,
             start_method=args.dataloader_start_method,
+            pin_memory=pin_memory,
         )
     # Evaluation loaders never shuffle because metric computation needs only a
     # deterministic pass over all embeddings and labels.
     valid_loader = None
     if not final_full_train:
+        valid_dataset = dataset_bundle.valid_dataset
+        if precompute_frozen_features:
+            valid_dataset = utils.precompute_backbone_feature_dataset(
+                model=model,
+                dataset=valid_dataset,
+                device=args.device,
+                batch_size=get_frozen_feature_batch_size(args),
+                seed=args.seed,
+                num_workers=args.num_workers,
+                start_method=args.dataloader_start_method,
+                desc="precompute frozen valid features",
+                pin_memory=pin_memory,
+            )
         valid_loader = utils.make_eval_loader(
-            dataset_bundle.valid_dataset,
+            valid_dataset,
             seed=args.seed,
             num_workers=args.num_workers,
             start_method=args.dataloader_start_method,
+            pin_memory=pin_memory,
         )
     evaluate_test = bool(getattr(args, "evaluate_test", False))
     test_loader = None
     if evaluate_test:
         # Test evaluation is opt-in so HPO and intermediate runs cannot select
         # models based on held-out test performance.
+        test_dataset = dataset_bundle.test_dataset
+        if precompute_frozen_features:
+            test_dataset = utils.precompute_backbone_feature_dataset(
+                model=model,
+                dataset=test_dataset,
+                device=args.device,
+                batch_size=get_frozen_feature_batch_size(args),
+                seed=args.seed,
+                num_workers=args.num_workers,
+                start_method=args.dataloader_start_method,
+                desc="precompute frozen test features",
+                pin_memory=pin_memory,
+            )
         test_loader = utils.make_eval_loader(
-            dataset_bundle.test_dataset,
+            test_dataset,
             seed=args.seed,
             num_workers=args.num_workers,
             start_method=args.dataloader_start_method,
+            pin_memory=pin_memory,
         )
     # Source datasets can use sparse/non-zero-based class IDs.  Training losses
     # receive this dense mapping, while datasets continue returning original IDs.
     train_labels_mapper = dataset_bundle.train_labels_mapper
+    train_label_lookup = make_label_lookup_tensor(train_labels_mapper, args.device)
 
     # Frozen backbone parameters are deliberately omitted from optimizer state.
     trainable_model_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
@@ -759,6 +856,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     seed=args.seed + num_epoch,
                     num_workers=args.num_workers,
                     start_method=args.dataloader_start_method,
+                    pin_memory=pin_memory,
                 )
             elif regularized_ssl:
                 train_loader = regularizer.make_loader(
@@ -772,6 +870,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     num_workers=args.num_workers,
                     start_method=args.dataloader_start_method,
                     epoch=num_epoch,
+                    log_dir=args.log_dir,
                 )
             elif ssl_config.update_mode == "every_epoch":
                 # Re-embed and pseudo-label with the latest model.  A new loader
@@ -786,6 +885,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     epoch=num_epoch,
                     start_method=args.dataloader_start_method,
                     diagnostics_tracker=pseudo_label_diagnostics,
+                    log_dir=args.log_dir,
                 )
                 train_loader = utils.make_train_loader(
                     train_dataset,
@@ -796,6 +896,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     num_workers=args.num_workers,
                     start_method=args.dataloader_start_method,
                     persistent_workers=False,
+                    pin_memory=pin_memory,
                 )
             else:
                 if static_train_loader is None:
@@ -811,6 +912,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                         epoch=num_epoch,
                         start_method=args.dataloader_start_method,
                         diagnostics_tracker=pseudo_label_diagnostics,
+                        log_dir=args.log_dir,
                     )
                     static_train_loader = utils.make_train_loader(
                         train_dataset,
@@ -820,6 +922,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                         length_before_new_iter=args.length_before_new_iter,
                         num_workers=args.num_workers,
                         start_method=args.dataloader_start_method,
+                        pin_memory=pin_memory,
                     )
                 train_loader = static_train_loader
 
@@ -868,7 +971,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                             f"STML batches must contain {active_criterion.num_views} augmented views per sample"
                         )
                     images = torch.cat(list(images), dim=0)
-                    instance_ids = instance_ids.repeat(active_criterion.num_views).to(args.device)
+                    instance_ids = instance_ids.repeat(active_criterion.num_views).to(args.device, non_blocking=True)
                 else:
                     supervised_batch, regularizer_batch = batch if regularization_active else (batch, None)
                     images, labels, sample_weights = unpack_training_batch(supervised_batch)
@@ -900,18 +1003,24 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
 
                     else:
                         t0 = _now(args.device) if timing else None
-                        embeddings = (
-                            model.forward_cached(images, args.device)
-                            if args.use_cache
-                            else model(images.to(args.device))
+                        embeddings = utils.forward_model_inputs(
+                            model,
+                            images,
+                            args.device,
+                            use_cache=model_use_cache,
                         )
                         t1 = _now(args.device) if timing else None
                         if timing:
                             _add_time(epoch_timings, "forward", t0, t1)
 
                         t0 = _now(args.device) if timing else None
-                        labels = torch.tensor([train_labels_mapper[int(label)] for label in labels]).to(args.device)
-                        sample_weights = sample_weights.to(args.device)
+                        labels = map_training_labels(
+                            labels,
+                            train_label_lookup,
+                            train_labels_mapper,
+                            args.device,
+                        )
+                        sample_weights = sample_weights.to(args.device, non_blocking=True)
                         t1 = _now(args.device) if timing else None
                         if timing:
                             _add_time(epoch_timings, "label_weight_prep", t0, t1)
@@ -1166,7 +1275,24 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         # Ensure file handles and TensorBoard writers close even when training,
         # evaluation, or an Optuna pruning decision raises an exception.
         metrics_logger.close()
-        if args.use_cache:
+        if precompute_frozen_features:
+            feature_stats = {
+                "enabled": True,
+                "batch_size": get_frozen_feature_batch_size(args),
+                "train_samples": None if static_train_loader is None else len(static_train_loader.dataset),
+                "valid_samples": None if valid_loader is None else len(valid_loader.dataset),
+                "test_samples": None if test_loader is None else len(test_loader.dataset),
+                "backbone": f"dinov2_vit{args.dino_size}14",
+                "persistent_cache_enabled": bool(args.use_cache),
+                "persistent_cache_dir": None if model.cache_dir is None else str(model.cache_dir),
+            }
+            write_json(args.log_dir / "frozen_feature_precompute_stats.json", feature_stats)
+            logger.info(f"Frozen feature precompute stats: {feature_stats}")
+            if args.use_cache:
+                cache_stats = model.cache_stats()
+                write_json(args.log_dir / "backbone_cache_stats.json", cache_stats)
+                logger.info(f"Backbone cache stats: {cache_stats}")
+        elif args.use_cache:
             cache_stats = model.cache_stats()
             write_json(args.log_dir / "backbone_cache_stats.json", cache_stats)
             logger.info(f"Backbone cache stats: {cache_stats}")
@@ -1448,6 +1574,10 @@ def validate_run_args(args, ssl_config):
         raise ValueError("mode must be 'supervised' or 'ssl'")
     if args.batch_size <= 0:
         raise ValueError("batch_size must be positive")
+    if getattr(args, "frozen_feature_batch_size", None) is not None and args.frozen_feature_batch_size <= 0:
+        raise ValueError("frozen_feature_batch_size must be positive when set")
+    if getattr(args, "debug_batch_timing_interval", 5) <= 0:
+        raise ValueError("debug_batch_timing_interval must be positive")
     if args.length_before_new_iter is not None and args.length_before_new_iter < args.batch_size:
         raise ValueError("length_before_new_iter must be at least batch_size when set")
     if args.lr <= 0:

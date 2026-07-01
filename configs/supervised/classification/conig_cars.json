@@ -1,14 +1,14 @@
 {
   "enabled": true,
-  "n_trials": 50,
+  "n_trials": 60,
   "timeout": null,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "cifar10_k_shot_search",
+  "study_name": "cars_imb_search",
   "study_dir": null,
   "storage": null,
   "load_if_exists": true,
-  "sampler": "tpe",
+  "sampler": "random",
   "sampler_params": {},
   "pruner": "none",
   "pruner_params": {},
@@ -16,43 +16,85 @@
     "lr": {
       "type": "float",
       "low": 1e-7,
-      "high": 1e-4,
+      "high": 1e-5,
       "log": true
     },
-    "weight_decay": {
+    "classifier_lr": {
       "type": "float",
-      "low": 1e-6,
-      "high": 1e-2,
+      "low": 1e-4,
+      "high": 1e+2,
       "log": true
     },
-    "feat_dim": {
-      "type": "categorical",
-      "choices": [128, 256, 512, null]
+    "loss.ArcFaceLoss.scale": {
+      "type": "float",
+      "low": 40,
+      "high": 250.0
+    },
+    "loss.ArcFaceLoss.margin": {
+      "type": "float",
+      "low": 15,
+      "high": 30.0,
+      "log": true
+    },
+    "loss.ProxyAnchorLoss.alpha": {
+      "type": "float",
+      "low": 0.1,
+      "high": 100.0,
+      "log": true
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "type": "float",
+      "low": 0.0001,
+      "high": 1.0,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "type": "float",
+      "low": 2,
+      "high": 25,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "type": "float",
+      "low": 40,
+      "high": 160,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "type": "float",
+      "low": 0.4,
+      "high": 0.9,
+      "log": true
+    },
+    "loss.CircleLoss.m": {
+      "type": "float",
+      "low": 0.1,
+      "high": 0.9,
+      "log": true
+    },
+    "loss.CircleLoss.gamma": {
+      "type": "float",
+      "low": 50,
+      "high": 260.0,
+      "log": true
+    },
+    "loss.NTXentLoss.temperature": {
+      "type": "float",
+      "low": 0.0001,
+      "high": 0.5,
+      "log": true
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+     "type": "float",
+      "low": 0.2,
+      "high": 1,
+      "log": true
     },
     "batch_sampler": {
       "type": "categorical",
-  "choices": [
-    "32:1",
-    "64:1",
-    "128:1",
-    "256:1",
-    "512:1",
-    "32:2",
-    "64:2",
-    "128:2",
-    "256:2",
-    "512:2"
-  ]
-    },
-    "ssl_config.confidence_threshold": {
-      "type": "float",
-      "low": 0.5,
-      "high": 0.95
-    },
-    "ssl_config.method_params.n_neighbors": {
-      "type": "int",
-      "low": 1,
-      "high": 20
+      "choices": [
+       "16:4", "32:4", "64:4", "128:4", "256:4", "512:8"
+      ]
     }
   }
 }

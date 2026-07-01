@@ -1,0 +1,17 @@
+base: utils:evaluate_embeddings:2430 - CIFAR100 epoch0 test: Precision@1 = 92.0 , MAP@R = 54.6
+
+k=5 2026-06-20 16:37:42 test: Precision@1 = 94.7 , MAP@R = 66.7
+
+k=25 2026-06-20 16:41:32 test: Precision@1 = 95.1 , MAP@R = 70.2
+
+k=50 2026-06-20 16:45:37 test: Precision@1 = 95.5 , MAP@R = 71.3
+
+k=75 2026-06-20 16:49:45 test: Precision@1 = 95.5 , MAP@R = 71.3
+
+k=100 2026-06-20 16:54:36 test: Precision@1 = 95.5 , MAP@R = 71.4
+
+
+
+With already done hpo from different peps:
+2026-06-20 17:00:56 test: Precision@1 = 95.6 , MAP@R = 72.4
+
