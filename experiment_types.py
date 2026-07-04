@@ -204,6 +204,7 @@ class HParamSearchConfig:
     sampler_params: dict[str, Any] = field(default_factory=dict)
     pruner: str = "none"
     pruner_params: dict[str, Any] = field(default_factory=dict)
+    retry_failed_trials: bool = False
     spaces: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self):
