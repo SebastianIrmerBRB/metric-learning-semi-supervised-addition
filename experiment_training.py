@@ -1017,13 +1017,17 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             tqdm_bar = tqdm(total=len(train_loader))
             train_iter = iter(train_loader)
             epoch_timings = defaultdict(float)
+            last_timing_log_batch = 0
+            last_timing_totals = {}
 
             for batch_idx in range(len(train_loader)):
                 timing = _timing_enabled(args)
 
                 t0 = _now(args.device) if timing else None
                 batch = next(train_iter)
-                t1 = _now(args.device) if timing else None
+                data_ready_time = _now(args.device) if timing else None
+                if timing:
+                    _add_time(epoch_timings, "data_wait", t0, data_ready_time)
                 if legacy_stml_active:
                     images, _, instance_ids = batch
                     if not isinstance(images, (list, tuple)) or len(images) != active_criterion.num_views:
@@ -1038,7 +1042,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
 
                 t1 = _now(args.device) if timing else None
                 if timing:
-                    _add_time(epoch_timings, "unpack_batch", t0, t1)
+                    _add_time(epoch_timings, "unpack_batch", data_ready_time, t1)
                 # Autocast reduces memory/compute cost while leaving parameters
                 # and the optimizer responsible for their normal precision.
                 with torch.autocast(device_type=torch.device(args.device).type, dtype=torch.bfloat16):
@@ -1193,16 +1197,24 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 tqdm_bar.update(1)
 
                 if timing and (batch_idx + 1) % _timing_interval(args) == 0:
-                    denom = batch_idx + 1
+                    current_batch_count = batch_idx + 1
+                    interval_batches = current_batch_count - last_timing_log_batch
+                    interval_timings = {
+                        name: total - last_timing_totals.get(name, 0.0)
+                        for name, total in epoch_timings.items()
+                    }
                     logger.info(
-                        "Batch timing "
-                        f"epoch={num_epoch} batch={batch_idx + 1}/{len(train_loader)} "
+                        "Batch timing interval "
+                        f"epoch={num_epoch} batch={current_batch_count}/{len(train_loader)} "
+                        f"last_batches={interval_batches} "
                         f"phase={loss_phase}: "
                         + ", ".join(
-                            f"{name}={total / denom:.4f}s"
-                            for name, total in sorted(epoch_timings.items())
+                            f"{name}={total / interval_batches:.4f}s"
+                            for name, total in sorted(interval_timings.items())
                         )
                     )
+                    last_timing_log_batch = current_batch_count
+                    last_timing_totals = dict(epoch_timings)
             tqdm_bar.close()
             if num_batches > 0:
                 # The epoch metric is an unweighted mean of batch loss values.

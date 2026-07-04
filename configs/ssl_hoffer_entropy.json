@@ -9,7 +9,8 @@
     "regularizer_params": {
       "normalize_embeddings": true,
       "distance_scale": 1.0,
-      "max_reference_classes": null
+      "max_reference_classes": null,
+      "num_compared": 1
     }
   }
 }
