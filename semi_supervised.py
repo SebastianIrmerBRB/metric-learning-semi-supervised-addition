@@ -17,9 +17,8 @@ import math
 import time
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from scipy import stats
 from scipy import sparse
 from scipy.sparse import linalg as sparse_linalg
 
@@ -811,13 +810,11 @@ class WeightedGraphBatchSampler(torch.utils.data.Sampler):
         return int(len(self.query_nodes))
 
 
-
-
 class HofferReferenceBatchSampler(torch.utils.data.Sampler):
     """Emit batches of unlabeled indices plus one labeled reference per class.
 
     References are drawn uniformly within each class and resampled for every
-    batch, as in Hoffer & Ailon (2016). Unlabeled samples are visited once per
+    batch, as in Hoffer & Ailon (2018). Unlabeled samples are visited once per
     epoch in a shuffled order; each batch appends one freshly drawn reference
     index per class (or per sampled class subset when ``max_reference_classes``
     caps the count). Indices refer to a ``HofferReferenceDataset``, whose
@@ -1986,7 +1983,7 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
             confidences=unlabeled_confidences,
         )
 
-
+    
 class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
     """Sparse mixed label propagation from Zhuang and Moulin, CVPR 2023."""
 
@@ -2128,7 +2125,6 @@ def validate_faiss_label_spreading_params(params):
         raise ValueError("faiss_label_spreading cg_max_iter must be positive")
     if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
         raise ValueError("faiss_label_spreading linear_solver must be one of ['auto', 'cholmod', 'cg']")
-
 
 def faiss_label_spreading(
     features,

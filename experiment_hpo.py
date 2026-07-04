@@ -2,6 +2,7 @@
 
 import copy
 import csv
+import gc
 import itertools
 import json
 from dataclasses import replace
@@ -45,6 +46,27 @@ from experiment_types import (
     SELECTION_METRICS,
 )
 from retrieval_model import BACKBONE_TUNING_FROZEN
+
+
+def cleanup_after_trial_error():
+    """Release Python-owned handles before retrying a failed trial."""
+
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def make_hpo_retry_args(trial_args, ssl_config, attempt):
+    """Retry the same HPO sample without changing its runtime settings."""
+
+    retry_args = copy.deepcopy(trial_args)
+    retry_args.hpo_retry = True
+    retry_args.hpo_retry_attempt = int(attempt)
+    return retry_args, ssl_config
 
 def load_hparam_config(config_path):
     """Load and validate an Optuna JSON config, or return ``None``."""
@@ -99,6 +121,8 @@ def validate_hparam_config(config, path=None):
         raise ValueError(f"sampler_params must be an object{source}")
     if not isinstance(config.pruner_params, dict):
         raise ValueError(f"pruner_params must be an object{source}")
+    if not isinstance(config.retry_failed_trials, bool):
+        raise ValueError(f"retry_failed_trials must be true or false{source}")
     if not isinstance(config.spaces, dict) or not config.spaces:
         raise ValueError(f"spaces must be a non-empty object{source}")
     if BATCH_SAMPLER_HPARAM_KEY in config.spaces and {"batch_size", "sampler_m"} & set(config.spaces):
@@ -276,6 +300,7 @@ def run_hparam_search(args, config):
     recovered_trials = recover_unfinished_trials(optuna, study)
     trials_csv = study_dir / "trials.csv"
     trials_jsonl = study_dir / "trials.jsonl"
+    retry_failed_trials_mode = should_retry_failed_hpo_trials(args, config)
 
     def objective(trial):
         # Resolve trial suggestions into a fresh argparse namespace and SSL
@@ -297,6 +322,7 @@ def run_hparam_search(args, config):
         trial.set_user_attr("params", suggested_params)
         trial.set_user_attr("resolved_args", namespace_to_dict(trial_args))
         trial.set_user_attr("resolved_ssl_config", ssl_config.to_dict())
+        retry_source_args = copy.deepcopy(trial_args)
 
         try:
             result = run_experiment(
@@ -305,19 +331,39 @@ def run_hparam_search(args, config):
                 optuna_trial=trial,
                 optuna_metric=config.metric,
             )
-        except utils.MPerClassSamplerCapacityError as exc:
-            # Some sampled batch/sampler/label-budget combinations cannot form
-            # one M-per-class batch. Prune those combinations without aborting
-            # the entire study.
-            trial.set_user_attr("pruned_reason", str(exc))
-            raise optuna.TrialPruned(str(exc)) from exc
-        except utils.NonFiniteEmbeddingError as exc:
-            # Divergent hyperparameters can produce NaN/Inf embeddings during
-            # validation. Treat them as invalid trials instead of aborting HPO.
-            trial.set_user_attr("pruned_reason", str(exc))
-            raise optuna.TrialPruned(str(exc)) from exc
-        # Store all artifacts and metrics on the trial, then return only the
-        # configured scalar objective to Optuna.
+        except Exception as exc:
+            retry_reason = str(exc)
+            exc.__traceback__ = None
+            exc = None
+            trial.set_user_attr("retry_reason", retry_reason)
+            logger.warning(
+                "Trial failed; retrying once with the same trial parameters and runtime settings. "
+                f"Trial={trial.number}, error={retry_reason}"
+            )
+            cleanup_after_trial_error()
+
+            retry_args, retry_ssl_config = make_hpo_retry_args(
+                retry_source_args,
+                ssl_config,
+                attempt=1,
+            )
+            trial.set_user_attr("retry_resolved_args", namespace_to_dict(retry_args))
+            trial.set_user_attr("retry_resolved_ssl_config", retry_ssl_config.to_dict())
+            try:
+                result = run_experiment(
+                    retry_args,
+                    retry_ssl_config,
+                    optuna_trial=trial,
+                    optuna_metric=config.metric,
+                )
+            except Exception as retry_exc:
+                retry_error = str(retry_exc)
+                retry_exc.__traceback__ = None
+                retry_exc = None
+                cleanup_after_trial_error()
+                message = f"Trial failed again after one retry; skipping for now: {retry_error}"
+                trial.set_user_attr("pruned_reason", message)
+                raise optuna.TrialPruned(message)
         result_dict = result_to_dict(result)
         for key, value in result_dict.items():
             trial.set_user_attr(key, value)
@@ -327,6 +373,32 @@ def run_hparam_search(args, config):
         # Refresh summaries after each finished trial so interrupted studies
         # still leave readable progress outside the Optuna database.
         write_trials_summary(study, trials_csv, trials_jsonl)
+
+    if retry_failed_trials_mode:
+        enqueued_retries = enqueue_failed_hpo_trial_retries(optuna, study)
+        logger.info(
+            f"HPO failed/pruned retry mode enabled for {study_dir}. "
+            f"Enqueued retry trials: {enqueued_retries}. Parallel jobs: {config.n_jobs}."
+        )
+        if enqueued_retries <= 0:
+            write_trials_summary(study, trials_csv, trials_jsonl)
+            logger.info("No failed or pruned Optuna trials were found to retry.")
+            return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
+
+        study.optimize(
+            objective,
+            n_trials=enqueued_retries,
+            timeout=config.timeout,
+            n_jobs=config.n_jobs,
+            callbacks=[record_trial],
+            gc_after_trial=True,
+        )
+        write_trials_summary(study, trials_csv, trials_jsonl)
+        if any(trial.state.name == "COMPLETE" for trial in study.trials):
+            logger.info(
+                f"Best trial: {study.best_trial.number}, value={study.best_value}, params={study.best_trial.params}"
+            )
+        return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
     # Finished trials count toward n_trials when a persistent study is resumed.
     finished_trials = count_finished_trials(optuna, study)
@@ -429,6 +501,36 @@ def count_finished_trials(optuna, study):
         optuna.trial.TrialState.PRUNED,
     }
     return sum(trial.state in finished_states for trial in study.trials)
+
+
+def should_retry_failed_hpo_trials(args, config):
+    return bool(getattr(args, "retry_failed_hpo_trials", False) or config.retry_failed_trials)
+
+
+def get_retryable_hpo_trials(optuna, study):
+    retryable_states = {optuna.trial.TrialState.PRUNED}
+    fail_state = getattr(optuna.trial.TrialState, "FAIL", None)
+    if fail_state is not None:
+        retryable_states.add(fail_state)
+    return [
+        trial
+        for trial in study.get_trials(deepcopy=False)
+        if trial.state in retryable_states
+    ]
+
+
+def enqueue_failed_hpo_trial_retries(optuna, study):
+    retryable_trials = get_retryable_hpo_trials(optuna, study)
+    for trial in retryable_trials:
+        study.enqueue_trial(
+            dict(trial.params),
+            user_attrs={
+                "retry_source_trial_number": trial.number,
+                "retry_source_trial_state": trial.state.name,
+            },
+            skip_if_exists=False,
+        )
+    return len(retryable_trials)
 
 def recover_unfinished_trials(optuna, study):
     # A killed process can leave persistent trials marked RUNNING forever.

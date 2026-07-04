@@ -365,6 +365,12 @@ parser.add_argument(
     help="do not evaluate D_test inside Optuna trials; use a final retraining run for test evaluation",
 )
 parser.add_argument(
+    "--retry_failed_hpo_trials",
+    action="store_true",
+    default=False,
+    help="enqueue existing failed/pruned Optuna trials as new trials and run only those retries",
+)
+parser.add_argument(
     "--evaluate_test",
     "--evaluate-test",
     action="store_true",
