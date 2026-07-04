@@ -584,7 +584,7 @@ class RelabeledSubset(Dataset):
     def __getitem__(self, index):
         # Ignore the label returned by the wrapped dataset because pseudo-labeled
         # samples must expose their predicted label instead of the hidden truth.
-        image, _ = self.dataset[int(self.positions[index])]
+        image = self.dataset[int(self.positions[index])][0]
         return image, self.orig_labels[index], self.confidences[index]
 
 
@@ -612,9 +612,10 @@ class LRMLGraphDataset(Dataset):
 
     Item ``i`` corresponds to graph node ``i`` so the indices produced by
     ``LRMLGraphBatchSampler`` line up with the rows of the precomputed neighbor
-    graph and the symmetric adjacency. The training transform is applied (the
-    regularizer sees the same augmented views as the supervised loss); only the
-    node index is returned because labels stay hidden from the regularizer.
+    graph and the symmetric adjacency. With cached frozen backbones, the source
+    dataset uses the deterministic feature transform or precomputed backbone
+    features; otherwise it follows the active training transform. Only the node
+    index is returned because labels stay hidden from the regularizer.
     """
 
     def __init__(self, dataset, positions):
@@ -625,8 +626,53 @@ class LRMLGraphDataset(Dataset):
         return len(self.positions)
 
     def __getitem__(self, index):
-        image, _ = self.dataset[int(self.positions[index])]
+        image = self.dataset[int(self.positions[index])][0]
         return image, index
+
+class HofferReferenceDataset(Dataset):
+    """Joint index space over unlabeled samples and labeled Hoffer references.
+
+    The sampler emits virtual indices in the same order used by the upstream
+    Torch code: unlabeled samples first, then one labeled query reference per
+    class, then comparison references. Query and comparison virtual regions map
+    to the same labeled candidate pool but return distinct role IDs so the loss
+    can reproduce the upstream criterion split.
+    """
+
+    UNLABELED_ROLE = 0
+    LABELED_QUERY_ROLE = 1
+    COMPARISON_ROLE = 2
+
+    def __init__(self, dataset, unlabeled_positions, labeled_positions, labeled_class_ids):
+        self.dataset = dataset
+        self.unlabeled_positions = np.asarray(unlabeled_positions, dtype=np.int64)
+        self.labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
+        self.labeled_class_ids = np.asarray(labeled_class_ids, dtype=np.int64)
+        if len(self.labeled_positions) != len(self.labeled_class_ids):
+            raise ValueError("Hoffer labeled positions and class IDs must align")
+        self.num_unlabeled = len(self.unlabeled_positions)
+        self.num_labeled = len(self.labeled_positions)
+        self.query_start = self.num_unlabeled
+        self.comparison_start = self.num_unlabeled + self.num_labeled
+
+    def __len__(self):
+        return self.num_unlabeled + 2 * self.num_labeled
+
+    def __getitem__(self, index):
+        index = int(index)
+        if index < self.num_unlabeled:
+            image = self.dataset[int(self.unlabeled_positions[index])][0]
+            return image, self.UNLABELED_ROLE, -1
+        if index < self.comparison_start:
+            candidate_index = index - self.query_start
+            role = self.LABELED_QUERY_ROLE
+        else:
+            candidate_index = index - self.comparison_start
+            role = self.COMPARISON_ROLE
+        if candidate_index < 0 or candidate_index >= self.num_labeled:
+            raise IndexError(index)
+        image = self.dataset[int(self.labeled_positions[candidate_index])][0]
+        return image, role, int(self.labeled_class_ids[candidate_index])
 
 class BaseSemiSupervisedMethod:
     """Interface implemented by each pseudo-label generation strategy."""
@@ -771,6 +817,84 @@ class WeightedGraphBatchSampler(torch.utils.data.Sampler):
         return int(len(self.query_nodes))
 
 
+class HofferReferenceBatchSampler(torch.utils.data.Sampler):
+    """Emit upstream-style Hoffer batches.
+
+    Each batch contains shuffled unlabeled indices, one labeled query reference
+    per selected class, then ``num_compared`` comparison references per selected
+    class. References are drawn uniformly within class and resampled for every
+    batch.
+    """
+
+    def __init__(
+        self,
+        num_unlabeled,
+        num_labeled,
+        class_candidates,
+        unlabeled_per_batch,
+        seed,
+        max_reference_classes=None,
+        num_compared=1,
+    ):
+        if num_unlabeled <= 0:
+            raise ValueError("hoffer_entropy requires at least one unlabeled sample")
+        if num_labeled <= 0:
+            raise ValueError("hoffer_entropy requires at least one labeled reference")
+        if unlabeled_per_batch <= 0:
+            raise ValueError("hoffer_entropy unlabeled_per_batch must be positive")
+        if len(class_candidates) < 2:
+            raise ValueError("hoffer_entropy requires labeled candidates from at least two classes")
+        if int(num_compared) <= 0:
+            raise ValueError("hoffer_entropy num_compared must be positive")
+        self.class_candidates = []
+        for candidates in class_candidates:
+            candidates = np.asarray(candidates, dtype=np.int64)
+            if len(candidates) == 0:
+                raise ValueError("every class needs at least one labeled reference candidate")
+            self.class_candidates.append(candidates)
+        self.num_unlabeled = int(num_unlabeled)
+        self.num_labeled = int(num_labeled)
+        self.unlabeled_per_batch = int(unlabeled_per_batch)
+        self.num_classes = len(self.class_candidates)
+        self.num_compared = int(num_compared)
+        if max_reference_classes is None:
+            self.references_per_batch = self.num_classes
+        else:
+            self.references_per_batch = int(max_reference_classes)
+            if not 2 <= self.references_per_batch <= self.num_classes:
+                raise ValueError(
+                    "hoffer_entropy max_reference_classes must be in "
+                    f"[2, {self.num_classes}], got {self.references_per_batch}"
+                )
+        self.generator = utils.make_torch_generator(seed)
+
+    def __iter__(self):
+        unlabeled_order = torch.randperm(self.num_unlabeled, generator=self.generator)
+        for start in range(0, self.num_unlabeled, self.unlabeled_per_batch):
+            batch_indices = unlabeled_order[start : start + self.unlabeled_per_batch].tolist()
+            if self.references_per_batch < self.num_classes:
+                class_order = torch.randperm(self.num_classes, generator=self.generator)
+                class_ids = class_order[: self.references_per_batch].tolist()
+            else:
+                class_ids = list(range(self.num_classes))
+
+            for class_id in class_ids:
+                candidates = self.class_candidates[class_id]
+                choice = int(torch.randint(len(candidates), (1,), generator=self.generator))
+                batch_indices.append(self.num_unlabeled + int(candidates[choice]))
+            for _ in range(self.num_compared):
+                for class_id in class_ids:
+                    candidates = self.class_candidates[class_id]
+                    choice = int(torch.randint(len(candidates), (1,), generator=self.generator))
+                    batch_indices.append(
+                        self.num_unlabeled + self.num_labeled + int(candidates[choice])
+                    )
+            yield batch_indices
+
+    def __len__(self):
+        return int(math.ceil(self.num_unlabeled / self.unlabeled_per_batch))
+
+
 class BaseTrainingRegularizer:
     """Pluggable unlabeled regularization term combined with a supervised loss."""
 
@@ -780,6 +904,7 @@ class BaseTrainingRegularizer:
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0):
         self.regularizer_weight = float(regularizer_weight)
         self.supervised_weight = float(supervised_weight)
+        self.use_cache = False
         if not math.isfinite(self.regularizer_weight) or self.regularizer_weight < 0:
             raise ValueError("regularizer_weight must be finite and non-negative")
         if not math.isfinite(self.supervised_weight) or self.supervised_weight < 0:
@@ -793,8 +918,17 @@ class BaseTrainingRegularizer:
     def validate_run_args(self, args):
         return None
 
-    def build_dataset(self, train_dataset, split):
+    def build_dataset(self, train_dataset, split, use_cache=False):
         raise NotImplementedError
+
+    def make_regularizer_source_dataset(self, train_dataset, use_cache=False):
+        self.use_cache = bool(use_cache)
+        if self.use_cache and not utils.dataset_has_precomputed_backbone_features(train_dataset):
+            return utils.make_feature_transform_dataset(
+                train_dataset,
+                require_feature_transform=True,
+            )
+        return train_dataset
 
     def make_loader(
         self,
@@ -900,13 +1034,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
     def validate_run_args(self, args):
         if args.batch_size < 2:
             raise ValueError("LRML regularization requires batch_size >= 2")
-        if getattr(args, "use_cache", False):
-            raise ValueError(
-                "LRML regularization augments graph nodes per step and cannot use "
-                "backbone caching; set use_cache=False"
-            )
 
-    def build_dataset(self, train_dataset, split):
+    def build_dataset(self, train_dataset, split, use_cache=False):
         if self.graph_on == "all":
             positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
         else:
@@ -916,7 +1045,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             raise ValueError("LRML regularization requires at least two graph samples")
         self.graph_positions = positions
         self.graph_known_mask = np.isin(positions, np.asarray(split.labeled_positions, dtype=np.int64))
-        self.dataset = LRMLGraphDataset(train_dataset, positions)
+        regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
+        self.dataset = LRMLGraphDataset(regularizer_dataset, positions)
         self.neighbor_indices = None
         self.adjacency = None
         self.degrees = None
@@ -995,6 +1125,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         sampler = LRMLGraphBatchSampler(
             neighbor_indices=self.neighbor_indices, batch_size=batch_size, seed=seed,
         )
+        num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
         regularizer_loader = DataLoader(
             self.dataset,
             batch_sampler=sampler,
@@ -1004,7 +1135,12 @@ class LRMLRegularizer(BaseTrainingRegularizer):
 
     def compute_loss(self, student_model, state, batch, device, timings=None):
         images, node_ids = batch
-        embeddings = student_model(images.to(device))
+        embeddings = utils.forward_model_inputs(
+            student_model,
+            images,
+            device,
+            use_cache=self.use_cache,
+        )
         if self.normalize_embeddings:
             embeddings = F.normalize(embeddings, p=2, dim=1)
         # Fold the per-node 1/sqrt(deg) factor in: normalized-Laplacian energy equals
@@ -1073,13 +1209,8 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
     def validate_run_args(self, args):
         if args.batch_size < 2:
             raise ValueError("SLRMML regularization requires batch_size >= 2")
-        if getattr(args, "use_cache", False):
-            raise ValueError(
-                "SLRMML regularization augments graph nodes per step and cannot use "
-                "backbone caching; set use_cache=False"
-            )
 
-    def build_dataset(self, train_dataset, split):
+    def build_dataset(self, train_dataset, split, use_cache=False):
         positions = np.unique(
             np.concatenate([split.labeled_positions, split.unlabeled_positions]).astype(np.int64)
         )
@@ -1092,7 +1223,8 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             labeled_positions=split.labeled_positions,
         )
         self.graph_known_mask = self.graph_labels != UNLABELED_TARGET
-        self.dataset = LRMLGraphDataset(train_dataset, positions)
+        regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
+        self.dataset = LRMLGraphDataset(regularizer_dataset, positions)
         return self.dataset
 
     def make_loader(
@@ -1150,6 +1282,7 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             batch_size=batch_size,
             seed=seed,
         )
+        num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
         regularizer_loader = DataLoader(
             self.dataset,
             batch_sampler=sampler,
@@ -1174,7 +1307,12 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         images, node_ids = batch
 
         t0 = _timing_start(device, timings)
-        embeddings = student_model(images.to(device))
+        embeddings = utils.forward_model_inputs(
+            student_model,
+            images,
+            device,
+            use_cache=self.use_cache,
+        )
         _record_timing(timings, "slrmml_forward", t0, device)
 
         if self.normalize_embeddings:
@@ -1246,7 +1384,7 @@ class STMLRegularizer(BaseTrainingRegularizer):
         if args.stml_g_dim is not None and args.stml_g_dim <= 0:
             raise ValueError("stml_g_dim must be positive when set")
 
-    def build_dataset(self, train_dataset, split):
+    def build_dataset(self, train_dataset, split, use_cache=False):
         if len(split.unlabeled_positions) < 2:
             raise ValueError("STML regularization requires at least two unlabeled samples")
         self.dataset = UnlabeledSubset(
@@ -1329,6 +1467,180 @@ class STMLRegularizer(BaseTrainingRegularizer):
                 teacher_buffer.lerp_(student_buffer.detach(), 1 - self.teacher_momentum)
             else:
                 teacher_buffer.copy_(student_buffer.detach())
+
+
+class HofferEntropyRegularizer(BaseTrainingRegularizer):
+    """Deep neighbor-embedding contrastive entropy objective (Hoffer & Ailon, 2016).
+
+    Implements the upstream ``ContrastingMinEntropyCriterion`` structure from
+    "Semi-supervised deep learning by metric embedding" (arXiv:1611.01449).
+    Every regularizer batch draws unlabeled samples, one labeled query reference
+    per class, and one or more comparison references per class. Over comparison
+    references, the distance softmax
+
+        P_i(x) = exp(-||f(x) - f(z_i)||_2) / sum_j exp(-||f(x) - f(z_j)||_2)
+
+    is formed. Labeled query references receive a cross-entropy term against
+    same-class comparison references, and unlabeled samples receive the mean
+    Shannon entropy term. Gradients flow through unlabeled samples, labeled
+    queries, and comparison references.
+
+    Deviations from the paper, mirroring the other deep regularizers here: the
+    Hoffer criterion is composed with the configured supervised loss by the
+    regularized-training path. ``normalize_embeddings`` is a DML convention not
+    used by upstream; ``distance_scale`` is an inverse temperature on the
+    upstream ``-L2`` logits. ``max_reference_classes`` optionally subsamples
+    classes per batch when full class coverage is too expensive.
+    """
+
+    name = "hoffer_entropy"
+
+    DEFAULT_PARAMS = {
+        "normalize_embeddings": True,
+        "distance_scale": 1.0,
+        "max_reference_classes": None,
+        "num_compared": 1,
+    }
+
+    def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
+        super().__init__(regularizer_weight=regularizer_weight, supervised_weight=supervised_weight)
+        unknown = sorted(set(params) - set(self.DEFAULT_PARAMS))
+        if unknown:
+            raise ValueError(f"Unknown hoffer_entropy regularizer_params: {unknown}")
+        merged = {**self.DEFAULT_PARAMS, **params}
+
+        self.normalize_embeddings = bool(merged["normalize_embeddings"])
+        self.distance_scale = float(merged["distance_scale"])
+        if not math.isfinite(self.distance_scale) or self.distance_scale <= 0:
+            raise ValueError("hoffer_entropy distance_scale must be finite and positive")
+        max_reference_classes = merged["max_reference_classes"]
+        self.max_reference_classes = None if max_reference_classes is None else int(max_reference_classes)
+        if self.max_reference_classes is not None and self.max_reference_classes < 2:
+            raise ValueError("hoffer_entropy max_reference_classes must be at least 2")
+        self.num_compared = int(merged["num_compared"])
+        if self.num_compared <= 0:
+            raise ValueError("hoffer_entropy num_compared must be positive")
+
+        self.dataset = None
+        self.class_candidates = None
+
+    def validate_run_args(self, args):
+        return None
+
+    def build_dataset(self, train_dataset, split, use_cache=False):
+        labeled_positions = np.asarray(split.labeled_positions, dtype=np.int64)
+        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
+        if len(unlabeled_positions) == 0:
+            raise ValueError("hoffer_entropy regularization requires unlabeled samples")
+        labels = dataset_labels_for_positions(train_dataset, labeled_positions)
+        if labels is None:
+            raise ValueError("hoffer_entropy regularization requires a train dataset exposing .labels")
+
+        # Group labeled positions by local class ID; the sampler turns these
+        # candidate offsets into query/comparison virtual indices.
+        unique_labels = np.unique(labels)
+        labeled_class_ids = np.empty(len(labels), dtype=np.int64)
+        class_candidates = []
+        for class_id, label in enumerate(unique_labels):
+            candidates = np.flatnonzero(labels == label).astype(np.int64)
+            labeled_class_ids[candidates] = class_id
+            class_candidates.append(candidates)
+        if len(class_candidates) < 2:
+            raise ValueError("hoffer_entropy regularization requires at least two labeled classes")
+        if self.max_reference_classes is not None and self.max_reference_classes > len(class_candidates):
+            raise ValueError(
+                "hoffer_entropy max_reference_classes exceeds the number of labeled classes "
+                f"({self.max_reference_classes} > {len(class_candidates)})"
+            )
+        self.class_candidates = class_candidates
+        regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
+        self.dataset = HofferReferenceDataset(
+            regularizer_dataset,
+            unlabeled_positions,
+            labeled_positions,
+            labeled_class_ids,
+        )
+        return self.dataset
+
+    def make_loader(
+        self,
+        model,
+        train_dataset,
+        supervised_loader,
+        device,
+        config,
+        batch_size,
+        seed,
+        num_workers,
+        start_method,
+        epoch,
+        log_dir=None,
+    ):
+        if self.dataset is None or self.class_candidates is None:
+            raise RuntimeError("build_dataset must be called before make_loader")
+        sampler = HofferReferenceBatchSampler(
+            num_unlabeled=self.dataset.num_unlabeled,
+            num_labeled=self.dataset.num_labeled,
+            class_candidates=self.class_candidates,
+            unlabeled_per_batch=batch_size,
+            seed=seed,
+            max_reference_classes=self.max_reference_classes,
+            num_compared=self.num_compared,
+        )
+        num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
+        regularizer_loader = DataLoader(
+            self.dataset,
+            batch_sampler=sampler,
+            **utils.make_dataloader_kwargs(num_workers, seed, start_method),
+        )
+        return CombinedTrainingLoader(supervised_loader, regularizer_loader)
+
+    def compute_loss(self, student_model, state, batch, device, timings=None):
+        images, roles, class_ids = batch
+
+        t0 = _timing_start(device, timings)
+        embeddings = utils.forward_model_inputs(
+            student_model,
+            images,
+            device,
+            use_cache=self.use_cache,
+        )
+        _record_timing(timings, "hoffer_forward", t0, device)
+
+        if self.normalize_embeddings:
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+
+        roles = roles.to(device=device)
+        class_ids = class_ids.to(device=device, dtype=torch.long)
+        unlabeled_mask = roles == HofferReferenceDataset.UNLABELED_ROLE
+        query_mask = roles == HofferReferenceDataset.LABELED_QUERY_ROLE
+        comparison_mask = roles == HofferReferenceDataset.COMPARISON_ROLE
+        unlabeled = embeddings[unlabeled_mask]
+        labeled_queries = embeddings[query_mask]
+        comparisons = embeddings[comparison_mask]
+        query_labels = class_ids[query_mask]
+        comparison_labels = class_ids[comparison_mask]
+        if len(comparisons) < 2 or len(unlabeled) == 0 or len(labeled_queries) == 0:
+            return embeddings.sum() * 0.0  # connected zero so backward stays valid
+
+        t0 = _timing_start(device, timings)
+        unlabeled_distances = torch.cdist(unlabeled, comparisons, p=2)
+        unlabeled_log_probabilities = F.log_softmax(-self.distance_scale * unlabeled_distances, dim=1)
+        entropy = -(unlabeled_log_probabilities.exp() * unlabeled_log_probabilities).sum(dim=1).mean()
+
+        query_distances = torch.cdist(labeled_queries, comparisons, p=2)
+        query_log_probabilities = F.log_softmax(-self.distance_scale * query_distances, dim=1)
+        positive_mask = query_labels[:, None] == comparison_labels[None, :]
+        if not bool(positive_mask.any(dim=1).all().item()):
+            raise RuntimeError("Hoffer query references must have same-class comparison references")
+        negative_infinity = torch.finfo(query_log_probabilities.dtype).min
+        positive_log_probabilities = torch.logsumexp(
+            query_log_probabilities.masked_fill(~positive_mask, negative_infinity),
+            dim=1,
+        )
+        labeled_nll = -positive_log_probabilities.mean()
+        _record_timing(timings, "hoffer_entropy", t0, device)
+        return labeled_nll + entropy
 
 
 class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
@@ -1606,6 +1918,103 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         )
 
 
+class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
+    """Zhou et al. label spreading solved directly on a FAISS kNN graph."""
+
+    DEFAULT_PARAMS = {
+        "n_neighbors": 10,
+        "gamma": 1.0,
+        "alpha": 0.2,
+        "cg_rtol": 1e-5,
+        "cg_max_iter": 1000,
+        "linear_solver": "auto",
+    }
+
+    def __init__(self, name="faiss_label_spreading"):
+        self.name = name
+
+    def validate_config(self, config, source=""):
+        params = dict(self.DEFAULT_PARAMS)
+        params.update(config.method_params)
+        try:
+            validate_faiss_label_spreading_params(params)
+        except ValueError as exc:
+            raise ValueError(f"Invalid {self.name} configuration{source}: {exc}") from exc
+
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
+        if len(split.unlabeled_positions) == 0:
+            return PseudoLabelResult(
+                positions=np.array([], dtype=np.int64),
+                mapped_labels=np.array([], dtype=np.int64),
+                confidences=np.array([], dtype=np.float32),
+            )
+        if len(split.labeled_positions) == 0:
+            raise ValueError(f"{self.name} requires at least one labeled sample")
+
+        params = dict(self.DEFAULT_PARAMS)
+        params.update(config.method_params)
+        validate_faiss_label_spreading_params(params)
+        logger.info(f"Running {self.name} with params: {params}")
+        ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
+        features = extract_embeddings(
+            model=model,
+            dataset=train_dataset,
+            positions=ssl_positions,
+            device=device,
+            batch_size=config.embedding_batch_size,
+            num_workers=config.embedding_num_workers,
+            seed=config.seed if epoch is None else config.seed + epoch,
+            start_method=start_method,
+            desc=f"{self.name} embeddings",
+        )
+
+        labels = np.asarray(train_dataset.labels, dtype=np.int64)
+        targets = np.concatenate(
+            [
+                labels[split.labeled_positions],
+                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
+            ]
+        )
+        probabilities, confidences = faiss_label_spreading(
+            features=features,
+            targets=targets,
+            num_classes=int(labels.max()) + 1,
+            graph_diagnostics={
+                "request": make_graph_diagnostics_request(
+                    config=config,
+                    log_dir=log_dir,
+                    name=f"{self.name}_affinity",
+                    epoch=epoch,
+                    title=f"{self.name} symmetric affinity graph",
+                ),
+                "positions": ssl_positions,
+                "labels": labels[ssl_positions],
+                "known_mask": targets != UNLABELED_TARGET,
+            },
+            **params,
+        )
+        unlabeled_start = len(split.labeled_positions)
+        unlabeled_probabilities = probabilities[unlabeled_start:]
+        pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
+        unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
+        logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(unlabeled_confidences)}")
+        return PseudoLabelResult(
+            positions=split.unlabeled_positions,
+            mapped_labels=pseudo_labels,
+            confidences=unlabeled_confidences,
+        )
+
+
 class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
     """Sparse mixed label propagation from Zhuang and Moulin, CVPR 2023."""
 
@@ -1731,6 +2140,90 @@ def validate_mixed_label_propagation_params(params):
         raise ValueError("mixed_label_propagation confidence_temperature must be positive when set")
 
 
+def validate_faiss_label_spreading_params(params):
+    unknown = sorted(set(params) - set(FaissLabelSpreadingPseudoLabeler.DEFAULT_PARAMS))
+    if unknown:
+        raise ValueError(f"Unknown faiss_label_spreading params: {unknown}")
+    if int(params["n_neighbors"]) <= 0:
+        raise ValueError("faiss_label_spreading n_neighbors must be positive")
+    for name in ("gamma", "cg_rtol"):
+        if not np.isfinite(float(params[name])) or float(params[name]) <= 0:
+            raise ValueError(f"faiss_label_spreading {name} must be positive")
+    alpha = float(params["alpha"])
+    if not np.isfinite(alpha) or not (0.0 < alpha < 1.0):
+        raise ValueError("faiss_label_spreading alpha must be in (0, 1)")
+    if int(params["cg_max_iter"]) <= 0:
+        raise ValueError("faiss_label_spreading cg_max_iter must be positive")
+    if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
+        raise ValueError("faiss_label_spreading linear_solver must be one of ['auto', 'cholmod', 'cg']")
+
+
+def faiss_label_spreading(
+    features,
+    targets,
+    num_classes,
+    n_neighbors=10,
+    gamma=1.0,
+    alpha=0.2,
+    cg_rtol=1e-5,
+    cg_max_iter=1000,
+    linear_solver="auto",
+    graph_diagnostics=None,
+):
+    """Solve Zhou et al.'s label-spreading fixed point on a FAISS kNN graph."""
+
+    features = np.asarray(features, dtype=np.float32)
+    targets = np.asarray(targets, dtype=np.int64)
+    if features.ndim != 2 or len(features) != len(targets):
+        raise ValueError("features must be a matrix aligned with targets")
+    if len(features) < 2:
+        raise ValueError("faiss_label_spreading requires at least two samples")
+    if num_classes <= 0:
+        raise ValueError("num_classes must be positive")
+    labeled = targets != UNLABELED_TARGET
+    if not np.any(labeled):
+        raise ValueError("faiss_label_spreading requires at least one labeled target")
+    if np.any((targets[labeled] < 0) | (targets[labeled] >= num_classes)):
+        raise ValueError("labeled targets must be in [0, num_classes)")
+
+    affinity = make_mixed_label_affinity(features, n_neighbors=n_neighbors, gamma=gamma)
+    if graph_diagnostics is not None:
+        maybe_save_graph_diagnostics(
+            request=graph_diagnostics.get("request"),
+            embeddings=features,
+            adjacency=affinity,
+            positions=graph_diagnostics.get("positions"),
+            labels=graph_diagnostics.get("labels"),
+            known_mask=graph_diagnostics.get("known_mask"),
+        )
+
+    degrees = np.asarray(affinity.sum(axis=1)).ravel()
+    inverse_sqrt_degrees = np.zeros_like(degrees, dtype=np.float64)
+    positive_degree = degrees > 0.0
+    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(degrees[positive_degree])
+    degree_scaling = sparse.diags(inverse_sqrt_degrees)
+    normalized_affinity = (degree_scaling @ affinity @ degree_scaling).tocsr()
+
+    alpha = float(alpha)
+    system = (
+        sparse.eye(len(features), format="csr", dtype=np.float64)
+        - alpha * normalized_affinity
+    ).tocsr()
+    one_hot_targets = np.zeros((len(features), num_classes), dtype=np.float64)
+    one_hot_targets[np.flatnonzero(labeled), targets[labeled]] = 1.0
+    scores = solve_sparse_label_system(
+        system,
+        (1.0 - alpha) * one_hot_targets,
+        rtol=float(cg_rtol),
+        max_iter=int(cg_max_iter),
+        name="faiss label spreading",
+        linear_solver=str(linear_solver),
+    )
+    probabilities = normalize_label_spreading_rows(scores)
+    confidences = probabilities.max(axis=1)
+    return probabilities.astype(np.float32), confidences.astype(np.float32)
+
+
 def mixed_label_propagation(
     features,
     targets,
@@ -1788,6 +2281,7 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="initial label propagation",
+        linear_solver=str(linear_solver),
     )
 
     dissimilarity = make_dissimilarity_affinity(
@@ -1988,8 +2482,9 @@ def induced_subgraph_edges(adjacency, node_ids):
     upper = sub.row < sub.col
     return sub.row[upper], sub.col[upper], sub.data[upper]
 
+
 def make_mixed_label_affinity(features, n_neighbors, gamma):
-    """Build equation (15)'s sparse symmetric cosine-affinity graph."""
+    """Build equation (15)'s sparse symmetric cosine-affinity graph (vectorized)."""
 
     try:
         import faiss
@@ -2003,24 +2498,22 @@ def make_mixed_label_affinity(features, n_neighbors, gamma):
     index.add(normalized)
     similarities, neighbors = index.search(normalized, k + 1)
 
-    rows = []
-    columns = []
-    values = []
-    for query_index, (neighbor_row, similarity_row) in enumerate(zip(neighbors, similarities)):
-        kept = 0
-        for neighbor_index, similarity in zip(neighbor_row, similarity_row):
-            if int(neighbor_index) == query_index:
-                continue
-            rows.append(int(neighbor_index))
-            columns.append(query_index)
-            values.append(max(float(similarity), 0.0) ** float(gamma))
-            kept += 1
-            if kept == k:
-                break
+    num_samples, retrieved = neighbors.shape
+    query_indices = np.repeat(np.arange(num_samples, dtype=np.int64), retrieved)
+    neighbor_indices = neighbors.ravel().astype(np.int64)
+    # Power in float64 to match the original loop, which converted each float32
+    # similarity to a Python float before ** gamma.
+    values = np.clip(similarities.ravel().astype(np.float64), 0.0, None) ** float(gamma)
+
+    # Drop self matches, then keep only the first k survivors per row --
+    # identical to the loop's `continue` on self and `break` at kept == k.
+    keep = neighbor_indices != query_indices
+    survivor_rank = keep.reshape(num_samples, retrieved).cumsum(axis=1).ravel()
+    keep &= survivor_rank <= k
 
     directed = sparse.coo_matrix(
-        (values, (rows, columns)),
-        shape=(len(normalized), len(normalized)),
+        (values[keep], (neighbor_indices[keep], query_indices[keep])),
+        shape=(num_samples, num_samples),
         dtype=np.float64,
     ).tocsr()
     affinity = (directed + directed.T).tocsr()
@@ -2082,17 +2575,62 @@ def make_dissimilarity_affinity(
     return dissimilarity
 
 
-def solve_sparse_label_system(matrix, right_hand_side, rtol, max_iter, name):
-    """Solve one sparse positive-definite system per class using CG."""
+def solve_sparse_label_system(
+        matrix,
+        right_hand_side,
+        rtol,
+        max_iter,
+        name,
+        linear_solver="auto",
+        warm_start=None,
+):
+    """Solve the sparse SPD system for all classes at once when possible.
 
-    result = np.zeros_like(right_hand_side, dtype=np.float64)
+    linear_solver:
+      - "cholmod": sparse Cholesky via scikit-sparse (fails loudly if missing).
+      - "cg": per-class conjugate gradient with a Jacobi preconditioner and an
+        optional warm start (e.g. the initial-LP solution for the mixed system).
+      - "auto": CHOLMOD if importable, else scipy splu, else preconditioned CG.
+        Direct factorizations solve all C right-hand sides after one
+        factorization, so their advantage grows linearly with the number of
+        classes. For very large graphs (N >> 1e5) where factorization fill-in
+        exhausts memory, fall back to "cg".
+    """
+
+    right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
+
+    if linear_solver in ("auto", "cholmod"):
+        try:
+            from sksparse.cholmod import cholesky
+
+            factor = cholesky(matrix.tocsc())
+            return factor(right_hand_side)
+        except ImportError:
+            if linear_solver == "cholmod":
+                raise ImportError(f"{name}: linear_solver='cholmod' requires scikit-sparse")
+
+    if linear_solver == "auto":
+        try:
+            lu = sparse_linalg.splu(matrix.tocsc())
+            return lu.solve(right_hand_side)
+        except (MemoryError, RuntimeError) as exc:
+            logger.warning(f"{name}: direct factorization failed ({exc}); falling back to CG")
+
+    # Jacobi-preconditioned CG fallback; ~2x fewer iterations than plain CG on
+    # these systems and never worse. The diagonal is strictly positive
+    # (degrees + mu anchors [+ dissimilarity degrees]).
+    preconditioner = sparse.diags(1.0 / matrix.diagonal())
+    result = np.zeros_like(right_hand_side)
     for class_index in range(right_hand_side.shape[1]):
+        x0 = None if warm_start is None else warm_start[:, class_index]
         solution, info = sparse_linalg.cg(
             matrix,
             right_hand_side[:, class_index],
+            x0=x0,
             rtol=rtol,
             atol=0.0,
             maxiter=max_iter,
+            M=preconditioner,
         )
         if info != 0:
             raise RuntimeError(f"{name} conjugate gradient did not converge for class {class_index}: info={info}")
@@ -2104,6 +2642,30 @@ def stable_softmax(values):
     shifted = values - np.max(values, axis=1, keepdims=True)
     exponentials = np.exp(shifted)
     return exponentials / exponentials.sum(axis=1, keepdims=True)
+
+
+def normalize_label_spreading_rows(values):
+    """Convert nonnegative fixed-point scores into per-row class probabilities."""
+
+    probabilities = np.asarray(values, dtype=np.float64).copy()
+    if probabilities.ndim != 2:
+        raise ValueError("label spreading scores must be a matrix")
+    if probabilities.shape[1] <= 1:
+        return np.ones_like(probabilities, dtype=np.float64)
+    if not np.all(np.isfinite(probabilities)):
+        raise RuntimeError("faiss_label_spreading produced non-finite class scores")
+    negative_tolerance = 1e-12
+    if np.any(probabilities < -negative_tolerance):
+        raise RuntimeError("faiss_label_spreading produced negative class scores")
+    probabilities[probabilities < 0.0] = 0.0
+    row_sums = probabilities.sum(axis=1, keepdims=True)
+    zero_rows = np.flatnonzero(row_sums.ravel() == 0.0)
+    if len(zero_rows) > 0:
+        raise RuntimeError(
+            "faiss_label_spreading produced zero-mass rows, usually because a graph component "
+            f"has no labeled target: {zero_rows[:10].tolist()}"
+        )
+    return probabilities / row_sums
 
 
 def normalize_mixed_label_rows(values):
@@ -2233,6 +2795,7 @@ REGULARIZER_REGISTRY = {
     "lrml": LRMLRegularizer,
     "slrmml": SLRMMLRegularizer,
     "slrml": SLRMMLRegularizer,
+    "hoffer_entropy": HofferEntropyRegularizer,
 }
 
 
@@ -2251,6 +2814,7 @@ METHOD_REGISTRY = {
         estimator_cls=LabelPropagation,
         default_params={"kernel": "knn", "n_neighbors": 10, "max_iter": 30},
     ),
+    "faiss_label_spreading": FaissLabelSpreadingPseudoLabeler(),
     "mixed_label_propagation": MixedLabelPropagationPseudoLabeler(),
     # Generic composition point for supervised loss + unlabeled regularizer.
     "regularized": RegularizedSemiSupervisedMethod(name="regularized"),

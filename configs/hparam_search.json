@@ -2,6 +2,7 @@
   "enabled": true,
   "n_trials": 50,
   "timeout": null,
+  "n_jobs": 1,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
   "study_name": "metric_learning_search",

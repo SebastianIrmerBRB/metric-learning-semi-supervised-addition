@@ -1,0 +1,15 @@
+{
+  "method": "regularized",
+  "update_mode": "once",
+  "warmup_epochs": 0,
+  "method_params": {
+    "regularizer": "hoffer_entropy",
+    "supervised_weight": 1.0,
+    "regularizer_weight": 0.5,
+    "regularizer_params": {
+      "normalize_embeddings": true,
+      "distance_scale": 1.0,
+      "max_reference_classes": null
+    }
+  }
+}

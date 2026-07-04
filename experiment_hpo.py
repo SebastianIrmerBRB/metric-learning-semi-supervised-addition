@@ -76,6 +76,13 @@ def validate_hparam_config(config, path=None):
         return
     if config.timeout is not None and config.timeout <= 0:
         raise ValueError(f"timeout must be positive when set{source}")
+    if (
+        isinstance(config.n_jobs, bool)
+        or not isinstance(config.n_jobs, int)
+        or config.n_jobs == 0
+        or config.n_jobs < -1
+    ):
+        raise ValueError(f"n_jobs must be a positive integer or -1{source}")
     if config.direction not in {"maximize", "minimize"}:
         raise ValueError(f"direction must be 'maximize' or 'minimize'{source}")
     if config.metric not in OBJECTIVE_METRICS:
@@ -328,7 +335,8 @@ def run_hparam_search(args, config):
         f"Starting Optuna study outputs in {study_dir}. "
         f"Finished trials: {finished_trials}/{config.n_trials}. "
         f"Recovered unfinished trials: {recovered_trials}. "
-        f"Remaining this run: {max(remaining_trials, 0)}."
+        f"Remaining this run: {max(remaining_trials, 0)}. "
+        f"Parallel jobs: {config.n_jobs}."
     )
     if remaining_trials <= 0:
         write_trials_summary(study, trials_csv, trials_jsonl)
@@ -339,6 +347,7 @@ def run_hparam_search(args, config):
         objective,
         n_trials=remaining_trials,
         timeout=config.timeout,
+        n_jobs=config.n_jobs,
         callbacks=[record_trial],
         gc_after_trial=True,
     )

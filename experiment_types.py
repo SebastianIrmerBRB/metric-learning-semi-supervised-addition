@@ -192,6 +192,7 @@ class HParamSearchConfig:
     enabled: bool = True
     n_trials: int = 20
     timeout: int | None = None
+    n_jobs: int = 1
     direction: str = "maximize"
     metric: str = "best_valid_mean_average_precision_at_r"
     study_name: str | None = None

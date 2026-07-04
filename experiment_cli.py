@@ -242,7 +242,7 @@ parser.add_argument(
     choices=SELECTION_METRICS,
     help="validation metric used for checkpoint selection and early stopping",
 )
-parser.add_argument("--num_workers", type=int, default=2, help="DataLoader worker count for training/evaluation")
+parser.add_argument("--num_workers", type=int, default=8, help="DataLoader worker count for training/evaluation")
 parser.add_argument(
     "--dataloader_start_method",
     type=str,
@@ -267,6 +267,15 @@ parser.add_argument(
     type=int,
     default=None,
     help="batch size for one-time frozen-backbone feature extraction; defaults to --batch_size",
+)
+parser.add_argument(
+    "--frozen_feature_train_views",
+    type=int,
+    default=1,
+    help=(
+        "number of stochastic training views to precompute per sample when frozen feature precompute is active; "
+        "1 preserves deterministic cached features"
+    ),
 )
 parser.add_argument(
     "--ssl_config",
