@@ -74,17 +74,34 @@ def use_cuda_pin_memory(device):
 
 
 def should_precompute_frozen_features(args, ssl_config):
+    regularized_ssl = is_cacheable_regularized_ssl(ssl_config)
     return (
         bool(getattr(args, "use_cache", False))
         and args.backbone_tuning == BACKBONE_TUNING_FROZEN
-        and is_supervised_mode(args)
-        and not ssl_config.enabled
+        and (
+            (is_supervised_mode(args) and not ssl_config.enabled)
+            or (not is_supervised_mode(args) and regularized_ssl)
+        )
     )
+
+
+def is_cacheable_regularized_ssl(ssl_config):
+    if not ssl_config.enabled:
+        return False
+    ssl_method = semi_supervised.get_method(ssl_config)
+    if ssl_method is None or not ssl_method.is_regularization_method:
+        return False
+    regularizer = ssl_method.make_regularizer(ssl_config)
+    return regularizer.name in {"hoffer_entropy", "lrml", "slrmml"}
 
 
 def get_frozen_feature_batch_size(args):
     batch_size = getattr(args, "frozen_feature_batch_size", None)
     return int(args.batch_size if batch_size is None else batch_size)
+
+
+def get_frozen_feature_train_views(args):
+    return int(getattr(args, "frozen_feature_train_views", 1))
 
 
 def make_label_lookup_tensor(train_labels_mapper, device):
@@ -422,6 +439,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
     supervised_mode = is_supervised_mode(args)
     precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
+    regularized_frozen_feature_precompute = bool(precompute_frozen_features and regularized_ssl)
+    requested_frozen_feature_train_views = get_frozen_feature_train_views(args)
+    frozen_feature_train_views = (
+        1 if regularized_frozen_feature_precompute else requested_frozen_feature_train_views
+    )
+    augmented_frozen_feature_precompute = (
+        precompute_frozen_features
+        and not regularized_frozen_feature_precompute
+        and frozen_feature_train_views > 1
+    )
     model_use_cache = bool(args.use_cache)
     pin_memory = use_cuda_pin_memory(args.device)
 
@@ -429,6 +456,11 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # limit when Torch shares many tensor-backed batches between processes.
     torch.multiprocessing.set_sharing_strategy("file_system")
     utils.initialize_logger(args)
+    if regularized_frozen_feature_precompute and requested_frozen_feature_train_views != 1:
+        logger.warning(
+            "Regularized frozen feature precompute uses one deterministic view per sample; "
+            f"ignoring frozen_feature_train_views={requested_frozen_feature_train_views}"
+        )
     # DinoWrapper supplies a pretrained DINO backbone and, when feat_dim is
     # provided, a projection layer that becomes the learned embedding space.
     if loss_driven_ssl:
@@ -452,6 +484,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     args.model_uses_backbone_cache = model_use_cache
     args.frozen_feature_precompute = precompute_frozen_features
     args.frozen_feature_batch_size_resolved = get_frozen_feature_batch_size(args)
+    args.frozen_feature_train_views_resolved = frozen_feature_train_views
     args.model_total_parameters = sum(parameter.numel() for parameter in model.parameters())
     args.model_trainable_parameters = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
@@ -485,7 +518,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         cifar_test_fraction=args.cifar_test_fraction,
         full_train=final_full_train,
     )
-    if args.use_cache:
+    if args.use_cache and not augmented_frozen_feature_precompute:
         # A reusable per-sample DINO embedding requires stable image inputs.
         # Training therefore uses the same deterministic transform as feature
         # extraction instead of stochastic RandAugment.
@@ -497,6 +530,11 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             )
         else:
             logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
+    elif augmented_frozen_feature_precompute:
+        logger.info(
+            "Augmented frozen feature precompute enabled: training keeps stochastic transforms while "
+            f"precomputing {frozen_feature_train_views} backbone feature views per sample"
+        )
     # Even the supervised baseline uses the SSL config's label-selection rules
     # so supervised and SSL runs receive exactly the same labeled examples.
     if ssl_config.enabled:
@@ -565,6 +603,22 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # Persist both subset-relative positions and source-dataset indices before
     # training so the exact experiment split is recoverable.
     write_split_manifest(args.log_dir, dataset_bundle, ssl_config, ssl_split)
+    precomputed_train_samples = None
+    if regularized_frozen_feature_precompute:
+        dataset_bundle.train_dataset = utils.precompute_backbone_feature_dataset(
+            model=model,
+            dataset=dataset_bundle.train_dataset,
+            device=args.device,
+            batch_size=get_frozen_feature_batch_size(args),
+            seed=args.seed,
+            num_workers=args.num_workers,
+            start_method=args.dataloader_start_method,
+            desc="precompute frozen regularized train features",
+            pin_memory=pin_memory,
+            require_feature_transform=True,
+            use_feature_transform=True,
+        )
+        precomputed_train_samples = len(dataset_bundle.train_dataset)
     # Build loaders that are known before training.  For every-epoch SSL, the
     # loader is deliberately deferred until the current model can pseudo-label.
     static_train_loader = None
@@ -588,7 +642,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 start_method=args.dataloader_start_method,
                 desc="precompute frozen train features",
                 pin_memory=pin_memory,
-                require_feature_transform=True,
+                require_feature_transform=not augmented_frozen_feature_precompute,
+                use_feature_transform=not augmented_frozen_feature_precompute,
+                num_views=frozen_feature_train_views,
             )
         static_train_loader = utils.make_train_loader(
             train_dataset,
@@ -625,7 +681,11 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             num_views=int(stml_params.get("num_views", 2)),
         )
     elif regularized_ssl:
-        regularizer.build_dataset(dataset_bundle.train_dataset, ssl_split)
+        regularizer.build_dataset(
+            dataset_bundle.train_dataset,
+            ssl_split,
+            use_cache=model_use_cache,
+        )
     elif static_train_loader is None and ssl_config.update_mode == "once" and ssl_config.warmup_epochs == 0:
         # With no warmup, "once" means pseudo-label immediately using the
         # off-the-shelf model and reuse those predictions for every epoch.
@@ -1279,7 +1339,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             feature_stats = {
                 "enabled": True,
                 "batch_size": get_frozen_feature_batch_size(args),
-                "train_samples": None if static_train_loader is None else len(static_train_loader.dataset),
+                "train_views": frozen_feature_train_views,
+                "train_samples": (
+                    precomputed_train_samples
+                    if precomputed_train_samples is not None
+                    else None if static_train_loader is None else len(static_train_loader.dataset)
+                ),
                 "valid_samples": None if valid_loader is None else len(valid_loader.dataset),
                 "test_samples": None if test_loader is None else len(test_loader.dataset),
                 "backbone": f"dinov2_vit{args.dino_size}14",
@@ -1576,6 +1641,8 @@ def validate_run_args(args, ssl_config):
         raise ValueError("batch_size must be positive")
     if getattr(args, "frozen_feature_batch_size", None) is not None and args.frozen_feature_batch_size <= 0:
         raise ValueError("frozen_feature_batch_size must be positive when set")
+    if get_frozen_feature_train_views(args) <= 0:
+        raise ValueError("frozen_feature_train_views must be positive")
     if getattr(args, "debug_batch_timing_interval", 5) <= 0:
         raise ValueError("debug_batch_timing_interval must be positive")
     if args.length_before_new_iter is not None and args.length_before_new_iter < args.batch_size:

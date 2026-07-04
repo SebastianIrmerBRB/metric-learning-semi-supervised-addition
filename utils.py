@@ -836,6 +836,7 @@ def make_train_loader(
 ):
     """Create a loader whose batches contain ``sampler_m`` samples per class."""
 
+    num_workers = dataloader_num_workers_for_dataset(train_dataset, num_workers)
     sampler_length = make_sampler_epoch_length(
         len(train_dataset),
         batch_size,
@@ -920,6 +921,7 @@ def make_stml_train_loader(
 ):
     """Create the nearest-neighbor batch loader used by STML."""
 
+    num_workers = dataloader_num_workers_for_dataset(train_dataset, num_workers)
     sampler = STMLNearestNeighborBatchSampler(
         embeddings=sampling_embeddings,
         batch_size=batch_size,
@@ -994,6 +996,7 @@ def make_sampler_epoch_length(dataset_size, batch_size, length_before_new_iter=N
 
 def make_eval_loader(dataset, batch_size=32, seed=0, num_workers=8, start_method="spawn", pin_memory=False):
     # Evaluation traverses every item exactly once in dataset order.
+    num_workers = dataloader_num_workers_for_dataset(dataset, num_workers)
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -1020,8 +1023,8 @@ class PrecomputedBackboneFeatureDataset(Dataset):
         source_dataset=None,
     ):
         features = torch.as_tensor(features, dtype=torch.float32).cpu()
-        if features.ndim != 2:
-            raise ValueError("precomputed backbone features must be a 2D tensor")
+        if features.ndim not in {2, 3}:
+            raise ValueError("precomputed backbone features must be a 2D or 3D tensor")
         if len(features) != len(labels):
             raise ValueError("features and labels must have the same length")
         self.features = features.contiguous()
@@ -1048,9 +1051,53 @@ class PrecomputedBackboneFeatureDataset(Dataset):
         return len(self.features)
 
     def __getitem__(self, index):
+        features = self.features[index]
+        if features.ndim == 2:
+            view_index = int(torch.randint(features.shape[0], ()).item())
+            features = features[view_index]
         if self.sample_weights is None:
-            return self.features[index], self.orig_labels[index]
-        return self.features[index], self.orig_labels[index], self.sample_weights[index]
+            return features, self.orig_labels[index]
+        return features, self.orig_labels[index], self.sample_weights[index]
+
+
+class RepeatedAugmentedViewDataset(Dataset):
+    """Repeat each dataset item consecutively to materialize stochastic views."""
+
+    def __init__(self, dataset, num_views):
+        self.dataset = dataset
+        self.num_views = int(num_views)
+        if self.num_views <= 0:
+            raise ValueError("num_views must be positive")
+
+    def __len__(self):
+        return len(self.dataset) * self.num_views
+
+    def __getitem__(self, index):
+        return self.dataset[int(index) // self.num_views]
+
+
+def dataset_has_precomputed_backbone_features(dataset):
+    """Return True when a dataset is backed by an in-memory feature tensor."""
+
+    if isinstance(dataset, PrecomputedBackboneFeatureDataset):
+        return True
+    if isinstance(dataset, Subset):
+        return dataset_has_precomputed_backbone_features(dataset.dataset)
+    if isinstance(dataset, CombinedDataset):
+        return any(dataset_has_precomputed_backbone_features(child) for child in dataset.datasets)
+    child_dataset = getattr(dataset, "dataset", None)
+    if child_dataset is not None and child_dataset is not dataset:
+        return dataset_has_precomputed_backbone_features(child_dataset)
+    return False
+
+
+def dataloader_num_workers_for_dataset(dataset, num_workers):
+    if dataset_has_precomputed_backbone_features(dataset):
+        # Precomputed feature datasets already live as CPU tensors in this
+        # process. Sending them through DataLoader workers can serialize or
+        # duplicate large tensors and can hang shutdown/interrupt handling.
+        return 0
+    return num_workers
 
 
 def get_nested_feature_transform(dataset):
@@ -1120,17 +1167,31 @@ def precompute_backbone_feature_dataset(
     desc,
     pin_memory=False,
     require_feature_transform=False,
+    use_feature_transform=True,
+    num_views=1,
 ):
     """Extract frozen raw backbone features once and keep dataset labels aligned."""
 
     if not hasattr(model, "forward_backbone"):
         raise AttributeError("Model does not expose forward_backbone for feature precompute")
-    feature_dataset = make_feature_transform_dataset(
-        dataset,
-        require_feature_transform=require_feature_transform,
-    )
+    num_views = int(num_views)
+    if num_views <= 0:
+        raise ValueError("num_views must be positive")
+    if use_feature_transform:
+        feature_dataset = make_feature_transform_dataset(
+            dataset,
+            require_feature_transform=require_feature_transform,
+        )
+    elif require_feature_transform:
+        raise ValueError("require_feature_transform cannot be combined with use_feature_transform=False")
+    else:
+        feature_dataset = copy.deepcopy(dataset)
+    source_length = len(feature_dataset)
+    loader_dataset = feature_dataset
+    if num_views > 1:
+        loader_dataset = RepeatedAugmentedViewDataset(feature_dataset, num_views)
     loader = DataLoader(
-        feature_dataset,
+        loader_dataset,
         batch_size=batch_size,
         shuffle=False,
         **make_dataloader_kwargs(
@@ -1165,11 +1226,29 @@ def precompute_backbone_feature_dataset(
         model.train()
 
     features = torch.cat(all_features, dim=0)
-    labels = torch.cat(all_labels, dim=0).tolist()
+    labels_tensor = torch.cat(all_labels, dim=0)
+    sample_weights = torch.cat(all_sample_weights, dim=0) if saw_sample_weights else None
+    if num_views > 1:
+        expected_rows = source_length * num_views
+        if len(features) != expected_rows or len(labels_tensor) != expected_rows:
+            raise ValueError("precomputed augmented feature rows do not match dataset length and num_views")
+        if features.ndim != 2:
+            raise ValueError("augmented backbone features must be a 2D row matrix before grouping")
+        features = features.reshape(source_length, num_views, features.shape[1])
+        label_groups = labels_tensor.reshape(source_length, num_views)
+        if not torch.equal(label_groups, label_groups[:, :1].expand_as(label_groups)):
+            raise ValueError("labels changed across augmented views for the same sample")
+        labels = label_groups[:, 0].tolist()
+        if sample_weights is not None:
+            sample_weight_groups = sample_weights.reshape(source_length, num_views)
+            if not torch.allclose(sample_weight_groups, sample_weight_groups[:, :1].expand_as(sample_weight_groups)):
+                raise ValueError("sample weights changed across augmented views for the same sample")
+            sample_weights = sample_weight_groups[:, 0]
+    else:
+        labels = labels_tensor.tolist()
     dense_labels = getattr(dataset, "labels", None)
     if dense_labels is not None and len(dense_labels) != len(labels):
         raise ValueError("dataset.labels must align with the precomputed feature rows")
-    sample_weights = torch.cat(all_sample_weights, dim=0) if saw_sample_weights else None
     return PrecomputedBackboneFeatureDataset(
         features=features,
         labels=labels,
