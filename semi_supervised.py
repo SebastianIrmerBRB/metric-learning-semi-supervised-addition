@@ -1501,6 +1501,8 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
 
         self.dataset = None
         self.class_candidates = None
+        self._regularizer_loader = None
+        self._regularizer_loader_cache_key = None
 
     def validate_run_args(self, args):
         return None
@@ -1531,6 +1533,8 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         self.class_candidates = class_candidates
         regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
         self.dataset = HofferReferenceDataset(regularizer_dataset, unlabeled_positions, labeled_positions)
+        self._regularizer_loader = None
+        self._regularizer_loader_cache_key = None
         return self.dataset
 
     def make_loader(
@@ -1549,19 +1553,34 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
     ):
         if self.dataset is None or self.class_candidates is None:
             raise RuntimeError("build_dataset must be called before make_loader")
-        sampler = HofferReferenceBatchSampler(
-            num_unlabeled=self.dataset.num_unlabeled,
-            class_candidates=self.class_candidates,
-            unlabeled_per_batch=batch_size,
-            seed=seed,
-            max_reference_classes=self.max_reference_classes,
-        )
         num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
-        regularizer_loader = DataLoader(
-            self.dataset,
-            batch_sampler=sampler,
-            **utils.make_dataloader_kwargs(num_workers, seed, start_method),
+        cache_key = (
+            id(self.dataset),
+            int(batch_size),
+            int(num_workers),
+            str(start_method),
+            None if self.max_reference_classes is None else int(self.max_reference_classes),
         )
+        if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
+            sampler = HofferReferenceBatchSampler(
+                num_unlabeled=self.dataset.num_unlabeled,
+                class_candidates=self.class_candidates,
+                unlabeled_per_batch=batch_size,
+                seed=seed,
+                max_reference_classes=self.max_reference_classes,
+            )
+            self._regularizer_loader = DataLoader(
+                self.dataset,
+                batch_sampler=sampler,
+                **utils.make_dataloader_kwargs(
+                    num_workers,
+                    seed,
+                    start_method,
+                    persistent_workers=True,
+                ),
+            )
+            self._regularizer_loader_cache_key = cache_key
+        regularizer_loader = self._regularizer_loader
         return CombinedTrainingLoader(supervised_loader, regularizer_loader)
 
     def compute_loss(self, student_model, state, batch, device, timings=None):
