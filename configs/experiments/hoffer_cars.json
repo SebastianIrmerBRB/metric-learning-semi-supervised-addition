@@ -1,0 +1,28 @@
+{
+  "save_dir": "cars_hoffer",
+  "dataset": "Cars196",
+  "length_before_new_iter": 6041,
+  "dataset_protocol": "official",
+  "val_mode": "match_train",
+  "cv_k": 1,
+  "final_test_after_hpo": true,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "ssl",
+  "patience": 15,
+  "epochs": 200,
+  "ssl_config": "configs/ssl_hoffer_entropy.json",
+  "hparam_config": "configs/supervised/hparam_ssl_hoffer.json",
+  "label_budget_grid": [
+    1
+  ],
+  "k_shot_grid": [
+        16
+  ],
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner", "MultiSimilarityLoss:MultiSimilarityMiner", "CircleLoss:no_miner", "ArcFaceLoss:no_miner", "ProxyAnchorLoss:no_miner"
+
+  ]
+}
