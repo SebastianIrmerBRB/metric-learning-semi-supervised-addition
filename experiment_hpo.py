@@ -5,6 +5,7 @@ import csv
 import gc
 import itertools
 import json
+import multiprocessing as mp
 from dataclasses import replace
 from pathlib import Path
 
@@ -48,16 +49,47 @@ from experiment_types import (
 from retrieval_model import BACKBONE_TUNING_FROZEN
 
 
-def cleanup_after_trial_error():
+def terminate_active_children(timeout=5.0):
+    """Terminate DataLoader workers left alive after a failed single-job trial."""
+
+    children = mp.active_children()
+    for child in children:
+        if child.is_alive():
+            try:
+                child.terminate()
+            except OSError:
+                pass
+    for child in children:
+        try:
+            child.join(timeout=timeout)
+        except OSError:
+            pass
+    for child in children:
+        if child.is_alive():
+            try:
+                child.kill()
+            except OSError:
+                pass
+            try:
+                child.join(timeout=1.0)
+            except OSError:
+                pass
+
+
+def cleanup_after_trial_error(terminate_children=False):
     """Release Python-owned handles before retrying a failed trial."""
 
     gc.collect()
+    if terminate_children:
+        terminate_active_children()
     try:
         import torch
     except ImportError:
         return
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+        if hasattr(torch.cuda, "ipc_collect"):
+            torch.cuda.ipc_collect()
 
 
 def make_hpo_retry_args(trial_args, ssl_config, attempt):
@@ -340,7 +372,7 @@ def run_hparam_search(args, config):
                 "Trial failed; retrying once with the same trial parameters and runtime settings. "
                 f"Trial={trial.number}, error={retry_reason}"
             )
-            cleanup_after_trial_error()
+            cleanup_after_trial_error(terminate_children=config.n_jobs == 1)
 
             retry_args, retry_ssl_config = make_hpo_retry_args(
                 retry_source_args,
@@ -360,7 +392,7 @@ def run_hparam_search(args, config):
                 retry_error = str(retry_exc)
                 retry_exc.__traceback__ = None
                 retry_exc = None
-                cleanup_after_trial_error()
+                cleanup_after_trial_error(terminate_children=config.n_jobs == 1)
                 message = f"Trial failed again after one retry; skipping for now: {retry_error}"
                 trial.set_user_attr("pruned_reason", message)
                 raise optuna.TrialPruned(message)

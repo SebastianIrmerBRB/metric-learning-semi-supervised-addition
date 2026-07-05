@@ -832,6 +832,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     best_precision = None
     best_map = None
     selected_epoch = -1
+    train_loader = None
+    train_iter = None
+    tqdm_bar = None
 
     try:
         global_step = 0
@@ -1216,6 +1219,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     last_timing_log_batch = current_batch_count
                     last_timing_totals = dict(epoch_timings)
             tqdm_bar.close()
+            tqdm_bar = None
+            train_iter = None
             if num_batches > 0:
                 # The epoch metric is an unweighted mean of batch loss values.
                 final_train_loss = epoch_loss / num_batches
@@ -1346,6 +1351,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     finally:
         # Ensure file handles and TensorBoard writers close even when training,
         # evaluation, or an Optuna pruning decision raises an exception.
+        if tqdm_bar is not None:
+            tqdm_bar.close()
+        train_iter = None
+        utils.shutdown_dataloaders(
+            train_loader,
+            static_train_loader,
+            warmup_train_loader,
+            valid_loader,
+            test_loader,
+        )
         metrics_logger.close()
         if precompute_frozen_features:
             feature_stats = {

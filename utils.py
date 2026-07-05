@@ -442,6 +442,62 @@ def make_dataloader_kwargs(
     return kwargs
 
 
+def shutdown_dataloader_workers(loader):
+    """Best-effort shutdown for DataLoader persistent worker iterators."""
+
+    if loader is None:
+        return
+
+    iterator = getattr(loader, "_iterator", None)
+    if iterator is None and hasattr(loader, "_shutdown_workers"):
+        iterator = loader
+    if iterator is None:
+        return
+
+    shutdown = getattr(iterator, "_shutdown_workers", None)
+    if shutdown is not None:
+        try:
+            shutdown()
+        except AttributeError as exc:
+            # PyTorch can raise this while cleaning a partially initialized
+            # multiprocessing iterator after worker startup failed.
+            if "_workers_status" not in str(exc):
+                raise
+
+    if hasattr(loader, "_iterator"):
+        try:
+            loader._iterator = None
+        except AttributeError:
+            pass
+
+
+def shutdown_dataloaders(*loaders):
+    """Shutdown each distinct DataLoader or DataLoader iterator supplied."""
+
+    seen = set()
+
+    def visit(value):
+        if value is None:
+            return
+        if isinstance(value, dict):
+            for child in value.values():
+                visit(child)
+            return
+        if isinstance(value, (list, tuple, set, frozenset)):
+            for child in value:
+                visit(child)
+            return
+
+        value_id = id(value)
+        if value_id in seen:
+            return
+        seen.add(value_id)
+        shutdown_dataloader_workers(value)
+
+    for loader in loaders:
+        visit(loader)
+
+
 class MetricsLogger:
     """Write training/evaluation metrics to TensorBoard and CSV."""
 
@@ -2763,19 +2819,28 @@ def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
     all_embeddings = []
     all_labels = []
     # Extract embeddings and labels
-    with torch.no_grad():
-        for images, labels in tqdm(eval_loader, desc=name):
-            # Keep only CPU NumPy embeddings after each batch to free accelerator
-            # memory before processing the next batch.
-            forward_cached = getattr(model, "forward_cached", None)
-            embeddings = forward_model_inputs(
-                model,
-                images,
-                device,
-                use_cache=forward_cached is not None,
-            )
-            all_embeddings.append(embeddings.cpu().numpy().astype(np.float32))
-            all_labels.append(labels.cpu().numpy())
+    progress = None
+    try:
+        with torch.no_grad():
+            progress = tqdm(eval_loader, desc=name)
+            for images, labels in progress:
+                # Keep only CPU NumPy embeddings after each batch to free accelerator
+                # memory before processing the next batch.
+                forward_cached = getattr(model, "forward_cached", None)
+                embeddings = forward_model_inputs(
+                    model,
+                    images,
+                    device,
+                    use_cache=forward_cached is not None,
+                )
+                all_embeddings.append(embeddings.cpu().numpy().astype(np.float32))
+                all_labels.append(labels.cpu().numpy())
+    except BaseException:
+        shutdown_dataloader_workers(eval_loader)
+        raise
+    finally:
+        if progress is not None:
+            progress.close()
     # Concatenate all embeddings and labels
     all_embeddings = np.concatenate(all_embeddings)
     all_labels = np.concatenate(all_labels)
