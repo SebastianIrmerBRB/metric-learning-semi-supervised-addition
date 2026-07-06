@@ -43,6 +43,7 @@ except ImportError as exc:
     SummaryWriter = None
     TENSORBOARD_IMPORT_ERROR = exc
 
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 DATALOADER_START_METHODS = ("spawn", "forkserver", "fork", "default")
 CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD = "superclass_balanced_group_kfold"
@@ -334,13 +335,14 @@ def normalize_device_name(device_name):
 
 
 def initialize_logger(args):
-    """Create a timestamped run directory and configure console/file logging."""
+    """Create or reuse a run directory and configure console/file logging."""
 
     start_time = datetime.now()
     logger.remove()
-    # Mutating args.log_dir makes the concrete timestamped path available to all
-    # later artifact writers.
-    args.log_dir = Path("logs") / args.save_dir / start_time.strftime("%Y-%m-%d_%H-%M-%S")
+    # Mutating args.log_dir makes the concrete path available to all later
+    # artifact writers. HPO trials use a stable directory so recovered trials
+    # overwrite the same trial folder instead of creating timestamp children.
+    args.log_dir = resolve_log_dir(args, start_time)
     args.log_dir.mkdir(parents=True, exist_ok=True)
     logger.add(sys.stdout, colorize=True, format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
     logger.add(args.log_dir / "info.log", format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
@@ -351,6 +353,17 @@ def initialize_logger(args):
     logger.info(" ".join(sys.argv))
     logger.info(f"Arguments: {args}")
     logger.info(f"The outputs are being saved in {args.log_dir}")
+
+
+def resolve_log_dir(args, start_time):
+    base_dir = Path("logs") / args.save_dir
+    if is_hpo_trial_run(args):
+        return base_dir
+    return base_dir / start_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def is_hpo_trial_run(args):
+    return getattr(args, "trial_number", None) is not None or getattr(args, "hparam_study_name", None) is not None
 
 
 def seed_everything(seed, device="cpu"):

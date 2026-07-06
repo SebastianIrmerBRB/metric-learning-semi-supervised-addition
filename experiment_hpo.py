@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pytorch_metric_learning.miners as miners
+import torch
 from loguru import logger
 
 import semi_supervised
@@ -48,6 +49,8 @@ from experiment_types import (
 )
 from retrieval_model import BACKBONE_TUNING_FROZEN
 
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 def terminate_active_children(timeout=5.0):
     """Terminate DataLoader workers left alive after a failed single-job trial."""
@@ -76,29 +79,17 @@ def terminate_active_children(timeout=5.0):
                 pass
 
 
-def cleanup_after_trial_error(terminate_children=False):
-    """Release Python-owned handles before retrying a failed trial."""
+def cleanup_after_trial(terminate_children=False):
+    """Release Python-owned handles after a trial."""
 
     gc.collect()
     if terminate_children:
         terminate_active_children()
-    try:
-        import torch
-    except ImportError:
-        return
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         if hasattr(torch.cuda, "ipc_collect"):
             torch.cuda.ipc_collect()
 
-
-def make_hpo_retry_args(trial_args, ssl_config, attempt):
-    """Retry the same HPO sample without changing its runtime settings."""
-
-    retry_args = copy.deepcopy(trial_args)
-    retry_args.hpo_retry = True
-    retry_args.hpo_retry_attempt = int(attempt)
-    return retry_args, ssl_config
 
 def load_hparam_config(config_path):
     """Load and validate an Optuna JSON config, or return ``None``."""
@@ -354,7 +345,6 @@ def run_hparam_search(args, config):
         trial.set_user_attr("params", suggested_params)
         trial.set_user_attr("resolved_args", namespace_to_dict(trial_args))
         trial.set_user_attr("resolved_ssl_config", ssl_config.to_dict())
-        retry_source_args = copy.deepcopy(trial_args)
 
         try:
             result = run_experiment(
@@ -364,44 +354,20 @@ def run_hparam_search(args, config):
                 optuna_metric=config.metric,
             )
         except Exception as exc:
-            retry_reason = str(exc)
+            trial_error = str(exc)
             exc.__traceback__ = None
             exc = None
-            trial.set_user_attr("retry_reason", retry_reason)
-            logger.warning(
-                "Trial failed; retrying once with the same trial parameters and runtime settings. "
-                f"Trial={trial.number}, error={retry_reason}"
-            )
-            cleanup_after_trial_error(terminate_children=config.n_jobs == 1)
-
-            retry_args, retry_ssl_config = make_hpo_retry_args(
-                retry_source_args,
-                ssl_config,
-                attempt=1,
-            )
-            trial.set_user_attr("retry_resolved_args", namespace_to_dict(retry_args))
-            trial.set_user_attr("retry_resolved_ssl_config", retry_ssl_config.to_dict())
-            try:
-                result = run_experiment(
-                    retry_args,
-                    retry_ssl_config,
-                    optuna_trial=trial,
-                    optuna_metric=config.metric,
-                )
-            except Exception as retry_exc:
-                retry_error = str(retry_exc)
-                retry_exc.__traceback__ = None
-                retry_exc = None
-                cleanup_after_trial_error(terminate_children=config.n_jobs == 1)
-                message = f"Trial failed again after one retry; skipping for now: {retry_error}"
-                trial.set_user_attr("pruned_reason", message)
-                raise optuna.TrialPruned(message)
+            cleanup_after_trial(terminate_children=config.n_jobs == 1)
+            message = f"Trial failed; skipping for now: {trial_error}"
+            trial.set_user_attr("pruned_reason", message)
+            raise optuna.TrialPruned(message)
         result_dict = result_to_dict(result)
         for key, value in result_dict.items():
             trial.set_user_attr(key, value)
         return get_objective_value(result, config.metric)
 
     def record_trial(study, trial):
+        cleanup_after_trial(terminate_children=config.n_jobs == 1)
         # Refresh summaries after each finished trial so interrupted studies
         # still leave readable progress outside the Optuna database.
         write_trials_summary(study, trials_csv, trials_jsonl)
@@ -435,21 +401,29 @@ def run_hparam_search(args, config):
     # Finished trials count toward n_trials when a persistent study is resumed.
     finished_trials = count_finished_trials(optuna, study)
     remaining_trials = config.n_trials - finished_trials
+    enqueued_random_trials = enqueue_unique_random_trials(
+        optuna,
+        study,
+        config,
+        get_hparam_seed(args),
+        remaining_trials,
+    )
+    optimize_trials = remaining_trials if enqueued_random_trials is None else enqueued_random_trials
     logger.info(
         f"Starting Optuna study outputs in {study_dir}. "
         f"Finished trials: {finished_trials}/{config.n_trials}. "
         f"Recovered unfinished trials: {recovered_trials}. "
-        f"Remaining this run: {max(remaining_trials, 0)}. "
+        f"Remaining this run: {max(optimize_trials, 0)}. "
         f"Parallel jobs: {config.n_jobs}."
     )
-    if remaining_trials <= 0:
+    if optimize_trials <= 0:
         write_trials_summary(study, trials_csv, trials_jsonl)
         logger.info(f"Optuna study already has {finished_trials} finished trials; no new trials requested.")
         return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
     study.optimize(
         objective,
-        n_trials=remaining_trials,
+        n_trials=optimize_trials,
         timeout=config.timeout,
         n_jobs=config.n_jobs,
         callbacks=[record_trial],
@@ -533,6 +507,123 @@ def count_finished_trials(optuna, study):
         optuna.trial.TrialState.PRUNED,
     }
     return sum(trial.state in finished_states for trial in study.trials)
+
+
+def count_waiting_trials(optuna, study):
+    return sum(trial.state == optuna.trial.TrialState.WAITING for trial in study.trials)
+
+
+def enqueue_unique_random_trials(optuna, study, config, seed, target_trials):
+    """Materialize random-search trials so resumed studies do not replay RNG state."""
+
+    if config.sampler != "random" or target_trials <= 0:
+        return None
+
+    waiting_trials = count_waiting_trials(optuna, study)
+    needed = max(0, int(target_trials) - waiting_trials)
+    if needed == 0:
+        return min(int(target_trials), waiting_trials)
+
+    seen_signatures = existing_param_signatures(study)
+    rng = np.random.default_rng(seed)
+    enqueued = 0
+    attempts = 0
+    max_attempts = max(1000, needed * 100)
+    while enqueued < needed and attempts < max_attempts:
+        attempts += 1
+        params = sample_random_params(rng, config.spaces)
+        signature = params_signature(params)
+        if signature in seen_signatures:
+            continue
+        study.enqueue_trial(params, skip_if_exists=True)
+        seen_signatures.add(signature)
+        enqueued += 1
+
+    if enqueued < needed:
+        raise RuntimeError(
+            "Could not enqueue enough unique random-search trials. "
+            f"Requested {needed}, enqueued {enqueued}, attempts {attempts}. "
+            "Use sampler='grid' for finite categorical spaces or expand the search space."
+        )
+
+    logger.info(
+        "Pre-enqueued random-search trials with duplicate protection: "
+        f"existing_waiting={waiting_trials}, newly_enqueued={enqueued}, "
+        f"target_this_run={target_trials}."
+    )
+    return waiting_trials + enqueued
+
+
+def existing_param_signatures(study):
+    signatures = set()
+    for trial in study.get_trials(deepcopy=False):
+        if trial.params:
+            signatures.add(params_signature(dict(trial.params)))
+    return signatures
+
+
+def params_signature(params):
+    return json.dumps(
+        to_jsonable(expand_joint_component_params(dict(params))),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def sample_random_params(rng, spaces):
+    return {
+        name: sample_random_value(rng, name, spec)
+        for name, spec in spaces.items()
+    }
+
+
+def sample_random_value(rng, name, spec):
+    if isinstance(spec, list):
+        return sample_random_choice(rng, spec)
+
+    space_type = spec.get("type", "categorical" if "choices" in spec else None)
+    if space_type == "categorical":
+        return sample_random_choice(rng, spec["choices"])
+    if space_type == "float":
+        return sample_random_float(rng, spec)
+    if space_type == "int":
+        return sample_random_int(rng, spec)
+    raise ValueError(f"Unsupported random-search space type for {name!r}: {space_type}")
+
+
+def sample_random_choice(rng, choices):
+    return to_jsonable(choices[int(rng.integers(0, len(choices)))])
+
+
+def sample_random_float(rng, spec):
+    low = float(spec["low"])
+    high = float(spec["high"])
+    if bool(spec.get("log", False)):
+        if low <= 0:
+            raise ValueError("Log-uniform float search spaces require low > 0")
+        value = float(np.exp(rng.uniform(np.log(low), np.log(high))))
+    else:
+        value = float(rng.uniform(low, high))
+    step = spec.get("step")
+    if step is not None:
+        step = float(step)
+        value = low + round((value - low) / step) * step
+        value = min(max(value, low), high)
+    return float(value)
+
+
+def sample_random_int(rng, spec):
+    low = int(spec["low"])
+    high = int(spec["high"])
+    step = int(spec.get("step") or 1)
+    if bool(spec.get("log", False)):
+        if low <= 0:
+            raise ValueError("Log-uniform int search spaces require low > 0")
+        raw = int(round(float(np.exp(rng.uniform(np.log(low), np.log(high))))))
+        value = low + round((raw - low) / step) * step
+        return int(min(max(value, low), high))
+    count = ((high - low) // step) + 1
+    return int(low + int(rng.integers(0, count)) * step)
 
 
 def should_retry_failed_hpo_trials(args, config):

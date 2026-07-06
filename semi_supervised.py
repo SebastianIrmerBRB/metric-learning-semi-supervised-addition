@@ -630,41 +630,64 @@ class LRMLGraphDataset(Dataset):
 
 
 class HofferReferenceDataset(Dataset):
-    """Joint index space over unlabeled samples and labeled reference candidates.
+    """Joint index space over unlabeled samples, labeled queries, and comparisons.
 
-    Items ``[0, num_unlabeled)`` map to unlabeled training positions, items
-    ``[num_unlabeled, num_unlabeled + num_labeled)`` to labeled reference
-    candidates for the Hoffer & Ailon entropy regularizer. ``__getitem__``
-    returns the transformed image plus a 0/1 flag marking reference items so
-    ``compute_loss`` can split the collated batch. Class labels stay hidden:
-    the entropy term never reads them, only the per-class candidate grouping
-    inside the batch sampler does.
+    Items ``[0, num_unlabeled)`` map to unlabeled training positions. The next
+    ``num_labeled`` items are labeled query anchors, followed by
+    ``num_compared`` virtual comparison blocks over the same labeled positions.
+    ``__getitem__`` returns the transformed image, a role id, and the dense class
+    id used by the Hoffer supervised reference term.
     """
 
     UNLABELED_ROLE = 0
-    REFERENCE_ROLE = 1
-    # Backward-compatible aliases for older direct tests/diagnostics. The
-    # current entropy-only regularizer treats all labeled anchors as references.
-    LABELED_QUERY_ROLE = REFERENCE_ROLE
-    COMPARISON_ROLE = REFERENCE_ROLE
+    LABELED_QUERY_ROLE = 1
+    COMPARISON_ROLE = 2
+    REFERENCE_ROLE = COMPARISON_ROLE
 
-    def __init__(self, dataset, unlabeled_positions, labeled_positions):
+    def __init__(
+        self,
+        dataset,
+        unlabeled_positions,
+        labeled_positions,
+        labeled_labels=None,
+        num_compared=1,
+    ):
         self.dataset = dataset
         self.unlabeled_positions = np.asarray(unlabeled_positions, dtype=np.int64)
         self.labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
         self.num_unlabeled = len(self.unlabeled_positions)
         self.num_labeled = len(self.labeled_positions)
+        self.num_compared = int(num_compared)
+        if self.num_compared <= 0:
+            raise ValueError("hoffer_entropy num_compared must be positive")
+        if labeled_labels is None:
+            labeled_labels = np.full(self.num_labeled, UNLABELED_TARGET, dtype=np.int64)
+        self.labeled_labels = np.asarray(labeled_labels, dtype=np.int64)
+        if len(self.labeled_labels) != self.num_labeled:
+            raise ValueError("Hoffer labeled positions and labels must have the same length")
+        self.query_start = self.num_unlabeled
+        self.comparison_start = self.query_start + self.num_labeled
 
     def __len__(self):
-        return self.num_unlabeled + self.num_labeled
+        return self.comparison_start + self.num_compared * self.num_labeled
 
     def __getitem__(self, index):
         index = int(index)
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
         if index < self.num_unlabeled:
             image = self.dataset[int(self.unlabeled_positions[index])][0]
-            return image, self.UNLABELED_ROLE
-        image = self.dataset[int(self.labeled_positions[index - self.num_unlabeled])][0]
-        return image, self.REFERENCE_ROLE
+            return image, self.UNLABELED_ROLE, UNLABELED_TARGET
+        if index < self.comparison_start:
+            labeled_index = index - self.query_start
+            role = self.LABELED_QUERY_ROLE
+        else:
+            labeled_index = (index - self.comparison_start) % self.num_labeled
+            role = self.COMPARISON_ROLE
+        image = self.dataset[int(self.labeled_positions[labeled_index])][0]
+        return image, role, int(self.labeled_labels[labeled_index])
 
 class BaseSemiSupervisedMethod:
     """Interface implemented by each pseudo-label generation strategy."""
@@ -701,21 +724,38 @@ class CombinedTrainingLoader:
         self.supervised_loader = supervised_loader
         self.regularizer_loader = regularizer_loader
         self.cycles_per_epoch = int(math.ceil(len(supervised_loader) / len(regularizer_loader)))
+        self._regularizer_iterator = None
 
     def __len__(self):
         return len(self.supervised_loader)
 
+    def shutdown(self, include_persistent=False):
+        if include_persistent or not getattr(self.regularizer_loader, "persistent_workers", False):
+            utils.shutdown_dataloaders(self._regularizer_iterator)
+            utils.shutdown_dataloaders(self.regularizer_loader)
+
     def __iter__(self):
-        regularizer_iterator = iter(self.regularizer_loader)
+        regularizer_iterator = None
+        try:
+            regularizer_iterator = iter(self.regularizer_loader)
+            self._regularizer_iterator = regularizer_iterator
 
-        for supervised_batch in self.supervised_loader:
-            try:
-                regularizer_batch = next(regularizer_iterator)
-            except StopIteration:
-                regularizer_iterator = iter(self.regularizer_loader)
-                regularizer_batch = next(regularizer_iterator)
+            for supervised_batch in self.supervised_loader:
+                try:
+                    regularizer_batch = next(regularizer_iterator)
+                except StopIteration:
+                    regularizer_iterator = iter(self.regularizer_loader)
+                    self._regularizer_iterator = regularizer_iterator
+                    regularizer_batch = next(regularizer_iterator)
 
-            yield supervised_batch, regularizer_batch
+                yield supervised_batch, regularizer_batch
+        finally:
+            if (
+                regularizer_iterator is not None
+                and not getattr(self.regularizer_loader, "persistent_workers", False)
+            ):
+                utils.shutdown_dataloaders(regularizer_iterator)
+            self._regularizer_iterator = None
 
 
 class LRMLGraphBatchSampler(torch.utils.data.Sampler):
@@ -811,32 +851,53 @@ class WeightedGraphBatchSampler(torch.utils.data.Sampler):
 
 
 class HofferReferenceBatchSampler(torch.utils.data.Sampler):
-    """Emit batches of unlabeled indices plus one labeled reference per class.
+    """Emit unlabeled samples plus labeled query/comparison anchors.
 
-    References are drawn uniformly within each class and resampled for every
-    batch, as in Hoffer & Ailon (2018). Unlabeled samples are visited once per
-    epoch in a shuffled order; each batch appends one freshly drawn reference
-    index per class (or per sampled class subset when ``max_reference_classes``
-    caps the count). Indices refer to a ``HofferReferenceDataset``, whose
-    reference candidates start at ``num_unlabeled``.
+    For each selected class the sampler draws one labeled query anchor and
+    ``num_compared`` labeled comparison anchors. Unlabeled samples are visited
+    once per epoch in a shuffled order; labeled anchors are resampled for every
+    batch. Indices refer to a ``HofferReferenceDataset``.
     """
 
-    def __init__(self, num_unlabeled, class_candidates, unlabeled_per_batch, seed, max_reference_classes=None):
+    def __init__(
+        self,
+        num_unlabeled,
+        class_candidates,
+        unlabeled_per_batch,
+        seed,
+        max_reference_classes=None,
+        num_compared=1,
+        num_labeled=None,
+    ):
         if num_unlabeled <= 0:
             raise ValueError("hoffer_entropy requires at least one unlabeled sample")
         if unlabeled_per_batch <= 0:
             raise ValueError("hoffer_entropy unlabeled_per_batch must be positive")
         if len(class_candidates) < 2:
             raise ValueError("hoffer_entropy requires labeled candidates from at least two classes")
+        self.num_labeled = (
+            int(num_labeled)
+            if num_labeled is not None
+            else int(max(int(np.max(candidates)) for candidates in class_candidates) + 1)
+        )
+        if self.num_labeled <= 0:
+            raise ValueError("hoffer_entropy requires labeled candidates")
+        self.num_compared = int(num_compared)
+        if self.num_compared <= 0:
+            raise ValueError("hoffer_entropy num_compared must be positive")
         self.class_candidates = []
         for candidates in class_candidates:
             candidates = np.asarray(candidates, dtype=np.int64)
             if len(candidates) == 0:
                 raise ValueError("every class needs at least one labeled reference candidate")
+            if int(candidates.min()) < 0 or int(candidates.max()) >= self.num_labeled:
+                raise ValueError("hoffer_entropy class candidate offsets are out of range")
             self.class_candidates.append(candidates)
         self.num_unlabeled = int(num_unlabeled)
         self.unlabeled_per_batch = int(unlabeled_per_batch)
         self.num_classes = len(self.class_candidates)
+        self.query_start = self.num_unlabeled
+        self.comparison_start = self.query_start + self.num_labeled
         if max_reference_classes is None:
             self.references_per_batch = self.num_classes
         else:
@@ -860,7 +921,13 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
             for class_id in class_ids:
                 candidates = self.class_candidates[class_id]
                 choice = int(torch.randint(len(candidates), (1,), generator=self.generator))
-                batch_indices.append(int(candidates[choice]))
+                batch_indices.append(self.query_start + int(candidates[choice]))
+            for comparison_index in range(self.num_compared):
+                comparison_block_start = self.comparison_start + comparison_index * self.num_labeled
+                for class_id in class_ids:
+                    candidates = self.class_candidates[class_id]
+                    choice = int(torch.randint(len(candidates), (1,), generator=self.generator))
+                    batch_indices.append(comparison_block_start + int(candidates[choice]))
             yield batch_indices
 
     def __len__(self):
@@ -1444,32 +1511,25 @@ class STMLRegularizer(BaseTrainingRegularizer):
 class HofferEntropyRegularizer(BaseTrainingRegularizer):
     """Deep neighbor-embedding entropy regularizer (Hoffer & Ailon, 2016).
 
-    Implements the unlabeled term of "Semi-supervised deep learning by metric
-    embedding" (arXiv:1611.01449). Every batch draws one labeled reference
-    z_1..z_C per class (uniform within class, resampled each batch) plus a
-    batch of unlabeled samples x_u; all are embedded by the current network in
-    a single forward pass. Over the references, the distance softmax
+    Implements the Hoffer & Ailon reference-batch regularizer from
+    "Semi-supervised deep learning by metric embedding" (arXiv:1611.01449).
+    Every batch draws one labeled query anchor and ``num_compared`` labeled
+    comparison anchors per class (uniform within class, resampled each batch)
+    plus a batch of unlabeled samples x_u; all are embedded by the current
+    network in a single forward pass. Over the comparisons, the distance softmax
 
-        P_i(x_u) = exp(-||f(x_u) - f(z_i)||^2) / sum_j exp(-||f(x_u) - f(z_j)||^2)
+        P_i(x_u) = exp(-||f(x_u) - f(z_i)||) / sum_j exp(-||f(x_u) - f(z_j)||)
 
-    is formed and the regularization term is the mean Shannon entropy
-    H(P(x_u)) over the unlabeled batch. Gradients flow through both the
-    unlabeled and the reference embeddings, so the labeled references act as
-    class anchors that are pushed away from ambiguous regions.
-
-    Deviations from the paper, mirroring the other deep regularizers here: the
-    paper's supervised term (the NCA-style cross entropy -log P_y(x_l) against
-    the same references) is supplied by the configured supervised loss instead;
-    ``supervised_weight``/``regularizer_weight`` play the role of the paper's
-    lambda_L/lambda_U. ``normalize_embeddings`` (DML standard, not used in the
-    paper) bounds squared distances to [0, 4]; with many classes this flattens
-    the softmax, which ``distance_scale`` (an inverse temperature on -d^2) can
-    counteract. ``max_reference_classes`` optionally subsamples the reference
-    classes per batch when embedding one anchor per class each step is too
-    expensive; the entropy is then computed over that class subset only.
+    is formed and the regularization term combines labeled NCA-style
+    cross-entropy against same-class comparisons with mean Shannon entropy
+    H(P(x_u)) over the unlabeled batch. ``normalize_embeddings`` bounds
+    distances; ``distance_scale`` acts as an inverse temperature.
+    ``max_reference_classes`` optionally subsamples the classes per batch when
+    embedding all class anchors each step is too expensive.
 
     Batch layout: each regularizer batch contains ``batch_size`` unlabeled
-    samples plus the (up to C) reference images on top.
+    samples plus ``num_classes * (num_compared + 1)`` labeled anchors, or the
+    same expression with ``num_classes`` replaced by ``max_reference_classes``.
     """
 
     name = "hoffer_entropy"
@@ -1478,6 +1538,7 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         "normalize_embeddings": True,
         "distance_scale": 1.0,
         "max_reference_classes": None,
+        "num_compared": 1,
     }
 
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
@@ -1491,6 +1552,9 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         self.distance_scale = float(merged["distance_scale"])
         if not math.isfinite(self.distance_scale) or self.distance_scale <= 0:
             raise ValueError("hoffer_entropy distance_scale must be finite and positive")
+        self.num_compared = int(merged["num_compared"])
+        if self.num_compared <= 0:
+            raise ValueError("hoffer_entropy num_compared must be positive")
         max_reference_classes = merged["max_reference_classes"]
         self.max_reference_classes = None if max_reference_classes is None else int(max_reference_classes)
         if self.max_reference_classes is not None and self.max_reference_classes < 2:
@@ -1513,11 +1577,10 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         if labels is None:
             raise ValueError("hoffer_entropy regularization requires a train dataset exposing .labels")
 
-        # Group labeled positions by class; candidate indices live in the joint
-        # HofferReferenceDataset index space (references start at num_unlabeled).
-        num_unlabeled = len(unlabeled_positions)
+        # Group labeled offsets by class. The sampler maps these offsets into
+        # the HofferReferenceDataset query/comparison virtual blocks.
         class_candidates = [
-            num_unlabeled + np.flatnonzero(labels == label)
+            np.flatnonzero(labels == label)
             for label in np.unique(labels)
         ]
         if len(class_candidates) < 2:
@@ -1529,7 +1592,13 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
             )
         self.class_candidates = class_candidates
         regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
-        self.dataset = HofferReferenceDataset(regularizer_dataset, unlabeled_positions, labeled_positions)
+        self.dataset = HofferReferenceDataset(
+            regularizer_dataset,
+            unlabeled_positions,
+            labeled_positions,
+            labeled_labels=labels,
+            num_compared=self.num_compared,
+        )
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
         return self.dataset
@@ -1557,14 +1626,17 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
             int(num_workers),
             str(start_method),
             None if self.max_reference_classes is None else int(self.max_reference_classes),
+            int(self.num_compared),
         )
         if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
             sampler = HofferReferenceBatchSampler(
                 num_unlabeled=self.dataset.num_unlabeled,
+                num_labeled=self.dataset.num_labeled,
                 class_candidates=self.class_candidates,
                 unlabeled_per_batch=batch_size,
                 seed=seed,
                 max_reference_classes=self.max_reference_classes,
+                num_compared=self.num_compared,
             )
             self._regularizer_loader = DataLoader(
                 self.dataset,
@@ -1582,9 +1654,11 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
 
     def compute_loss(self, student_model, state, batch, device, timings=None):
         if len(batch) == 3:
-            images, is_reference, _ = batch
+            images, roles, class_ids = batch
         else:
             images, is_reference = batch
+            roles = is_reference
+            class_ids = None
 
         t0 = _timing_start(device, timings)
         embeddings = utils.forward_model_inputs(
@@ -1598,18 +1672,50 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         if self.normalize_embeddings:
             embeddings = F.normalize(embeddings, p=2, dim=1)
 
-        reference_mask = is_reference.to(device=device).bool()
-        references = embeddings[reference_mask]
-        unlabeled = embeddings[~reference_mask]
-        if len(references) < 2 or len(unlabeled) == 0:
+        roles = roles.to(device=device)
+        unlabeled_mask = roles == HofferReferenceDataset.UNLABELED_ROLE
+        unlabeled = embeddings[unlabeled_mask]
+        if class_ids is None:
+            reference_mask = roles.bool()
+            comparisons = embeddings[reference_mask]
+            queries = embeddings.new_zeros((0, embeddings.shape[1]))
+            query_labels = None
+            comparison_labels = None
+        else:
+            class_ids = class_ids.to(device=device, dtype=torch.long)
+            query_mask = roles == HofferReferenceDataset.LABELED_QUERY_ROLE
+            comparison_mask = roles == HofferReferenceDataset.COMPARISON_ROLE
+            comparisons = embeddings[comparison_mask]
+            queries = embeddings[query_mask]
+            query_labels = class_ids[query_mask]
+            comparison_labels = class_ids[comparison_mask]
+        if len(comparisons) < 2:
             return embeddings.sum() * 0.0  # connected zero so backward stays valid
 
         t0 = _timing_start(device, timings)
-        squared_distances = torch.cdist(unlabeled, references).pow(2)
-        log_probabilities = F.log_softmax(-self.distance_scale * squared_distances, dim=1)
-        entropy = -(log_probabilities.exp() * log_probabilities).sum(dim=1)
+        if len(unlabeled) == 0:
+            entropy = embeddings.sum() * 0.0
+        else:
+            unlabeled_distances = torch.cdist(unlabeled, comparisons, p=2)
+            log_probabilities = F.log_softmax(-self.distance_scale * unlabeled_distances, dim=1)
+            entropy = -(log_probabilities.exp() * log_probabilities).sum(dim=1).mean()
+        if len(queries) == 0 or query_labels is None or comparison_labels is None:
+            labeled_nll = embeddings.sum() * 0.0
+        else:
+            positive_mask = query_labels[:, None] == comparison_labels[None, :]
+            valid_queries = positive_mask.any(dim=1)
+            if bool(valid_queries.any().item()):
+                query_distances = torch.cdist(queries, comparisons, p=2)
+                query_log_probabilities = F.log_softmax(-self.distance_scale * query_distances, dim=1)
+                masked_log_probabilities = query_log_probabilities.masked_fill(
+                    ~positive_mask,
+                    torch.finfo(query_log_probabilities.dtype).min,
+                )
+                labeled_nll = -torch.logsumexp(masked_log_probabilities[valid_queries], dim=1).mean()
+            else:
+                labeled_nll = embeddings.sum() * 0.0
         _record_timing(timings, "hoffer_entropy", t0, device)
-        return entropy.mean()
+        return labeled_nll + entropy
 
 
 class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):

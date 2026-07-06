@@ -4,7 +4,7 @@
   "timeout": null,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "mixed_label_cars_search",
+  "study_name": "hoffer_entropy_search",
   "study_dir": null,
   "storage": null,
   "load_if_exists": true,
@@ -19,12 +19,33 @@
       "high": 1e-5,
       "log": true
     },
-   "ssl_config.method_params.regularizer_weight": {
-      "type": "float", "low": 0.001, "high": 2, "log": true
+    "classifier_lr": {
+      "type": "float",
+      "low": 1e-4,
+      "high": 1e+2,
+      "log": true
+    },
+      "ssl_config.method_params.supervised_weight": {
+      "type": "float",
+      "low": 0.1,
+      "high": 2.0,
+      "log": true
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "type": "float",
+      "low": 0.001,
+      "high": 10,
+      "log": true
+    },
+    "ssl_config.method_params.regularizer_params.distance_scale": {
+      "type": "float",
+      "low": 0.25,
+      "high": 16,
+      "log": true
     },
     "ssl_config.method_params.regularizer_params.num_compared": {
       "type": "categorical",
-      "choices": [1, 2]
+      "choices": [1, 2, 3]
     },
     "batch_sampler": {
       "type": "categorical",
@@ -33,9 +54,7 @@
         "32:4",
         "64:4",
         "128:4",
-        "256:4",
-        "256:8",
-        "512:8"
+        "256:4"
       ]
     }
   }

@@ -9,6 +9,15 @@ modules. Imports below preserve the historical ``main`` module API.
 import math
 import multiprocessing as mp
 
+import os
+
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+os.environ.setdefault("BLIS_NUM_THREADS", "1")
+
 import experiment_hpo as _experiment_hpo
 from experiment_cli import *  # noqa: F403
 from experiment_hpo import *  # noqa: F403
@@ -16,7 +25,10 @@ from experiment_io import *  # noqa: F403
 from experiment_training import *  # noqa: F403
 from experiment_types import *  # noqa: F403
 
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
 
+torch.multiprocessing.set_sharing_strategy('file_system')
 def make_sampler_spaces_label_budget_aware(args, config):
     """Preserve the historical patch point while delegating HPO constraints."""
 
