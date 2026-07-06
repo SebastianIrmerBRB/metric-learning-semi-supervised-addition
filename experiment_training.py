@@ -3,6 +3,7 @@
 import argparse
 import copy
 import csv
+import gc
 import os
 from dataclasses import replace
 from datetime import datetime
@@ -46,6 +47,9 @@ BATCH_EASY_HARD_MINER_STRATEGIES = {"all", "easy", "hard", "semihard"}
 BATCH_EASY_HARD_DEFAULT_POS_STRATEGY = "easy"
 BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY = "semihard"
 BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
+
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 def _sync_if_cuda(device):
     if torch.device(device).type == "cuda":
@@ -122,6 +126,21 @@ def map_training_labels(labels, label_lookup, train_labels_mapper, device):
         labels = labels.to(device, dtype=torch.long, non_blocking=True)
         return label_lookup[labels]
     return torch.tensor([train_labels_mapper[int(label)] for label in labels], device=device, dtype=torch.long)
+
+
+def shutdown_epoch_train_loader(train_loader, warmup_train_loader=None, static_train_loader=None):
+    """Shutdown loaders that are rebuilt for a single epoch."""
+
+    if train_loader is None:
+        return
+    if train_loader is warmup_train_loader or train_loader is static_train_loader:
+        return
+    shutdown = getattr(train_loader, "shutdown", None)
+    if callable(shutdown):
+        shutdown()
+        return
+    utils.shutdown_dataloaders(train_loader)
+
 
 def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
     """Run either one holdout training job or all requested CV folds."""
@@ -833,7 +852,6 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     best_map = None
     selected_epoch = -1
     train_loader = None
-    train_iter = None
     tqdm_bar = None
 
     try:
@@ -1018,19 +1036,17 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             zero_loss_batches = 0
             epoch_miner_totals = {}
             tqdm_bar = tqdm(total=len(train_loader))
-            train_iter = iter(train_loader)
             epoch_timings = defaultdict(float)
             last_timing_log_batch = 0
             last_timing_totals = {}
+            next_batch_wait_start = _now(args.device) if _timing_enabled(args) else None
 
-            for batch_idx in range(len(train_loader)):
+            for batch_idx, batch in enumerate(train_loader):
                 timing = _timing_enabled(args)
 
-                t0 = _now(args.device) if timing else None
-                batch = next(train_iter)
                 data_ready_time = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "data_wait", t0, data_ready_time)
+                if timing and next_batch_wait_start is not None:
+                    _add_time(epoch_timings, "data_wait", next_batch_wait_start, data_ready_time)
                 if legacy_stml_active:
                     images, _, instance_ids = batch
                     if not isinstance(images, (list, tuple)) or len(images) != active_criterion.num_views:
@@ -1218,9 +1234,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     )
                     last_timing_log_batch = current_batch_count
                     last_timing_totals = dict(epoch_timings)
+                if timing:
+                    next_batch_wait_start = _now(args.device)
             tqdm_bar.close()
             tqdm_bar = None
-            train_iter = None
+            shutdown_epoch_train_loader(train_loader, warmup_train_loader, static_train_loader)
+            gc.collect()
             if num_batches > 0:
                 # The epoch metric is an unweighted mean of batch loss values.
                 final_train_loss = epoch_loss / num_batches
@@ -1353,14 +1372,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         # evaluation, or an Optuna pruning decision raises an exception.
         if tqdm_bar is not None:
             tqdm_bar.close()
-        train_iter = None
+        shutdown_epoch_train_loader(train_loader, warmup_train_loader, static_train_loader)
         utils.shutdown_dataloaders(
             train_loader,
             static_train_loader,
             warmup_train_loader,
             valid_loader,
             test_loader,
+            getattr(regularizer, "_regularizer_loader", None),
         )
+        gc.collect()
         metrics_logger.close()
         if precompute_frozen_features:
             feature_stats = {

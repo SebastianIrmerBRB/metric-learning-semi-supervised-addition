@@ -22,6 +22,10 @@
    "ssl_config.method_params.regularizer_weight": {
       "type": "float", "low": 0.001, "high": 2, "log": true
     },
+    "ssl_config.method_params.regularizer_params.num_compared": {
+      "type": "categorical",
+      "choices": [1, 2]
+    },
     "batch_sampler": {
       "type": "categorical",
       "choices": [

@@ -52,7 +52,7 @@ parser.add_argument(
     "--experiment_config",
     "--experiment-config",
     type=Path,
-    default=Path(r"C:\Users\Sebastian\PycharmProjects\metric-learning\configs\experiments\class/cars196.json"),
+    default=None,
     help=(
         "top-level JSON config containing CLI argument values. "
         "Explicit CLI arguments override values from this file."
