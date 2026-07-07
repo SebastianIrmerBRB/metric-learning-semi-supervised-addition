@@ -19,12 +19,6 @@
       "high": 1e-4,
       "log": true
     },
-    "weight_decay": {
-      "type": "float",
-      "low": 1e-6,
-      "high": 1e-2,
-      "log": true
-    },
     "feat_dim": {
       "type": "categorical",
       "choices": [128, 256, 512, null]
