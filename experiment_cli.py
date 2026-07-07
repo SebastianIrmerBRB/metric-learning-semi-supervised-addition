@@ -61,12 +61,6 @@ parser.add_argument(
 parser.add_argument("--batch_size", type=int, default=16, help="batch size")
 parser.add_argument("--lr", type=float, default=1e-6, help="LR")
 parser.add_argument("--classifier_lr", type=float, default=1.0, help="classifier LR (only for classification losses)")
-parser.add_argument(
-    "--weight_decay",
-    type=float,
-    default=0.00001,
-    help="optimizer weight decay",
-)
 parser.add_argument("--sampler_m", type=int, default=4, help="M value for MPerClassSampler")
 parser.add_argument(
     "--length_before_new_iter",

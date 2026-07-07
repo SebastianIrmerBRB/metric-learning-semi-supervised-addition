@@ -787,23 +787,20 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     trainable_model_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
     # First create the optimizer for model/backbone parameters.
     if args.optim == "adamw":
-        # adamw might be an improvement over "faulty" adam? Weight decay is supposed to not really work with "adam" afaik?
         optim = torch.optim.AdamW(
             trainable_model_parameters,
             lr=args.lr,
-            weight_decay=args.weight_decay,
+            weight_decay=0.0,
         )
     elif args.optim == "adam":
         optim = torch.optim.Adam(
             trainable_model_parameters,
             lr=args.lr,
-            # weight_decay=args.weight_decay,
         )
     elif args.optim == "rmsprop":
         optim = torch.optim.RMSprop(
             trainable_model_parameters,
             lr=args.lr,
-            # weight_decay=args.weight_decay,
         )
     num_train_classes = len(dataset_bundle.train_labels_mapper)
     criterion, is_classification, miner, classifier_optim = make_training_loss_components(
@@ -1681,8 +1678,6 @@ def validate_run_args(args, ssl_config):
         utils.normalize_device_name(args.device)
     except ValueError as exc:
         raise ValueError(f"{exc}: {args.device}") from exc
-    if args.weight_decay < 0:
-        raise ValueError("weight_decay must be non-negative")
     if args.optim not in {"adamw", "adam", "rmsprop"}:
         raise ValueError(f"optim must be 'adam' or 'rmsprop': {args.optim}")
     if args.mode not in {"supervised", "ssl"}:
@@ -1885,11 +1880,11 @@ def make_training_loss_components(
 
 def make_optimizer(args, parameters, lr):
     if args.optim == "adamw":
-        return torch.optim.AdamW(parameters, lr=lr, weight_decay=args.weight_decay)
+        return torch.optim.AdamW(parameters, lr=lr, weight_decay=0.0)
     if args.optim == "adam":
-        return torch.optim.Adam(parameters, lr=lr, ) # weight_decay=args.weight_decay
+        return torch.optim.Adam(parameters, lr=lr)
     if args.optim == "rmsprop":
-        return torch.optim.RMSprop(parameters, lr=lr, ) #weight_decay=args.weight_decay
+        return torch.optim.RMSprop(parameters, lr=lr)
     raise ValueError(f"Unknown optimizer: {args.optim}")
 
 
