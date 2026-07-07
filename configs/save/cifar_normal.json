@@ -28,7 +28,8 @@
     "loss.ArcFaceLoss.scale": {
       "type": "float",
       "low": 40,
-      "high": 250.0
+      "high": 250.0,
+      "log": true
     },
     "loss.ArcFaceLoss.margin": {
       "type": "float",

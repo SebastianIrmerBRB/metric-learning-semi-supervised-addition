@@ -49,8 +49,6 @@ from experiment_types import (
 )
 from retrieval_model import BACKBONE_TUNING_FROZEN
 
-torch.multiprocessing.set_sharing_strategy('file_system')
-
 
 def terminate_active_children(timeout=5.0):
     """Terminate DataLoader workers left alive after a failed single-job trial."""

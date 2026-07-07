@@ -28,7 +28,6 @@ from experiment_types import *  # noqa: F403
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
-torch.multiprocessing.set_sharing_strategy('file_system')
 def make_sampler_spaces_label_budget_aware(args, config):
     """Preserve the historical patch point while delegating HPO constraints."""
 

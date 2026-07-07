@@ -176,7 +176,7 @@ parser.add_argument(
     metavar="DEVICE",
     help="device: cpu, cuda, or an indexed CUDA device such as cuda:2",
 )
-parser.add_argument("--optim", type=str, default="adamw", choices=["adamw", "adam", "rmsprop"], help="optimizer")
+parser.add_argument("--optim", type=str, default="adam", choices=["adamw", "adam", "rmsprop"], help="optimizer")
 parser.add_argument("--seed", type=int, default=7, help="random seed for training/runtime randomness")
 parser.add_argument(
     "--hparam_seed",
@@ -252,15 +252,28 @@ parser.add_argument(
 )
 parser.add_argument(
     "--debug_batch_timing",
+    "--debug-batch-timing",
     action="store_true",
     default=False,
     help="log detailed per-batch timing; this synchronizes CUDA and should stay off for benchmarks",
 )
 parser.add_argument(
     "--debug_batch_timing_interval",
+    "--debug-batch-timing-interval",
     type=int,
     default=5,
     help="number of batches between debug timing log lines when --debug_batch_timing is enabled",
+)
+parser.add_argument(
+    "--log_batch_diagnostics",
+    "--log-batch-diagnostics",
+    dest="log_batch_diagnostics",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "log per-batch diagnostic metrics such as gradient norms and miner counts; "
+        "this adds overhead and should stay off for throughput runs"
+    ),
 )
 parser.add_argument(
     "--frozen_feature_batch_size",
