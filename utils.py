@@ -36,14 +36,15 @@ from tqdm import tqdm
 
 import local_datasets
 
+PREFERRED_TORCH_SHARING_STRATEGY = "file_descriptor"
+TORCH_SHARING_STRATEGY_ENV = "METRIC_LEARNING_TORCH_SHARING_STRATEGY"
+
 TENSORBOARD_IMPORT_ERROR = None
 try:
     from torch.utils.tensorboard import SummaryWriter
 except ImportError as exc:
     SummaryWriter = None
     TENSORBOARD_IMPORT_ERROR = exc
-
-torch.multiprocessing.set_sharing_strategy('file_system')
 
 DATALOADER_START_METHODS = ("spawn", "forkserver", "fork", "default")
 CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD = "superclass_balanced_group_kfold"
@@ -205,6 +206,28 @@ class NonFiniteEmbeddingError(ValueError):
     """Raised when evaluation embeddings contain NaN or infinite values."""
 
     pass
+
+
+def configure_torch_sharing_strategy(strategy=None):
+    """Prefer FD-backed Torch sharing to avoid orphaned torch_shm_manager processes."""
+
+    available = set(torch.multiprocessing.get_all_sharing_strategies())
+    requested = strategy or os.environ.get(TORCH_SHARING_STRATEGY_ENV)
+    if requested is None:
+        if PREFERRED_TORCH_SHARING_STRATEGY not in available:
+            return torch.multiprocessing.get_sharing_strategy()
+        requested = PREFERRED_TORCH_SHARING_STRATEGY
+
+    if requested not in available:
+        raise ValueError(
+            f"Torch multiprocessing sharing strategy {requested!r} is not available. "
+            f"Available: {sorted(available)}"
+        )
+    torch.multiprocessing.set_sharing_strategy(requested)
+    return requested
+
+
+configure_torch_sharing_strategy()
 
 
 @dataclass
@@ -594,7 +617,9 @@ class MetricsLogger:
         self.writer.close()
 
     def log_diagnostics(self, diagnostics, step, epoch, category, details=None):
-        for name, value in (diagnostics or {}).items():
+        if not diagnostics:
+            return
+        for name, value in diagnostics.items():
             if value is None:
                 continue
             scalar_value = float(value)

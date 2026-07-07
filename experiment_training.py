@@ -48,9 +48,6 @@ BATCH_EASY_HARD_DEFAULT_POS_STRATEGY = "easy"
 BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY = "semihard"
 BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
 
-torch.multiprocessing.set_sharing_strategy('file_system')
-
-
 def _sync_if_cuda(device):
     if torch.device(device).type == "cuda":
         torch.cuda.synchronize()
@@ -67,6 +64,10 @@ def _timing_enabled(args):
 
 def _timing_interval(args):
     return int(getattr(args, "debug_batch_timing_interval", 5))
+
+
+def _batch_diagnostics_enabled(args):
+    return bool(getattr(args, "log_batch_diagnostics", False))
 
 
 def _add_time(timings, name, start, end):
@@ -471,10 +472,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     model_use_cache = bool(args.use_cache)
     pin_memory = use_cuda_pin_memory(args.device)
 
-    # DataLoader workers can otherwise exhaust the process file-descriptor
-    # limit when Torch shares many tensor-backed batches between processes.
-    torch.multiprocessing.set_sharing_strategy("file_system")
+    args.torch_sharing_strategy_resolved = utils.configure_torch_sharing_strategy()
     utils.initialize_logger(args)
+    logger.info(f"Torch multiprocessing sharing strategy: {args.torch_sharing_strategy_resolved}")
     if regularized_frozen_feature_precompute and requested_frozen_feature_train_views != 1:
         logger.warning(
             "Regularized frozen feature precompute uses one deterministic view per sample; "
@@ -1052,7 +1052,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     if not isinstance(images, (list, tuple)) or len(images) != active_criterion.num_views:
                         raise ValueError(
                             f"STML batches must contain {active_criterion.num_views} augmented views per sample"
-                        )
+                    )
                     images = torch.cat(list(images), dim=0)
                     instance_ids = instance_ids.repeat(active_criterion.num_views).to(args.device, non_blocking=True)
                 else:
@@ -1148,27 +1148,30 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 if timing:
                     _add_time(epoch_timings, "backward", t0, t1)
 
-                t0 = _now(args.device) if timing else None
+                log_batch_diagnostics = _batch_diagnostics_enabled(args)
+                t0 = _now(args.device) if timing and log_batch_diagnostics else None
                 miner_diagnostics = utils.summarize_miner_outputs(miner_outputs)
-                batch_diagnostics = {
-                    "train/zero_loss_batch": float(loss_value == 0.0),
-                    "train/gradient_norm/model": utils.gradient_l2_norm(model.parameters()),
-                    **utils.optimizer_learning_rates(optim, "model"),
-                    **miner_diagnostics,
-                }
-                if active_is_classification:
-                    batch_diagnostics["train/gradient_norm/criterion"] = utils.gradient_l2_norm(
-                        active_criterion.parameters()
-                    )
-                    batch_diagnostics.update(utils.optimizer_learning_rates(active_classifier_optim, "criterion"))
-                batch_diagnostics["train/stml_active"] = float(legacy_stml_active)
-                batch_diagnostics["train/regularization_active"] = float(regularization_active)
-                if supervised_loss is not None:
-                    batch_diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
-                if regularization_loss is not None:
-                    batch_diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
-                t1 = _now(args.device) if timing else None
-                if timing:
+                batch_diagnostics = None
+                if log_batch_diagnostics:
+                    batch_diagnostics = {
+                        "train/zero_loss_batch": float(loss_value == 0.0),
+                        "train/gradient_norm/model": utils.gradient_l2_norm(model.parameters()),
+                        **utils.optimizer_learning_rates(optim, "model"),
+                        **miner_diagnostics,
+                    }
+                    if active_is_classification:
+                        batch_diagnostics["train/gradient_norm/criterion"] = utils.gradient_l2_norm(
+                            active_criterion.parameters()
+                        )
+                        batch_diagnostics.update(utils.optimizer_learning_rates(active_classifier_optim, "criterion"))
+                    batch_diagnostics["train/stml_active"] = float(legacy_stml_active)
+                    batch_diagnostics["train/regularization_active"] = float(regularization_active)
+                    if supervised_loss is not None:
+                        batch_diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
+                    if regularization_loss is not None:
+                        batch_diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
+                t1 = _now(args.device) if timing and log_batch_diagnostics else None
+                if timing and log_batch_diagnostics:
                     _add_time(epoch_timings, "diagnostics", t0, t1)
 
                 t0 = _now(args.device) if timing else None
@@ -1256,7 +1259,6 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     global_step,
                     diagnostics=epoch_diagnostics,
                 )
-
             if final_full_train:
                 # No validation or early stopping is permitted in the final
                 # fit; the HPO-selected duration determines the resulting model.
