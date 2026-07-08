@@ -6,6 +6,8 @@ import gc
 import itertools
 import json
 import multiprocessing as mp
+import pickle
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -48,6 +50,10 @@ from experiment_types import (
     SELECTION_METRICS,
 )
 from retrieval_model import BACKBONE_TUNING_FROZEN
+
+
+SAMPLER_STATE_FILENAME = "sampler.pkl"
+_SAMPLER_STATE_LOCK = threading.Lock()
 
 
 def terminate_active_children(timeout=5.0):
@@ -286,6 +292,7 @@ def run_hparam_search(args, config):
     study_name = config.study_name or "optuna"
     study_dir, relative_study_dir = make_study_dir(args.save_dir, study_name, config.study_dir)
     storage = resolve_optuna_storage(config.storage, study_dir)
+    sampler_state_path = study_dir / SAMPLER_STATE_FILENAME
     resolved_tpe_startup_trials = resolve_tpe_startup_trials(args, config)
     write_json(
         study_dir / "study_config.json",
@@ -295,15 +302,17 @@ def run_hparam_search(args, config):
             "resolved_tpe_startup_trials": resolved_tpe_startup_trials,
             "resolved_study_name": study_name,
             "resolved_storage": storage,
+            "sampler_state_path": str(sampler_state_path),
         },
     )
 
     # The sampler proposes values; the pruner can stop weak trials based on
     # intermediate reports from epochs or CV folds.
-    sampler = make_optuna_sampler(
+    sampler, sampler_state_loaded = load_or_make_optuna_sampler(
         optuna,
         config,
         get_hparam_seed(args),
+        sampler_state_path,
         tpe_startup_trials=resolved_tpe_startup_trials,
     )
     pruner = make_optuna_pruner(optuna, config)
@@ -319,6 +328,14 @@ def run_hparam_search(args, config):
     # incomparable trials, so compare current spaces with stored distributions.
     validate_study_distributions_compatible(optuna, study, config, storage)
     recovered_trials = recover_unfinished_trials(optuna, study)
+    replayed_trials = replay_random_sampler_state_if_needed(
+        optuna,
+        study,
+        config,
+        sampler_state_loaded,
+    )
+    if replayed_trials:
+        save_optuna_sampler(study.sampler, sampler_state_path)
     trials_csv = study_dir / "trials.csv"
     trials_jsonl = study_dir / "trials.jsonl"
     retry_failed_trials_mode = should_retry_failed_hpo_trials(args, config)
@@ -327,6 +344,7 @@ def run_hparam_search(args, config):
         # Resolve trial suggestions into a fresh argparse namespace and SSL
         # config so trials cannot mutate one another's settings.
         trial_args, ssl_config, suggested_params = make_trial_args_and_ssl_config(args, config, trial)
+        save_optuna_sampler(study.sampler, sampler_state_path)
         trial_args.hparam_config_resolved = config.to_dict()
         trial_args.hparam_params = suggested_params
         trial_args.hparam_study_dir = study_dir
@@ -365,6 +383,7 @@ def run_hparam_search(args, config):
         return get_objective_value(result, config.metric)
 
     def record_trial(study, trial):
+        save_optuna_sampler(study.sampler, sampler_state_path)
         cleanup_after_trial(terminate_children=config.n_jobs == 1)
         # Refresh summaries after each finished trial so interrupted studies
         # still leave readable progress outside the Optuna database.
@@ -389,6 +408,7 @@ def run_hparam_search(args, config):
             callbacks=[record_trial],
             gc_after_trial=True,
         )
+        save_optuna_sampler(study.sampler, sampler_state_path)
         write_trials_summary(study, trials_csv, trials_jsonl)
         if any(trial.state.name == "COMPLETE" for trial in study.trials):
             logger.info(
@@ -404,6 +424,7 @@ def run_hparam_search(args, config):
         f"Starting Optuna study outputs in {study_dir}. "
         f"Finished trials: {finished_trials}/{config.n_trials}. "
         f"Recovered unfinished trials: {recovered_trials}. "
+        f"Replayed sampler trials: {replayed_trials}. "
         f"Remaining this run: {max(optimize_trials, 0)}. "
         f"Parallel jobs: {config.n_jobs}."
     )
@@ -420,6 +441,7 @@ def run_hparam_search(args, config):
         callbacks=[record_trial],
         gc_after_trial=True,
     )
+    save_optuna_sampler(study.sampler, sampler_state_path)
     write_trials_summary(study, trials_csv, trials_jsonl)
     if any(trial.state.name == "COMPLETE" for trial in study.trials):
         logger.info(f"Best trial: {study.best_trial.number}, value={study.best_value}, params={study.best_trial.params}")
@@ -491,6 +513,108 @@ def resolve_optuna_storage(configured_storage, study_dir):
         return configured_storage
     storage_path = (Path(study_dir) / "optuna_study.db").resolve()
     return f"sqlite:///{storage_path.as_posix()}"
+
+def load_or_make_optuna_sampler(optuna, config, seed, sampler_state_path, tpe_startup_trials=None):
+    if config.load_if_exists and sampler_state_path.exists():
+        sampler = load_optuna_sampler(sampler_state_path)
+        validate_loaded_sampler_matches_config(sampler, config, sampler_state_path)
+        logger.info(f"Loaded Optuna sampler state from {sampler_state_path}.")
+        return sampler, True
+    return (
+        make_optuna_sampler(
+            optuna,
+            config,
+            seed,
+            tpe_startup_trials=tpe_startup_trials,
+        ),
+        False,
+    )
+
+def validate_loaded_sampler_matches_config(sampler, config, sampler_state_path):
+    expected_class_names = {
+        "tpe": "TPESampler",
+        "random": "RandomSampler",
+        "grid": "GridSampler",
+    }
+    expected_class_name = expected_class_names.get(config.sampler)
+    actual_class_name = sampler.__class__.__name__
+    if expected_class_name is not None and actual_class_name != expected_class_name:
+        raise ValueError(
+            f"Optuna sampler state at {sampler_state_path} contains {actual_class_name}, "
+            f"but the current HPO config requests {expected_class_name}. "
+            "Use the original sampler config, start a new study_dir/storage, or remove the stale sampler.pkl."
+        )
+
+def load_optuna_sampler(path):
+    try:
+        with path.open("rb") as sampler_file:
+            return pickle.load(sampler_file)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not load Optuna sampler state from {path}. "
+            "Restore this file, start a new study_dir/storage, or remove it if reproducible sampler resume "
+            "is not required."
+        ) from exc
+
+def save_optuna_sampler(sampler, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    with _SAMPLER_STATE_LOCK:
+        try:
+            with tmp_path.open("wb") as sampler_file:
+                pickle.dump(sampler, sampler_file)
+            tmp_path.replace(path)
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
+
+def replay_random_sampler_state_if_needed(optuna, study, config, sampler_state_loaded):
+    if sampler_state_loaded or not config.load_if_exists or config.sampler != "random":
+        return 0
+    replay_plans = make_random_sampler_replay_plans(study, config)
+    if not replay_plans:
+        return 0
+
+    replay_study = optuna.create_study(direction=config.direction, sampler=study.sampler)
+    for sampled_names in replay_plans:
+        replay_trial = replay_study.ask()
+        for name in sampled_names:
+            suggest_value(replay_trial, name, config.spaces[name])
+        replay_study.tell(replay_trial, 0.0)
+
+    logger.info(
+        f"No Optuna sampler state file was found; advanced RandomSampler through "
+        f"{len(replay_plans)} prior sampled trial(s) using an in-memory Optuna study."
+    )
+    return len(replay_plans)
+
+def make_random_sampler_replay_plans(study, config):
+    plans = []
+    configured_names = set(config.spaces)
+    for trial in study.get_trials(deepcopy=False):
+        if trial.datetime_start is None:
+            continue
+        sampled_names = [
+            name
+            for name in config.spaces
+            if name in trial.params and name not in get_fixed_param_names(trial)
+        ]
+        if not sampled_names:
+            continue
+        unknown_names = sorted(set(trial.params) - configured_names)
+        if unknown_names:
+            continue
+        plans.append(sampled_names)
+    return plans
+
+def get_fixed_param_names(trial):
+    fixed_params = trial.system_attrs.get("fixed_params", {})
+    if isinstance(fixed_params, dict):
+        return set(fixed_params)
+    return set()
 
 def count_finished_trials(optuna, study):
     finished_states = {
