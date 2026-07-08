@@ -6,9 +6,9 @@ modules. Imports below preserve the historical ``main`` module API.
 """
 
 
+import json
 import math
 import multiprocessing as mp
-
 import os
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -44,6 +44,10 @@ def main():
     # Experiment-config values replace parser defaults, while explicit CLI
     # arguments remain the highest-precedence source.
     args = parse_args_with_experiment_config()
+
+    if args.final_test_study_dir is not None:
+        run_final_from_study_dir_request(args)
+        return
 
     # A missing --hparam_config produces None.  A present but disabled config is
     # still loaded so its resolved contents can be written into run metadata.
@@ -851,6 +855,147 @@ def append_study_dir_role(study_dir, role):
     if study_dir is None:
         return None
     return str(Path(study_dir) / role)
+
+def run_final_from_study_dir_request(request_args):
+    """Replay final-test evaluation from an existing study directory."""
+
+    base_args, hparam_config, study_result = load_hparam_study_for_final_test(request_args.final_test_study_dir)
+    copy_final_test_request_args(request_args, base_args)
+    return run_final_from_best_hparam(
+        base_args,
+        hparam_config,
+        study_result,
+        role=getattr(base_args, "mode", None),
+    )
+
+def copy_final_test_request_args(source_args, target_args):
+    """Apply only final-test selection options from the current CLI invocation."""
+
+    for name in ("final_test_top_n", "final_test_trial_numbers", "final_test_visualization"):
+        setattr(target_args, name, getattr(source_args, name))
+    target_args.final_test_after_hpo = True
+    return target_args
+
+def load_hparam_study_for_final_test(study_dir):
+    """Load saved base args, HPO config, and completed trials from a study directory."""
+
+    study_dir = resolve_existing_hparam_study_dir(study_dir)
+    study_config_path = study_dir / "study_config.json"
+    if not study_config_path.exists():
+        raise FileNotFoundError(f"Study config not found: {study_config_path}")
+
+    with study_config_path.open(encoding="utf-8") as config_file:
+        study_config = json.load(config_file)
+
+    raw_base_args = study_config.get("base_args")
+    if not isinstance(raw_base_args, dict):
+        raise ValueError(f"Study config must contain a base_args object: {study_config_path}")
+    raw_hparam_config = study_config.get("hparam_config")
+    if not isinstance(raw_hparam_config, dict):
+        raise ValueError(f"Study config must contain a hparam_config object: {study_config_path}")
+
+    base_args = make_base_args_from_study_config(raw_base_args)
+    hparam_config = HParamSearchConfig(**raw_hparam_config)
+    study_result = load_hparam_study_result_from_artifacts(study_dir, study_config, hparam_config)
+    return base_args, hparam_config, study_result
+
+def resolve_existing_hparam_study_dir(study_dir):
+    path = Path(study_dir)
+    if path.exists():
+        return path
+
+    logs_path = Path("logs") / path
+    if logs_path.exists():
+        return logs_path
+
+    raise FileNotFoundError(f"HPO study directory not found: {path} or {logs_path}")
+
+def make_base_args_from_study_config(raw_base_args):
+    args = parser.parse_args([])
+    for name, value in raw_base_args.items():
+        setattr(args, name, value)
+    normalize_backbone_tuning_args(args)
+    resolve_hparam_seed(args)
+    resolve_data_split_seed(args)
+    resolve_support_seed(args)
+    return args
+
+def load_hparam_study_result_from_artifacts(study_dir, study_config, hparam_config):
+    study_name = (
+        study_config.get("resolved_study_name")
+        or hparam_config.study_name
+        or Path(study_dir).name
+    )
+    trials_csv = Path(study_dir) / "trials.csv"
+    trials_jsonl = Path(study_dir) / "trials.jsonl"
+
+    if trials_jsonl.exists():
+        completed_trials = load_completed_hparam_trials_jsonl(trials_jsonl)
+        if not completed_trials:
+            raise ValueError(f"No completed HPO trials found in {trials_jsonl}")
+        best_trial = select_best_completed_hparam_trial(completed_trials, hparam_config.direction)
+        return HParamStudyResult(
+            study_name=study_name,
+            study_dir=Path(study_dir),
+            trials_csv=trials_csv,
+            trials_jsonl=trials_jsonl,
+            best_trial_number=best_trial["trial_number"],
+            best_value=best_trial["value"],
+            best_params=best_trial["params"],
+            best_user_attrs=best_trial["user_attrs"],
+            completed_trials=sort_completed_hparam_trials_by_value(completed_trials),
+        )
+
+    return load_hparam_study_result_from_optuna_storage(
+        study_dir,
+        study_name,
+        study_config.get("resolved_storage") or resolve_optuna_storage(hparam_config.storage, study_dir),
+        trials_csv,
+        trials_jsonl,
+    )
+
+def load_completed_hparam_trials_jsonl(trials_jsonl):
+    completed_trials = []
+    with Path(trials_jsonl).open(encoding="utf-8") as trials_file:
+        for line in trials_file:
+            if not line.strip():
+                continue
+            trial = json.loads(line)
+            if trial.get("state") != "COMPLETE" or trial.get("value") is None:
+                continue
+            completed_trials.append(
+                {
+                    "trial_number": int(trial["number"]),
+                    "value": float(trial["value"]),
+                    "params": trial.get("params") or {},
+                    "user_attrs": trial.get("user_attrs") or {},
+                }
+            )
+    return completed_trials
+
+def sort_completed_hparam_trials_by_value(completed_trials):
+    return sorted(
+        completed_trials,
+        key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])),
+    )
+
+def select_best_completed_hparam_trial(completed_trials, direction):
+    if direction == "minimize":
+        return min(completed_trials, key=lambda trial: (float(trial["value"]), int(trial["trial_number"])))
+    return min(completed_trials, key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])))
+
+def load_hparam_study_result_from_optuna_storage(study_dir, study_name, storage, trials_csv, trials_jsonl):
+    try:
+        import optuna
+    except ImportError as exc:
+        raise FileNotFoundError(
+            f"Trials summary not found at {trials_jsonl}, and Optuna is not installed for storage fallback."
+        ) from exc
+
+    study = optuna.load_study(study_name=study_name, storage=storage)
+    write_trials_summary(study, trials_csv, trials_jsonl)
+    logger.info(f"Loaded HPO study {study_name!r} from {study_dir} for final-test evaluation.")
+    return make_hparam_study_result(study, study_name, Path(study_dir), trials_csv, trials_jsonl)
 
 def get_final_test_top_n(args):
     top_n = int(getattr(args, "final_test_top_n", 1))
