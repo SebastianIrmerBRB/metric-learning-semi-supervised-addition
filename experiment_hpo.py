@@ -399,14 +399,7 @@ def run_hparam_search(args, config):
     # Finished trials count toward n_trials when a persistent study is resumed.
     finished_trials = count_finished_trials(optuna, study)
     remaining_trials = config.n_trials - finished_trials
-    enqueued_random_trials = enqueue_unique_random_trials(
-        optuna,
-        study,
-        config,
-        get_hparam_seed(args),
-        remaining_trials,
-    )
-    optimize_trials = remaining_trials if enqueued_random_trials is None else enqueued_random_trials
+    optimize_trials = remaining_trials
     logger.info(
         f"Starting Optuna study outputs in {study_dir}. "
         f"Finished trials: {finished_trials}/{config.n_trials}. "
@@ -505,123 +498,6 @@ def count_finished_trials(optuna, study):
         optuna.trial.TrialState.PRUNED,
     }
     return sum(trial.state in finished_states for trial in study.trials)
-
-
-def count_waiting_trials(optuna, study):
-    return sum(trial.state == optuna.trial.TrialState.WAITING for trial in study.trials)
-
-
-def enqueue_unique_random_trials(optuna, study, config, seed, target_trials):
-    """Materialize random-search trials so resumed studies do not replay RNG state."""
-
-    if config.sampler != "random" or target_trials <= 0:
-        return None
-
-    waiting_trials = count_waiting_trials(optuna, study)
-    needed = max(0, int(target_trials) - waiting_trials)
-    if needed == 0:
-        return min(int(target_trials), waiting_trials)
-
-    seen_signatures = existing_param_signatures(study)
-    rng = np.random.default_rng(seed)
-    enqueued = 0
-    attempts = 0
-    max_attempts = max(1000, needed * 100)
-    while enqueued < needed and attempts < max_attempts:
-        attempts += 1
-        params = sample_random_params(rng, config.spaces)
-        signature = params_signature(params)
-        if signature in seen_signatures:
-            continue
-        study.enqueue_trial(params, skip_if_exists=True)
-        seen_signatures.add(signature)
-        enqueued += 1
-
-    if enqueued < needed:
-        raise RuntimeError(
-            "Could not enqueue enough unique random-search trials. "
-            f"Requested {needed}, enqueued {enqueued}, attempts {attempts}. "
-            "Use sampler='grid' for finite categorical spaces or expand the search space."
-        )
-
-    logger.info(
-        "Pre-enqueued random-search trials with duplicate protection: "
-        f"existing_waiting={waiting_trials}, newly_enqueued={enqueued}, "
-        f"target_this_run={target_trials}."
-    )
-    return waiting_trials + enqueued
-
-
-def existing_param_signatures(study):
-    signatures = set()
-    for trial in study.get_trials(deepcopy=False):
-        if trial.params:
-            signatures.add(params_signature(dict(trial.params)))
-    return signatures
-
-
-def params_signature(params):
-    return json.dumps(
-        to_jsonable(expand_joint_component_params(dict(params))),
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-
-def sample_random_params(rng, spaces):
-    return {
-        name: sample_random_value(rng, name, spec)
-        for name, spec in spaces.items()
-    }
-
-
-def sample_random_value(rng, name, spec):
-    if isinstance(spec, list):
-        return sample_random_choice(rng, spec)
-
-    space_type = spec.get("type", "categorical" if "choices" in spec else None)
-    if space_type == "categorical":
-        return sample_random_choice(rng, spec["choices"])
-    if space_type == "float":
-        return sample_random_float(rng, spec)
-    if space_type == "int":
-        return sample_random_int(rng, spec)
-    raise ValueError(f"Unsupported random-search space type for {name!r}: {space_type}")
-
-
-def sample_random_choice(rng, choices):
-    return to_jsonable(choices[int(rng.integers(0, len(choices)))])
-
-
-def sample_random_float(rng, spec):
-    low = float(spec["low"])
-    high = float(spec["high"])
-    if bool(spec.get("log", False)):
-        if low <= 0:
-            raise ValueError("Log-uniform float search spaces require low > 0")
-        value = float(np.exp(rng.uniform(np.log(low), np.log(high))))
-    else:
-        value = float(rng.uniform(low, high))
-    step = spec.get("step")
-    if step is not None:
-        step = float(step)
-        value = low + round((value - low) / step) * step
-        value = min(max(value, low), high)
-    return float(value)
-
-
-def sample_random_int(rng, spec):
-    low = int(spec["low"])
-    high = int(spec["high"])
-    step = int(spec.get("step") or 1)
-    if bool(spec.get("log", False)):
-        if low <= 0:
-            raise ValueError("Log-uniform int search spaces require low > 0")
-        raw = int(round(float(np.exp(rng.uniform(np.log(low), np.log(high))))))
-        value = low + round((raw - low) / step) * step
-        return int(min(max(value, low), high))
-    count = ((high - low) // step) + 1
-    return int(low + int(rng.integers(0, count)) * step)
 
 
 def should_retry_failed_hpo_trials(args, config):

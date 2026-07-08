@@ -536,6 +536,23 @@ which preserves the previous best-trial-only behavior.
 Set `"final_test_trial_numbers": [6, 11]` to evaluate specific completed trial
 numbers instead of selecting by objective value.
 
+To run final-test evaluation later from an existing study directory without
+resuming HPO, pass the literal study directory and reuse the same selectors:
+
+```powershell
+python main.py `
+  --final_test_study_dir logs/path/to/study `
+  --final_test_trial_numbers 6 11
+
+python main.py `
+  --final_test_study_dir logs/path/to/study `
+  --final_test_top_n 5
+```
+
+This loads `study_config.json` and `trials.jsonl` from the study directory, so
+you do not need to repeat the original dataset, SSL, or HPO command-line
+arguments.
+
 The HPO trials continue to skip the test set. After a study finishes, the
 runner:
 

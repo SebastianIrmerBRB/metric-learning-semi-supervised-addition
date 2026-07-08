@@ -407,6 +407,16 @@ parser.add_argument(
     help="specific completed HPO trial numbers to run final-test evaluation for",
 )
 parser.add_argument(
+    "--final_test_study_dir",
+    "--final-test-study-dir",
+    type=Path,
+    default=None,
+    help=(
+        "existing HPO study directory to load for final-test evaluation. "
+        "Use with --final_test_trial_numbers or --final_test_top_n to avoid scheduling new HPO trials."
+    ),
+)
+parser.add_argument(
     "--final_test_visualization",
     "--final-test-visualization",
     choices=FINAL_TEST_VISUALIZATION_MODES,
