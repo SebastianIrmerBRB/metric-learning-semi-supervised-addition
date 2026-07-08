@@ -336,6 +336,7 @@ def run_hparam_search(args, config):
     )
     if replayed_trials:
         save_optuna_sampler(study.sampler, sampler_state_path)
+    last_completed_sampler = clone_optuna_sampler(study.sampler)
     trials_csv = study_dir / "trials.csv"
     trials_jsonl = study_dir / "trials.jsonl"
     retry_failed_trials_mode = should_retry_failed_hpo_trials(args, config)
@@ -344,7 +345,6 @@ def run_hparam_search(args, config):
         # Resolve trial suggestions into a fresh argparse namespace and SSL
         # config so trials cannot mutate one another's settings.
         trial_args, ssl_config, suggested_params = make_trial_args_and_ssl_config(args, config, trial)
-        save_optuna_sampler(study.sampler, sampler_state_path)
         trial_args.hparam_config_resolved = config.to_dict()
         trial_args.hparam_params = suggested_params
         trial_args.hparam_study_dir = study_dir
@@ -369,21 +369,28 @@ def run_hparam_search(args, config):
                 optuna_trial=trial,
                 optuna_metric=config.metric,
             )
+        except optuna.TrialPruned:
+            raise
         except Exception as exc:
             trial_error = str(exc)
-            exc.__traceback__ = None
-            exc = None
             cleanup_after_trial(terminate_children=config.n_jobs == 1)
-            message = f"Trial failed; skipping for now: {trial_error}"
-            trial.set_user_attr("pruned_reason", message)
-            raise optuna.TrialPruned(message)
+            trial.set_user_attr("failure_reason", trial_error)
+            raise
         result_dict = result_to_dict(result)
         for key, value in result_dict.items():
             trial.set_user_attr(key, value)
         return get_objective_value(result, config.metric)
 
     def record_trial(study, trial):
-        save_optuna_sampler(study.sampler, sampler_state_path)
+        nonlocal last_completed_sampler
+        last_completed_sampler = update_optuna_sampler_after_trial(
+            optuna,
+            study,
+            trial,
+            sampler_state_path,
+            last_completed_sampler,
+            restore_after_incomplete=config.n_jobs == 1,
+        )
         cleanup_after_trial(terminate_children=config.n_jobs == 1)
         # Refresh summaries after each finished trial so interrupted studies
         # still leave readable progress outside the Optuna database.
@@ -408,7 +415,6 @@ def run_hparam_search(args, config):
             callbacks=[record_trial],
             gc_after_trial=True,
         )
-        save_optuna_sampler(study.sampler, sampler_state_path)
         write_trials_summary(study, trials_csv, trials_jsonl)
         if any(trial.state.name == "COMPLETE" for trial in study.trials):
             logger.info(
@@ -416,13 +422,15 @@ def run_hparam_search(args, config):
             )
         return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
-    # Finished trials count toward n_trials when a persistent study is resumed.
-    finished_trials = count_finished_trials(optuna, study)
-    remaining_trials = config.n_trials - finished_trials
+    # Completed and pruned trials consume the target HPO budget. Failed trials
+    # stay in the study history but do not advance the saved sampler, so resume
+    # appends replacements for them.
+    budget_trials = count_hpo_budget_trials(optuna, study)
+    remaining_trials = config.n_trials - budget_trials
     optimize_trials = remaining_trials
     logger.info(
         f"Starting Optuna study outputs in {study_dir}. "
-        f"Finished trials: {finished_trials}/{config.n_trials}. "
+        f"Budget trials: {budget_trials}/{config.n_trials}. "
         f"Recovered unfinished trials: {recovered_trials}. "
         f"Replayed sampler trials: {replayed_trials}. "
         f"Remaining this run: {max(optimize_trials, 0)}. "
@@ -430,7 +438,7 @@ def run_hparam_search(args, config):
     )
     if optimize_trials <= 0:
         write_trials_summary(study, trials_csv, trials_jsonl)
-        logger.info(f"Optuna study already has {finished_trials} finished trials; no new trials requested.")
+        logger.info(f"Optuna study already has {budget_trials} budget-counting trials; no new trials requested.")
         return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
     study.optimize(
@@ -441,7 +449,6 @@ def run_hparam_search(args, config):
         callbacks=[record_trial],
         gc_after_trial=True,
     )
-    save_optuna_sampler(study.sampler, sampler_state_path)
     write_trials_summary(study, trials_csv, trials_jsonl)
     if any(trial.state.name == "COMPLETE" for trial in study.trials):
         logger.info(f"Best trial: {study.best_trial.number}, value={study.best_value}, params={study.best_trial.params}")
@@ -571,6 +578,24 @@ def save_optuna_sampler(sampler, path):
                 except OSError:
                     pass
 
+def clone_optuna_sampler(sampler):
+    return pickle.loads(pickle.dumps(sampler))
+
+def update_optuna_sampler_after_trial(
+    optuna,
+    study,
+    trial,
+    path,
+    last_completed_sampler,
+    restore_after_incomplete=True,
+):
+    if not trial_counts_toward_hpo_budget(optuna, trial):
+        if restore_after_incomplete:
+            study.sampler = clone_optuna_sampler(last_completed_sampler)
+        return last_completed_sampler
+    save_optuna_sampler(study.sampler, path)
+    return clone_optuna_sampler(study.sampler)
+
 def replay_random_sampler_state_if_needed(optuna, study, config, sampler_state_loaded):
     if sampler_state_loaded or not config.load_if_exists or config.sampler != "random":
         return 0
@@ -595,6 +620,8 @@ def make_random_sampler_replay_plans(study, config):
     plans = []
     configured_names = set(config.spaces)
     for trial in study.get_trials(deepcopy=False):
+        if not trial_counts_toward_hpo_budget_name(trial):
+            continue
         if trial.datetime_start is None:
             continue
         sampled_names = [
@@ -616,12 +643,17 @@ def get_fixed_param_names(trial):
         return set(fixed_params)
     return set()
 
-def count_finished_trials(optuna, study):
-    finished_states = {
+def count_hpo_budget_trials(optuna, study):
+    return sum(trial_counts_toward_hpo_budget(optuna, trial) for trial in study.trials)
+
+def trial_counts_toward_hpo_budget(optuna, trial):
+    return trial.state in {
         optuna.trial.TrialState.COMPLETE,
         optuna.trial.TrialState.PRUNED,
     }
-    return sum(trial.state in finished_states for trial in study.trials)
+
+def trial_counts_toward_hpo_budget_name(trial):
+    return trial.state.name in {"COMPLETE", "PRUNED"}
 
 
 def should_retry_failed_hpo_trials(args, config):
