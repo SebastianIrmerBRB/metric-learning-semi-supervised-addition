@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import semi_supervised
@@ -20,6 +21,9 @@ DEFAULT_SUPPORT_SEED = semi_supervised.DEFAULT_SUPPORT_SEED
 FINAL_TEST_VISUALIZATION_NONE = "none"
 FINAL_TEST_VISUALIZATION_PACMAP = "pacmap"
 FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, FINAL_TEST_VISUALIZATION_PACMAP)
+STUDY_DIR_MODE_FINAL_TRAIN = "final_train"
+STUDY_DIR_MODE_TRAIN_VAL = "train_val"
+STUDY_DIR_MODES = (STUDY_DIR_MODE_FINAL_TRAIN, STUDY_DIR_MODE_TRAIN_VAL)
 
 
 def parse_json_object(value):
@@ -417,6 +421,19 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
+    "--study_dir_mode",
+    "--study-dir-mode",
+    "--final_test_study_dir_mode",
+    "--final-test-study-dir-mode",
+    dest="study_dir_mode",
+    choices=STUDY_DIR_MODES,
+    default=STUDY_DIR_MODE_FINAL_TRAIN,
+    help=(
+        "how to replay an existing HPO study: final_train trains once on the full development set "
+        "and evaluates D_test; train_val runs a normal train/validation job without D_test evaluation"
+    ),
+)
+parser.add_argument(
     "--final_test_visualization",
     "--final-test-visualization",
     choices=FINAL_TEST_VISUALIZATION_MODES,
@@ -472,10 +489,12 @@ parser.add_argument(
 def parse_args_with_experiment_config(argv=None):
     """Parse CLI arguments after loading optional top-level JSON defaults."""
 
+    explicit_cli_args = collect_explicit_cli_destinations(argv)
     config_path = get_experiment_config_path(argv)
     config_values = load_experiment_config(config_path)
     namespace = argparse.Namespace(**config_values)
     args = parser.parse_args(argv, namespace=namespace)
+    args.explicit_cli_args = sorted(explicit_cli_args)
     normalize_backbone_tuning_args(args)
     resolve_hparam_seed(args)
     resolve_data_split_seed(args)
@@ -483,6 +502,21 @@ def parse_args_with_experiment_config(argv=None):
     if config_path is not None:
         args.experiment_config_resolved = config_values
     return args
+
+def collect_explicit_cli_destinations(argv=None):
+    """Return argparse destination names set directly by the current CLI."""
+
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    explicit_dests = set()
+    for token in raw_argv:
+        if not token.startswith("--") or token == "--":
+            continue
+        option = token.split("=", 1)[0]
+        action = parser._option_string_actions.get(option)
+        if action is None or action.dest in {"help", "experiment_config"}:
+            continue
+        explicit_dests.add(action.dest)
+    return explicit_dests
 
 def get_hparam_seed(args):
     """Return the seed used by Optuna's stochastic samplers."""

@@ -1,7 +1,7 @@
 {
-  "save_dir": "cars_hoffer",
-  "dataset": "Cars196",
-  "length_before_new_iter": 6041,
+  "save_dir": "cub_hoffer",
+  "dataset": "CUB",
+  "length_before_new_iter": 4692,
   "dataset_protocol": "official",
   "val_mode": "match_train",
   "cv_k": 1,

@@ -1,0 +1,61 @@
+{
+  "enabled": true,
+  "n_trials": 60,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "faiss_label_spreading_search",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "random",
+  "sampler_params": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+    "lr": {
+      "type": "float",
+      "low": 1e-7,
+      "high": 1e-5,
+      "log": true
+    },
+    "classifier_lr": {
+      "type": "float",
+      "low": 1e-4,
+      "high": 1e+2,
+      "log": true
+    },
+    "ssl_config.method_params.n_neighbors": {
+      "type": "categorical",
+      "choices": [3, 5, 10, 20, 50]
+    },
+    "ssl_config.method_params.gamma": {
+      "type": "float",
+      "low": 0.25,
+      "high": 16,
+      "log": true
+    },
+    "ssl_config.method_params.alpha": {
+      "type": "float",
+      "low": 0.05,
+      "high": 0.99,
+      "log": false
+    },
+    "ssl_config.confidence_threshold": {
+      "type": "float",
+      "low": 0.0,
+      "high": 0.9,
+      "log": false
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+        "16:4",
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4"
+      ]
+    }
+  }
+}

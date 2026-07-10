@@ -856,12 +856,47 @@ def append_study_dir_role(study_dir, role):
         return None
     return str(Path(study_dir) / role)
 
+FINAL_STUDY_DIR_GRID_OVERRIDE_ARGS = {
+    "label_budget_grid",
+    "k_shot_grid",
+    "ssl_label_sampling_modes",
+    "comparison_seeds",
+}
+
+FINAL_STUDY_DIR_REPOSITORY_OVERRIDE_ARGS = FINAL_STUDY_DIR_GRID_OVERRIDE_ARGS | {
+    "seed",
+    "hparam_seed",
+    "data_split_seed",
+    "support_seed",
+}
+
+FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES = {
+    "experiment_config",
+    "final_test_after_hpo",
+    "final_test_study_dir",
+    "hparam_config",
+    "loss",
+    "loss_miner_grid",
+    "miner",
+}
+
+FINAL_STUDY_REPOSITORY_FORBIDDEN_HPARAM_KEYS = (
+    COMPARISON_FORBIDDEN_HPARAM_KEYS | SAMPLER_CAPACITY_HPARAM_KEYS
+)
+
 def run_final_from_study_dir_request(request_args):
     """Replay final-test evaluation from an existing study directory."""
 
     base_args, hparam_config, study_result = load_hparam_study_for_final_test(request_args.final_test_study_dir)
-    copy_final_test_request_args(request_args, base_args)
-    return run_final_from_best_hparam(
+    base_args = copy_final_test_request_args(request_args, base_args)
+    request_override_names = set(getattr(base_args, "final_study_request_overrides", []))
+    if request_override_names & FINAL_STUDY_DIR_REPOSITORY_OVERRIDE_ARGS:
+        validate_final_study_hparam_repository(hparam_config, study_result)
+    if has_final_study_dir_replay_grid(request_override_names):
+        reset_unrequested_final_study_grid_args(base_args, request_override_names)
+        return run_final_study_dir_grid(base_args, hparam_config, study_result)
+
+    return run_study_dir_hparam_evaluation(
         base_args,
         hparam_config,
         study_result,
@@ -869,12 +904,130 @@ def run_final_from_study_dir_request(request_args):
     )
 
 def copy_final_test_request_args(source_args, target_args):
-    """Apply only final-test selection options from the current CLI invocation."""
+    """Apply current-request overrides to args loaded from a study directory."""
 
-    for name in ("final_test_top_n", "final_test_trial_numbers", "final_test_visualization"):
-        setattr(target_args, name, getattr(source_args, name))
+    override_names = get_final_study_request_override_names(source_args)
+    for name in sorted(override_names - FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES):
+        if hasattr(source_args, name):
+            setattr(target_args, name, copy.deepcopy(getattr(source_args, name)))
+
+    if "seed" in override_names and "hparam_seed" not in override_names and hasattr(source_args, "hparam_seed"):
+        target_args.hparam_seed = source_args.hparam_seed
+    for name in ("final_test_top_n", "final_test_trial_numbers", "final_test_visualization", "study_dir_mode"):
+        if hasattr(source_args, name):
+            setattr(target_args, name, getattr(source_args, name))
     target_args.final_test_after_hpo = True
+    normalize_backbone_tuning_args(target_args)
+    resolve_hparam_seed(target_args)
+    resolve_data_split_seed(target_args)
+    resolve_support_seed(target_args)
+    target_args.final_study_request_overrides = sorted(override_names)
     return target_args
+
+def get_final_study_request_override_names(args):
+    """Return config/CLI fields explicitly supplied for a final-study replay."""
+
+    config_values = getattr(args, "experiment_config_resolved", None) or {}
+    explicit_cli_args = getattr(args, "explicit_cli_args", None) or []
+    return set(config_values) | set(explicit_cli_args)
+
+def has_final_study_dir_replay_grid(request_override_names):
+    """Return whether the current replay request varies outer-grid settings."""
+
+    return bool(set(request_override_names) & FINAL_STUDY_DIR_GRID_OVERRIDE_ARGS)
+
+def reset_unrequested_final_study_grid_args(args, request_override_names):
+    """Ignore grid metadata inherited from the original HPO run unless requested."""
+
+    for name in FINAL_STUDY_DIR_GRID_OVERRIDE_ARGS:
+        if name not in request_override_names:
+            setattr(args, name, None)
+    args.loss_miner_grid = None
+    return args
+
+def run_final_study_dir_grid(base_args, hparam_config, study_result):
+    """Evaluate one existing HPO study's params across requested data settings."""
+
+    base_ssl_config = semi_supervised.load_ssl_config(
+        base_args.ssl_config,
+        default_seed=base_args.seed,
+        default_support_seed=get_support_seed(base_args),
+    )
+    scenarios = make_comparison_scenarios(base_args, base_ssl_config, grid_dir_name="study_replay_grid")
+
+    grid_results = []
+    summary_prefix = get_study_dir_summary_stem(base_args)
+    for scenario in scenarios:
+        scenario_args = make_args_for_scenario(base_args, scenario)
+        method = getattr(scenario_args, "mode", None) or "model"
+        final_result = run_study_dir_hparam_evaluation(
+            scenario_args,
+            hparam_config,
+            study_result,
+            role=method,
+            summary_stem=f"{summary_prefix}_{scenario.name}_{method}",
+        )
+        grid_results.append(
+            {
+                "method": method,
+                "scenario": scenario,
+                "study": study_result,
+                "result": final_result,
+            }
+        )
+
+    write_single_method_grid_summary(Path("logs") / base_args.save_dir / "study_replay_grid", grid_results)
+    return grid_results
+
+def run_study_dir_hparam_evaluation(base_args, hparam_config, study_result, role, summary_stem=None):
+    """Replay selected HPO params from a study in the requested study-dir mode."""
+
+    study_dir_mode = get_study_dir_mode(base_args)
+    if summary_stem is None:
+        summary_stem = get_study_dir_summary_stem(base_args)
+    if study_dir_mode == STUDY_DIR_MODE_FINAL_TRAIN:
+        return run_final_from_best_hparam(
+            base_args,
+            hparam_config,
+            study_result,
+            role=role,
+            summary_stem=summary_stem,
+        )
+    if study_dir_mode == STUDY_DIR_MODE_TRAIN_VAL:
+        return run_train_val_from_best_hparam(
+            base_args,
+            hparam_config,
+            study_result,
+            role=role,
+            summary_stem=summary_stem,
+        )
+    raise ValueError(f"study_dir_mode must be one of {STUDY_DIR_MODES}: {study_dir_mode}")
+
+def get_study_dir_mode(args):
+    return getattr(args, "study_dir_mode", STUDY_DIR_MODE_FINAL_TRAIN)
+
+def get_study_dir_summary_stem(args):
+    if get_study_dir_mode(args) == STUDY_DIR_MODE_TRAIN_VAL:
+        return "train_val_evaluation"
+    return "final_evaluation"
+
+def validate_final_study_hparam_repository(hparam_config, study_result):
+    """Ensure replayed HPO params do not override requested data conditions."""
+
+    configured_keys = set(getattr(hparam_config, "spaces", {}) or {})
+    trial_param_keys = set(getattr(study_result, "best_params", None) or {})
+    for trial in getattr(study_result, "completed_trials", None) or []:
+        trial_param_keys.update((trial.get("params") or {}).keys())
+
+    forbidden_keys = sorted(
+        (configured_keys | trial_param_keys)
+        & FINAL_STUDY_REPOSITORY_FORBIDDEN_HPARAM_KEYS
+    )
+    if forbidden_keys:
+        raise ValueError(
+            "Cannot replay this HPO study as a hyperparameter repository while varying data settings. "
+            f"The study contains data/split/search-condition parameters: {forbidden_keys}."
+        )
 
 def load_hparam_study_for_final_test(study_dir):
     """Load saved base args, HPO config, and completed trials from a study directory."""
@@ -1051,6 +1204,39 @@ def run_final_from_best_hparam(base_args, hparam_config, study_result, role, sum
         summary_stem=summary_stem,
     )
 
+def run_train_val_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="train_val_evaluation"):
+    """Run selected HPO configuration(s) as normal train/validation jobs."""
+
+    trial_numbers = get_final_test_trial_numbers(base_args)
+    if trial_numbers is not None:
+        return run_train_val_from_selected_hparams(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            trial_numbers=trial_numbers,
+            summary_stem=summary_stem,
+        )
+
+    top_n = get_final_test_top_n(base_args)
+    if top_n > 1:
+        return run_train_val_from_top_hparams(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            top_n=top_n,
+            summary_stem=summary_stem,
+        )
+
+    return run_single_train_val_from_hparam(
+        base_args,
+        hparam_config,
+        study_result,
+        role,
+        summary_stem=summary_stem,
+    )
+
 def get_completed_hparam_trials(study_result, role):
     completed_trials = list(getattr(study_result, "completed_trials", None) or [])
     if not completed_trials and study_result.best_params is not None:
@@ -1065,6 +1251,97 @@ def get_completed_hparam_trials(study_result, role):
     if not completed_trials:
         raise ValueError(f"No completed {role or 'model'} HPO trial is available for final retraining")
     return completed_trials
+
+def run_train_val_from_selected_hparams(
+    base_args,
+    hparam_config,
+    study_result,
+    role,
+    trial_numbers,
+    summary_stem="train_val_evaluation",
+):
+    """Run normal train/validation evaluation for explicitly selected completed HPO trials."""
+
+    completed_trials = get_completed_hparam_trials(study_result, role)
+    trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
+    missing_trials = [trial_number for trial_number in trial_numbers if trial_number not in trials_by_number]
+    if missing_trials:
+        available_trials = sorted(trials_by_number)
+        raise ValueError(
+            f"Selected train/validation trial(s) are not completed in study {study_result.study_name!r}: "
+            f"{missing_trials}. Available completed trial numbers: {available_trials}"
+        )
+
+    evaluated = []
+    for trial_number in trial_numbers:
+        trial = trials_by_number[int(trial_number)]
+        trial_summary_stem = f"{summary_stem}_trial_{int(trial_number):04d}"
+        final_result = run_single_train_val_from_hparam(
+            base_args,
+            hparam_config,
+            make_study_result_for_completed_trial(study_result, trial),
+            role,
+            summary_stem=trial_summary_stem,
+        )
+        evaluated.append(
+            {
+                "trial": trial,
+                "summary_stem": trial_summary_stem,
+                "final_result": final_result,
+            }
+        )
+
+    write_hparam_selected_final_evaluation_summary(
+        study_result=study_result,
+        evaluated=evaluated,
+        role=role,
+        trial_numbers=trial_numbers,
+        summary_stem=summary_stem,
+    )
+    return evaluated[0]["final_result"]
+
+def run_train_val_from_top_hparams(base_args, hparam_config, study_result, role, top_n, summary_stem="train_val_evaluation"):
+    """Run normal train/validation evaluation for the top-N completed HPO trials."""
+
+    completed_trials = get_completed_hparam_trials(study_result, role)
+    completed_trials = sorted(
+        completed_trials,
+        key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])),
+    )
+    selected_trials = completed_trials[:top_n]
+    if len(selected_trials) < top_n:
+        logger.warning(
+            f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
+        )
+
+    evaluated = []
+    for trial_index, trial in enumerate(selected_trials):
+        trial_study_result = make_study_result_for_completed_trial(study_result, trial)
+        trial_number = trial["trial_number"]
+        trial_summary_stem = summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial_number:04d}"
+        final_result = run_single_train_val_from_hparam(
+            base_args,
+            hparam_config,
+            trial_study_result,
+            role,
+            summary_stem=trial_summary_stem,
+        )
+        evaluated.append(
+            {
+                "trial": trial,
+                "summary_stem": trial_summary_stem,
+                "final_result": final_result,
+            }
+        )
+
+    write_hparam_top_final_evaluation_summary(
+        study_result=study_result,
+        evaluated=evaluated,
+        role=role,
+        requested_top_n=top_n,
+        summary_stem=summary_stem,
+    )
+    return evaluated[0]["final_result"]
 
 def run_final_from_selected_hparams(
     base_args,
@@ -1197,6 +1474,29 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
     write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
     return final_result
 
+def run_single_train_val_from_hparam(base_args, hparam_config, study_result, role, summary_stem="train_val_evaluation"):
+    """Train one HPO configuration with the normal train/validation split and no test evaluation."""
+
+    role = role or "model"
+    if study_result.best_params is None:
+        raise ValueError(f"No completed {role} HPO trial is available for train/validation replay")
+
+    train_args, train_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
+    train_args.hparam_config_resolved = hparam_config.to_dict()
+    train_args.hparam_params = study_result.best_params
+    train_args.hparam_replay_from_study = study_result.study_name
+    train_args.hparam_replay_trial_number = study_result.best_trial_number
+    train_args.final_full_train = False
+    train_args.cv_k = 1
+    train_args.evaluate_test = False
+    train_args.skip_test_during_hpo = True
+    train_args.final_test_visualization = FINAL_TEST_VISUALIZATION_NONE
+    train_args.save_dir = Path(base_args.save_dir) / "train_val" / role
+
+    train_result = run_experiment(train_args, train_ssl_config)
+    write_hparam_train_val_evaluation_summary(study_result, train_result, role, summary_stem=summary_stem)
+    return train_result
+
 def make_final_epoch_plan(study_result):
     """Choose a fixed final training duration from the best trial's checkpoints."""
 
@@ -1275,6 +1575,49 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         writer.writeheader()
         writer.writerow(row)
     logger.info(f"Final HPO test evaluation summary written to {study_result.study_dir}")
+
+def write_hparam_train_val_evaluation_summary(study_result, train_result, role, summary_stem="train_val_evaluation"):
+    """Write a compact study-to-train/validation replay audit artifact."""
+
+    summary = {
+        "role": role,
+        "study_dir_mode": STUDY_DIR_MODE_TRAIN_VAL,
+        "study": hparam_study_result_to_dict(study_result),
+        "train_val_result": result_to_dict(train_result),
+    }
+    write_json(study_result.study_dir / f"{summary_stem}.json", summary)
+    csv_path = study_result.study_dir / f"{summary_stem}.csv"
+    row = {
+        "role": role,
+        "study_name": study_result.study_name,
+        "study_dir_mode": STUDY_DIR_MODE_TRAIN_VAL,
+        "best_trial_number": optional_number(study_result.best_trial_number),
+        "best_hpo_value": optional_number(study_result.best_value),
+        "best_params": json.dumps(study_result.best_params, sort_keys=True),
+        "hpo_best_valid_precision_at_1": optional_number(
+            (study_result.best_user_attrs or {}).get("best_valid_precision_at_1")
+        ),
+        "hpo_best_valid_mean_average_precision_at_r": optional_number(
+            (study_result.best_user_attrs or {}).get("best_valid_mean_average_precision_at_r")
+        ),
+        "train_val_log_dir": str(train_result.log_dir),
+        "train_val_metrics_csv": str(train_result.metrics_csv),
+        "train_val_best_valid_precision_at_1": optional_number(train_result.best_valid_precision_at_1),
+        "train_val_best_valid_mean_average_precision_at_r": optional_number(
+            train_result.best_valid_mean_average_precision_at_r
+        ),
+        "train_val_final_train_loss": optional_number(train_result.final_train_loss),
+        "train_val_selected_epoch": train_result.selected_epoch,
+        "train_val_last_epoch": train_result.last_epoch,
+        "train_val_global_step": train_result.global_step,
+        "test_precision_at_1": optional_number(train_result.test_precision_at_1),
+        "test_mean_average_precision_at_r": optional_number(train_result.test_mean_average_precision_at_r),
+    }
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(row.keys()))
+        writer.writeheader()
+        writer.writerow(row)
+    logger.info(f"Train/validation HPO replay summary written to {study_result.study_dir}")
 
 def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, requested_top_n, summary_stem):
     """Write one summary for all top-N final-test evaluations."""
