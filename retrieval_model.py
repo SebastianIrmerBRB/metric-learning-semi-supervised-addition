@@ -80,14 +80,6 @@ def load_dinov2_with_retry(dino_size, max_attempts=DINOV2_HUB_MAX_ATTEMPTS):
             time.sleep(delay)
 
 
-class L2Norm(nn.Module):
-    def __init__(self, dim=1):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        return F.normalize(x, p=2.0, dim=self.dim)
-
 
 class DinoWrapper(nn.Module):
     """Same as the original DINO model, but with a linear layer on top and a resize to multiple of 14 in the forward pass."""
@@ -209,6 +201,7 @@ class DinoWrapper(nn.Module):
         features = self.fc(features)
         if not self.stml_enabled or self.stml_normalize_student:
             features = F.normalize(features, p=2.0, dim=1)
+
         return features
 
     def project_stml_features(self, features):
