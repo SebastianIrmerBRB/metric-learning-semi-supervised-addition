@@ -7,6 +7,7 @@ from pathlib import Path
 
 import semi_supervised
 import utils
+from dataset_constants import VAL_MODE_MATCH_TRAIN
 from experiment_types import (
     ALL_LOSSES,
     ALL_MINERS,
@@ -76,7 +77,7 @@ parser.add_argument(
         "None derives the length from the active training dataset."
     ),
 )
-parser.add_argument("--dataset", type=utils.normalize_dataset_name, choices=DATASETS, help="dataset")
+parser.add_argument("--dataset", type=utils.normalize_dataset_name, default="Cars196", choices=DATASETS, help="dataset")
 parser.add_argument(
     "--cifar_imbalance_factor",
     type=float,
@@ -103,6 +104,7 @@ parser.add_argument(
 parser.add_argument(
     "--dataset_protocol",
     choices=utils.DATASET_PROTOCOLS,
+    default="official",
     help=(
         "dataset split protocol. CIFAR custom protocols combine the official splits; "
         "cifar_balanced_fraction creates sample-disjoint balanced train/test subsets, while unseen-class "
@@ -222,12 +224,14 @@ parser.add_argument(
     "--cv_mode",
     type=str,
     choices=utils.CV_MODES,
+    default="kfold",
     help="cross-validation splitter to use when cv_k > 1",
 )
 parser.add_argument(
     "--val_mode",
     type=str,
     choices=utils.VAL_MODES,
+    default=VAL_MODE_MATCH_TRAIN,
     help=(
         "validation data mode. 'all' keeps the current behavior and uses all validation samples; "
         "'match_train' downsamples validation to roughly the labeled/fractioned training size; "
@@ -291,7 +295,7 @@ parser.add_argument(
 parser.add_argument(
     "--ssl_config",
     type=Path,
-    default="configs/ssl_faiss_knn.json",
+    default="configs/ssl_hoffer_entropy.json",
     help="path to a JSON semi-supervised config. Omit to disable SSL.",
 )
 parser.add_argument(
@@ -367,6 +371,7 @@ parser.add_argument(
     "--mode",
     type=str,
     choices=["supervised", "ssl"],
+    default="supervised",
     help="training mode. supervised uses only the labeled split; ssl uses the labeled split plus unlabeled data.",
 )
 parser.add_argument(
@@ -483,6 +488,7 @@ parser.add_argument(
 parser.add_argument(
     "--save_dir",
     type=Path,
+    default="test",
     help="name of directory in which to save the logs, under logs/save_dir",
 )
 

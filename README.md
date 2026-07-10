@@ -48,6 +48,14 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 
 - graph / fixmatch propagation repository: https://github.com/thomasbohm/semi-supervised-dml https://github.com/google-research/fixmatch
 
+## Code organization
+
+- `semi_supervised.py` is the compatibility façade and method orchestration layer; focused SSL code lives in the `ssl_*.py` modules.
+- `utils.py` keeps shared loader/evaluation helpers and the historical public API; dataset composition, protocols, and splits live in the `dataset_*.py` modules.
+- `main.py` contains experiment orchestration, while JSON/CSV summary generation lives in `experiment_reporting.py`.
+
+Add new behavior to the focused module for its responsibility. Re-export it from a façade only when existing callers need the historical import path.
+
 ## Third-Party Attribution
 
 Long-tailed CIFAR generation is adapted from
