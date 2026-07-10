@@ -95,6 +95,7 @@ Method-specific parameters live in JSON instead of argparse so new SSL methods d
 {
   "method": "sklearn_label_spreading",
   "update_mode": "once",
+  "update_interval_epochs": 1,
   "warmup_epochs": 0,
   "label_sampling_mode": "global_budget",
   "labeled_fraction": 0.1,
@@ -116,7 +117,8 @@ Method-specific parameters live in JSON instead of argparse so new SSL methods d
 Common fields:
 
 - `method`: SSL method name. Use `none` or omit `--ssl_config` for supervised training.
-- `update_mode`: `once` generates pseudo-labels before training; `every_epoch` regenerates them from the current model before each epoch.
+- `update_mode`: shared rebuild cadence for SSL artifacts. `once` builds pseudo-labels, graphs, or STML sampling once when that phase starts; `every_epoch` rebuilds from the current model before each non-warmup epoch; `every_n_epochs` rebuilds once when the phase starts and then after each `update_interval_epochs` epochs.
+- `update_interval_epochs`: positive interval used by `update_mode: "every_n_epochs"`. This key can also be tuned with HPO as `ssl_config.update_interval_epochs`.
 - `warmup_epochs`: number of initial epochs trained only on the labeled SSL subset before pseudo-labels are generated.
 - `label_sampling_mode`: controls how labeled samples are selected from the training split.
 - `labeled_fraction`: budget used by `label_sampling_mode`.
@@ -127,6 +129,11 @@ Common fields:
 - `embedding_batch_size`: batch size for extracting DINO embeddings used by SSL.
 - `embedding_num_workers`: worker count for SSL embedding extraction.
 - `method_params`: parameters passed to the selected SSL implementation.
+
+Pseudo-label methods such as sklearn label spreading, FAISS label spreading,
+and mixed label propagation apply the cadence to pseudo-label regeneration.
+Graph regularizers such as LRML/SLRMML apply the same cadence to graph rebuilds.
+STML applies it to nearest-neighbor sampler rebuilds.
 
 Label sampling modes:
 
@@ -148,9 +155,9 @@ Available methods:
 3. `semi_supervised.prepare_ssl_split(...)` creates one fixed labeled subset inside the training classes when SSL is enabled; all remaining training samples become unlabeled candidates.
 4. If SSL is disabled, the original train dataset is used.
 5. For the first `warmup_epochs`, training uses only the labeled part of the SSL split.
-6. With `update_mode: "once"`, `semi_supervised.build_ssl_training_dataset(...)` generates pseudo-labels once, either before training or immediately after warmup.
-7. With `update_mode: "every_epoch"`, pseudo-labels are regenerated from the current model before each non-warmup epoch and the train loader is rebuilt.
-8. The selected SSL method extracts current DINO embeddings and returns pseudo-labels for unlabeled positions.
+6. With `update_mode: "once"`, the SSL artifact is built once, either before training or immediately after warmup.
+7. With `update_mode: "every_epoch"` or `update_mode: "every_n_epochs"`, pseudo-labels, graphs, or STML sampling are regenerated from the current model on that cadence before a non-warmup epoch.
+8. Pseudo-label methods extract current DINO embeddings and return pseudo-labels for unlabeled positions.
 9. `RelabeledSubset` exposes labeled and selected pseudo-labeled samples through the same interface expected by the existing sampler and training loop.
 
 Validation and test data are not used for pseudo-labeling.

@@ -129,12 +129,14 @@ def map_training_labels(labels, label_lookup, train_labels_mapper, device):
     return torch.tensor([train_labels_mapper[int(label)] for label in labels], device=device, dtype=torch.long)
 
 
-def shutdown_epoch_train_loader(train_loader, warmup_train_loader=None, static_train_loader=None):
+def shutdown_epoch_train_loader(train_loader, warmup_train_loader=None, static_train_loader=None, *reusable_loaders):
     """Shutdown loaders that are rebuilt for a single epoch."""
 
     if train_loader is None:
         return
     if train_loader is warmup_train_loader or train_loader is static_train_loader:
+        return
+    if any(train_loader is loader for loader in reusable_loaders):
         return
     shutdown = getattr(train_loader, "shutdown", None)
     if callable(shutdown):
@@ -433,8 +435,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     Training has four possible loader phases:
     1. labeled-only warmup;
     2. a single static pseudo-labeled dataset; or
-    3. a pseudo-labeled dataset regenerated at every epoch; or
-    4. STML nearest-neighbor batches regenerated from student g every epoch.
+    3. a pseudo-labeled dataset regenerated on a configured epoch cadence; or
+    4. STML nearest-neighbor batches regenerated from student g on the same cadence.
     Validation selects the checkpoint and can trigger early stopping. A final
     HPO fit instead trains for a fixed duration without validation. Test data is
     evaluated only when the caller explicitly enables it.
@@ -642,6 +644,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # loader is deliberately deferred until the current model can pseudo-label.
     static_train_loader = None
     warmup_train_loader = None
+    ssl_training_dataset_update_epoch = None
     if supervised_mode and not ssl_config.enabled:
         # The supervised comparison trains permanently on true-labeled samples
         # only.  Its loader never changes between epochs.
@@ -719,6 +722,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             diagnostics_tracker=pseudo_label_diagnostics,
             log_dir=args.log_dir,
         )
+        ssl_training_dataset_update_epoch = 0
         static_train_loader = utils.make_train_loader(
             train_dataset,
             args.batch_size,
@@ -849,6 +853,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     best_map = None
     selected_epoch = -1
     train_loader = None
+    loss_driven_train_loader = None
+    loss_driven_sampling_rebuild_epoch = None
     tqdm_bar = None
 
     try:
@@ -914,28 +920,38 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 # Warmup loader contains only ground-truth labeled examples.
                 train_loader = warmup_train_loader
             elif loss_driven_ssl:
-                sampling_embeddings = semi_supervised.extract_embeddings(
-                    model=model,
-                    dataset=dataset_bundle.train_dataset,
-                    positions=loss_driven_train_dataset.positions,
-                    device=args.device,
-                    batch_size=ssl_config.embedding_batch_size,
-                    num_workers=ssl_config.embedding_num_workers,
-                    seed=args.seed + num_epoch,
-                    start_method=args.dataloader_start_method,
-                    desc=f"STML sampling embeddings - epoch {num_epoch}",
-                    embedding_kind="stml_g",
-                )
-                train_loader = utils.make_stml_train_loader(
-                    train_dataset=loss_driven_train_dataset,
-                    sampling_embeddings=sampling_embeddings,
-                    batch_size=args.batch_size,
-                    neighbors_per_query=criterion.num_neighbors,
-                    seed=args.seed + num_epoch,
-                    num_workers=args.num_workers,
-                    start_method=args.dataloader_start_method,
-                    pin_memory=pin_memory,
-                )
+                if semi_supervised.should_rebuild_on_epoch(
+                    ssl_config.update_mode,
+                    ssl_config.update_interval_epochs,
+                    num_epoch,
+                    loss_driven_sampling_rebuild_epoch,
+                ):
+                    if loss_driven_train_loader is not None:
+                        utils.shutdown_dataloaders(loss_driven_train_loader)
+                    sampling_embeddings = semi_supervised.extract_embeddings(
+                        model=model,
+                        dataset=dataset_bundle.train_dataset,
+                        positions=loss_driven_train_dataset.positions,
+                        device=args.device,
+                        batch_size=ssl_config.embedding_batch_size,
+                        num_workers=ssl_config.embedding_num_workers,
+                        seed=args.seed + num_epoch,
+                        start_method=args.dataloader_start_method,
+                        desc=f"STML sampling embeddings - epoch {num_epoch}",
+                        embedding_kind="stml_g",
+                    )
+                    loss_driven_train_loader = utils.make_stml_train_loader(
+                        train_dataset=loss_driven_train_dataset,
+                        sampling_embeddings=sampling_embeddings,
+                        batch_size=args.batch_size,
+                        neighbors_per_query=criterion.num_neighbors,
+                        seed=args.seed + num_epoch,
+                        num_workers=args.num_workers,
+                        start_method=args.dataloader_start_method,
+                        pin_memory=pin_memory,
+                    )
+                    loss_driven_sampling_rebuild_epoch = num_epoch
+                train_loader = loss_driven_train_loader
             elif regularized_ssl:
                 train_loader = regularizer.make_loader(
                     model=model,
@@ -950,9 +966,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     epoch=num_epoch,
                     log_dir=args.log_dir,
                 )
-            elif ssl_config.update_mode == "every_epoch":
+            elif semi_supervised.should_rebuild_on_epoch(
+                ssl_config.update_mode,
+                ssl_config.update_interval_epochs,
+                num_epoch,
+                ssl_training_dataset_update_epoch,
+            ):
                 # Re-embed and pseudo-label with the latest model.  A new loader
                 # is required because accepted pseudo-labels may have changed.
+                if static_train_loader is not None:
+                    utils.shutdown_dataloaders(static_train_loader)
                 train_dataset = semi_supervised.build_ssl_training_dataset(
                     model=model,
                     train_dataset=dataset_bundle.train_dataset,
@@ -973,35 +996,17 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     length_before_new_iter=args.length_before_new_iter,
                     num_workers=args.num_workers,
                     start_method=args.dataloader_start_method,
-                    persistent_workers=False,
+                    persistent_workers=ssl_config.update_mode != "every_epoch",
                     pin_memory=pin_memory,
                 )
+                ssl_training_dataset_update_epoch = num_epoch
+                if ssl_config.update_mode == "every_epoch":
+                    static_train_loader = None
+                else:
+                    static_train_loader = train_loader
             else:
                 if static_train_loader is None:
-                    # This happens for update_mode="once" after a warmup: create
-                    # pseudo-labels at the first post-warmup epoch, then cache.
-                    train_dataset = semi_supervised.build_ssl_training_dataset(
-                        model=model,
-                        train_dataset=dataset_bundle.train_dataset,
-                        train_labels_mapper=train_labels_mapper,
-                        device=args.device,
-                        config=ssl_config,
-                        split=ssl_split,
-                        epoch=num_epoch,
-                        start_method=args.dataloader_start_method,
-                        diagnostics_tracker=pseudo_label_diagnostics,
-                        log_dir=args.log_dir,
-                    )
-                    static_train_loader = utils.make_train_loader(
-                        train_dataset,
-                        args.batch_size,
-                        args.sampler_m,
-                        seed=args.seed + num_epoch,
-                        length_before_new_iter=args.length_before_new_iter,
-                        num_workers=args.num_workers,
-                        start_method=args.dataloader_start_method,
-                        pin_memory=pin_memory,
-                    )
+                    raise RuntimeError("SSL training loader was not built before reuse")
                 train_loader = static_train_loader
 
             warmup_active = is_ssl_warmup_epoch(ssl_config, num_epoch)
@@ -1055,6 +1060,19 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 else:
                     supervised_batch, regularizer_batch = batch if regularization_active else (batch, None)
                     images, labels, sample_weights = unpack_training_batch(supervised_batch)
+                    if regularization_active and getattr(regularizer, "name", None) == "hoffer_entropy":
+                        hoffer_roles = torch.as_tensor(regularizer_batch[1])
+                        hoffer_reference_count = int(hoffer_roles.bool().sum().item())
+                        hoffer_unlabeled_count = int(hoffer_roles.numel() - hoffer_reference_count)
+                        logger.debug(
+                            "Hoffer combined training batch: "
+                            f"epoch={num_epoch}, "
+                            f"batch={batch_idx}, "
+                            f"supervised_labeled_count={len(labels)}, "
+                            f"regularizer_unlabeled_count={hoffer_unlabeled_count}, "
+                            f"regularizer_reference_count={hoffer_reference_count}, "
+                            f"regularizer_total_count={int(hoffer_roles.numel())}"
+                        )
 
                 t1 = _now(args.device) if timing else None
                 if timing:
@@ -1238,7 +1256,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     next_batch_wait_start = _now(args.device)
             tqdm_bar.close()
             tqdm_bar = None
-            shutdown_epoch_train_loader(train_loader, warmup_train_loader, static_train_loader)
+            shutdown_epoch_train_loader(
+                train_loader,
+                warmup_train_loader,
+                static_train_loader,
+                loss_driven_train_loader,
+            )
             gc.collect()
             if num_batches > 0:
                 # The epoch metric is an unweighted mean of batch loss values.
@@ -1371,10 +1394,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         # evaluation, or an Optuna pruning decision raises an exception.
         if tqdm_bar is not None:
             tqdm_bar.close()
-        shutdown_epoch_train_loader(train_loader, warmup_train_loader, static_train_loader)
+        shutdown_epoch_train_loader(
+            train_loader,
+            warmup_train_loader,
+            static_train_loader,
+            loss_driven_train_loader,
+        )
         utils.shutdown_dataloaders(
             train_loader,
             static_train_loader,
+            loss_driven_train_loader,
             warmup_train_loader,
             valid_loader,
             test_loader,
@@ -1976,6 +2005,7 @@ def make_supervised_split_config(ssl_config):
         {
             "method": "none",
             "update_mode": "once",
+            "update_interval_epochs": 1,
             "warmup_epochs": 0,
             "confidence_threshold": 0.0,
             "method_params": {},
