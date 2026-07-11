@@ -26,6 +26,7 @@ from experiment_reporting import (
     comparison_scenario_to_dict,
     make_comparison_deltas,
     make_final_epoch_plan,
+    write_cross_seed_train_val_evaluation_summary,
     write_comparison_grid_summary,
     write_comparison_summary,
     write_hparam_final_evaluation_summary,
@@ -329,6 +330,30 @@ def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenar
         "deltas": make_comparison_deltas(supervised_final, ssl_final),
     }
 
+def get_comparison_seed_targets(args):
+    """Return validated seed channels varied by each comparison seed."""
+
+    raw_targets = getattr(args, "comparison_seed_targets", None)
+    if raw_targets is None:
+        raw_targets = COMPARISON_SEED_TARGETS
+    if isinstance(raw_targets, str) or not raw_targets:
+        raise ValueError(
+            "comparison_seed_targets must contain one or more of "
+            f"{list(COMPARISON_SEED_TARGETS)}"
+        )
+    targets = list(raw_targets)
+    invalid_targets = sorted(set(targets) - set(COMPARISON_SEED_TARGETS))
+    if invalid_targets:
+        raise ValueError(
+            f"Unknown comparison_seed_targets {invalid_targets}; choose from {list(COMPARISON_SEED_TARGETS)}"
+        )
+    duplicate_targets = sorted({target for target in targets if targets.count(target) > 1})
+    if duplicate_targets:
+        raise ValueError(f"comparison_seed_targets contains duplicates: {duplicate_targets}")
+    target_set = set(targets)
+    return tuple(target for target in COMPARISON_SEED_TARGETS if target in target_set)
+
+
 def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_grid"):
     """Expand CLI grid dimensions into concrete, reproducible SSL configs."""
 
@@ -348,6 +373,7 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
         comparison_seeds = [None]
     elif not comparison_seeds:
         raise ValueError("--comparison_seeds must include at least one value when provided")
+    comparison_seed_targets = get_comparison_seed_targets(args)
 
     label_sampling_modes = get_effective_label_sampling_modes(args, base_ssl_config)
     validate_k_shot_grid_usage(args, label_sampling_modes)
@@ -384,15 +410,39 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                         if comparison_seed is None:
                             scenario_seed = int(base_ssl_config.seed)
                             run_seed = None
+                            scenario_ssl_seed = int(base_ssl_config.seed)
                             data_split_seed = int(getattr(args, "data_split_seed", DEFAULT_DATA_SPLIT_SEED))
                             support_seed = int(base_ssl_config.support_seed)
                             hparam_seed = int(get_hparam_seed(args))
+                            applied_seed_targets = ()
                         else:
                             scenario_seed = int(comparison_seed)
-                            run_seed = scenario_seed
-                            data_split_seed = int(comparison_seed)
-                            support_seed = int(comparison_seed)
-                            hparam_seed = int(comparison_seed)
+                            run_seed = (
+                                scenario_seed
+                                if COMPARISON_SEED_TARGET_RUNTIME in comparison_seed_targets
+                                else None
+                            )
+                            scenario_ssl_seed = (
+                                scenario_seed
+                                if COMPARISON_SEED_TARGET_RUNTIME in comparison_seed_targets
+                                else int(base_ssl_config.seed)
+                            )
+                            data_split_seed = (
+                                scenario_seed
+                                if COMPARISON_SEED_TARGET_DATA_SPLIT in comparison_seed_targets
+                                else int(getattr(args, "data_split_seed", DEFAULT_DATA_SPLIT_SEED))
+                            )
+                            support_seed = (
+                                scenario_seed
+                                if COMPARISON_SEED_TARGET_SUPPORT in comparison_seed_targets
+                                else int(base_ssl_config.support_seed)
+                            )
+                            hparam_seed = (
+                                scenario_seed
+                                if COMPARISON_SEED_TARGET_HPARAM in comparison_seed_targets
+                                else int(get_hparam_seed(args))
+                            )
+                            applied_seed_targets = comparison_seed_targets
                         # dataclasses.replace creates a new immutable config,
                         # leaving the shared base config untouched.
                         scenario_ssl_config = replace(
@@ -400,7 +450,7 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                             label_sampling_mode=label_sampling_mode,
                             labeled_fraction=float(labeled_fraction),
                             labeled_per_class=scenario_labeled_per_class,
-                            seed=scenario_seed,
+                            seed=scenario_ssl_seed,
                             support_seed=support_seed,
                         )
                         semi_supervised.validate_ssl_config(scenario_ssl_config)
@@ -437,6 +487,7 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                                 data_split_seed=data_split_seed,
                                 support_seed=scenario_ssl_config.support_seed,
                                 hparam_seed=hparam_seed,
+                                comparison_seed_targets=applied_seed_targets,
                             )
                         )
     return scenarios
@@ -589,6 +640,12 @@ def make_frozen_hparam_group_name(scenario, reference_seed, support_seed=None):
     ]
     if support_seed is not None and int(reference_seed) != int(support_seed):
         parts.extend(["run_seed", str(int(reference_seed))])
+    for name, value in (
+        ("data_split_seed", scenario.data_split_seed),
+        ("hparam_seed", scenario.hparam_seed),
+    ):
+        if value is not None and int(value) != int(tune_seed):
+            parts.extend([name, str(int(value))])
     return "_".join(parts)
 
 def scenario_group_key(scenario):
@@ -904,6 +961,11 @@ def run_final_from_study_dir_request(request_args):
     request_override_names = set(getattr(base_args, "final_study_request_overrides", []))
     if request_override_names & FINAL_STUDY_DIR_REPOSITORY_OVERRIDE_ARGS:
         validate_final_study_hparam_repository(hparam_config, study_result)
+    if (
+        get_study_dir_mode(base_args) == STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL
+        and "comparison_seeds" not in request_override_names
+    ):
+        raise ValueError("study_dir_mode='cross_seed_train_val' requires comparison_seeds in the replay request")
     if has_final_study_dir_replay_grid(request_override_names):
         reset_unrequested_final_study_grid_args(base_args, request_override_names)
         return run_final_study_dir_grid(base_args, hparam_config, study_result)
@@ -919,6 +981,11 @@ def copy_final_test_request_args(source_args, target_args):
     """Apply current-request overrides to args loaded from a study directory."""
 
     override_names = get_final_study_request_override_names(source_args)
+    if "loss_miner_grid" in override_names:
+        logger.warning(
+            "Ignoring loss_miner_grid for study-directory replay: one study directory represents one "
+            "method's trials. Run the replay once for each method's own study directory."
+        )
     for name in sorted(override_names - FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES):
         if hasattr(source_args, name):
             setattr(target_args, name, copy.deepcopy(getattr(source_args, name)))
@@ -966,6 +1033,14 @@ def run_final_study_dir_grid(base_args, hparam_config, study_result):
         default_support_seed=get_support_seed(base_args),
     )
     scenarios = make_comparison_scenarios(base_args, base_ssl_config, grid_dir_name="study_replay_grid")
+    if get_study_dir_mode(base_args) == STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL:
+        return run_cross_seed_train_val_study_dir_grid(
+            base_args,
+            hparam_config,
+            study_result,
+            base_ssl_config,
+            scenarios,
+        )
 
     grid_results = []
     summary_prefix = get_study_dir_summary_stem(base_args)
@@ -991,6 +1066,265 @@ def run_final_study_dir_grid(base_args, hparam_config, study_result):
     write_single_method_grid_summary(Path("logs") / base_args.save_dir / "study_replay_grid", grid_results)
     return grid_results
 
+
+def run_cross_seed_train_val_study_dir_grid(
+    base_args,
+    hparam_config,
+    study_result,
+    base_ssl_config,
+    scenarios,
+):
+    """Select HPO params by mean validation performance across seed scenarios."""
+
+    scenario_groups = group_cross_seed_validation_scenarios(scenarios)
+    selected_trials = select_hparam_trials_for_cross_seed_replay(
+        base_args,
+        hparam_config,
+        study_result,
+        role=getattr(base_args, "mode", None),
+    )
+    output_dir = Path("logs") / base_args.save_dir / "study_replay_grid"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    group_results = []
+    for scenario_group in scenario_groups:
+        reference_scenario = scenario_group[0]
+        role = getattr(base_args, "mode", None) or "model"
+        group_name = make_cross_seed_validation_group_name(reference_scenario, role)
+        selection_metric = getattr(base_args, "selection_metric", SELECTION_METRIC_MAP_AT_R)
+        candidate_records = []
+        best_candidate = None
+        for trial in selected_trials:
+            trial_study_result = make_study_result_for_completed_trial(study_result, trial)
+            validation_results = []
+            validation_metadata = []
+            validation_runs = []
+            for scenario in scenario_group:
+                scenario_args = make_args_for_scenario(base_args, scenario)
+                summary_stem = (
+                    f"cross_seed_train_val_{group_name}_trial_{int(trial['trial_number']):04d}_"
+                    f"comparison_seed_{int(scenario.seed)}"
+                )
+                validation_result = run_single_train_val_from_hparam(
+                    scenario_args,
+                    hparam_config,
+                    trial_study_result,
+                    role,
+                    summary_stem=summary_stem,
+                )
+                validation_results.append(validation_result)
+                metadata = {
+                    "scenario": scenario.name,
+                    "comparison_seed": int(scenario.seed),
+                    "comparison_seed_targets": list(scenario.comparison_seed_targets),
+                    "run_seed": scenario.run_seed,
+                    "data_split_seed": scenario.data_split_seed,
+                    "support_seed": scenario.support_seed,
+                    "hparam_seed": scenario.hparam_seed,
+                }
+                validation_metadata.append(metadata)
+                validation_runs.append(
+                    {
+                        **metadata,
+                        "selection_value": float(
+                            get_selection_metric_value(
+                                selection_metric,
+                                validation_result.best_valid_precision_at_1,
+                                validation_result.best_valid_mean_average_precision_at_r,
+                            )
+                        ),
+                        "result": result_to_dict(validation_result),
+                    }
+                )
+
+            selected_study_result = make_validation_selected_study_result(
+                study_result,
+                trial,
+                validation_results,
+                selection_metric,
+                validation_result_metadata=validation_metadata,
+            )
+            attrs = selected_study_result.best_user_attrs or {}
+            candidate = {
+                "trial": trial,
+                "validation_runs": validation_runs,
+                "mean_best_valid_precision_at_1": attrs["best_valid_precision_at_1"],
+                "mean_best_valid_mean_average_precision_at_r": attrs[
+                    "best_valid_mean_average_precision_at_r"
+                ],
+                "selection_metric": selection_metric,
+                "mean_selection_value": attrs["mean_validation_selection_value"],
+                "selected_for_final": False,
+                "selected_study_result": selected_study_result,
+            }
+            candidate_records.append(candidate)
+            if (
+                best_candidate is None
+                or candidate["mean_selection_value"] > best_candidate["mean_selection_value"]
+                or (
+                    candidate["mean_selection_value"] == best_candidate["mean_selection_value"]
+                    and int(trial["trial_number"]) < int(best_candidate["trial"]["trial_number"])
+                )
+            ):
+                best_candidate = candidate
+
+        if best_candidate is None:
+            raise ValueError("No cross-seed train/validation candidate is available for final retraining")
+
+        best_candidate["selected_for_final"] = True
+        selected_study_result = best_candidate.pop("selected_study_result")
+        for candidate in candidate_records:
+            candidate.pop("selected_study_result", None)
+        final_args = make_cross_seed_final_args(
+            base_args,
+            base_ssl_config,
+            reference_scenario,
+            group_name,
+            scenario_group,
+        )
+        final_summary_stem = f"cross_seed_train_val_{group_name}_final"
+        epoch_plan = make_final_epoch_plan(selected_study_result)
+        logger.info(
+            "cross_seed_train_val selected trial "
+            f"{best_candidate['trial']['trial_number']} for {group_name}: "
+            f"mean {selection_metric}={best_candidate['mean_selection_value']:.6f} across "
+            f"{len(scenario_group)} validation seeds; final epochs={epoch_plan['final_training_epochs']}"
+        )
+        final_result = run_single_final_from_hparam(
+            final_args,
+            hparam_config,
+            selected_study_result,
+            role,
+            summary_stem=final_summary_stem,
+        )
+        summary_paths = write_cross_seed_train_val_evaluation_summary(
+            output_dir=output_dir,
+            summary_stem=f"cross_seed_train_val_{group_name}",
+            role=role,
+            study_result=study_result,
+            scenarios=scenario_group,
+            selection_metric=selection_metric,
+            candidates=candidate_records,
+            winner=best_candidate,
+            epoch_plan=epoch_plan,
+            final_result=final_result,
+        )
+        group_results.append(
+            {
+                "method": role,
+                "group_name": group_name,
+                "scenarios": scenario_group,
+                "study": selected_study_result,
+                "candidates": candidate_records,
+                "winner": best_candidate,
+                "result": final_result,
+                "summary_paths": summary_paths,
+            }
+        )
+    return group_results
+
+
+def group_cross_seed_validation_scenarios(scenarios):
+    groups = {}
+    ordered_keys = []
+    for scenario in scenarios:
+        key = (
+            scenario.label_sampling_mode,
+            scenario.labeled_fraction,
+            scenario.labeled_per_class,
+            scenario.loss,
+            scenario.miner,
+        )
+        if key not in groups:
+            groups[key] = []
+            ordered_keys.append(key)
+        groups[key].append(scenario)
+    grouped_scenarios = [groups[key] for key in ordered_keys]
+    for group in grouped_scenarios:
+        comparison_seeds = {int(scenario.seed) for scenario in group}
+        if len(comparison_seeds) < 2:
+            raise ValueError(
+                "study_dir_mode='cross_seed_train_val' requires at least two distinct comparison_seeds "
+                "for every non-seed scenario"
+            )
+        replay_targets = set().union(*(set(scenario.comparison_seed_targets) for scenario in group))
+        if not replay_targets & {
+            COMPARISON_SEED_TARGET_RUNTIME,
+            COMPARISON_SEED_TARGET_DATA_SPLIT,
+            COMPARISON_SEED_TARGET_SUPPORT,
+        }:
+            raise ValueError(
+                "cross_seed_train_val comparison_seed_targets must include seed, data_split_seed, "
+                "or support_seed; hparam_seed alone does not change fixed-parameter validation replays"
+            )
+    return grouped_scenarios
+
+
+def select_hparam_trials_for_cross_seed_replay(base_args, hparam_config, study_result, role):
+    completed_trials = get_completed_hparam_trials(study_result, role)
+    trial_numbers = get_final_test_trial_numbers(base_args)
+    if trial_numbers is not None:
+        trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
+        missing_trials = [number for number in trial_numbers if number not in trials_by_number]
+        if missing_trials:
+            raise ValueError(
+                f"Selected cross-seed trial(s) are not completed: {missing_trials}. "
+                f"Available completed trial numbers: {sorted(trials_by_number)}"
+            )
+        return [trials_by_number[number] for number in trial_numbers]
+
+    top_n = get_final_test_top_n(base_args)
+    maximize = getattr(hparam_config, "direction", "maximize") == "maximize"
+    completed_trials = sorted(
+        completed_trials,
+        key=lambda trial: (
+            -float(trial["value"]) if maximize else float(trial["value"]),
+            int(trial["trial_number"]),
+        ),
+    )
+    selected_trials = completed_trials[:top_n]
+    if len(selected_trials) < top_n:
+        logger.warning(
+            f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
+        )
+    return selected_trials
+
+
+def make_cross_seed_validation_group_name(scenario, role):
+    label_part = make_label_budget_name(
+        scenario.label_sampling_mode,
+        scenario.labeled_fraction,
+        scenario.labeled_per_class,
+    )
+    return "_".join(
+        [scenario.label_sampling_mode, label_part, scenario.loss, scenario.miner, role, "cross_seed"]
+    )
+
+
+def make_cross_seed_final_args(base_args, base_ssl_config, scenario, group_name, scenario_group):
+    """Build a baseline-seeded full-development run for a cross-seed winner."""
+
+    final_args = copy.deepcopy(base_args)
+    final_args.loss = scenario.loss
+    final_args.miner = scenario.miner
+    final_args.comparison_seeds = None
+    final_args.cross_seed_validation_seeds = [int(item.seed) for item in scenario_group]
+    final_args.save_dir = Path(base_args.save_dir) / "cross_seed_train_val" / group_name
+    final_ssl_config = replace(
+        base_ssl_config,
+        label_sampling_mode=scenario.label_sampling_mode,
+        labeled_fraction=float(scenario.labeled_fraction),
+        labeled_per_class=scenario.labeled_per_class,
+    )
+    semi_supervised.validate_ssl_config(final_ssl_config)
+    config_dir = Path("logs") / base_args.save_dir / "study_replay_grid" / "ssl_configs"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / f"{group_name}_final.json"
+    write_json(config_path, final_ssl_config.to_dict())
+    final_args.ssl_config = config_path
+    final_args.support_seed = final_ssl_config.support_seed
+    return final_args
+
+
 def run_study_dir_hparam_evaluation(base_args, hparam_config, study_result, role, summary_stem=None):
     """Replay selected HPO params from a study in the requested study-dir mode."""
 
@@ -1013,6 +1347,8 @@ def run_study_dir_hparam_evaluation(base_args, hparam_config, study_result, role
             role=role,
             summary_stem=summary_stem,
         )
+    if study_dir_mode == STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL:
+        raise ValueError("study_dir_mode='cross_seed_train_val' requires a comparison_seeds replay grid")
     raise ValueError(f"study_dir_mode must be one of {STUDY_DIR_MODES}: {study_dir_mode}")
 
 def get_study_dir_mode(args):
@@ -1021,6 +1357,8 @@ def get_study_dir_mode(args):
 def get_study_dir_summary_stem(args):
     if get_study_dir_mode(args) == STUDY_DIR_MODE_TRAIN_VAL:
         return "train_val_evaluation"
+    if get_study_dir_mode(args) == STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL:
+        return "cross_seed_train_val_evaluation"
     return "final_evaluation"
 
 def validate_final_study_hparam_repository(hparam_config, study_result):
@@ -1217,7 +1555,7 @@ def run_final_from_best_hparam(base_args, hparam_config, study_result, role, sum
     )
 
 def run_train_val_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="train_val_evaluation"):
-    """Run selected HPO configuration(s) as normal train/validation jobs."""
+    """Run selected HPO configuration(s) with validation selection and final testing."""
 
     trial_numbers = get_final_test_trial_numbers(base_args)
     if trial_numbers is not None:
@@ -1241,13 +1579,20 @@ def run_train_val_from_best_hparam(base_args, hparam_config, study_result, role,
             summary_stem=summary_stem,
         )
 
-    return run_single_train_val_from_hparam(
+    best_trial = {
+        "trial_number": study_result.best_trial_number,
+        "value": study_result.best_value,
+        "params": study_result.best_params,
+        "user_attrs": study_result.best_user_attrs or {},
+    }
+    _, final_result = run_train_val_candidates(
         base_args,
         hparam_config,
         study_result,
         role,
-        summary_stem=summary_stem,
+        [(best_trial, summary_stem)],
     )
+    return final_result
 
 def get_completed_hparam_trials(study_result, role):
     completed_trials = list(getattr(study_result, "completed_trials", None) or [])
@@ -1272,7 +1617,7 @@ def run_train_val_from_selected_hparams(
     trial_numbers,
     summary_stem="train_val_evaluation",
 ):
-    """Run normal train/validation evaluation for explicitly selected completed HPO trials."""
+    """Rank selected trials on validation and fully retrain/test the winner."""
 
     completed_trials = get_completed_hparam_trials(study_result, role)
     trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
@@ -1284,24 +1629,19 @@ def run_train_val_from_selected_hparams(
             f"{missing_trials}. Available completed trial numbers: {available_trials}"
         )
 
-    evaluated = []
+    selected_trials = []
     for trial_number in trial_numbers:
         trial = trials_by_number[int(trial_number)]
         trial_summary_stem = f"{summary_stem}_trial_{int(trial_number):04d}"
-        final_result = run_single_train_val_from_hparam(
-            base_args,
-            hparam_config,
-            make_study_result_for_completed_trial(study_result, trial),
-            role,
-            summary_stem=trial_summary_stem,
-        )
-        evaluated.append(
-            {
-                "trial": trial,
-                "summary_stem": trial_summary_stem,
-                "final_result": final_result,
-            }
-        )
+        selected_trials.append((trial, trial_summary_stem))
+
+    evaluated, best_result = run_train_val_candidates(
+        base_args,
+        hparam_config,
+        study_result,
+        role,
+        selected_trials,
+    )
 
     write_hparam_selected_final_evaluation_summary(
         study_result=study_result,
@@ -1310,15 +1650,19 @@ def run_train_val_from_selected_hparams(
         trial_numbers=trial_numbers,
         summary_stem=summary_stem,
     )
-    return evaluated[0]["final_result"]
+    return best_result
 
 def run_train_val_from_top_hparams(base_args, hparam_config, study_result, role, top_n, summary_stem="train_val_evaluation"):
-    """Run normal train/validation evaluation for the top-N completed HPO trials."""
+    """Rank the top-N trials on validation and fully retrain/test the winner."""
 
     completed_trials = get_completed_hparam_trials(study_result, role)
+    maximize = getattr(hparam_config, "direction", "maximize") == "maximize"
     completed_trials = sorted(
         completed_trials,
-        key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])),
+        key=lambda trial: (
+            -float(trial["value"]) if maximize else float(trial["value"]),
+            int(trial["trial_number"]),
+        ),
     )
     selected_trials = completed_trials[:top_n]
     if len(selected_trials) < top_n:
@@ -1326,25 +1670,19 @@ def run_train_val_from_top_hparams(base_args, hparam_config, study_result, role,
             f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
         )
 
-    evaluated = []
+    trials_with_summary_stems = []
     for trial_index, trial in enumerate(selected_trials):
-        trial_study_result = make_study_result_for_completed_trial(study_result, trial)
         trial_number = trial["trial_number"]
         trial_summary_stem = summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial_number:04d}"
-        final_result = run_single_train_val_from_hparam(
-            base_args,
-            hparam_config,
-            trial_study_result,
-            role,
-            summary_stem=trial_summary_stem,
-        )
-        evaluated.append(
-            {
-                "trial": trial,
-                "summary_stem": trial_summary_stem,
-                "final_result": final_result,
-            }
-        )
+        trials_with_summary_stems.append((trial, trial_summary_stem))
+
+    evaluated, best_result = run_train_val_candidates(
+        base_args,
+        hparam_config,
+        study_result,
+        role,
+        trials_with_summary_stems,
+    )
 
     write_hparam_top_final_evaluation_summary(
         study_result=study_result,
@@ -1353,7 +1691,133 @@ def run_train_val_from_top_hparams(base_args, hparam_config, study_result, role,
         requested_top_n=top_n,
         summary_stem=summary_stem,
     )
-    return evaluated[0]["final_result"]
+    return best_result
+
+
+def run_train_val_candidates(base_args, hparam_config, study_result, role, trials_with_summary_stems):
+    """Rank candidates on validation, then fully retrain/test only the winner."""
+
+    evaluated = []
+    best_item = None
+    best_value = None
+    selection_metric = getattr(base_args, "selection_metric", SELECTION_METRIC_MAP_AT_R)
+    for trial, trial_summary_stem in trials_with_summary_stems:
+        trial_study_result = make_study_result_for_completed_trial(study_result, trial)
+        train_result = run_single_train_val_from_hparam(
+            base_args,
+            hparam_config,
+            trial_study_result,
+            role,
+            summary_stem=trial_summary_stem,
+        )
+        candidate_value = get_selection_metric_value(
+            selection_metric,
+            train_result.best_valid_precision_at_1,
+            train_result.best_valid_mean_average_precision_at_r,
+        )
+        if candidate_value is None or not math.isfinite(float(candidate_value)):
+            raise ValueError(
+                f"Trial {trial['trial_number']} has no finite {selection_metric} validation result"
+            )
+        item = {
+            "trial": trial,
+            "summary_stem": trial_summary_stem,
+            "final_result": train_result,
+            "validation_result": train_result,
+            "selected_for_test": False,
+            "validation_selection_metric": selection_metric,
+            "validation_selection_value": float(candidate_value),
+        }
+        evaluated.append(item)
+        if best_value is None or candidate_value > best_value:
+            best_value = candidate_value
+            best_item = item
+
+    if best_item is None:
+        raise ValueError("No train_val candidate is available for final retraining")
+
+    selected_study_result = make_validation_selected_study_result(
+        study_result,
+        best_item["trial"],
+        [best_item["validation_result"]],
+        selection_metric,
+    )
+    logger.info(
+        "train_val selected trial "
+        f"{best_item['trial']['trial_number']} for full retraining using "
+        f"{selection_metric}={best_value:.6f}"
+    )
+    final_result = run_single_final_from_hparam(
+        base_args,
+        hparam_config,
+        selected_study_result,
+        role,
+        summary_stem=f"{best_item['summary_stem']}_final",
+    )
+    best_item["final_result"] = final_result
+    best_item["selected_for_test"] = True
+    return evaluated, final_result
+
+
+def make_validation_selected_study_result(
+    study_result,
+    trial,
+    validation_results,
+    selection_metric,
+    validation_result_metadata=None,
+):
+    """Attach replay validation evidence to a trial for final epoch planning."""
+
+    if not validation_results:
+        raise ValueError("At least one validation result is required for final epoch planning")
+    validation_result_metadata = validation_result_metadata or [{} for _ in validation_results]
+    if len(validation_result_metadata) != len(validation_results):
+        raise ValueError("validation_result_metadata must match validation_results")
+    serialized_results = []
+    for result, metadata in zip(validation_results, validation_result_metadata):
+        serialized_result = result_to_dict(result)
+        serialized_result.update(metadata)
+        serialized_results.append(serialized_result)
+    mean_precision = float(
+        sum(result.best_valid_precision_at_1 for result in validation_results) / len(validation_results)
+    )
+    mean_map = float(
+        sum(result.best_valid_mean_average_precision_at_r for result in validation_results)
+        / len(validation_results)
+    )
+    selection_values = [
+        get_selection_metric_value(
+            selection_metric,
+            result.best_valid_precision_at_1,
+            result.best_valid_mean_average_precision_at_r,
+        )
+        for result in validation_results
+    ]
+    if any(value is None or not math.isfinite(float(value)) for value in selection_values):
+        raise ValueError(f"Validation results must contain finite {selection_metric} values")
+    mean_selection_value = float(sum(selection_values) / len(selection_values))
+    best_user_attrs = dict(trial.get("user_attrs") or {})
+    best_user_attrs.update(
+        {
+            "best_valid_precision_at_1": mean_precision,
+            "best_valid_mean_average_precision_at_r": mean_map,
+            "validation_selection_metric": selection_metric,
+            "mean_validation_selection_value": mean_selection_value,
+            "validation_replay_results": serialized_results,
+            "validation_replay_source": (
+                "cross_seed_validation_replays"
+                if len(validation_results) > 1
+                else "single_validation_replay"
+            ),
+        }
+    )
+    return replace(
+        study_result,
+        best_trial_number=trial["trial_number"],
+        best_value=trial["value"],
+        best_params=trial["params"],
+        best_user_attrs=best_user_attrs,
+    )
 
 def run_final_from_selected_hparams(
     base_args,
@@ -1486,8 +1950,14 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
     write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
     return final_result
 
-def run_single_train_val_from_hparam(base_args, hparam_config, study_result, role, summary_stem="train_val_evaluation"):
-    """Train one HPO configuration with the normal train/validation split and no test evaluation."""
+def run_single_train_val_from_hparam(
+    base_args,
+    hparam_config,
+    study_result,
+    role,
+    summary_stem="train_val_evaluation",
+):
+    """Train one HPO configuration with validation and without touching D_test."""
 
     role = role or "model"
     if study_result.best_params is None:
@@ -1502,7 +1972,6 @@ def run_single_train_val_from_hparam(base_args, hparam_config, study_result, rol
     train_args.cv_k = 1
     train_args.evaluate_test = False
     train_args.skip_test_during_hpo = True
-    train_args.final_test_visualization = FINAL_TEST_VISUALIZATION_NONE
     train_args.save_dir = Path(base_args.save_dir) / "train_val" / role
 
     train_result = run_experiment(train_args, train_ssl_config)

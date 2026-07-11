@@ -113,8 +113,6 @@ def mixed_label_propagation(
     cg_max_iter=1000,
     edge_batch_size=65536,
     linear_solver="auto",
-    confidence_projection="clip",
-    confidence_temperature=None,
     graph_diagnostics=None,
     _dependencies=None,
 ):
@@ -211,31 +209,22 @@ def mixed_label_propagation(
         "normalize_mixed_label_rows",
         normalize_mixed_label_rows,
     )(mixed_labels)
-    # None reuses the propagation temperature (the paper's lambda) so the softmax
-    # projection shares the edge-confidence scale by default.
-    resolved_confidence_temperature = (
-        float(temperature) if confidence_temperature is None else float(confidence_temperature)
-    )
-    confidence_probabilities = _dependency(
-        _dependencies,
-        "mixed_label_confidence_probabilities",
-        mixed_label_confidence_probabilities,
-    )(
-        normalized_scores,
-        projection=str(confidence_projection),
-        temperature=resolved_confidence_temperature,
-    )
+    # Section 3.3 applies Eq. (21) directly to G*_i / ||G*_i||_1.  The
+    # temperature-scaled softmax in Eq. (20) is only for the earlier
+    # leave-one-edge scores used to construct dissimilarity weights.
     confidences = _dependency(
         _dependencies,
         "entropy_confidence",
         entropy_confidence,
-    )(confidence_probabilities)
+    )(normalized_scores)
     return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
 
-def build_lrml_knn_graph(embeddings, n_neighbors, normalize):
+def build_lrml_knn_graph(embeddings, n_neighbors):
     """Build the paper's binary symmetric kNN graph (the W_ij definition) with FAISS.
 
+    Embeddings are expected to have been normalized by the model invoked through
+    the shared forward path.
     Returns the directed kNN matrix (used only to co-locate neighbors in a batch),
     the symmetric binary adjacency W as a CSR matrix, and the degrees D_ii = sum_j W_ij.
     """
@@ -245,11 +234,7 @@ def build_lrml_knn_graph(embeddings, n_neighbors, normalize):
     except ImportError as exc:
         raise ImportError("lrml regularization requires the faiss-cpu package") from exc
 
-    features = np.ascontiguousarray(embeddings, dtype=np.float32).copy()
-    if normalize:
-        # On L2-normalized vectors the inner-product ranking matches the Euclidean
-        # nearest-neighbor ordering the paper uses to define N(x).
-        faiss.normalize_L2(features)
+    features = np.ascontiguousarray(embeddings, dtype=np.float32)
     num_nodes = len(features)
     k = min(int(n_neighbors), num_nodes - 1)
     if k <= 0:
@@ -293,14 +278,14 @@ def build_lrml_knn_graph(embeddings, n_neighbors, normalize):
     return neighbor_indices, symmetric, degrees
 
 
-def make_slrmml_graph_labels(train_dataset, graph_positions, labeled_positions):
-    """Return graph-node labels with unlabeled nodes masked as unknown."""
+def make_slrml_graph_labels(train_dataset, graph_positions, labeled_positions):
+    """Return SLRML graph-node labels with unlabeled nodes masked as unknown."""
 
     dataset_labels = np.asarray(train_dataset.labels, dtype=np.int64)
     graph_positions = np.asarray(graph_positions, dtype=np.int64)
     labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
     if len(dataset_labels) < len(train_dataset):
-        raise ValueError("SLRMML requires train_dataset.labels to align with train_dataset")
+        raise ValueError("SLRML requires train_dataset.labels to align with train_dataset")
     graph_labels = np.full(len(graph_positions), UNLABELED_TARGET, dtype=np.int64)
     if len(labeled_positions) == 0:
         return graph_labels
@@ -314,8 +299,8 @@ def make_slrmml_graph_labels(train_dataset, graph_positions, labeled_positions):
     return graph_labels
 
 
-def build_slrmml_supervised_graph(labels):
-    """Build SLRMML's supervised same-class adjacency W^l.
+def build_slrml_supervised_graph(labels):
+    """Build SLRML's supervised same-class adjacency W^l.
 
     Labels equal to ``UNLABELED_TARGET`` are treated as unknown and receive no
     supervised edges.  ``N_S`` is the number of unordered positive pairs among
@@ -324,7 +309,7 @@ def build_slrmml_supervised_graph(labels):
 
     labels = np.asarray(labels, dtype=np.int64)
     if labels.ndim != 1:
-        raise ValueError("slrmml labels must be a vector")
+        raise ValueError("slrml labels must be a vector")
 
     row_parts = []
     col_parts = []
@@ -357,29 +342,43 @@ def build_slrmml_supervised_graph(labels):
     return supervised, positive_pair_count
 
 
-def build_slrmml_semisupervised_graph(embeddings, labels, n_neighbors, normalize):
-    """Build SLRMML's W^s = W^u + W^l graph for one modality."""
+def build_slrml_graph(
+    embeddings,
+    n_neighbors,
+    labels=None,
+    include_supervised_graph=False,
+):
+    """Build the single-stream SLRML graph.
+
+    The default is the requested label-free regularizer ``W^u``.  Setting
+    ``include_supervised_graph`` explicitly adds the paper's same-class
+    labeled component, producing ``W^s = W^u + W^l``.
+    """
 
     neighbor_indices, unsupervised, _ = build_lrml_knn_graph(
         embeddings=embeddings,
         n_neighbors=n_neighbors,
-        normalize=normalize,
     )
     actual_neighbors = int(neighbor_indices.shape[1])
     if actual_neighbors <= 0:
-        raise ValueError("slrmml graph needs at least one neighbor per sample")
+        raise ValueError("slrml graph needs at least one neighbor per sample")
     unsupervised = unsupervised.copy().tocsr()
     unsupervised.data[:] = 1.0 / float(actual_neighbors)
 
-    supervised, positive_pair_count = build_slrmml_supervised_graph(labels)
-    if supervised.shape != unsupervised.shape:
-        raise ValueError("slrmml labels must be aligned with embeddings")
+    graph = unsupervised
+    positive_pair_count = 0
+    if include_supervised_graph:
+        if labels is None:
+            raise ValueError("slrml include_supervised_graph requires graph labels")
+        supervised, positive_pair_count = build_slrml_supervised_graph(labels)
+        if supervised.shape != unsupervised.shape:
+            raise ValueError("slrml labels must be aligned with embeddings")
+        graph = (unsupervised + supervised).tocsr()
 
-    semisupervised = (unsupervised + supervised).tocsr()
-    semisupervised.setdiag(0)
-    semisupervised.eliminate_zeros()
-    degrees = np.asarray(semisupervised.sum(axis=1), dtype=np.float64).ravel()
-    return neighbor_indices, semisupervised, degrees, positive_pair_count
+    graph.setdiag(0)
+    graph.eliminate_zeros()
+    degrees = np.asarray(graph.sum(axis=1), dtype=np.float64).ravel()
+    return neighbor_indices, graph, degrees, positive_pair_count
 
 
 def induced_subgraph_edges(adjacency, node_ids):
@@ -514,10 +513,11 @@ def solve_sparse_label_system(
 
     if linear_solver in ("auto", "cholmod"):
         try:
-            from sksparse.cholmod import cholesky
-
-            factor = cholesky(matrix.tocsc())
-            return factor(right_hand_side)
+            return solve_sparse_label_system_cholmod(
+                matrix,
+                right_hand_side,
+                name=name,
+            )
         except ImportError:
             if linear_solver == "cholmod":
                 raise ImportError(f"{name}: linear_solver='cholmod' requires scikit-sparse")
@@ -576,6 +576,23 @@ def solve_sparse_label_system(
     )
 
 
+def solve_sparse_label_system_cholmod(
+    matrix,
+    right_hand_side,
+    name,
+    cholmod_module=None,
+):
+    """Factor once with CHOLMOD and solve all class columns together."""
+
+    if cholmod_module is None:
+        from sksparse import cholmod as cholmod_module
+    try:
+        factor = cholmod_module.cholesky(matrix.tocsc())
+        return factor(np.asarray(right_hand_side, dtype=np.float64))
+    except ImportError as exc:
+        raise ImportError(f"{name}: linear_solver='cholmod' requires scikit-sparse") from exc
+
+
 def stable_softmax(values):
     shifted = values - np.max(values, axis=1, keepdims=True)
     exponentials = np.exp(shifted)
@@ -617,74 +634,6 @@ def normalize_mixed_label_rows(values):
             f"as specified by the paper: {zero_rows[:10].tolist()}"
         )
     return values / l1_norms
-
-
-def mixed_label_confidence_probabilities(normalized_scores, projection="softmax", temperature=4.0):
-    """Project the signed, L1-normalized mixed-LP scores to a simplex for Eq. (21).
-
-    Mixed LP produces *signed* G* because the dissimilarity term makes the system
-    matrix non-M-matrix, so G~ = G*/||G*||_1 is not a probability vector and the
-    paper's confidence omega = 1 - H(G~)/log C is undefined on it. The paper itself
-    computes its other confidence (the edge weights, Eqs. 20-21) on a *softmax*,
-    which is always a valid distribution, so we mirror that here.
-
-    projection:
-      - "softmax" (default): p_i = softmax(temperature * G~_i). A strong negative
-        score lowers a class's probability rather than being erased, and because
-        G~ is L1-normalized the input scale is fixed, so one temperature is
-        comparable across rows and epochs.
-      - "clip" (legacy, ablation only): clip negatives to zero then renormalize.
-        This manufactures over-confidence -- e.g. [0.6, -0.5, -0.1] collapses to
-        [1, 0, 0], yielding omega = 1 on a row the propagation was conflicted on.
-    """
-
-    normalized_scores = np.asarray(normalized_scores, dtype=np.float64)
-    if normalized_scores.ndim != 2:
-        raise ValueError("normalized_scores must be a matrix")
-    if normalized_scores.shape[1] <= 1:
-        return np.ones_like(normalized_scores, dtype=np.float64)
-    if not np.all(np.isfinite(normalized_scores)):
-        raise RuntimeError("Mixed label propagation produced non-finite normalized class scores")
-
-    if projection == "softmax":
-        tau = float(temperature)
-        if not np.isfinite(tau) or tau <= 0:
-            raise ValueError("confidence temperature must be finite and positive")
-        return stable_softmax(tau * normalized_scores)
-    if projection == "clip":
-        return _clip_negative_confidence_probabilities(normalized_scores)
-    raise ValueError(f"Unknown confidence projection: {projection!r} (expected 'softmax' or 'clip')")
-
-
-def _clip_negative_confidence_probabilities(normalized_scores):
-    """Legacy projection: clip negative mass to zero, then renormalize per row."""
-
-    negative = normalized_scores < 0
-    if np.any(negative):
-        negative_rows = np.flatnonzero(np.any(negative, axis=1))
-        logger.warning(
-            "Mixed label propagation produced signed normalized class scores for "
-            f"{len(negative_rows)} rows; clipping negative mass before entropy confidence "
-            f"(min={float(normalized_scores.min()):.6g})"
-        )
-
-    probabilities = np.clip(normalized_scores, 0.0, None)
-    row_sums = probabilities.sum(axis=1, keepdims=True)
-    zero_rows = np.flatnonzero(row_sums.ravel() == 0)
-    if len(zero_rows) > 0:
-        shifted = normalized_scores[zero_rows] - normalized_scores[zero_rows].min(axis=1, keepdims=True)
-        shifted_sums = shifted.sum(axis=1, keepdims=True)
-        constant_rows = shifted_sums.ravel() == 0
-        if np.any(~constant_rows):
-            valid_rows = zero_rows[~constant_rows]
-            probabilities[valid_rows] = shifted[~constant_rows] / shifted_sums[~constant_rows]
-            row_sums[valid_rows] = 1.0
-        if np.any(constant_rows):
-            uniform_rows = zero_rows[constant_rows]
-            probabilities[uniform_rows] = 1.0 / normalized_scores.shape[1]
-            row_sums[uniform_rows] = 1.0
-
-    return probabilities / row_sums
 
 
 def entropy_confidence(probabilities):

@@ -37,22 +37,21 @@ import utils
 import metric_losses
 
 from ssl_algorithms import (
-    _clip_negative_confidence_probabilities,
     build_lrml_knn_graph,
-    build_slrmml_semisupervised_graph,
-    build_slrmml_supervised_graph,
+    build_slrml_graph,
+    build_slrml_supervised_graph,
     entropy_confidence,
     faiss_label_spreading as _faiss_label_spreading,
     induced_subgraph_edges,
     majority_vote,
     make_dissimilarity_affinity,
     make_mixed_label_affinity,
-    make_slrmml_graph_labels,
-    mixed_label_confidence_probabilities,
+    make_slrml_graph_labels,
     mixed_label_propagation as _mixed_label_propagation,
     normalize_label_spreading_rows,
     normalize_mixed_label_rows,
     solve_sparse_label_system,
+    solve_sparse_label_system_cholmod,
     stable_softmax,
 )
 from ssl_config import (
@@ -72,13 +71,13 @@ from ssl_config import (
 )
 from ssl_data import (
     CombinedTrainingLoader,
+    GraphEdgeBatchSampler,
     HofferReferenceBatchSampler,
     HofferReferenceDataset,
-    LRMLGraphBatchSampler,
     LRMLGraphDataset,
     RelabeledSubset,
     UnlabeledSubset,
-    WeightedGraphBatchSampler,
+    collate_graph_edge_batch,
 )
 from ssl_embeddings import (
     extract_embeddings,
@@ -147,6 +146,44 @@ def _record_timing(timings, name, start, device):
     timings[name] = timings.get(name, 0.0) + (_timing_now(device) - start)
 
 
+def _graph_edge_batch(adjacency, node_ids, edge_indices=None):
+    """Return local endpoint indices and weights for a sampled edge batch."""
+
+    node_ids = torch.as_tensor(node_ids, dtype=torch.long)
+    if node_ids.ndim != 1 or len(node_ids) == 0:
+        raise ValueError("graph edge batches must contain graph node IDs")
+    if edge_indices is None:
+        if len(node_ids) % 2 != 0:
+            raise ValueError("graph edge batches must contain adjacent endpoint pairs")
+        edge_indices = torch.arange(len(node_ids), dtype=torch.long).reshape(-1, 2)
+    else:
+        edge_indices = torch.as_tensor(edge_indices, dtype=torch.long)
+        if edge_indices.ndim != 2 or edge_indices.shape[1] != 2 or len(edge_indices) == 0:
+            raise ValueError("graph edge_indices must have shape [num_edges, 2]")
+        if torch.any((edge_indices < 0) | (edge_indices >= len(node_ids))):
+            raise ValueError("graph edge_indices refer to a node outside the collated batch")
+
+    left_indices = edge_indices[:, 0]
+    right_indices = edge_indices[:, 1]
+    # SciPy's sparse advanced indexer mutates NumPy writeability flags, while
+    # arrays exported from Torch can be non-writeable views.
+    left_nodes = node_ids[left_indices].cpu().numpy().copy()
+    right_nodes = node_ids[right_indices].cpu().numpy().copy()
+    weights = np.asarray(adjacency[left_nodes, right_nodes]).reshape(-1)
+    if len(weights) != len(left_nodes) or np.any(weights <= 0):
+        raise RuntimeError("graph edge batch contains a pair absent from the adjacency")
+    return left_indices, right_indices, weights
+
+
+def _reduce_sampled_graph_energy(energy, sampled_edges, graph_edges, graph_weight, reduction):
+    """Scale a uniform edge mini-batch to an unbiased graph objective estimate."""
+
+    scale = float(graph_edges) / float(sampled_edges)
+    if reduction == "mean":
+        scale /= float(graph_weight)
+    return energy * scale
+
+
 def faiss_label_spreading(*args, **kwargs):
     """Call the modular implementation with façade-level helper overrides."""
 
@@ -177,11 +214,11 @@ class LRMLRegularizer(BaseTrainingRegularizer):
     the closed-form linear metric and have no SGD analogue; collapse is instead
     avoided by the supervised loss and L2-normalized embeddings.
 
-    Because the term couples neighbors, ``LRMLGraphBatchSampler`` keeps every node
-    together with its neighbors in a batch, and each step evaluates the Laplacian
-    energy of the sub-graph induced on that batch. The symmetric-normalized
-    Laplacian is obtained by scaling each node's embedding by 1/sqrt(deg) (a global
-    constant) and computing the unnormalized energy on the scaled embeddings.
+    ``GraphEdgeBatchSampler`` samples the symmetric graph's upper-triangle edges
+    uniformly. Each step evaluates only those selected pairs and rescales their
+    energy to an unbiased estimate of the full trace (or its stable global
+    weighted mean). The symmetric-normalized Laplacian is obtained by scaling
+    each endpoint embedding by 1/sqrt(deg) before evaluating its edge.
     """
 
     name = "lrml"
@@ -189,9 +226,9 @@ class LRMLRegularizer(BaseTrainingRegularizer):
     DEFAULT_PARAMS = {
         "n_neighbors": 6,             # paper uses 6 nearest neighbors
         "normalized_laplacian": True, # paper adopts the normalized Laplacian in practice
-        "normalize_embeddings": True, # DML standard; keeps the energy bounded
         "graph_on": "all",            # "all" (labeled + unlabeled) or "unlabeled"
-        "reduction": "mean",          # "mean" over intra-batch edges, or "sum"
+        "reduction": "mean",          # stable global weighted mean, or full-trace "sum"
+        "graph_batch_size": None,      # sampled graph edges; None matches supervised batch size
     }
     GRAPH_ON_CHOICES = {"all", "unlabeled"}
     REDUCTION_CHOICES = {"mean", "sum"}
@@ -207,13 +244,16 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         if self.n_neighbors <= 0:
             raise ValueError("lrml n_neighbors must be positive")
         self.normalized_laplacian = bool(merged["normalized_laplacian"])
-        self.normalize_embeddings = bool(merged["normalize_embeddings"])
         self.graph_on = str(merged["graph_on"])
         if self.graph_on not in self.GRAPH_ON_CHOICES:
             raise ValueError(f"lrml graph_on must be one of {sorted(self.GRAPH_ON_CHOICES)}")
         self.reduction = str(merged["reduction"])
         if self.reduction not in self.REDUCTION_CHOICES:
             raise ValueError(f"lrml reduction must be one of {sorted(self.REDUCTION_CHOICES)}")
+        graph_batch_size = merged["graph_batch_size"]
+        self.graph_batch_size = None if graph_batch_size is None else int(graph_batch_size)
+        if self.graph_batch_size is not None and self.graph_batch_size <= 0:
+            raise ValueError("lrml graph_batch_size must be positive when set")
 
         self.dataset = None
         self.graph_positions = None
@@ -222,10 +262,13 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self.adjacency = None   # scipy CSR, symmetric binary W
         self.degrees = None
         self.node_scale = None  # torch tensor, 1/sqrt(deg) or ones
+        self.graph_edge_count = None
+        self.graph_weight_sum = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
+        self._embedding_loader = None
 
     def validate_run_args(self, args):
         if args.batch_size < 2:
@@ -248,6 +291,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self.adjacency = None
         self.degrees = None
         self.node_scale = None
+        self.graph_edge_count = None
+        self.graph_weight_sum = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
@@ -283,6 +328,13 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 f"normalized_laplacian={self.normalized_laplacian}"
             )
         else:
+
+            if self._embedding_loader is None:
+                self._embedding_loader = make_embedding_loader(
+                    train_dataset, self.graph_positions,
+                    config.embedding_batch_size, config.embedding_num_workers, seed, start_method,
+                )
+
             embeddings = extract_embeddings(
                 model=model,
                 dataset=train_dataset,
@@ -294,10 +346,11 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 start_method=start_method,
                 desc=f"LRML graph embeddings - epoch {epoch}",
                 embedding_kind="default",
+                loader=self._embedding_loader
             )
 
             neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
-                embeddings, n_neighbors=self.n_neighbors, normalize=self.normalize_embeddings,
+                embeddings, n_neighbors=self.n_neighbors,
             )
             maybe_save_graph_diagnostics(
                 request=make_graph_diagnostics_request(
@@ -316,6 +369,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             self.neighbor_indices = neighbor_indices
             self.adjacency = adjacency
             self.degrees = degrees
+            self.graph_edge_count = int(adjacency.nnz // 2)
+            self.graph_weight_sum = float(adjacency.sum() / 2.0)
             self._last_graph_rebuild_epoch = None if epoch is None else int(epoch)
             scale = (
                 1.0 / np.sqrt(np.maximum(degrees, 1.0))
@@ -331,6 +386,9 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             )
 
         num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
+        graph_batch_size = int(
+            batch_size if self.graph_batch_size is None else self.graph_batch_size
+        )
         dataloader_kwargs = utils.make_dataloader_kwargs(
             num_workers,
             seed,
@@ -339,76 +397,98 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         )
         cache_key = (
             id(self.dataset),
-            int(batch_size),
+            graph_batch_size,
+            int(len(supervised_loader)),
             int(dataloader_kwargs.get("num_workers", 0)),
             str(start_method),
         )
         if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
             utils.shutdown_dataloaders(self._regularizer_loader)
-            self._regularizer_sampler = LRMLGraphBatchSampler(
-                neighbor_indices=self.neighbor_indices, batch_size=batch_size, seed=seed,
+            self._regularizer_sampler = GraphEdgeBatchSampler(
+                adjacency=self.adjacency,
+                graph_batch_size=graph_batch_size,
+                seed=seed,
+                num_batches=len(supervised_loader),
             )
             self._regularizer_loader = DataLoader(
                 self.dataset,
                 batch_sampler=self._regularizer_sampler,
+                collate_fn=collate_graph_edge_batch,
                 **dataloader_kwargs,
             )
             self._regularizer_loader_cache_key = cache_key
+            logger.info(
+                "LRML batch streams: "
+                f"supervised_examples_per_batch={int(batch_size)}, "
+                f"graph_edges_per_batch={graph_batch_size}, "
+                f"max_graph_nodes_before_dedup={2 * graph_batch_size}, "
+                f"steps={len(supervised_loader)}"
+            )
         else:
-            self._regularizer_sampler.set_neighbors(self.neighbor_indices)
+            self._regularizer_sampler.set_graph(self.adjacency)
 
         return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
 
     def compute_loss(self, student_model, state, batch, device, timings=None):
-        images, node_ids = batch
+        if len(batch) == 3:
+            images, node_ids, edge_indices = batch
+        else:
+            images, node_ids = batch
+            edge_indices = None
         embeddings = utils.forward_model_inputs(
             student_model,
             images,
             device,
             use_cache=self.use_cache,
         )
-        if self.normalize_embeddings:
-            # embeddings = F.normalize(embeddings, p=2, dim=1)
-            pass
 
         # Fold the per-node 1/sqrt(deg) factor in: normalized-Laplacian energy equals
         # the unnormalized energy on degree-scaled embeddings.
         scaled = embeddings * self.node_scale[node_ids.to(device)][:, None]
 
-        rows, cols, weights = induced_subgraph_edges(self.adjacency, node_ids.numpy())
-        if len(rows) == 0:
-            return embeddings.sum() * 0.0  # connected zero so backward stays valid
-
-        row_index = torch.as_tensor(rows, dtype=torch.long, device=device)
-        col_index = torch.as_tensor(cols, dtype=torch.long, device=device)
+        left_indices, right_indices, weights = _graph_edge_batch(
+            self.adjacency, node_ids, edge_indices
+        )
         edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device)
-        differences = scaled[row_index] - scaled[col_index]
+        differences = (
+            scaled[left_indices.to(device)] - scaled[right_indices.to(device)]
+        )
         squared_distances = (differences * differences).sum(dim=1)
         energy = (edge_weight * squared_distances).sum()
-        return energy / float(len(rows)) if self.reduction == "mean" else energy
+        return _reduce_sampled_graph_energy(
+            energy=energy,
+            sampled_edges=len(weights),
+            graph_edges=self.graph_edge_count,
+            graph_weight=self.graph_weight_sum,
+            reduction=self.reduction,
+        )
 
 
-class SLRMMLRegularizer(BaseTrainingRegularizer):
-    """Deep single-modality SLRMML/SLRML graph regularizer.
+class SLRMLRegularizer(BaseTrainingRegularizer):
+    """Deep single-stream SLRML graph regularizer.
 
     The paper's linear projection ``U^T x`` is replaced by the network embedding
     ``f(x)``.  The regularizer therefore evaluates
 
         tr(Z^T L^s Z) = sum_{i<j} W^s_ij ||z_i - z_j||^2
 
-    on mini-batches induced from the semisupervised graph.  ``W^u`` is the
-    symmetrized kNN graph with edge weight ``1/N_k``.  ``W^l`` connects only the
-    known labeled samples from the SSL split when their labels match, with edge
-    weight ``1/(2N_S)``.  Unlabeled labels remain hidden and contribute only
-    through ``W^u``.
+    using uniform edge mini-batches. ``W^u`` is the symmetrized kNN graph with
+    edge weight ``1/N_k`` and is the default label-free regularizer over all
+    labeled and unlabeled graph nodes. ``include_supervised_graph=True``
+    explicitly adds ``W^l``, which connects known same-class labeled samples
+    with weight ``1/(2N_S)``.
+
+    This is not the paper's multimodal SLRMML algorithm: that requires aligned
+    modality-specific inputs, projections, graphs, and learned modality weights.
     """
 
-    name = "slrmml"
+    name = "slrml"
 
     DEFAULT_PARAMS = {
         "n_neighbors": 6,
-        "normalize_embeddings": True,
         "reduction": "mean",
+        "include_supervised_graph": False,
+        "graph_batch_size": None,
     }
     REDUCTION_CHOICES = {"mean", "sum"}
 
@@ -416,16 +496,20 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         super().__init__(regularizer_weight=regularizer_weight, supervised_weight=supervised_weight)
         unknown = sorted(set(params) - set(self.DEFAULT_PARAMS))
         if unknown:
-            raise ValueError(f"Unknown slrmml regularizer_params: {unknown}")
+            raise ValueError(f"Unknown slrml regularizer_params: {unknown}")
         merged = {**self.DEFAULT_PARAMS, **params}
 
         self.n_neighbors = int(merged["n_neighbors"])
         if self.n_neighbors <= 0:
-            raise ValueError("slrmml n_neighbors must be positive")
-        self.normalize_embeddings = bool(merged["normalize_embeddings"])
+            raise ValueError("slrml n_neighbors must be positive")
         self.reduction = str(merged["reduction"])
         if self.reduction not in self.REDUCTION_CHOICES:
-            raise ValueError(f"slrmml reduction must be one of {sorted(self.REDUCTION_CHOICES)}")
+            raise ValueError(f"slrml reduction must be one of {sorted(self.REDUCTION_CHOICES)}")
+        self.include_supervised_graph = bool(merged["include_supervised_graph"])
+        graph_batch_size = merged["graph_batch_size"]
+        self.graph_batch_size = None if graph_batch_size is None else int(graph_batch_size)
+        if self.graph_batch_size is not None and self.graph_batch_size <= 0:
+            raise ValueError("slrml graph_batch_size must be positive when set")
 
         self.dataset = None
         self.graph_positions = None
@@ -434,6 +518,8 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         self.adjacency = None
         self.degrees = None
         self.positive_pair_count = 0
+        self.graph_edge_count = None
+        self.graph_weight_sum = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
@@ -442,27 +528,33 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
 
     def validate_run_args(self, args):
         if args.batch_size < 2:
-            raise ValueError("SLRMML regularization requires batch_size >= 2")
+            raise ValueError("SLRML regularization requires batch_size >= 2")
 
     def build_dataset(self, train_dataset, split, use_cache=False):
         positions = np.unique(
             np.concatenate([split.labeled_positions, split.unlabeled_positions]).astype(np.int64)
         )
         if len(positions) < 2:
-            raise ValueError("SLRMML regularization requires at least two graph samples")
+            raise ValueError("SLRML regularization requires at least two graph samples")
         utils.shutdown_dataloaders(self._regularizer_loader)
         self.graph_positions = positions
-        self.graph_labels = make_slrmml_graph_labels(
-            train_dataset=train_dataset,
-            graph_positions=positions,
-            labeled_positions=split.labeled_positions,
+        self.graph_known_mask = np.isin(
+            positions, np.asarray(split.labeled_positions, dtype=np.int64)
         )
-        self.graph_known_mask = self.graph_labels != UNLABELED_TARGET
+        self.graph_labels = None
+        if self.include_supervised_graph:
+            self.graph_labels = make_slrml_graph_labels(
+                train_dataset=train_dataset,
+                graph_positions=positions,
+                labeled_positions=split.labeled_positions,
+            )
         regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
         self.dataset = LRMLGraphDataset(regularizer_dataset, positions)
         self.adjacency = None
         self.degrees = None
         self.positive_pair_count = 0
+        self.graph_edge_count = None
+        self.graph_weight_sum = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
@@ -475,7 +567,7 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         batch_size, seed, num_workers, start_method, epoch,
         log_dir=None,
     ):
-        if self.dataset is None or self.graph_positions is None or self.graph_labels is None:
+        if self.dataset is None or self.graph_positions is None:
             raise RuntimeError("build_dataset must be called before make_loader")
 
         has_cached_graph = self.adjacency is not None and self.degrees is not None
@@ -506,27 +598,27 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
                 num_workers=config.embedding_num_workers,
                 seed=seed,
                 start_method=start_method,
-                desc=f"SLRMML graph embeddings - epoch {epoch}",
+                desc=f"SLRML graph embeddings - epoch {epoch}",
                 embedding_kind="default",
                 loader=self._embedding_loader,
             )
             embeddings_seconds = time.perf_counter() - embeddings_start
 
             graph_start = time.perf_counter()
-            _, adjacency, degrees, positive_pair_count = build_slrmml_semisupervised_graph(
+            _, adjacency, degrees, positive_pair_count = build_slrml_graph(
                 embeddings=embeddings,
-                labels=self.graph_labels,
                 n_neighbors=self.n_neighbors,
-                normalize=self.normalize_embeddings,
+                labels=self.graph_labels,
+                include_supervised_graph=self.include_supervised_graph,
             )
             graph_seconds = time.perf_counter() - graph_start
             maybe_save_graph_diagnostics(
                 request=make_graph_diagnostics_request(
                     config=config,
                     log_dir=log_dir,
-                    name=f"{self.name}_semisupervised",
+                    name=f"{self.name}_graph",
                     epoch=epoch,
-                    title="SLRMML semisupervised graph",
+                    title="SLRML graph",
                 ),
                 embeddings=embeddings,
                 adjacency=adjacency,
@@ -537,13 +629,15 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             self.adjacency = adjacency
             self.degrees = degrees
             self.positive_pair_count = positive_pair_count
+            self.graph_edge_count = int(adjacency.nnz // 2)
+            self.graph_weight_sum = float(adjacency.sum() / 2.0)
             self._last_graph_rebuild_epoch = None if epoch is None else int(epoch)
         else:
             adjacency = self.adjacency
             degrees = self.degrees
             positive_pair_count = self.positive_pair_count
             logger.info(
-                "Reusing SLRMML graph: "
+                "Reusing SLRML graph: "
                 f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected weighted edges, "
                 f"mean_degree={float(degrees.mean()):.4f}, "
                 f"positive_pairs={positive_pair_count}, "
@@ -552,6 +646,9 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
 
         loader_start = time.perf_counter()
         num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
+        graph_batch_size = int(
+            batch_size if self.graph_batch_size is None else self.graph_batch_size
+        )
         dataloader_kwargs = utils.make_dataloader_kwargs(
             num_workers,
             seed,
@@ -560,30 +657,40 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         )
         cache_key = (
             id(self.dataset),
-            int(batch_size),
+            graph_batch_size,
+            int(len(supervised_loader)),
             int(dataloader_kwargs.get("num_workers", 0)),
             str(start_method),
         )
         if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
             utils.shutdown_dataloaders(self._regularizer_loader)
-            self._regularizer_sampler = WeightedGraphBatchSampler(
+            self._regularizer_sampler = GraphEdgeBatchSampler(
                 adjacency=adjacency,
-                batch_size=batch_size,
+                graph_batch_size=graph_batch_size,
                 seed=seed,
+                num_batches=len(supervised_loader),
             )
             self._regularizer_loader = DataLoader(
                 self.dataset,
                 batch_sampler=self._regularizer_sampler,
+                collate_fn=collate_graph_edge_batch,
                 **dataloader_kwargs,
             )
             self._regularizer_loader_cache_key = cache_key
+            logger.info(
+                "SLRML batch streams: "
+                f"supervised_examples_per_batch={int(batch_size)}, "
+                f"graph_edges_per_batch={graph_batch_size}, "
+                f"max_graph_nodes_before_dedup={2 * graph_batch_size}, "
+                f"steps={len(supervised_loader)}"
+            )
         else:
             self._regularizer_sampler.set_graph(adjacency)
         loader_seconds = time.perf_counter() - loader_start
         total_seconds = time.perf_counter() - total_start
         if should_rebuild_graph:
             logger.info(
-                "Built SLRMML graph: "
+                "Built SLRML graph: "
                 f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected weighted edges, "
                 f"mean_degree={float(degrees.mean()):.4f}, "
                 f"positive_pairs={positive_pair_count}, "
@@ -596,7 +703,11 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
         return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
 
     def compute_loss(self, student_model, state, batch, device, timings=None):
-        images, node_ids = batch
+        if len(batch) == 3:
+            images, node_ids, edge_indices = batch
+        else:
+            images, node_ids = batch
+            edge_indices = None
 
         t0 = _timing_start(device, timings)
         embeddings = utils.forward_model_inputs(
@@ -605,35 +716,32 @@ class SLRMMLRegularizer(BaseTrainingRegularizer):
             device,
             use_cache=self.use_cache,
         )
-        _record_timing(timings, "slrmml_forward", t0, device)
-
-        if self.normalize_embeddings:
-            t0 = _timing_start(device, timings)
-             # embeddings = F.normalize(embeddings, p=2, dim=1)
-            _record_timing(timings, "slrmml_normalize", t0, device)
-            pass
+        _record_timing(timings, "slrml_forward", t0, device)
 
         t0 = _timing_start(device, timings)
-        rows, cols, weights = induced_subgraph_edges(self.adjacency, node_ids.numpy())
-        _record_timing(timings, "slrmml_subgraph_edges", t0, device)
-        if len(rows) == 0:
-            t0 = _timing_start(device, timings)
-            zero_loss = embeddings.sum() * 0.0
-            _record_timing(timings, "slrmml_zero_loss", t0, device)
-            return zero_loss
+        left_indices, right_indices, weights = _graph_edge_batch(
+            self.adjacency, node_ids, edge_indices
+        )
+        _record_timing(timings, "slrml_edge_lookup", t0, device)
 
         t0 = _timing_start(device, timings)
-        row_index = torch.as_tensor(rows, dtype=torch.long, device=device)
-        col_index = torch.as_tensor(cols, dtype=torch.long, device=device)
         edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device)
-        _record_timing(timings, "slrmml_tensor_prep", t0, device)
+        _record_timing(timings, "slrml_tensor_prep", t0, device)
 
         t0 = _timing_start(device, timings)
-        differences = embeddings[row_index] - embeddings[col_index]
+        differences = (
+            embeddings[left_indices.to(device)] - embeddings[right_indices.to(device)]
+        )
         squared_distances = (differences * differences).sum(dim=1)
         energy = (edge_weight * squared_distances).sum()
-        loss = energy / float(len(rows)) if self.reduction == "mean" else energy
-        _record_timing(timings, "slrmml_energy", t0, device)
+        loss = _reduce_sampled_graph_energy(
+            energy=energy,
+            sampled_edges=len(weights),
+            graph_edges=self.graph_edge_count,
+            graph_weight=self.graph_weight_sum,
+            reduction=self.reduction,
+        )
+        _record_timing(timings, "slrml_energy", t0, device)
         return loss
 
 class STMLRegularizer(BaseTrainingRegularizer):
@@ -796,12 +904,362 @@ class STMLRegularizer(BaseTrainingRegularizer):
                 teacher_buffer.copy_(student_buffer.detach())
 
 
+class SeraphEntropyRegularizer(BaseTrainingRegularizer):
+    """Deep SERAPH-style pairwise entropy regularizer (Niu et al., 2012).
+
+    The original SERAPH probability for a weak pair label ``y in {+1, -1}``
+    becomes, for the similar label,
+
+        p(y=+1 | z_i, z_j) = sigmoid((eta - ||z_i - z_j||^2) / temperature).
+
+    """
+
+    name = "seraph_entropy"
+    uses_joint_forward = True
+
+    DEFAULT_PARAMS = {
+        "temperature": 0.25,
+        "eta_mode": "batch",
+        "eta": 1.0,
+        "unlabeled_ratio": 1.0,
+        "unlabeled_batch_size": None,
+        "include_labeled_unlabeled": False,
+        "entropy_band": None,
+    }
+    ETA_MODES = {"batch", "fixed"}
+
+    def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
+        super().__init__(regularizer_weight=regularizer_weight, supervised_weight=supervised_weight)
+        unknown = sorted(set(params) - set(self.DEFAULT_PARAMS))
+        if unknown:
+            raise ValueError(f"Unknown seraph_entropy regularizer_params: {unknown}")
+        merged = {**self.DEFAULT_PARAMS, **params}
+
+        self.temperature = float(merged["temperature"])
+        if not math.isfinite(self.temperature) or self.temperature <= 0:
+            raise ValueError("seraph_entropy temperature must be finite and positive")
+        self.eta_mode = str(merged["eta_mode"])
+        if self.eta_mode not in self.ETA_MODES:
+            raise ValueError(
+                f"seraph_entropy eta_mode must be one of {sorted(self.ETA_MODES)}"
+            )
+        self.eta = float(merged["eta"])
+        if not math.isfinite(self.eta) or self.eta < 0:
+            raise ValueError("seraph_entropy eta must be finite and non-negative")
+        self.unlabeled_ratio = float(merged["unlabeled_ratio"])
+        if not math.isfinite(self.unlabeled_ratio) or self.unlabeled_ratio <= 0:
+            raise ValueError("seraph_entropy unlabeled_ratio must be finite and positive")
+        unlabeled_batch_size = merged["unlabeled_batch_size"]
+        self.unlabeled_batch_size = (
+            None if unlabeled_batch_size is None else int(unlabeled_batch_size)
+        )
+        if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
+            raise ValueError("seraph_entropy unlabeled_batch_size must be at least 2")
+        self.include_labeled_unlabeled = bool(merged["include_labeled_unlabeled"])
+        entropy_band = merged["entropy_band"]
+        self.entropy_band = None if entropy_band is None else float(entropy_band)
+        if self.entropy_band is not None and (
+            not math.isfinite(self.entropy_band) or self.entropy_band <= 0
+        ):
+            raise ValueError("seraph_entropy entropy_band must be finite and positive when set")
+        self.dataset = None
+        self._regularizer_loader = None
+        self._regularizer_loader_cache_key = None
+        self._last_diagnostics = {}
+        self._warned_eta_fallback = False
+
+    def validate_run_args(self, args):
+        if self.eta_mode != "batch":
+            return
+        sampler_m = int(args.sampler_m)
+        batch_size = int(args.batch_size)
+        if sampler_m < 2:
+            raise ValueError(
+                "seraph_entropy eta_mode='batch' requires sampler_m >= 2 "
+                "so labeled positive pairs exist"
+            )
+        if batch_size // sampler_m < 2:
+            raise ValueError(
+                "seraph_entropy eta_mode='batch' requires at least two classes per "
+                "supervised batch so labeled negative pairs exist"
+            )
+
+    def build_dataset(self, train_dataset, split, use_cache=False):
+        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
+        if len(unlabeled_positions) < 2:
+            raise ValueError("seraph_entropy regularization requires at least two unlabeled samples")
+        regularizer_dataset = self.make_regularizer_source_dataset(
+            train_dataset, use_cache=use_cache
+        )
+        self.dataset = UnlabeledSubset(regularizer_dataset, unlabeled_positions, num_views=1)
+        self._regularizer_loader = None
+        self._regularizer_loader_cache_key = None
+        self._last_diagnostics = {}
+        return self.dataset
+
+    def make_loader(
+        self,
+        model,
+        train_dataset,
+        supervised_loader,
+        device,
+        config,
+        batch_size,
+        seed,
+        num_workers,
+        start_method,
+        epoch,
+        log_dir=None,
+    ):
+        if self.dataset is None:
+            raise RuntimeError("build_dataset must be called before make_loader")
+        requested_batch_size = (
+            int(round(float(batch_size) * self.unlabeled_ratio))
+            if self.unlabeled_batch_size is None
+            else self.unlabeled_batch_size
+        )
+        unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
+        if unlabeled_batch_size < 2:
+            raise ValueError("seraph_entropy needs at least two unlabeled samples per batch")
+
+        num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
+        cache_key = (
+            id(self.dataset),
+            int(unlabeled_batch_size),
+            int(num_workers),
+            str(start_method),
+        )
+        if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
+            utils.shutdown_dataloaders(self._regularizer_loader)
+            self._regularizer_loader = DataLoader(
+                self.dataset,
+                batch_size=unlabeled_batch_size,
+                shuffle=True,
+                drop_last=True,
+                **utils.make_dataloader_kwargs(
+                    num_workers,
+                    seed,
+                    start_method,
+                    persistent_workers=True,
+                ),
+            )
+            self._regularizer_loader_cache_key = cache_key
+            logger.info(
+                "SERAPH two-stream loader: "
+                f"labeled_batch_size={int(batch_size)}, "
+                f"unlabeled_batch_size={unlabeled_batch_size}, "
+                f"unlabeled_pool={len(self.dataset)}, "
+                f"joint_forward_batch_size={int(batch_size) + unlabeled_batch_size}, "
+                f"include_labeled_unlabeled={self.include_labeled_unlabeled}"
+            )
+        return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
+
+    def _prepare_embeddings(self, embeddings):
+        return embeddings.float()
+
+    @staticmethod
+    def _upper_triangle_squared_distances(embeddings):
+        if len(embeddings) < 2:
+            return embeddings.new_empty((0,))
+        return torch.pdist(embeddings, p=2).pow(2)
+
+    def _batch_eta(self, supervised_embeddings, supervised_labels):
+        if supervised_labels is None:
+            raise ValueError("seraph_entropy eta_mode='batch' requires supervised labels")
+        labels = torch.as_tensor(supervised_labels, device=supervised_embeddings.device).reshape(-1)
+        if len(labels) != len(supervised_embeddings):
+            raise ValueError("seraph_entropy supervised labels must align with embeddings")
+
+        with torch.no_grad():
+            distances = self._upper_triangle_squared_distances(
+                supervised_embeddings.detach().float()
+            )
+            label_pairs = torch.triu_indices(
+                len(labels), len(labels), offset=1, device=labels.device
+            )
+            same_class = labels[label_pairs[0]] == labels[label_pairs[1]]
+            if same_class.any() and (~same_class).any():
+                positive_mean = distances[same_class].mean()
+                negative_mean = distances[~same_class].mean()
+                return 0.5 * (positive_mean + negative_mean)
+
+        if not self._warned_eta_fallback:
+            logger.warning(
+                "SERAPH could not estimate eta from both positive and negative labeled "
+                f"pairs; falling back to configured eta={self.eta}"
+            )
+            self._warned_eta_fallback = True
+        return supervised_embeddings.new_tensor(self.eta, dtype=torch.float32)
+
+    def _select_pairs(self, squared_distances, eta):
+        if self.entropy_band is None or len(squared_distances) == 0:
+            return squared_distances
+        selection = (squared_distances.detach().float() - eta.detach()).abs() <= self.entropy_band
+        return squared_distances[selection]
+
+    @staticmethod
+    def _pair_label_entropy_from_logits(logits):
+        """Numerically stable entropy with gradients through logits."""
+        probabilities = torch.sigmoid(logits)
+        entropy = F.softplus(logits) - probabilities * logits
+        return entropy, probabilities
+
+    def _pair_diagnostics(
+        self,
+        eta,
+        uu_distances,
+        lu_distances,
+        selected_uu_distances,
+        selected_lu_distances,
+    ):
+        """Measure collapse on all candidate pairs, before optional banding."""
+
+        candidate_blocks = [
+            block for block in (uu_distances, lu_distances) if block.numel() > 0
+        ]
+        with torch.no_grad():
+            if candidate_blocks:
+                diagnostic_distances = torch.cat(candidate_blocks).detach().float()
+                diagnostic_probabilities = torch.sigmoid(
+                    (eta.detach().float() - diagnostic_distances) / self.temperature
+                )
+                mean_same_probability = diagnostic_probabilities.mean()
+                confident_similar_fraction = (
+                    diagnostic_probabilities >= 0.9
+                ).float().mean()
+                confident_dissimilar_fraction = (
+                    diagnostic_probabilities <= 0.1
+                ).float().mean()
+            else:
+                mean_same_probability = eta.detach().new_zeros(())
+                confident_similar_fraction = eta.detach().new_zeros(())
+                confident_dissimilar_fraction = eta.detach().new_zeros(())
+
+        total_pair_count = int(uu_distances.numel() + lu_distances.numel())
+        selected_pair_count = int(
+            selected_uu_distances.numel() + selected_lu_distances.numel()
+        )
+        return {
+            # Keep tensors detached on-device here. batch_diagnostics batches
+            # their host transfer into one synchronization only when logging is enabled.
+            "train/seraph_eta": eta.detach(),
+            "train/seraph_mean_same_probability": mean_same_probability,
+            "train/seraph_confident_similar_fraction": confident_similar_fraction,
+            "train/seraph_confident_dissimilar_fraction": confident_dissimilar_fraction,
+            "train/seraph_uu_pair_count": float(uu_distances.numel()),
+            "train/seraph_lu_pair_count": float(lu_distances.numel()),
+            "train/seraph_selected_uu_pair_count": float(selected_uu_distances.numel()),
+            "train/seraph_selected_lu_pair_count": float(selected_lu_distances.numel()),
+            "train/seraph_selected_pair_count": float(selected_pair_count),
+            "train/seraph_pair_selection_fraction": (
+                float(selected_pair_count) / float(total_pair_count)
+                if total_pair_count > 0
+                else 0.0
+            ),
+        }
+
+    def compute_loss(
+        self,
+        student_model,
+        state,
+        batch,
+        device,
+        timings=None,
+        supervised_embeddings=None,
+        supervised_labels=None,
+        regularizer_embeddings=None,
+    ):
+        if regularizer_embeddings is None:
+            if batch is None:
+                raise ValueError("seraph_entropy requires a regularizer batch or embeddings")
+            images = batch[0]
+            t0 = _timing_start(device, timings)
+            regularizer_embeddings = utils.forward_model_inputs(
+                student_model,
+                images,
+                device,
+                use_cache=self.use_cache,
+            )
+            _record_timing(timings, "seraph_forward", t0, device)
+        t0 = _timing_start(device, timings)
+        unlabeled = self._prepare_embeddings(regularizer_embeddings)
+        needs_labeled_embeddings = (
+            self.eta_mode == "batch" or self.include_labeled_unlabeled
+        )
+        if supervised_embeddings is None and needs_labeled_embeddings:
+            raise ValueError(
+                "seraph_entropy requires supervised embeddings for batch eta "
+                "or labeled-unlabeled pairs"
+            )
+        labeled = (
+            None
+            if supervised_embeddings is None
+            else self._prepare_embeddings(supervised_embeddings)
+        )
+        eta = (
+            unlabeled.new_tensor(self.eta, dtype=torch.float32)
+            if self.eta_mode == "fixed"
+            else self._batch_eta(labeled, supervised_labels)
+        )
+
+        all_uu_distances = self._upper_triangle_squared_distances(unlabeled)
+        selected_uu_distances = self._select_pairs(all_uu_distances, eta)
+        all_lu_distances = unlabeled.new_empty((0,))
+        selected_lu_distances = unlabeled.new_empty((0,))
+        if self.include_labeled_unlabeled:
+            all_lu_distances = torch.cdist(labeled, unlabeled, p=2).pow(2).reshape(-1)
+            selected_lu_distances = self._select_pairs(all_lu_distances, eta)
+        if self.collect_batch_diagnostics:
+            self._last_diagnostics = self._pair_diagnostics(
+                eta=eta,
+                uu_distances=all_uu_distances,
+                lu_distances=all_lu_distances,
+                selected_uu_distances=selected_uu_distances,
+                selected_lu_distances=selected_lu_distances,
+            )
+        else:
+            self._last_diagnostics = {}
+
+        pair_blocks = [selected_uu_distances]
+        if self.include_labeled_unlabeled:
+            pair_blocks.append(selected_lu_distances)
+        nonempty_pair_blocks = [block for block in pair_blocks if len(block) > 0]
+        if not nonempty_pair_blocks:
+            _record_timing(timings, "seraph_entropy", t0, device)
+            return regularizer_embeddings.sum() * 0.0
+
+        block_entropies = []
+        for pair_block in nonempty_pair_blocks:
+            logits = (eta - pair_block.float()) / self.temperature
+            entropy, _ = self._pair_label_entropy_from_logits(logits)
+            block_entropies.append(entropy.mean())
+        loss = torch.stack(block_entropies).mean()
+        _record_timing(timings, "seraph_entropy", t0, device)
+        return loss
+
+    def batch_diagnostics(self):
+        diagnostics = dict(self._last_diagnostics)
+        tensor_items = [
+            (name, value)
+            for name, value in diagnostics.items()
+            if torch.is_tensor(value)
+        ]
+        if tensor_items:
+            host_values = torch.stack(
+                [value.detach().float().reshape(()) for _, value in tensor_items]
+            ).cpu().tolist()
+            diagnostics.update(
+                {name: float(value) for (name, _), value in zip(tensor_items, host_values)}
+            )
+        return diagnostics
+
+
 class HofferEntropyRegularizer(BaseTrainingRegularizer):
     """Deep neighbor-embedding entropy regularizer (Hoffer & Ailon, 2016).
 
     Implements the unlabeled term of "Semi-supervised deep learning by metric
-    embedding" (arXiv:1611.01449). Every batch draws ``num_compared + 1``
-    labeled references per class (uniform within class, resampled each batch)
+    embedding" (arXiv:1611.01449). Every step draws one labeled reference per
+    class (uniform within class, freshly resampled for that step)
     plus a batch of unlabeled samples x_u; all are embedded by the current
     network in a single forward pass. Over the references, the distance softmax
 
@@ -816,27 +1274,25 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
     paper's supervised term (the NCA-style cross entropy -log P_y(x_l) against
     the same references) is supplied by the configured supervised loss instead;
     ``supervised_weight``/``regularizer_weight`` play the role of the paper's
-    lambda_L/lambda_U. ``normalize_embeddings`` (DML standard, not used in the
-    paper) bounds squared distances to [0, 4]; with many classes this flattens
-    the softmax, which ``distance_scale`` (an inverse temperature on -d^2) can
-    counteract. ``num_compared`` follows the released code's ``numCompared``
-    reference construction: the class count still comes from the labeled
-    dataset, and each selected class contributes ``num_compared + 1`` examples.
-    ``max_reference_classes`` optionally subsamples the reference classes per
-    batch when embedding every class each step is too expensive; the entropy is
-    then computed over that class subset only.
+    lambda_L/lambda_U. The shared model forward path supplies the normalized
+    embeddings used by the supervised objective and this regularizer; with many
+    classes, ``distance_scale`` (an inverse temperature on -d^2) can counteract
+    the resulting softmax flattening. ``reference_sets=K`` draws K independent, complete reference
+    sets and averages K separate C-way entropies; it never flattens them into a
+    K*C-way exemplar softmax. All training classes must have labeled support and
+    participate in every denominator. For large C this intentionally retains
+    the paper's O(C) reference forward pass and O(B*C) distance calculation
+    rather than silently changing to sampled softmax.
 
     Batch layout: each regularizer batch contains ``batch_size`` unlabeled
-    samples plus the (up to C) reference images on top.
+    samples plus exactly ``reference_sets * C`` reference images.
     """
 
     name = "hoffer_entropy"
 
     DEFAULT_PARAMS = {
-        "normalize_embeddings": False, # Embeddings are already being normalized.
         "distance_scale": 1.0,
-        "max_reference_classes": None,
-        "num_compared": 0,
+        "reference_sets": 1,
         "unlabeled_batch_size": None,
     }
 
@@ -847,17 +1303,12 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
             raise ValueError(f"Unknown hoffer_entropy regularizer_params: {unknown}")
         merged = {**self.DEFAULT_PARAMS, **params}
 
-        self.normalize_embeddings = bool(merged["normalize_embeddings"])
         self.distance_scale = float(merged["distance_scale"])
         if not math.isfinite(self.distance_scale) or self.distance_scale <= 0:
             raise ValueError("hoffer_entropy distance_scale must be finite and positive")
-        max_reference_classes = merged["max_reference_classes"]
-        self.max_reference_classes = None if max_reference_classes is None else int(max_reference_classes)
-        if self.max_reference_classes is not None and self.max_reference_classes < 2:
-            raise ValueError("hoffer_entropy max_reference_classes must be at least 2")
-        self.num_compared = int(merged["num_compared"])
-        if self.num_compared < 0:
-            raise ValueError("hoffer_entropy num_compared must be non-negative")
+        self.reference_sets = int(merged["reference_sets"])
+        if self.reference_sets <= 0:
+            raise ValueError("hoffer_entropy reference_sets must be positive")
         unlabeled_batch_size = merged["unlabeled_batch_size"]
         self.unlabeled_batch_size = None if unlabeled_batch_size is None else int(unlabeled_batch_size)
         if self.unlabeled_batch_size is not None and self.unlabeled_batch_size <= 0:
@@ -884,18 +1335,25 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         # Group labeled positions by class; candidate indices live in the joint
         # HofferReferenceDataset index space (references start at num_unlabeled).
         num_unlabeled = len(unlabeled_positions)
-        unique_labels = np.unique(labels).astype(np.int64)
+        all_labels = dataset_labels_for_positions(
+            train_dataset, np.arange(len(train_dataset), dtype=np.int64)
+        )
+        if all_labels is None:
+            raise ValueError("hoffer_entropy could not determine the complete training class set")
+        unique_labels = np.unique(all_labels[all_labels != UNLABELED_TARGET]).astype(np.int64)
+        labeled_classes = np.unique(labels).astype(np.int64)
+        missing_classes = np.setdiff1d(unique_labels, labeled_classes)
+        if len(missing_classes) > 0:
+            raise ValueError(
+                "hoffer_entropy requires at least one labeled exemplar for every training class; "
+                f"missing classes: {missing_classes.tolist()}"
+            )
         class_candidates = [
             num_unlabeled + np.flatnonzero(labels == label)
             for label in unique_labels
         ]
         if len(class_candidates) < 2:
             raise ValueError("hoffer_entropy regularization requires at least two labeled classes")
-        if self.max_reference_classes is not None and self.max_reference_classes > len(class_candidates):
-            raise ValueError(
-                "hoffer_entropy max_reference_classes exceeds the number of labeled classes "
-                f"({self.max_reference_classes} > {len(class_candidates)})"
-            )
         self.class_candidates = class_candidates
         self.reference_class_labels = unique_labels
         regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
@@ -927,8 +1385,7 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
             unlabeled_batch_size,
             int(num_workers),
             str(start_method),
-            None if self.max_reference_classes is None else int(self.max_reference_classes),
-            int(self.num_compared),
+            int(self.reference_sets),
         )
         if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
             sampler = HofferReferenceBatchSampler(
@@ -936,8 +1393,7 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
                 class_candidates=self.class_candidates,
                 unlabeled_per_batch=unlabeled_batch_size,
                 seed=seed,
-                max_reference_classes=self.max_reference_classes,
-                num_compared=self.num_compared,
+                reference_sets=self.reference_sets,
                 class_labels=self.reference_class_labels,
                 unlabeled_positions=self.dataset.unlabeled_positions,
                 labeled_positions=self.dataset.labeled_positions,
@@ -983,11 +1439,6 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
         )
         _record_timing(timings, "hoffer_forward", t0, device)
 
-        # FIXME: this can just be removed. We normalize before anyways.
-        if self.normalize_embeddings:
-            # embeddings = F.normalize(embeddings, p=2, dim=1)
-            pass
-
         role_tensor = torch.as_tensor(is_reference)
         reference_count = int(role_tensor.bool().sum().item())
         unlabeled_count = int(role_tensor.numel() - reference_count)
@@ -1005,9 +1456,25 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
             return embeddings.sum() * 0.0  # connected zero so backward stays valid
 
         t0 = _timing_start(device, timings)
-        squared_distances = torch.cdist(unlabeled, references).pow(2)
-        log_probabilities = F.log_softmax(-self.distance_scale * squared_distances, dim=1)
-        entropy = -(log_probabilities.exp() * log_probabilities).sum(dim=1)
+        if len(references) % self.reference_sets != 0:
+            raise RuntimeError("hoffer_entropy reference count is not divisible by reference_sets")
+        num_classes = (
+            len(self.class_candidates)
+            if self.class_candidates is not None
+            else len(references) // self.reference_sets
+        )
+        expected_references = num_classes * self.reference_sets
+        if len(references) != expected_references:
+            raise RuntimeError(
+                "hoffer_entropy reference batch does not contain every class in every set: "
+                f"expected {expected_references}, got {len(references)}"
+            )
+        reference_sets = references.reshape(num_classes, self.reference_sets, -1).permute(1, 0, 2)
+        squared_distances = (
+            unlabeled[None, :, None, :] - reference_sets[:, None, :, :]
+        ).pow(2).sum(dim=-1)
+        log_probabilities = F.log_softmax(-self.distance_scale * squared_distances, dim=-1)
+        entropy = -(log_probabilities.exp() * log_probabilities).sum(dim=-1)
         _record_timing(timings, "hoffer_entropy", t0, device)
         return entropy.mean()
 
@@ -1052,6 +1519,11 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
         try:
             regularizer_class = REGULARIZER_REGISTRY[regularizer_name]
         except KeyError as exc:
+            if regularizer_name == "slrmml":
+                raise ValueError(
+                    "Multimodal SLRMML is not implemented by the single-stream training pipeline; "
+                    "use regularizer='slrml' for the one-stream SLRML regularizer"
+                ) from exc
             raise ValueError(
                 f"Unknown regularizer {regularizer_name!r}. Available: {sorted(REGULARIZER_REGISTRY)}"
             ) from exc
@@ -1399,14 +1871,6 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
         "cg_max_iter": 1000,
         "edge_batch_size": 65536,
         "linear_solver": "auto",
-        # How the signed, L1-normalized propagated scores G~ are projected to a
-        # simplex before the entropy confidence omega. "softmax" mirrors the
-        # paper's edge-weight confidence (Eqs. 20-21) and is well-defined on
-        # signed scores; "clip" is the legacy clip-negatives-then-renormalize
-        # path, kept only for ablation. confidence_temperature is the softmax
-        # temperature; None reuses `temperature` (the paper's lambda).
-        "confidence_projection": "softmax",
-        "confidence_temperature": None,
     }
 
     def __init__(self, name="mixed_label_propagation"):
@@ -1502,13 +1966,6 @@ def validate_mixed_label_propagation_params(params):
         raise ValueError("mixed_label_propagation edge_batch_size must be positive")
     if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
         raise ValueError("mixed_label_propagation linear_solver must be one of ['auto', 'cholmod', 'cg']")
-    if str(params["confidence_projection"]) not in {"softmax", "clip"}:
-        raise ValueError("mixed_label_propagation confidence_projection must be one of ['softmax', 'clip']")
-    confidence_temperature = params["confidence_temperature"]
-    if confidence_temperature is not None and (
-        not np.isfinite(float(confidence_temperature)) or float(confidence_temperature) <= 0
-    ):
-        raise ValueError("mixed_label_propagation confidence_temperature must be positive when set")
 
 
 def validate_faiss_label_spreading_params(params):
@@ -1532,8 +1989,8 @@ def validate_faiss_label_spreading_params(params):
 REGULARIZER_REGISTRY = {
     "stml": STMLRegularizer,
     "lrml": LRMLRegularizer,
-    "slrmml": SLRMMLRegularizer,
-    "slrml": SLRMMLRegularizer,
+    "slrml": SLRMLRegularizer,
+    "seraph_entropy": SeraphEntropyRegularizer,
     "hoffer_entropy": HofferEntropyRegularizer,
 }
 

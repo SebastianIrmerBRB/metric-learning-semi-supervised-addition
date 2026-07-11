@@ -31,6 +31,7 @@ from experiment_training import (
     resolve_loss_driven_supervised_args,
     resolve_mode_ssl_config,
     run_experiment,
+    uses_ssl_warmup_objective,
     validate_named_miner_params,
     validate_run_args,
 )
@@ -864,9 +865,30 @@ def make_args_and_ssl_config_from_params(base_args, params):
 
     ssl_config = resolve_mode_ssl_config(trial_args, ssl_config)
     trial_args = resolve_loss_driven_supervised_args(trial_args)
+    trial_args = resolve_hpo_warmup_objective(trial_args, ssl_config)
 
     validate_run_args(trial_args, ssl_config)
     return trial_args, ssl_config
+
+
+def resolve_hpo_warmup_objective(args, ssl_config):
+    """Warm up with the fully resolved objective of this HPO trial.
+
+    This runs after component hyperparameters have been applied, so the warmup
+    receives the selected loss/miner names and the exact tuned constructor
+    parameters. Loss-driven STML is the sole exception: its unsupervised
+    multi-view objective cannot run on the labeled-only warmup batches.
+    """
+
+    if not uses_ssl_warmup_objective(ssl_config) or args.loss == "STMLLoss":
+        return args
+
+    resolved = copy.deepcopy(args)
+    resolved.warmup_loss = resolved.loss
+    resolved.warmup_loss_params = copy.deepcopy(resolved.loss_params)
+    resolved.warmup_miner = resolved.miner
+    resolved.warmup_miner_params = copy.deepcopy(resolved.miner_params)
+    return resolved
 
 def suggest_value(trial, name, spec):
     if isinstance(spec, list):

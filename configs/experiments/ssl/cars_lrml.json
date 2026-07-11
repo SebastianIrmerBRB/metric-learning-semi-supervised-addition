@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "n_trials": 60,
+  "n_trials": 30,
   "timeout": null,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
@@ -39,11 +39,15 @@
     },
     "ssl_config.method_params.regularizer_params.n_neighbors": {
       "type": "categorical",
-      "choices": [3, 6, 10, 15, 25]
+      "choices": [3, 6, 10, 15, 25, 50]
+    },
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "type": "categorical",
+      "choices": [16, 32, 64]
     },
     "ssl_config.method_params.regularizer_params.normalized_laplacian": {
       "type": "categorical",
-      "choices": [true, false]
+      "choices": [true]
     },
     "ssl_config.method_params.regularizer_params.graph_on": {
       "type": "categorical",

@@ -25,6 +25,66 @@
       "high": 1e+2,
       "log": true
     },
+    "loss.ArcFaceLoss.scale": {
+      "type": "float",
+      "low": 40,
+      "high": 250.0,
+      "log": true
+    },
+    "loss.ArcFaceLoss.margin": {
+      "type": "float",
+      "low": 15,
+      "high": 30.0,
+      "log": true
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "type": "float",
+      "low": 0.01,
+      "high": 1.0,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "type": "float",
+      "low": 2,
+      "high": 25,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "type": "float",
+      "low": 40,
+      "high": 100,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "type": "float",
+      "low": 0.4,
+      "high": 0.9,
+      "log": true
+    },
+    "loss.CircleLoss.m": {
+      "type": "float",
+      "low": 0.1,
+      "high": 0.9,
+      "log": true
+    },
+    "loss.CircleLoss.gamma": {
+      "type": "float",
+      "low": 50,
+      "high": 260.0,
+      "log": true
+    },
+    "loss.NTXentLoss.temperature": {
+      "type": "float",
+      "low": 0.0001,
+      "high": 0.5,
+      "log": true
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+     "type": "float",
+      "low": 0.1,
+      "high": 0.8,
+      "log": true
+    },
       "ssl_config.method_params.supervised_weight": {
       "type": "float",
       "low": 0.1,
@@ -42,10 +102,6 @@
       "low": 0.25,
       "high": 16,
       "log": true
-    },
-    "ssl_config.method_params.regularizer_params.num_compared": {
-      "type": "categorical",
-      "choices": [1, 2, 3]
     },
     "batch_sampler": {
       "type": "categorical",
