@@ -2,14 +2,24 @@
 
 import json
 import math
+from dataclasses import dataclass
 
 import numpy as np
 import torch
 from loguru import logger
 from torch.utils.data import Dataset
+from torch.utils.data._utils.collate import default_collate
 
 import utils
 from ssl_config import UNLABELED_TARGET
+
+
+@dataclass(frozen=True)
+class GraphBatchNodeIndex:
+    """Dataset index carrying one graph batch's local edge map."""
+
+    node_id: int
+    edge_indices: tuple = ()
 
 
 class RelabeledSubset(Dataset):
@@ -75,7 +85,7 @@ class LRMLGraphDataset(Dataset):
     """Expose graph nodes by their graph index for LRML Laplacian regularization.
 
     Item ``i`` corresponds to graph node ``i`` so the indices produced by
-    ``LRMLGraphBatchSampler`` line up with the rows of the precomputed neighbor
+    ``GraphEdgeBatchSampler`` line up with the rows of the precomputed neighbor
     graph and the symmetric adjacency. With cached frozen backbones, the source
     dataset uses the deterministic feature transform or precomputed backbone
     features; otherwise it follows the active training transform. Only the node
@@ -90,6 +100,10 @@ class LRMLGraphDataset(Dataset):
         return len(self.positions)
 
     def __getitem__(self, index):
+        if isinstance(index, GraphBatchNodeIndex):
+            node_id = int(index.node_id)
+            image = self.dataset[int(self.positions[node_id])][0]
+            return image, node_id, index.edge_indices
         image = self.dataset[int(self.positions[index])][0]
         return image, index
 
@@ -177,102 +191,148 @@ class CombinedTrainingLoader:
             self._regularizer_iterator = None
 
 
-class LRMLGraphBatchSampler(torch.utils.data.Sampler):
-    """Build batches that keep each sampled graph node close to its neighbors."""
+def collate_graph_edge_batch(batch):
+    """Deduplicate sampled edge endpoints and retain their local edge map.
 
-    def __init__(self, neighbor_indices, batch_size, seed):
-        if batch_size < 2:
-            raise ValueError("LRML batch_size must be at least 2")
-        self.batch_size = int(batch_size)
-        self.generator = utils.make_torch_generator(seed)
-        self.set_neighbors(neighbor_indices)
+    ``GraphEdgeBatchSampler`` normally emits unique ``GraphBatchNodeIndex``
+    values and attaches the local edge map to the first one, so shared endpoints
+    are fetched only once. The two-item fallback keeps direct unit-test and
+    legacy batches working by deduplicating endpoint occurrences here.
+    """
 
-    def set_neighbors(self, neighbor_indices):
-        neighbor_indices = np.asarray(neighbor_indices, dtype=np.int64)
-        if neighbor_indices.ndim != 2:
-            raise ValueError("LRML neighbor_indices must be a matrix")
-        if len(neighbor_indices) < 2:
-            raise ValueError("LRML regularization requires at least two graph samples")
-        if neighbor_indices.shape[1] == 0:
-            raise ValueError("LRML graph must contain at least one neighbor per node")
+    if len(batch) == 0:
+        raise ValueError("graph edge collation requires at least one graph node")
 
-        self.neighbor_indices = torch.as_tensor(neighbor_indices, dtype=torch.long)
-        self.num_samples = int(len(neighbor_indices))
-        self.neighbors_per_query = min(self.batch_size - 1, int(neighbor_indices.shape[1]))
-        self.queries_per_batch = max(1, self.batch_size // (self.neighbors_per_query + 1))
+    item_width = len(batch[0])
+    if item_width == 3:
+        # Metadata batches are already endpoint-deduplicated by the sampler.
+        # Their node count need not be even: for example, two adjacent edges
+        # have three unique endpoints. The explicit edge map defines pairing.
+        edge_maps = [item[2] for item in batch if len(item[2]) > 0]
+        if len(edge_maps) != 1:
+            raise ValueError("graph batch must carry exactly one local edge map")
+        return (
+            default_collate([item[0] for item in batch]),
+            torch.as_tensor([int(item[1]) for item in batch], dtype=torch.long),
+            torch.as_tensor(edge_maps[0], dtype=torch.long),
+        )
+    if item_width != 2:
+        raise ValueError("graph dataset items must have two or three fields")
+    if len(batch) % 2 != 0:
+        raise ValueError("legacy graph edge batches require adjacent endpoint pairs")
 
-    def __iter__(self):
-        query_order = torch.randperm(self.num_samples, generator=self.generator)
-        for start in range(0, self.num_samples, self.queries_per_batch):
-            batch_indices = []
-            seen = set()
-            query_indices = query_order[start : start + self.queries_per_batch]
-            for query_index in query_indices.tolist():
-                candidates = [query_index]
-                candidates.extend(self.neighbor_indices[query_index, : self.neighbors_per_query].tolist())
-                for candidate in candidates:
-                    candidate = int(candidate)
-                    if candidate in seen:
-                        continue
-                    seen.add(candidate)
-                    batch_indices.append(candidate)
-            yield batch_indices
+    unique_images = []
+    unique_node_ids = []
+    local_index_by_node = {}
+    endpoint_indices = []
+    for image, node_id in batch:
+        node_id = int(node_id)
+        local_index = local_index_by_node.get(node_id)
+        if local_index is None:
+            local_index = len(unique_node_ids)
+            local_index_by_node[node_id] = local_index
+            unique_node_ids.append(node_id)
+            unique_images.append(image)
+        endpoint_indices.append(local_index)
 
-    def __len__(self):
-        return int(math.ceil(self.num_samples / self.queries_per_batch))
+    return (
+        default_collate(unique_images),
+        torch.as_tensor(unique_node_ids, dtype=torch.long),
+        torch.as_tensor(endpoint_indices, dtype=torch.long).reshape(-1, 2),
+    )
 
 
-class WeightedGraphBatchSampler(torch.utils.data.Sampler):
-    """Sample graph-centered node batches from a weighted symmetric adjacency."""
+class GraphEdgeBatchSampler(torch.utils.data.Sampler):
+    """Uniformly batch the undirected graph edges themselves.
 
-    def __init__(self, adjacency, batch_size, seed):
-        if batch_size < 2:
-            raise ValueError("graph regularization requires batch_size >= 2")
-        self.batch_size = int(batch_size)
+    ``graph_batch_size`` is a number of graph edges, independent of the
+    supervised example batch size. The selected endpoints are deduplicated into
+    at most ``2 * graph_batch_size`` ``GraphBatchNodeIndex`` values, with an
+    explicit local edge map attached to the batch. Consumers evaluate only that
+    map, so no lower-ranked edge can be omitted permanently and no incidental
+    induced-subgraph edge is counted with a degree-dependent probability.
+    Without an explicit step count, a complete iterator visits each
+    upper-triangle edge once in a fresh random order. With ``num_batches`` it
+    emits exactly that many estimator batches, starting a new permutation only
+    after consuming the current one.
+    """
+
+    def __init__(self, adjacency, graph_batch_size, seed, num_batches=None):
+        if graph_batch_size <= 0:
+            raise ValueError("graph_batch_size must be positive")
+        self.graph_batch_size = int(graph_batch_size)
+        self.edges_per_batch = self.graph_batch_size
+        self.num_batches = None if num_batches is None else int(num_batches)
+        if self.num_batches is not None and self.num_batches <= 0:
+            raise ValueError("graph sampler num_batches must be positive when set")
         self.generator = utils.make_torch_generator(seed)
         self.set_graph(adjacency)
 
     def set_graph(self, adjacency):
         adjacency = adjacency.tocsr()
         if adjacency.shape[0] != adjacency.shape[1]:
-            raise ValueError("weighted graph adjacency must be square")
+            raise ValueError("graph adjacency must be square")
         if adjacency.shape[0] < 2:
             raise ValueError("graph regularization requires at least two graph samples")
+        difference = (adjacency - adjacency.T).tocsr()
+        if difference.nnz and not np.allclose(difference.data, 0.0):
+            raise ValueError("graph adjacency must be symmetric")
 
-        self.adjacency = adjacency
-        self.num_samples = int(adjacency.shape[0])
-        row_counts = np.diff(adjacency.indptr)
-        self.query_nodes = np.flatnonzero(row_counts > 0).astype(np.int64)
-        if len(self.query_nodes) == 0:
+        coo = adjacency.tocoo()
+        upper = coo.row < coo.col
+        edge_rows = np.asarray(coo.row[upper], dtype=np.int64)
+        edge_cols = np.asarray(coo.col[upper], dtype=np.int64)
+        edge_weights = np.asarray(coo.data[upper], dtype=np.float64)
+        if len(edge_rows) == 0:
             raise ValueError("graph regularization requires at least one edge")
+        if not np.all(np.isfinite(edge_weights)) or np.any(edge_weights <= 0):
+            raise ValueError("graph edge weights must be finite and positive")
+
+        self.edge_rows = torch.as_tensor(edge_rows, dtype=torch.long)
+        self.edge_cols = torch.as_tensor(edge_cols, dtype=torch.long)
+        self.num_edges = int(len(edge_rows))
 
     def __iter__(self):
-        query_order = torch.randperm(len(self.query_nodes), generator=self.generator)
-        max_neighbors = self.batch_size - 1
-        for order_index in query_order.tolist():
-            query = int(self.query_nodes[order_index])
-            start = int(self.adjacency.indptr[query])
-            end = int(self.adjacency.indptr[query + 1])
-            neighbors = self.adjacency.indices[start:end]
-            if len(neighbors) > max_neighbors:
-                selected_offsets = torch.randperm(len(neighbors), generator=self.generator)[:max_neighbors].numpy()
-                selected_neighbors = neighbors[selected_offsets]
-            else:
-                selected_offsets = torch.randperm(len(neighbors), generator=self.generator).numpy()
-                selected_neighbors = neighbors[selected_offsets]
-
-            batch_indices = [query]
-            seen = {query}
-            for neighbor in selected_neighbors.tolist():
-                neighbor = int(neighbor)
-                if neighbor in seen:
-                    continue
-                seen.add(neighbor)
-                batch_indices.append(neighbor)
-            yield batch_indices
+        edge_order = torch.randperm(self.num_edges, generator=self.generator)
+        yielded = 0
+        start = 0
+        target_batches = len(self)
+        while yielded < target_batches:
+            if start >= self.num_edges:
+                edge_order = torch.randperm(self.num_edges, generator=self.generator)
+                start = 0
+            selected = edge_order[start : start + self.edges_per_batch]
+            endpoint_pairs = torch.stack(
+                [self.edge_rows[selected], self.edge_cols[selected]], dim=1
+            ).tolist()
+            unique_nodes = []
+            local_index_by_node = {}
+            edge_indices = []
+            for left_node, right_node in endpoint_pairs:
+                local_pair = []
+                for node_id in (int(left_node), int(right_node)):
+                    local_index = local_index_by_node.get(node_id)
+                    if local_index is None:
+                        local_index = len(unique_nodes)
+                        local_index_by_node[node_id] = local_index
+                        unique_nodes.append(node_id)
+                    local_pair.append(local_index)
+                edge_indices.append(tuple(local_pair))
+            edge_indices = tuple(edge_indices)
+            yield [
+                GraphBatchNodeIndex(
+                    node_id=node_id,
+                    edge_indices=edge_indices if local_index == 0 else (),
+                )
+                for local_index, node_id in enumerate(unique_nodes)
+            ]
+            yielded += 1
+            start += self.edges_per_batch
 
     def __len__(self):
-        return int(len(self.query_nodes))
+        if self.num_batches is not None:
+            return self.num_batches
+        return int(math.ceil(self.num_edges / self.edges_per_batch))
 
 
 class HofferReferenceBatchSampler(torch.utils.data.Sampler):
@@ -280,9 +340,8 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
 
     References are drawn uniformly within each class and resampled for every
     batch, as in Hoffer & Ailon (2018). Unlabeled samples are visited once per
-    epoch in a shuffled order; each batch appends ``num_compared + 1`` freshly
-    drawn reference indices per class (or per sampled class subset when
-    ``max_reference_classes`` caps the count). Indices refer to a
+    epoch in a shuffled order; each batch appends ``reference_sets`` freshly
+    drawn reference indices for every class. Indices refer to a
     ``HofferReferenceDataset``, whose reference candidates start at
     ``num_unlabeled``.
     """
@@ -293,8 +352,7 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
         class_candidates,
         unlabeled_per_batch,
         seed,
-        max_reference_classes=None,
-        num_compared=0,
+        reference_sets=1,
         class_labels=None,
         unlabeled_positions=None,
         labeled_positions=None,
@@ -314,10 +372,10 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
         self.num_unlabeled = int(num_unlabeled)
         self.unlabeled_per_batch = int(unlabeled_per_batch)
         self.num_classes = len(self.class_candidates)
-        self.num_compared = int(num_compared)
-        if self.num_compared < 0:
-            raise ValueError("hoffer_entropy num_compared must be non-negative")
-        self.references_per_class = self.num_compared + 1
+        self.reference_sets = int(reference_sets)
+        if self.reference_sets <= 0:
+            raise ValueError("hoffer_entropy reference_sets must be positive")
+        self.references_per_class = self.reference_sets
         self.class_labels = None if class_labels is None else np.asarray(class_labels, dtype=np.int64)
         if self.class_labels is not None and len(self.class_labels) != self.num_classes:
             raise ValueError("hoffer_entropy class_labels must align with class_candidates")
@@ -327,15 +385,7 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
         if self.unlabeled_positions is not None and len(self.unlabeled_positions) != self.num_unlabeled:
             raise ValueError("hoffer_entropy unlabeled_positions must align with num_unlabeled")
         self.labeled_positions = None if labeled_positions is None else np.asarray(labeled_positions, dtype=np.int64)
-        if max_reference_classes is None:
-            self.reference_classes_per_batch = self.num_classes
-        else:
-            self.reference_classes_per_batch = int(max_reference_classes)
-            if not 2 <= self.reference_classes_per_batch <= self.num_classes:
-                raise ValueError(
-                    "hoffer_entropy max_reference_classes must be in "
-                    f"[2, {self.num_classes}], got {self.reference_classes_per_batch}"
-                )
+        self.reference_classes_per_batch = self.num_classes
         self.references_per_batch = self.reference_classes_per_batch * self.references_per_class
         self.generator = utils.make_torch_generator(seed)
 
@@ -344,11 +394,7 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
         for batch_number, start in enumerate(range(0, self.num_unlabeled, self.unlabeled_per_batch)):
             unlabeled_indices = unlabeled_order[start : start + self.unlabeled_per_batch].tolist()
             batch_indices = list(unlabeled_indices)
-            if self.reference_classes_per_batch < self.num_classes:
-                class_order = torch.randperm(self.num_classes, generator=self.generator)
-                class_ids = class_order[: self.reference_classes_per_batch].tolist()
-            else:
-                class_ids = list(range(self.num_classes))
+            class_ids = list(range(self.num_classes))
             reference_records = []
             for class_id in class_ids:
                 candidates = self.class_candidates[class_id]

@@ -25,10 +25,12 @@
       "high": 1e+2,
       "log": true
     },
+
+
       "ssl_config.method_params.supervised_weight": {
       "type": "float",
-      "low": 0.1,
-      "high": 2.0,
+      "low": 1,
+      "high": 1,
       "log": true
     },
     "ssl_config.method_params.regularizer_weight": {

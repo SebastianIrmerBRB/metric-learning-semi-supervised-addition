@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pytorch_metric_learning import losses
+
 DATASETS = ["Cars196", "CUB", "DeepFashionInShop", "CIFAR100"]
 
 ALL_LOSSES = [
@@ -240,3 +242,4 @@ class ComparisonScenario:
     data_split_seed: int | None = None
     support_seed: int | None = None
     hparam_seed: int | None = None
+    comparison_seed_targets: tuple[str, ...] = ()

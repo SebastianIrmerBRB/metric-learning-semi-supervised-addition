@@ -41,9 +41,13 @@
       "type": "categorical",
       "choices": [3, 6, 10, 15, 25]
     },
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "type": "categorical",
+      "choices": [16, 32, 64, 128, 256]
+    },
     "ssl_config.method_params.regularizer_params.normalized_laplacian": {
       "type": "categorical",
-      "choices": [true, false]
+      "choices": [true]
     },
     "ssl_config.method_params.regularizer_params.graph_on": {
       "type": "categorical",

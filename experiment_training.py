@@ -70,6 +70,22 @@ def _batch_diagnostics_enabled(args):
     return bool(getattr(args, "log_batch_diagnostics", False))
 
 
+def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
+    """Concatenate labeled and regularizer inputs without changing either stream."""
+
+    regularizer_inputs = regularizer_batch[0]
+    if not torch.is_tensor(supervised_inputs) or not torch.is_tensor(regularizer_inputs):
+        raise TypeError("joint regularizer forwards require tensor input batches")
+    if supervised_inputs.ndim != regularizer_inputs.ndim:
+        raise ValueError("labeled and unlabeled inputs must have the same rank")
+    if supervised_inputs.shape[1:] != regularizer_inputs.shape[1:]:
+        raise ValueError(
+            "labeled and unlabeled inputs must have matching non-batch dimensions; "
+            f"got {tuple(supervised_inputs.shape)} and {tuple(regularizer_inputs.shape)}"
+        )
+    return torch.cat([supervised_inputs, regularizer_inputs], dim=0)
+
+
 def _add_time(timings, name, start, end):
     timings[name] += end - start
 
@@ -97,7 +113,7 @@ def is_cacheable_regularized_ssl(ssl_config):
     if ssl_method is None or not ssl_method.is_regularization_method:
         return False
     regularizer = ssl_method.make_regularizer(ssl_config)
-    return regularizer.name in {"hoffer_entropy", "lrml", "slrmml"}
+    return regularizer.name in {"hoffer_entropy", "lrml", "slrml", "seraph_entropy"}
 
 
 def get_frozen_feature_batch_size(args):
@@ -220,10 +236,47 @@ def uses_ssl_warmup_objective(ssl_config):
 
     return ssl_config.enabled and ssl_config.warmup_epochs > 0
 
+
+def uses_shared_mixed_lp_proxy_warmup(args, ssl_config):
+    """Whether labeled warmup must continue the final method's proxy state."""
+
+    return (
+        uses_ssl_warmup_objective(ssl_config)
+        and ssl_config.method == "mixed_label_propagation"
+        and args.loss == "MixedLabelPropagationProxyLoss"
+    )
+
+
+def uses_main_objective_for_warmup(args, ssl_config):
+    """Whether warmup and main training use one objective instance."""
+
+    if uses_shared_mixed_lp_proxy_warmup(args, ssl_config):
+        return True
+    if not uses_ssl_warmup_objective(ssl_config):
+        return False
+    return (
+        args.warmup_loss == args.loss
+        and dict(args.warmup_loss_params) == dict(args.loss_params)
+        and args.warmup_miner == args.miner
+        and dict(args.warmup_miner_params) == dict(args.miner_params)
+    )
+
 def is_ssl_warmup_epoch(ssl_config, num_epoch):
     """Return whether the current epoch should use the warmup objective."""
 
     return ssl_config.enabled and num_epoch < ssl_config.warmup_epochs
+
+
+def should_rebuild_pseudo_label_training_dataset(ssl_config, num_epoch, last_rebuild_epoch):
+    """Return whether an enabled pseudo-label method needs a new train dataset."""
+
+    return ssl_config.enabled and semi_supervised.should_rebuild_on_epoch(
+        ssl_config.update_mode,
+        ssl_config.update_interval_epochs,
+        num_epoch,
+        last_rebuild_epoch,
+    )
+
 
 def write_split_manifest(log_dir, dataset_bundle, ssl_config, ssl_split):
     """Persist the exact split so an experiment can be audited or reproduced.
@@ -458,6 +511,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     ssl_method = semi_supervised.get_method(ssl_config)
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
+    if regularizer is not None:
+        regularizer.set_batch_diagnostics_enabled(_batch_diagnostics_enabled(args))
     stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
     supervised_mode = is_supervised_mode(args)
     precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
@@ -822,12 +877,13 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     warmup_classifier_optim = None
     if uses_ssl_warmup_objective(ssl_config):
         warmup_criterion, warmup_is_classification, warmup_miner, warmup_classifier_optim = (
-            make_training_loss_components(
+            make_warmup_loss_components(
                 args=args,
-                loss_name=args.warmup_loss,
-                loss_params=args.warmup_loss_params,
-                miner_name=args.warmup_miner,
-                miner_params=args.warmup_miner_params,
+                ssl_config=ssl_config,
+                criterion=criterion,
+                is_classification=is_classification,
+                miner=miner,
+                classifier_optim=classifier_optim,
                 num_classes=num_train_classes,
                 embedding_size=model.feat_dim,
             )
@@ -953,22 +1009,27 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     loss_driven_sampling_rebuild_epoch = num_epoch
                 train_loader = loss_driven_train_loader
             elif regularized_ssl:
-                train_loader = regularizer.make_loader(
-                    model=model,
-                    train_dataset=dataset_bundle.train_dataset,
-                    supervised_loader=warmup_train_loader,
-                    device=args.device,
-                    config=ssl_config,
-                    batch_size=args.batch_size,
-                    seed=args.seed + num_epoch,
-                    num_workers=args.num_workers,
-                    start_method=args.dataloader_start_method,
-                    epoch=num_epoch,
-                    log_dir=args.log_dir,
-                )
-            elif semi_supervised.should_rebuild_on_epoch(
-                ssl_config.update_mode,
-                ssl_config.update_interval_epochs,
+                if regularizer.regularizer_weight == 0:
+                    # This is the exact supervised-baseline sanity path: do not
+                    # even iterate the unlabeled stream, since its augmentations
+                    # could otherwise perturb process RNG state at num_workers=0.
+                    train_loader = warmup_train_loader
+                else:
+                    train_loader = regularizer.make_loader(
+                        model=model,
+                        train_dataset=dataset_bundle.train_dataset,
+                        supervised_loader=warmup_train_loader,
+                        device=args.device,
+                        config=ssl_config,
+                        batch_size=args.batch_size,
+                        seed=args.seed + num_epoch,
+                        num_workers=args.num_workers,
+                        start_method=args.dataloader_start_method,
+                        epoch=num_epoch,
+                        log_dir=args.log_dir,
+                    )
+            elif should_rebuild_pseudo_label_training_dataset(
+                ssl_config,
                 num_epoch,
                 ssl_training_dataset_update_epoch,
             ):
@@ -1011,14 +1072,25 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
 
             warmup_active = is_ssl_warmup_epoch(ssl_config, num_epoch)
             legacy_stml_active = loss_driven_ssl and not warmup_active
-            regularization_active = regularized_ssl and not warmup_active
+            regularized_phase_active = regularized_ssl and not warmup_active
+            regularization_active = (
+                regularized_phase_active and regularizer.regularizer_weight > 0
+            )
+            regularizer_disabled = (
+                regularized_phase_active and regularizer.regularizer_weight == 0
+            )
             active_criterion = warmup_criterion if warmup_active else criterion
             active_is_classification = warmup_is_classification if warmup_active else is_classification
             active_miner = warmup_miner if warmup_active else miner
             active_classifier_optim = warmup_classifier_optim if warmup_active else classifier_optim
-            loss_phase = f"warmup ({args.warmup_loss})" if warmup_active else args.loss
+            warmup_loss_name = (
+                args.loss if uses_main_objective_for_warmup(args, ssl_config) else args.warmup_loss
+            )
+            loss_phase = f"warmup ({warmup_loss_name})" if warmup_active else args.loss
             if regularization_active:
                 loss_phase = f"{args.loss} + {regularizer.name} regularization"
+            elif regularizer_disabled:
+                loss_phase = f"{args.loss} (regularizer weight 0; supervised-only sanity path)"
             logger.info(f"Epoch {num_epoch}: training with {loss_phase}")
             teacher_model = initialize_stml_teacher_for_phase(
                 teacher_model=teacher_model,
@@ -1060,6 +1132,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 else:
                     supervised_batch, regularizer_batch = batch if regularization_active else (batch, None)
                     images, labels, sample_weights = unpack_training_batch(supervised_batch)
+                    supervised_batch_size = len(labels)
+                    joint_forward_active = bool(
+                        regularization_active and regularizer.uses_joint_forward
+                    )
+                    if joint_forward_active:
+                        images = concatenate_joint_forward_inputs(images, regularizer_batch)
                     if regularization_active and getattr(regularizer, "name", None) == "hoffer_entropy":
                         hoffer_roles = torch.as_tensor(regularizer_batch[1])
                         hoffer_reference_count = int(hoffer_roles.bool().sum().item())
@@ -1107,6 +1185,10 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                             args.device,
                             use_cache=model_use_cache,
                         )
+                        regularizer_embeddings = None
+                        if joint_forward_active:
+                            regularizer_embeddings = embeddings[supervised_batch_size:]
+                            embeddings = embeddings[:supervised_batch_size]
                         t1 = _now(args.device) if timing else None
                         if timing:
                             _add_time(epoch_timings, "forward", t0, t1)
@@ -1137,17 +1219,27 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
 
                         if regularization_active:
                             t0 = _now(args.device) if timing else None
+                            regularizer_loss_kwargs = {}
+                            if joint_forward_active:
+                                regularizer_loss_kwargs = {
+                                    "supervised_embeddings": embeddings,
+                                    "supervised_labels": labels,
+                                    "regularizer_embeddings": regularizer_embeddings,
+                                }
                             regularization_loss = regularizer.compute_loss(
                                 student_model=model,
                                 state=regularizer_state,
                                 batch=regularizer_batch,
                                 device=args.device,
                                 timings=epoch_timings if timing else None,
+                                **regularizer_loss_kwargs,
                             )
                             loss = regularizer.combine_losses(supervised_loss, regularization_loss)
                             t1 = _now(args.device) if timing else None
                             if timing:
                                 _add_time(epoch_timings, "regularization_loss", t0, t1)
+                        elif regularizer_disabled:
+                            loss = regularizer.supervised_weight * supervised_loss
                         else:
                             loss = supervised_loss
 
@@ -1185,6 +1277,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                         batch_diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
                     if regularization_loss is not None:
                         batch_diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
+                        batch_diagnostics.update(regularizer.batch_diagnostics())
                 t1 = _now(args.device) if timing and log_batch_diagnostics else None
                 if timing and log_batch_diagnostics:
                     _add_time(epoch_timings, "diagnostics", t0, t1)
@@ -1460,6 +1553,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         test_pacmap_plot=test_pacmap_plot,
     )
 
+
 def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None):
     """Train each CV fold independently and aggregate fold-level metrics."""
 
@@ -1649,10 +1743,14 @@ def validate_run_args(args, ssl_config):
     ssl_method = semi_supervised.get_method(ssl_config)
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
-    stml_regularization = regularizer is not None and regularizer.name == "stml"
     validate_effective_miner_params(args.loss, args.miner, args.miner_params, "miner")
     if uses_ssl_warmup_objective(ssl_config):
         validate_warmup_loss_args(args)
+        if uses_shared_mixed_lp_proxy_warmup(args, ssl_config) and args.warmup_loss != args.loss:
+            raise ValueError(
+                "mixed_label_propagation proxy warmup must name "
+                "warmup_loss='MixedLabelPropagationProxyLoss'; the same proxy module is reused"
+            )
     unlabeled_source, external_unlabeled_dir = resolve_unlabeled_source_args(args)
     external_unlabeled_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
     if external_unlabeled_filter not in utils.EXTERNAL_UNLABELED_FILTERS:
@@ -1905,6 +2003,33 @@ def make_training_loss_components(
     else:
         miner = make_named_miner(miner_name, miner_params)
     return criterion, is_classification, miner, classifier_optim
+
+
+def make_warmup_loss_components(
+    args,
+    ssl_config,
+    criterion,
+    is_classification,
+    miner,
+    classifier_optim,
+    num_classes,
+    embedding_size,
+):
+    """Build warmup components, reusing the main objective when it matches."""
+
+    if uses_main_objective_for_warmup(args, ssl_config):
+        # Alias the objects so trainable criterion state (for example class
+        # proxies) and optimizer moments continue after labeled-only warmup.
+        return criterion, is_classification, miner, classifier_optim
+    return make_training_loss_components(
+        args=args,
+        loss_name=args.warmup_loss,
+        loss_params=args.warmup_loss_params,
+        miner_name=args.warmup_miner,
+        miner_params=args.warmup_miner_params,
+        num_classes=num_classes,
+        embedding_size=embedding_size,
+    )
 
 
 def make_optimizer(args, parameters, lr):

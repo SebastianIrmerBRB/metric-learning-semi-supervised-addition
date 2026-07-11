@@ -278,52 +278,172 @@ class DinoWrapper(nn.Module):
         }
 
     def _load_or_compute_cached_backbone_features(self, images, device):
+        total_start = time.perf_counter()
+
+        device = torch.device(device)
+
+        def sync():
+            if device.type == "cuda":
+                torch.cuda.synchronize(device)
+
+        # CPU transfer
+        start = time.perf_counter()
         cpu_images = images.detach().cpu().contiguous()
+        cpu_transfer_time = time.perf_counter() - start
+
+        # Cache-key calculation
+        start = time.perf_counter()
         cache_keys = [self._cache_key(image) for image in cpu_images]
         cache_paths = [self.cache_dir / f"{cache_key}.pt" for cache_key in cache_keys]
+        key_time = time.perf_counter() - start
+
         cached_features = [None] * len(cpu_images)
         missing_indices = []
+
+        memory_hits = 0
+        disk_hits = 0
+        disk_load_time = 0.0
+
+        # Cache lookup
+        lookup_start = time.perf_counter()
+
         for index, (cache_key, cache_path) in enumerate(zip(cache_keys, cache_paths)):
             if cache_key in self._memory_feature_cache:
                 cached_features[index] = self._memory_feature_cache[cache_key]
                 self._cache_stats["hit_samples"] += 1
                 self._cache_stats["memory_hit_samples"] += 1
+                memory_hits += 1
                 continue
+
             if not cache_path.exists():
                 missing_indices.append(index)
                 continue
+
+            disk_start = time.perf_counter()
+
             try:
-                features = torch.load(cache_path, map_location="cpu", weights_only=True)
-                if features.ndim != 1 or len(features) != DINOV2_ARCHS[self.dino_size]:
-                    raise ValueError("cached feature shape does not match DINO backbone output")
+                features = torch.load(
+                    cache_path,
+                    map_location="cpu",
+                    weights_only=True,
+                )
+
+                if (
+                        features.ndim != 1
+                        or len(features) != DINOV2_ARCHS[self.dino_size]
+                ):
+                    raise ValueError(
+                        "cached feature shape does not match DINO backbone output"
+                    )
+
                 cached_features[index] = features
                 self._memory_feature_cache[cache_key] = features
                 self._cache_stats["hit_samples"] += 1
                 self._cache_stats["disk_hit_samples"] += 1
+                disk_hits += 1
+
             except (OSError, RuntimeError, TypeError, ValueError):
                 missing_indices.append(index)
+
+            finally:
+                disk_load_time += time.perf_counter() - disk_start
+
+        lookup_time = time.perf_counter() - lookup_start
+
+        transfer_to_device_time = 0.0
+        backbone_time = 0.0
+        transfer_to_cpu_time = 0.0
+        cache_write_time = 0.0
 
         if missing_indices:
             self._cache_stats["batches_with_misses"] += 1
             self._cache_stats["miss_samples"] += len(missing_indices)
-            missing_images = cpu_images[missing_indices].to(device, non_blocking=True)
-            missing_features = self.forward_backbone(missing_images).detach().cpu()
+
+            # Missing images: CPU -> device
+            sync()
+            start = time.perf_counter()
+
+            missing_images = cpu_images[missing_indices].to(
+                device,
+                non_blocking=True,
+            )
+
+            sync()
+            transfer_to_device_time = time.perf_counter() - start
+
+            # Backbone forward
+            sync()
+            start = time.perf_counter()
+
+            missing_features = self.forward_backbone(missing_images).detach()
+
+            sync()
+            backbone_time = time.perf_counter() - start
+
+            # Features: device -> CPU
+            start = time.perf_counter()
+
+            missing_features = missing_features.cpu()
+
+            sync()
+            transfer_to_cpu_time = time.perf_counter() - start
+
+            # Cache writes
+            start = time.perf_counter()
+
             for index, feature in zip(missing_indices, missing_features):
-                # A row sliced from a batch retains the batch's entire storage.
-                # Clone it before serialization so each cache file owns only
-                # one sample's backbone feature vector.
                 feature = feature.clone()
+
                 cached_features[index] = feature
                 self._memory_feature_cache[cache_keys[index]] = feature
+
                 cache_path = cache_paths[index]
-                temp_path = cache_path.with_suffix(f".{os.getpid()}.{uuid.uuid4().hex}.tmp")
+                temp_path = cache_path.with_suffix(
+                    f".{os.getpid()}.{uuid.uuid4().hex}.tmp"
+                )
+
                 torch.save(feature, temp_path)
                 os.replace(temp_path, cache_path)
+
                 self._cache_stats["written_samples"] += 1
+
+            cache_write_time = time.perf_counter() - start
+
         else:
             self._cache_stats["fully_cached_batches"] += 1
 
-        return torch.stack(cached_features).to(device, non_blocking=True)
+        # Stack and transfer result
+        sync()
+        start = time.perf_counter()
+
+        result = torch.stack(cached_features).to(
+            device,
+            non_blocking=True,
+        )
+
+        sync()
+        output_time = time.perf_counter() - start
+        total_time = time.perf_counter() - total_start
+
+        print(
+            "[DINO cache timing] "
+            f"batch={len(cpu_images)} "
+            f"memory_hits={memory_hits} "
+            f"disk_hits={disk_hits} "
+            f"misses={len(missing_indices)} | "
+            f"cpu_copy={cpu_transfer_time * 1000:.2f}ms "
+            f"keys={key_time * 1000:.2f}ms "
+            f"lookup={lookup_time * 1000:.2f}ms "
+            f"disk_load={disk_load_time * 1000:.2f}ms "
+            f"h2d={transfer_to_device_time * 1000:.2f}ms "
+            f"backbone={backbone_time * 1000:.2f}ms "
+            f"d2h={transfer_to_cpu_time * 1000:.2f}ms "
+            f"writes={cache_write_time * 1000:.2f}ms "
+            f"output={output_time * 1000:.2f}ms "
+            f"total={total_time * 1000:.2f}ms"
+        )
+
+        return result
 
     def _cache_key(self, image):
         digest = hashlib.sha256()

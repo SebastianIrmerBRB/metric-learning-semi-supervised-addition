@@ -24,7 +24,22 @@ FINAL_TEST_VISUALIZATION_PACMAP = "pacmap"
 FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, FINAL_TEST_VISUALIZATION_PACMAP)
 STUDY_DIR_MODE_FINAL_TRAIN = "final_train"
 STUDY_DIR_MODE_TRAIN_VAL = "train_val"
-STUDY_DIR_MODES = (STUDY_DIR_MODE_FINAL_TRAIN, STUDY_DIR_MODE_TRAIN_VAL)
+STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL = "cross_seed_train_val"
+STUDY_DIR_MODES = (
+    STUDY_DIR_MODE_FINAL_TRAIN,
+    STUDY_DIR_MODE_TRAIN_VAL,
+    STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
+)
+COMPARISON_SEED_TARGET_RUNTIME = "seed"
+COMPARISON_SEED_TARGET_DATA_SPLIT = "data_split_seed"
+COMPARISON_SEED_TARGET_SUPPORT = "support_seed"
+COMPARISON_SEED_TARGET_HPARAM = "hparam_seed"
+COMPARISON_SEED_TARGETS = (
+    COMPARISON_SEED_TARGET_RUNTIME,
+    COMPARISON_SEED_TARGET_DATA_SPLIT,
+    COMPARISON_SEED_TARGET_SUPPORT,
+    COMPARISON_SEED_TARGET_HPARAM,
+)
 
 
 def parse_json_object(value):
@@ -406,14 +421,20 @@ parser.add_argument(
     "--final_test_top_n",
     type=int,
     default=1,
-    help="number of highest-value completed HPO trials to run final-test evaluation for",
+    help=(
+        "number of highest-value completed HPO trials to replay; final_train tests every replay, "
+        "while train_val and cross_seed_train_val fully retrain/test only the validation winner"
+    ),
 )
 parser.add_argument(
     "--final_test_trial_numbers",
     type=int,
     nargs="*",
     default=None,
-    help="specific completed HPO trial numbers to run final-test evaluation for",
+    help=(
+        "specific completed HPO trial numbers to replay; final_train tests every replay, while "
+        "train_val and cross_seed_train_val fully retrain/test only the validation winner"
+    ),
 )
 parser.add_argument(
     "--final_test_study_dir",
@@ -432,10 +453,12 @@ parser.add_argument(
     "--final-test-study-dir-mode",
     dest="study_dir_mode",
     choices=STUDY_DIR_MODES,
-    default=STUDY_DIR_MODE_FINAL_TRAIN,
+    default=STUDY_DIR_MODE_TRAIN_VAL,
     help=(
         "how to replay an existing HPO study: final_train trains once on the full development set "
-        "and evaluates D_test; train_val runs a normal train/validation job without D_test evaluation"
+        "and evaluates D_test; train_val ranks selected trials on one validation split and then fully "
+        "retrains/tests the winner; cross_seed_train_val ranks trials by mean validation performance "
+        "over comparison_seeds and then fully retrains/tests the winner once"
     ),
 )
 parser.add_argument(
@@ -475,6 +498,17 @@ parser.add_argument(
     help=(
         "outer experiment grid over runtime, dataset-split, labeled-support, "
         "and HPO sampler seeds, for example 0 1 2 3 4"
+    ),
+)
+parser.add_argument(
+    "--comparison_seed_targets",
+    "--comparison-seed-targets",
+    nargs="+",
+    choices=COMPARISON_SEED_TARGETS,
+    default=list(COMPARISON_SEED_TARGETS),
+    help=(
+        "seed channels replaced by each --comparison_seeds value. Configure as a JSON array in an "
+        "experiment config; omitted defaults to seed, data_split_seed, support_seed, and hparam_seed"
     ),
 )
 parser.add_argument(

@@ -132,7 +132,7 @@ Common fields:
 
 Pseudo-label methods such as sklearn label spreading, FAISS label spreading,
 and mixed label propagation apply the cadence to pseudo-label regeneration.
-Graph regularizers such as LRML/SLRMML apply the same cadence to graph rebuilds.
+Graph regularizers such as LRML/SLRML apply the same cadence to graph rebuilds.
 STML applies it to nearest-neighbor sampler rebuilds.
 
 Label sampling modes:

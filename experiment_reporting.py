@@ -7,7 +7,7 @@ import math
 import numpy as np
 from loguru import logger
 
-from experiment_cli import STUDY_DIR_MODE_TRAIN_VAL
+from experiment_cli import STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL, STUDY_DIR_MODE_TRAIN_VAL
 from experiment_io import namespace_to_dict, result_to_dict, write_json
 
 
@@ -15,8 +15,17 @@ def make_final_epoch_plan(study_result):
     """Choose a fixed final training duration from the best trial's checkpoints."""
 
     attrs = study_result.best_user_attrs or {}
+    validation_replay_results = attrs.get("validation_replay_results") or []
     fold_results = attrs.get("fold_results") or []
-    source_results = fold_results if fold_results else [attrs]
+    if validation_replay_results:
+        source_results = validation_replay_results
+        source = attrs.get("validation_replay_source", "validation_replays")
+    elif fold_results:
+        source_results = fold_results
+        source = "cross_validation_folds"
+    else:
+        source_results = [attrs]
+        source = "single_validation_run"
     selected_epoch_key = "selected_epoch"
     if not source_results or any(result.get(selected_epoch_key) is None for result in source_results):
         selected_epoch_key = "last_epoch"
@@ -32,7 +41,7 @@ def make_final_epoch_plan(study_result):
     mean_training_epochs = float(np.mean(training_epoch_counts))
     final_training_epochs = int(math.floor(mean_training_epochs + 0.5))
     return {
-        "source": "cross_validation_folds" if fold_results else "single_validation_run",
+        "source": source,
         "epoch_field": selected_epoch_key,
         "selected_epoch_indices": selected_epochs,
         "training_epoch_counts": training_epoch_counts,
@@ -136,6 +145,82 @@ def write_hparam_train_val_evaluation_summary(study_result, train_result, role, 
     logger.info(f"Train/validation HPO replay summary written to {study_result.study_dir}")
 
 
+def write_cross_seed_train_val_evaluation_summary(
+    output_dir,
+    summary_stem,
+    role,
+    study_result,
+    scenarios,
+    selection_metric,
+    candidates,
+    winner,
+    epoch_plan,
+    final_result,
+):
+    """Write candidate-by-seed validation evidence and the one final result."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / f"{summary_stem}.json"
+    csv_path = output_dir / f"{summary_stem}.csv"
+    write_json(
+        json_path,
+        {
+            "role": role,
+            "study_dir_mode": STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
+            "study": hparam_study_result_to_dict(study_result),
+            "selection_metric": selection_metric,
+            "scenarios": [comparison_scenario_to_dict(scenario) for scenario in scenarios],
+            "candidates": candidates,
+            "winner_trial_number": winner["trial"]["trial_number"],
+            "winner_mean_selection_value": winner["mean_selection_value"],
+            "epoch_plan": epoch_plan,
+            "final_result": result_to_dict(final_result),
+        },
+    )
+    rows = []
+    for candidate in candidates:
+        selected_for_final = bool(candidate["selected_for_final"])
+        rows.append(
+            {
+                "role": role,
+                "study_name": study_result.study_name,
+                "trial_number": candidate["trial"]["trial_number"],
+                "original_hpo_value": optional_number(candidate["trial"].get("value")),
+                "params": json.dumps(candidate["trial"]["params"], sort_keys=True),
+                "selection_metric": selection_metric,
+                "mean_selection_value": candidate["mean_selection_value"],
+                "mean_best_valid_precision_at_1": candidate["mean_best_valid_precision_at_1"],
+                "mean_best_valid_mean_average_precision_at_r": candidate[
+                    "mean_best_valid_mean_average_precision_at_r"
+                ],
+                "comparison_seeds": json.dumps(
+                    [run["comparison_seed"] for run in candidate["validation_runs"]]
+                ),
+                "per_seed_selection_values": json.dumps(
+                    [run["selection_value"] for run in candidate["validation_runs"]]
+                ),
+                "per_seed_selected_epochs": json.dumps(
+                    [run["result"]["selected_epoch"] for run in candidate["validation_runs"]]
+                ),
+                "selected_for_final": selected_for_final,
+                "final_training_epochs": epoch_plan["final_training_epochs"] if selected_for_final else "",
+                "test_precision_at_1": optional_number(
+                    final_result.test_precision_at_1 if selected_for_final else None
+                ),
+                "test_mean_average_precision_at_r": optional_number(
+                    final_result.test_mean_average_precision_at_r if selected_for_final else None
+                ),
+                "final_log_dir": str(final_result.log_dir) if selected_for_final else "",
+            }
+        )
+    with csv_path.open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    logger.info(f"Cross-seed train/validation selection summary written to {output_dir}")
+    return {"json": json_path, "csv": csv_path}
+
+
 def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, requested_top_n, summary_stem):
     """Write one summary for all top-N final-test evaluations."""
 
@@ -152,6 +237,9 @@ def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, req
                 "hpo_value": optional_number(trial["value"]),
                 "params": json.dumps(trial["params"], sort_keys=True),
                 "summary_stem": item["summary_stem"],
+                "selected_for_test": item.get("selected_for_test", True),
+                "validation_selection_metric": item.get("validation_selection_metric", ""),
+                "validation_selection_value": optional_number(item.get("validation_selection_value")),
                 "final_log_dir": str(final_result.log_dir),
                 "final_metrics_csv": str(final_result.metrics_csv),
                 "final_train_loss": optional_number(final_result.final_train_loss),
@@ -178,6 +266,9 @@ def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, req
                 {
                     "trial": item["trial"],
                     "summary_stem": item["summary_stem"],
+                    "selected_for_test": item.get("selected_for_test", True),
+                    "validation_selection_metric": item.get("validation_selection_metric"),
+                    "validation_selection_value": item.get("validation_selection_value"),
                     "final_result": result_to_dict(item["final_result"]),
                 }
                 for item in evaluated
@@ -208,6 +299,9 @@ def write_hparam_selected_final_evaluation_summary(study_result, evaluated, role
                 "hpo_value": optional_number(trial["value"]),
                 "params": json.dumps(trial["params"], sort_keys=True),
                 "summary_stem": item["summary_stem"],
+                "selected_for_test": item.get("selected_for_test", True),
+                "validation_selection_metric": item.get("validation_selection_metric", ""),
+                "validation_selection_value": optional_number(item.get("validation_selection_value")),
                 "final_log_dir": str(final_result.log_dir),
                 "final_metrics_csv": str(final_result.metrics_csv),
                 "final_train_loss": optional_number(final_result.final_train_loss),
@@ -234,6 +328,9 @@ def write_hparam_selected_final_evaluation_summary(study_result, evaluated, role
                 {
                     "trial": item["trial"],
                     "summary_stem": item["summary_stem"],
+                    "selected_for_test": item.get("selected_for_test", True),
+                    "validation_selection_metric": item.get("validation_selection_metric"),
+                    "validation_selection_value": item.get("validation_selection_value"),
                     "final_result": result_to_dict(item["final_result"]),
                 }
                 for item in evaluated
@@ -370,6 +467,7 @@ def comparison_scenario_to_dict(scenario):
         "labeled_fraction": scenario.labeled_fraction,
         "labeled_per_class": scenario.labeled_per_class,
         "comparison_seed": scenario.seed,
+        "comparison_seed_targets": list(scenario.comparison_seed_targets),
         "run_seed": scenario.run_seed,
         "data_split_seed": scenario.data_split_seed,
         "support_seed": scenario.support_seed,
@@ -448,6 +546,7 @@ def make_single_method_grid_summary_row(grid_result):
         "loss": scenario.loss,
         "miner": scenario.miner,
         "comparison_seed": scenario.seed,
+        "comparison_seed_targets": ",".join(scenario.comparison_seed_targets),
         "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
         "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
         "support_seed": "" if scenario.support_seed is None else scenario.support_seed,
@@ -586,6 +685,7 @@ def make_grid_summary_row(result):
         "loss": scenario.loss,
         "miner": scenario.miner,
         "comparison_seed": scenario.seed,
+        "comparison_seed_targets": ",".join(scenario.comparison_seed_targets),
         "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
         "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
         "support_seed": "" if scenario.support_seed is None else scenario.support_seed,

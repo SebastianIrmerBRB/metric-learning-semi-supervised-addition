@@ -328,10 +328,28 @@ Both studies use the same validation set, test set, objective metric, and `n_tri
 During HPO, test evaluation is disabled automatically.
 After both studies finish, the best validation configuration from each study is retrained once more and evaluated on `D_test`.
 
-When `--comparison_seeds` is supplied, each value is applied to both
-the runtime `seed`, `data_split_seed`, `support_seed`, and `hparam_seed`.
-Each comparison-seed scenario runs a full supervised HPO study and a full SSL HPO
-study with those seeds.
+When `--comparison_seeds` is supplied, `comparison_seed_targets` controls which
+seed channels each value replaces. The available targets are:
+
+- `seed`: training/runtime and SSL-method randomness;
+- `data_split_seed`: dataset protocol and validation splits;
+- `support_seed`: labeled support/sample selection;
+- `hparam_seed`: Optuna sampler randomness.
+
+Omitting `comparison_seed_targets` selects all four targets, preserving the
+original behavior. In an experiment JSON config, a sweep that changes training
+and labeled-support randomness while holding the dataset split and Optuna sampler
+fixed looks like:
+
+```json
+{
+  "comparison_seeds": [0, 1, 2, 3, 4],
+  "comparison_seed_targets": ["seed", "support_seed"]
+}
+```
+
+Each comparison-seed scenario runs the requested supervised/SSL HPO workflow
+with its resolved seed channels.
 
 Outputs are written under:
 
@@ -530,11 +548,13 @@ python main.py `
 ```
 
 The equivalent experiment-config field is `"final_test_after_hpo": true`.
-Set `"final_test_top_n": 5` to run the same final-test evaluation for the five
-completed HPO trials with the highest objective values. The default is `1`,
-which preserves the previous best-trial-only behavior.
-Set `"final_test_trial_numbers": [6, 11]` to evaluate specific completed trial
-numbers instead of selecting by objective value.
+Set `"final_test_top_n": 5` to select the five completed HPO trials with the
+best objective values. In `final_train` mode all five receive final fits; in
+study-directory `train_val` and `cross_seed_train_val` modes, they are
+validation candidates and only the winner receives a final fit. Normal
+`final_test_after_hpo` also performs final fits directly. The default is `1`. Set
+`"final_test_trial_numbers": [6, 11]` to choose explicit candidates instead of
+selecting by objective value.
 
 To run final-test evaluation later from an existing study directory without
 resuming HPO, pass the literal study directory and reuse the same selectors:
@@ -553,6 +573,38 @@ This loads `study_config.json` and `trials.jsonl` from the study directory, so
 you do not need to repeat the original dataset, SSL, or HPO command-line
 arguments.
 
+Study-directory replay has three selection modes:
+
+- `final_train`: immediately performs a full-development train/test for every
+  selected trial;
+- `train_val`: replays the selected trials on one train/validation split,
+  chooses the best validation result, then performs one full-development
+  train/test for that winner;
+- `cross_seed_train_val`: replays every selected trial over all requested
+  `comparison_seeds`, chooses the trial with the best mean validation selection
+  metric, averages that winner's selected epoch counts, then performs one
+  full-development train/test.
+
+For example, this evaluates the original study's top five trials over three
+alternative runtime/validation-split seeds (15 validation runs), then runs one
+final fit:
+
+```json
+{
+  "final_test_study_dir": "logs/path/to/method/study",
+  "study_dir_mode": "cross_seed_train_val",
+  "final_test_top_n": 5,
+  "comparison_seeds": [2, 7, 8],
+  "comparison_seed_targets": ["seed", "data_split_seed"]
+}
+```
+
+Use only `data_split_seed` when optimization randomness should remain fixed.
+The final fit uses the request/study's baseline seeds, not an arbitrarily chosen
+validation seed. A study directory represents one method; `loss_miner_grid` is
+not applied during study-directory replay, so run this selection once for each
+method's own study directory.
+
 The HPO trials continue to skip the test set. After a study finishes, the
 runner:
 
@@ -566,9 +618,11 @@ runner:
    development/training pool, without validation or early stopping;
 6. evaluates that final model once on the held-out test set.
 
-For non-CV HPO, the selected epoch from the single validation run supplies the
-final duration. Older resumed studies that do not contain `selected_epoch`
-metadata fall back to their recorded `last_epoch`.
+For `train_val`, the winning replay's selected epoch supplies the final
+duration. For `cross_seed_train_val`, the winner's selected epoch counts are
+averaged across seed replays and rounded with the same policy as fold CV. Older
+resumed studies that do not contain `selected_epoch` metadata fall back to their
+recorded `last_epoch` when using direct `final_train`.
 
 Each study directory receives:
 

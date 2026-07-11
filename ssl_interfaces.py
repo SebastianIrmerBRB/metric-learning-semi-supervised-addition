@@ -34,11 +34,13 @@ class BaseTrainingRegularizer:
 
     name = None
     provides_trainable_projection_without_feat_dim = False
+    uses_joint_forward = False
 
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0):
         self.regularizer_weight = float(regularizer_weight)
         self.supervised_weight = float(supervised_weight)
         self.use_cache = False
+        self.collect_batch_diagnostics = False
         if not math.isfinite(self.regularizer_weight) or self.regularizer_weight < 0:
             raise ValueError("regularizer_weight must be finite and non-negative")
         if not math.isfinite(self.supervised_weight) or self.supervised_weight < 0:
@@ -94,3 +96,13 @@ class BaseTrainingRegularizer:
 
     def after_optimizer_step(self, student_model, state):
         return None
+
+    def set_batch_diagnostics_enabled(self, enabled):
+        """Enable optional per-batch diagnostic computation for this run."""
+
+        self.collect_batch_diagnostics = bool(enabled)
+
+    def batch_diagnostics(self):
+        """Return detached scalar diagnostics for the most recent batch."""
+
+        return {}
