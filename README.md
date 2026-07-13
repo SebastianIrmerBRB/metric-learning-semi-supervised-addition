@@ -9,9 +9,9 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 
 | Status | Phase | Meilenstein                             |
 |--------|-------|-----------------------------------------|
-| ☑/2    | 1     | Forschungsfragen                        |
-| ☑/2    | 2     | Literaturreview aufbauen                |
-| ☑/2    | 3     | Hypothesen und Variablen definieren     |
+| ☑      | 1     | Forschungsfragen                        |
+| ☑      | 2     | Literaturreview aufbauen                |
+| ☑      | 3     | Hypothesen und Variablen definieren     |
 | ☑      | 4     | Evaluationsdesign festlegen             |
 | ☑/2    | 5     | Datensätze auswählen                    |
 | ☑      | 6     | Baseline-Methoden implementieren        |
