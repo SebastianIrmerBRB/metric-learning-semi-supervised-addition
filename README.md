@@ -18,12 +18,12 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 | ☑      | 7     | ViT-Models finden (CLIP/DinoV2)         |
 | ☑      | 8     | Pilotexperimente durchführen            |
 | ☑      | 9     | Log erweitern                           |
-| ☑/2    | 10    | SSL Approaches finden                   |
-| ☐      | 11    | SSL Approaches implementieren           |
-| ☐      | 12    | Baseline Runs - Hyperparameter tuning?  |
+| ☑      | 10    | SSL Approaches finden                   |
+| ☑      | 11    | SSL Approaches implementieren           |
+| ☑      | 12    | Baseline Runs - Hyperparameter tuning?  |
 | ☐      | 13    | Baseline Runs - Darstellungen           |
-| ☐      | 14    | SSDML Runs - Parameter to tune?         |
-| ☐      | 15    | SSDML Runs - Manual / automatic tuning? |
+| ☑/2    | 14    | SSDML Runs - Parameter to tune?         |
+| ☑      | 15    | SSDML Runs - Manual / automatic tuning? |
 | ☐      | 16    | SSDML Runs - Gegenüberstellung Arten    |
 
 
