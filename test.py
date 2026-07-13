@@ -1,4 +1,5 @@
 import torch
+from pytorch_metric_learning.losses import ProxyAnchorLoss
 from pytorch_metric_learning.samplers import MPerClassSampler
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -11,7 +12,7 @@ m = 8
 length_before_new_iter = 4000
 batches_to_show = 5
 seed = 0
-
+ProxyAnchorLoss
 
 torch.manual_seed(seed)
 

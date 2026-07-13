@@ -16,16 +16,18 @@ import pytorch_metric_learning.miners as miners
 import torch
 from loguru import logger
 
-import semi_supervised
 import utils
-from experiment_cli import (
+from models.retrieval_model import BACKBONE_TUNING_FROZEN
+
+from . import semi_supervised
+from .cli import (
     FINAL_TEST_VISUALIZATION_NONE,
     get_hparam_seed,
     get_support_seed,
     normalize_backbone_tuning_args,
 )
-from experiment_io import is_scalar, namespace_to_dict, result_to_dict, to_jsonable, write_json
-from experiment_training import (
+from .io import is_scalar, namespace_to_dict, result_to_dict, to_jsonable, write_json
+from .engine import (
     get_loss_class,
     get_data_split_seed,
     resolve_loss_driven_supervised_args,
@@ -35,7 +37,7 @@ from experiment_training import (
     validate_named_miner_params,
     validate_run_args,
 )
-from experiment_types import (
+from .types import (
     ALL_LOSSES,
     ALL_MINERS,
     BATCH_SAMPLER_HPARAM_KEY,
@@ -50,7 +52,6 @@ from experiment_types import (
     SAMPLER_CAPACITY_HPARAM_KEYS,
     SELECTION_METRICS,
 )
-from retrieval_model import BACKBONE_TUNING_FROZEN
 
 
 SAMPLER_STATE_FILENAME = "sampler.pkl"

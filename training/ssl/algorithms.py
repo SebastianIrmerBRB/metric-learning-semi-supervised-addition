@@ -1,16 +1,17 @@
 """Pure graph construction and label-propagation algorithms."""
 
 import numpy as np
+import torch
 from loguru import logger
 from scipy import sparse
 from scipy.sparse import linalg as sparse_linalg
 
-from ssl_config import UNLABELED_TARGET
-from ssl_graph_diagnostics import maybe_save_graph_diagnostics
+from .config import UNLABELED_TARGET
+from .graph_diagnostics import maybe_save_graph_diagnostics
 
 
 def _dependency(overrides, name, default):
-    """Resolve a helper supplied by the compatibility façade, if any."""
+    """Resolve a helper supplied by the orchestration façade, if any."""
 
     if overrides is None:
         return default
@@ -220,14 +221,8 @@ def mixed_label_propagation(
     return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
 
-def build_lrml_knn_graph(embeddings, n_neighbors):
-    """Build the paper's binary symmetric kNN graph (the W_ij definition) with FAISS.
-
-    Embeddings are expected to have been normalized by the model invoked through
-    the shared forward path.
-    Returns the directed kNN matrix (used only to co-locate neighbors in a batch),
-    the symmetric binary adjacency W as a CSR matrix, and the degrees D_ii = sum_j W_ij.
-    """
+def _find_lrml_knn_neighbors(embeddings, n_neighbors):
+    """Return exact non-self FAISS neighbors for each LRML graph node."""
 
     try:
         import faiss
@@ -235,10 +230,14 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
         raise ImportError("lrml regularization requires the faiss-cpu package") from exc
 
     features = np.ascontiguousarray(embeddings, dtype=np.float32)
+    if features.ndim != 2 or features.shape[1] == 0:
+        raise ValueError("lrml embeddings must be a non-empty feature matrix")
+    if not np.all(np.isfinite(features)):
+        raise ValueError("lrml embeddings must be finite")
     num_nodes = len(features)
     k = min(int(n_neighbors), num_nodes - 1)
     if k <= 0:
-        raise ValueError("lrml graph needs at least two samples")
+        raise ValueError("lrml graph needs at least two samples and one neighbor")
 
     index = faiss.IndexFlatIP(features.shape[1])
     index.add(features)
@@ -246,7 +245,6 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
     _, neighbors = index.search(features, k + 1)
 
     neighbor_indices = np.empty((num_nodes, k), dtype=np.int64)
-    rows, cols = [], []
     for node, neighbor_row in enumerate(neighbors):
         kept = 0
         for neighbor in neighbor_row:
@@ -254,14 +252,125 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
             if neighbor == node:
                 continue
             neighbor_indices[node, kept] = neighbor
-            rows.append(node)
-            cols.append(neighbor)
             kept += 1
             if kept == k:
                 break
-        while kept < k:  # degenerate fallback if FAISS returned the node itself twice
-            neighbor_indices[node, kept] = neighbor_indices[node, kept - 1]
-            kept += 1
+        if kept != k:
+            raise RuntimeError(
+                f"FAISS returned only {kept} non-self LRML neighbors for node {node}; "
+                f"expected {k}"
+            )
+    return neighbor_indices
+
+
+def _lrml_pyg_utils():
+    """Load the PyG graph utilities only when the LRML edge path is used."""
+
+    try:
+        from torch_geometric.utils import degree, get_laplacian, to_undirected
+    except ImportError as exc:
+        raise ImportError(
+            "lrml edge-index regularization requires torch-geometric; "
+            "install the project requirements"
+        ) from exc
+    return to_undirected, degree, get_laplacian
+
+
+def build_lrml_knn_edge_index(embeddings, n_neighbors):
+    """Build LRML's binary symmetric kNN graph as a PyG ``edge_index``.
+
+    The returned ``edge_index`` has shape ``[2, 2M]`` and contains both
+    directions of every one of the ``M`` undirected edges. Degrees are computed
+    directly from its source row with :func:`torch_geometric.utils.degree`.
+    """
+
+    to_undirected, pyg_degree, _ = _lrml_pyg_utils()
+    neighbor_indices = _find_lrml_knn_neighbors(embeddings, n_neighbors)
+    num_nodes, k = neighbor_indices.shape
+    source = torch.arange(num_nodes, dtype=torch.long).repeat_interleave(k)
+    target = torch.from_numpy(neighbor_indices.reshape(-1))
+    directed_edge_index = torch.stack((source, target), dim=0)
+    edge_index = to_undirected(directed_edge_index, num_nodes=num_nodes).contiguous()
+    degrees = pyg_degree(
+        edge_index[0],
+        num_nodes=num_nodes,
+        dtype=torch.float64,
+    )
+    if torch.any(degrees <= 0):
+        raise RuntimeError("lrml kNN graph contains an isolated node")
+    return neighbor_indices, edge_index, degrees
+
+
+def validate_lrml_laplacian(edge_index, embeddings, normalized_laplacian):
+    """Materialize a PyG Laplacian and verify its quadratic graph energy.
+
+    This is intended for opt-in graph-build validation, not for the stochastic
+    training hot path. The returned tensors make the validated sparse
+    Laplacian available to callers for debugging and inspection.
+    """
+
+    _, pyg_degree, get_laplacian = _lrml_pyg_utils()
+    edge_index = torch.as_tensor(edge_index, dtype=torch.long, device="cpu")
+    features = torch.as_tensor(embeddings, dtype=torch.float64, device="cpu")
+    if edge_index.ndim != 2 or edge_index.shape[0] != 2:
+        raise ValueError("lrml edge_index must have shape [2, num_directed_edges]")
+    if features.ndim != 2 or len(features) == 0:
+        raise ValueError("lrml validation embeddings must be a non-empty matrix")
+    if edge_index.numel() == 0:
+        raise ValueError("lrml edge_index must contain at least one edge")
+    num_nodes = len(features)
+    if int(edge_index.min()) < 0 or int(edge_index.max()) >= num_nodes:
+        raise ValueError("lrml edge_index refers to a node outside the embeddings")
+    if not torch.isfinite(features).all():
+        raise ValueError("lrml validation embeddings must be finite")
+
+    normalization = "sym" if normalized_laplacian else None
+    laplacian_edge_index, laplacian_edge_weight = get_laplacian(
+        edge_index,
+        normalization=normalization,
+        dtype=features.dtype,
+        num_nodes=num_nodes,
+    )
+    laplacian_source, laplacian_target = laplacian_edge_index
+    laplacian_energy = (
+        laplacian_edge_weight[:, None]
+        * features[laplacian_source]
+        * features[laplacian_target]
+    ).sum()
+
+    degrees = pyg_degree(
+        edge_index[0],
+        num_nodes=num_nodes,
+        dtype=features.dtype,
+    )
+    if torch.any(degrees <= 0):
+        raise ValueError("lrml Laplacian validation requires positive node degrees")
+    scaled = features / degrees.sqrt()[:, None] if normalized_laplacian else features
+    unique_edge_mask = edge_index[0] < edge_index[1]
+    left = edge_index[0, unique_edge_mask]
+    right = edge_index[1, unique_edge_mask]
+    pairwise_energy = ((scaled[left] - scaled[right]) ** 2).sum()
+    try:
+        torch.testing.assert_close(
+            laplacian_energy,
+            pairwise_energy,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+    except AssertionError as exc:
+        raise RuntimeError(
+            "LRML pairwise energy does not match the PyG Laplacian quadratic form"
+        ) from exc
+    return laplacian_edge_index, laplacian_edge_weight
+
+
+def build_lrml_knn_graph(embeddings, n_neighbors):
+    """Build the legacy SciPy LRML graph used by the weighted SLRML path."""
+
+    neighbor_indices = _find_lrml_knn_neighbors(embeddings, n_neighbors)
+    num_nodes, k = neighbor_indices.shape
+    rows = np.repeat(np.arange(num_nodes, dtype=np.int64), k)
+    cols = neighbor_indices.reshape(-1)
 
     directed = sparse.coo_matrix(
         (np.ones(len(rows), dtype=np.float64), (rows, cols)),

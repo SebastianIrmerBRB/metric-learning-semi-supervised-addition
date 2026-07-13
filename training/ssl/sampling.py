@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from ssl_config import SemiSupervisedSplit
+from .config import SemiSupervisedSplit
 
 
 def make_semi_supervised_split(

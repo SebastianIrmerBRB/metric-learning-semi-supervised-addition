@@ -7,8 +7,8 @@ import math
 import numpy as np
 from loguru import logger
 
-from experiment_cli import STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL, STUDY_DIR_MODE_TRAIN_VAL
-from experiment_io import namespace_to_dict, result_to_dict, write_json
+from .cli import STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL, STUDY_DIR_MODE_TRAIN_VAL
+from .io import namespace_to_dict, result_to_dict, write_json
 
 
 def make_final_epoch_plan(study_result):

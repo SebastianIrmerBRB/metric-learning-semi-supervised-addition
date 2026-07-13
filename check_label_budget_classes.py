@@ -14,9 +14,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import semi_supervised  # noqa: E402
 import utils  # noqa: E402
-from experiment_types import DATASETS  # noqa: E402
+from training import semi_supervised  # noqa: E402
+from training.types import DATASETS  # noqa: E402
 
 
 @dataclass(frozen=True)

@@ -50,11 +50,15 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 
 ## Code organization
 
-- `semi_supervised.py` is the compatibility façade and method orchestration layer; focused SSL code lives in the `ssl_*.py` modules.
-- `utils.py` keeps shared loader/evaluation helpers and the historical public API; dataset composition, protocols, and splits live in the `dataset_*.py` modules.
-- `main.py` contains experiment orchestration, while JSON/CSV summary generation lives in `experiment_reporting.py`.
+- `main.py` is the executable entry point and top-level experiment dispatcher.
+- `training/` contains CLI/HPO orchestration, the training engine, shared result types, and the semi-supervised implementation. Focused SSL building blocks live in `training/ssl/`.
+- `utils/` contains the shared utility API plus dataset composition, protocol, split, and local-dataset helpers.
+- `models/` contains retrieval model implementations.
+- `losses/` contains project-local metric-learning losses.
 
-Add new behavior to the focused module for its responsibility. Re-export it from a façade only when existing callers need the historical import path.
+Use the package paths directly, for example `from training import semi_supervised` and `from models.retrieval_model import DinoWrapper`.
+
+Add new behavior to the focused module for its responsibility, and keep cross-module re-exports intentional and limited.
 
 ## Third-Party Attribution
 

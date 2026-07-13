@@ -7,8 +7,8 @@ from loguru import logger
 from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
 from torch.utils.data import Subset
 
-from dataset_composition import CombinedDataset
-from dataset_constants import (
+from .dataset_composition import CombinedDataset
+from .dataset_constants import (
     CIFAR100_FINE_CLASS_TO_SUPERCLASS,
     CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
     CV_MODES,

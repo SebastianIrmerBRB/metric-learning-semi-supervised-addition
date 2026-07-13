@@ -5,17 +5,18 @@ import json
 import sys
 from pathlib import Path
 
-import semi_supervised
 import utils
-from dataset_constants import VAL_MODE_MATCH_TRAIN
-from experiment_types import (
+from models.retrieval_model import BACKBONE_TUNING_FULL, normalize_backbone_tuning
+from utils.dataset_constants import VAL_MODE_MATCH_TRAIN
+
+from . import semi_supervised
+from .types import (
     ALL_LOSSES,
     ALL_MINERS,
     DATASETS,
     SELECTION_METRIC_MAP_AT_R,
     SELECTION_METRICS,
 )
-from retrieval_model import BACKBONE_TUNING_FULL, normalize_backbone_tuning
 
 DEFAULT_DATA_SPLIT_SEED = 7
 DEFAULT_SUPPORT_SEED = semi_supervised.DEFAULT_SUPPORT_SEED
@@ -316,10 +317,10 @@ parser.add_argument(
 parser.add_argument(
     "--unlabeled_source",
     choices=["split", "external", "split_and_external"],
-    default=None,
+    default="split",
     help=(
         "SSL unlabeled pool: the current train split, an external recursive image directory, "
-        "or both. None preserves legacy STML-specific settings."
+        "or both."
     ),
 )
 parser.add_argument(
@@ -354,20 +355,6 @@ parser.add_argument(
         "fail CompCars STML-paper filtering unless the filtered pool has exactly "
         "16,537 images across 145 model classes"
     ),
-)
-parser.add_argument(
-    "--stml_unlabeled_source",
-    choices=["split", "external", "split_and_external"],
-    default="split",
-    help=(
-        "Deprecated alias for --unlabeled_source used by older STML configs."
-    ),
-)
-parser.add_argument(
-    "--stml_external_unlabeled_dir",
-    type=Path,
-    default=None,
-    help="Deprecated alias for --external_unlabeled_dir used by older STML configs.",
 )
 parser.add_argument(
     "--hparam_config",

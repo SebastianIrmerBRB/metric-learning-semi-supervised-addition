@@ -1,17 +1,15 @@
 """Single-fold training, cross-validation, and model component construction."""
 
-import argparse
 import copy
 import csv
 import gc
-import os
+import time
+from collections import defaultdict
 from dataclasses import replace
 from datetime import datetime
 from numbers import Real
 from pathlib import Path
-
-import time
-from collections import defaultdict
+from typing import NamedTuple
 
 import numpy as np
 import pytorch_metric_learning.losses as losses
@@ -20,18 +18,20 @@ import torch
 from loguru import logger
 from tqdm import tqdm
 
-import metric_losses
-import semi_supervised
 import utils
-from experiment_cli import (
+from losses import metric_losses
+from models.retrieval_model import BACKBONE_TUNING_FROZEN, DinoWrapper
+
+from . import semi_supervised
+from .cli import (
     DEFAULT_DATA_SPLIT_SEED,
     FINAL_TEST_VISUALIZATION_MODES,
     FINAL_TEST_VISUALIZATION_NONE,
     FINAL_TEST_VISUALIZATION_PACMAP,
     normalize_backbone_tuning_args,
 )
-from experiment_io import namespace_to_dict, result_to_dict, write_json
-from experiment_types import (
+from .io import namespace_to_dict, result_to_dict, write_json
+from .types import (
     ALL_LOSSES,
     ALL_MINERS,
     CLASSIFICATION_LOSSES,
@@ -41,12 +41,27 @@ from experiment_types import (
     SELECTION_METRICS,
     TrainingResult,
 )
-from retrieval_model import BACKBONE_TUNING_FROZEN, DinoWrapper
 
 BATCH_EASY_HARD_MINER_STRATEGIES = {"all", "easy", "hard", "semihard"}
 BATCH_EASY_HARD_DEFAULT_POS_STRATEGY = "easy"
 BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY = "semihard"
 BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
+
+
+class TrainingLossComponents(NamedTuple):
+    criterion: torch.nn.Module
+    is_classification: bool
+    miner: object | None
+    optimizer: torch.optim.Optimizer | None
+
+
+class _EpochPhase(NamedTuple):
+    objective: TrainingLossComponents
+    standalone_stml: bool
+    regularization_active: bool
+    regularizer_disabled: bool
+    description: str
+
 
 def _sync_if_cuda(device):
     if torch.device(device).type == "cuda":
@@ -58,16 +73,20 @@ def _now(device):
     return time.perf_counter()
 
 
-def _timing_enabled(args):
-    return bool(getattr(args, "debug_batch_timing", False))
+class _BatchTimer:
+    """Collect optional synchronized batch timings without cluttering the loop."""
 
+    def __init__(self, device, enabled):
+        self.device = device
+        self.enabled = enabled
+        self.totals = defaultdict(float)
 
-def _timing_interval(args):
-    return int(getattr(args, "debug_batch_timing_interval", 5))
+    def start(self):
+        return _now(self.device) if self.enabled else None
 
-
-def _batch_diagnostics_enabled(args):
-    return bool(getattr(args, "log_batch_diagnostics", False))
+    def stop(self, name, start, end=None):
+        if start is not None:
+            self.totals[name] += (self.start() if end is None else end) - start
 
 
 def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
@@ -86,22 +105,15 @@ def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
     return torch.cat([supervised_inputs, regularizer_inputs], dim=0)
 
 
-def _add_time(timings, name, start, end):
-    timings[name] += end - start
-
-
-def use_cuda_pin_memory(device):
-    return torch.device(device).type == "cuda"
-
-
 def should_precompute_frozen_features(args, ssl_config):
     regularized_ssl = is_cacheable_regularized_ssl(ssl_config)
+    supervised = is_supervised_mode(args)
     return (
         bool(getattr(args, "use_cache", False))
         and args.backbone_tuning == BACKBONE_TUNING_FROZEN
         and (
-            (is_supervised_mode(args) and not ssl_config.enabled)
-            or (not is_supervised_mode(args) and regularized_ssl)
+            (supervised and not ssl_config.enabled)
+            or (not supervised and regularized_ssl)
         )
     )
 
@@ -125,16 +137,84 @@ def get_frozen_feature_train_views(args):
     return int(getattr(args, "frozen_feature_train_views", 1))
 
 
+def _precompute_backbone_features(
+    args,
+    model,
+    dataset,
+    desc,
+    pin_memory,
+    *,
+    require_feature_transform=False,
+    use_feature_transform=True,
+    num_views=1,
+):
+    return utils.precompute_backbone_feature_dataset(
+        model=model,
+        dataset=dataset,
+        device=args.device,
+        batch_size=get_frozen_feature_batch_size(args),
+        seed=args.seed,
+        num_workers=args.num_workers,
+        start_method=args.dataloader_start_method,
+        desc=desc,
+        pin_memory=pin_memory,
+        require_feature_transform=require_feature_transform,
+        use_feature_transform=use_feature_transform,
+        num_views=num_views,
+    )
+
+
+def _make_train_loader(args, dataset, seed, pin_memory, *, persistent_workers=True):
+    return utils.make_train_loader(
+        dataset,
+        args.batch_size,
+        args.sampler_m,
+        seed=seed,
+        length_before_new_iter=args.length_before_new_iter,
+        num_workers=args.num_workers,
+        start_method=args.dataloader_start_method,
+        persistent_workers=persistent_workers,
+        pin_memory=pin_memory,
+    )
+
+
+def _make_eval_loader(args, model, dataset, desc, pin_memory, *, precompute_features):
+    if precompute_features:
+        dataset = _precompute_backbone_features(
+            args,
+            model,
+            dataset,
+            desc,
+            pin_memory,
+        )
+    return utils.make_eval_loader(
+        dataset,
+        seed=args.seed,
+        num_workers=args.num_workers,
+        start_method=args.dataloader_start_method,
+        pin_memory=pin_memory,
+    )
+
+
 def make_label_lookup_tensor(train_labels_mapper, device):
-    label_ids = [int(label) for label in train_labels_mapper]
-    if not label_ids or min(label_ids) < 0:
+    label_mapping = [
+        (int(original_label), int(mapped_label))
+        for original_label, mapped_label in train_labels_mapper.items()
+    ]
+    if not label_mapping:
+        return None
+    label_ids, mapped_labels = zip(*label_mapping)
+    if min(label_ids) < 0:
         return None
     max_label = max(label_ids)
     if max_label > 10_000_000:
         return None
     lookup = torch.full((max_label + 1,), -1, dtype=torch.long, device=device)
-    for original_label, mapped_label in train_labels_mapper.items():
-        lookup[int(original_label)] = int(mapped_label)
+    lookup[torch.as_tensor(label_ids, dtype=torch.long, device=device)] = torch.as_tensor(
+        mapped_labels,
+        dtype=torch.long,
+        device=device,
+    )
     return lookup
 
 
@@ -148,11 +228,8 @@ def map_training_labels(labels, label_lookup, train_labels_mapper, device):
 def shutdown_epoch_train_loader(train_loader, warmup_train_loader=None, static_train_loader=None, *reusable_loaders):
     """Shutdown loaders that are rebuilt for a single epoch."""
 
-    if train_loader is None:
-        return
-    if train_loader is warmup_train_loader or train_loader is static_train_loader:
-        return
-    if any(train_loader is loader for loader in reusable_loaders):
+    reusable_loaders = (warmup_train_loader, static_train_loader, *reusable_loaders)
+    if train_loader is None or any(train_loader is loader for loader in reusable_loaders):
         return
     shutdown = getattr(train_loader, "shutdown", None)
     if callable(shutdown):
@@ -166,14 +243,12 @@ def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
 
     args = resolve_loss_driven_supervised_args(args)
     args, ssl_config = resolve_platform_dataloader_workers(args, ssl_config)
-    # Keep this normalization step at the common entry point so direct runs,
-    # HPO trials, comparisons, and grid scenarios resolve validation equally.
-    args = resolve_validation_mode_args(args)
     if args.cv_k > 1:
         # The Optuna trial is reported only after folds complete; individual
         # folds do not independently prune the same trial.
         return run_cross_validation(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
     return run_training(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
+
 
 def resolve_platform_dataloader_workers(args, ssl_config, platform_name=None):
     """Apply platform-specific effective worker counts without changing source configs."""
@@ -197,6 +272,7 @@ def resolve_platform_dataloader_workers(args, ssl_config, platform_name=None):
     resolved_ssl_config = replace(ssl_config, embedding_num_workers=effective_embedding_workers)
     return resolved_args, resolved_ssl_config
 
+
 def is_supervised_mode(args):
     return getattr(args, "mode", "supervised") == "supervised"
 
@@ -214,9 +290,6 @@ def resolve_loss_driven_supervised_args(args):
     return resolved
 
 
-def resolve_validation_mode_args(args):
-    return args
-
 def resolve_mode_ssl_config(args, ssl_config):
     if is_supervised_mode(args):
         return make_supervised_split_config(ssl_config)
@@ -224,12 +297,14 @@ def resolve_mode_ssl_config(args, ssl_config):
         raise ValueError("--mode ssl requires an enabled --ssl_config")
     return ssl_config
 
+
 def get_selection_metric_value(selection_metric, precision_at_1, mean_average_precision_at_r):
     if selection_metric == SELECTION_METRIC_PRECISION_AT_1:
         return precision_at_1
     if selection_metric == SELECTION_METRIC_MAP_AT_R:
         return mean_average_precision_at_r
     raise ValueError(f"Unknown selection metric: {selection_metric}")
+
 
 def uses_ssl_warmup_objective(ssl_config):
     """Return whether this run has labeled-only SSL warmup epochs."""
@@ -260,11 +335,6 @@ def uses_main_objective_for_warmup(args, ssl_config):
         and args.warmup_miner == args.miner
         and dict(args.warmup_miner_params) == dict(args.miner_params)
     )
-
-def is_ssl_warmup_epoch(ssl_config, num_epoch):
-    """Return whether the current epoch should use the warmup objective."""
-
-    return ssl_config.enabled and num_epoch < ssl_config.warmup_epochs
 
 
 def should_rebuild_pseudo_label_training_dataset(ssl_config, num_epoch, last_rebuild_epoch):
@@ -329,36 +399,11 @@ def write_split_manifest(log_dir, dataset_bundle, ssl_config, ssl_split):
     write_json(split_dir / "test_info.json", make_test_info(dataset_bundle.test_dataset))
 
 
-def resolve_unlabeled_source_args(args):
-    """Return the generic external-unlabeled source and root, honoring old STML args."""
-
-    source = getattr(args, "unlabeled_source", None)
-    legacy_source = getattr(args, "stml_unlabeled_source", "split")
-    if source is None:
-        source = legacy_source
-    elif legacy_source != "split" and legacy_source != source:
-        raise ValueError(
-            "unlabeled_source and stml_unlabeled_source disagree: "
-            f"{source!r} != {legacy_source!r}"
-        )
-
-    external_dir = getattr(args, "external_unlabeled_dir", None)
-    legacy_external_dir = getattr(args, "stml_external_unlabeled_dir", None)
-    if external_dir is None:
-        external_dir = legacy_external_dir
-    elif legacy_external_dir is not None and Path(external_dir) != Path(legacy_external_dir):
-        raise ValueError(
-            "external_unlabeled_dir and stml_external_unlabeled_dir disagree: "
-            f"{external_dir} != {legacy_external_dir}"
-        )
-
-    return source, external_dir
-
-
 def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
     """Optionally replace or extend split-derived unlabeled candidates."""
 
-    source, external_dir = resolve_unlabeled_source_args(args)
+    source = getattr(args, "unlabeled_source", "split")
+    external_dir = getattr(args, "external_unlabeled_dir", None)
     external_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
     if source == "split":
         return dataset_bundle, ssl_split
@@ -429,12 +474,6 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
     return dataset_bundle, ssl_split
 
 
-def configure_stml_unlabeled_pool(args, dataset_bundle, ssl_split):
-    """Compatibility wrapper for the old STML-specific external pool hook."""
-
-    return configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
-
-
 def get_subset_indices(dataset):
     # Plain datasets already use source indices 0..N-1; Subset instances expose
     # an explicit mapping through their indices attribute.
@@ -443,11 +482,13 @@ def get_subset_indices(dataset):
         return np.arange(len(dataset), dtype=np.int64)
     return np.asarray(indices, dtype=np.int64)
 
+
 def positions_to_indices(indices, positions):
     # Array indexing performs the position -> source-index lookup in one step.
     if len(indices) == 0 or len(positions) == 0:
         return np.array([], dtype=np.int64)
     return np.asarray(indices, dtype=np.int64)[np.asarray(positions, dtype=np.int64)]
+
 
 def label_counts(labels, positions=None):
     # Restrict counts to the requested subset positions when supplied.
@@ -458,6 +499,7 @@ def label_counts(labels, positions=None):
         return {}
     unique, counts = np.unique(labels, return_counts=True)
     return {int(label): int(count) for label, count in zip(unique, counts)}
+
 
 def make_test_info(test_dataset):
     labels = getattr(test_dataset, "labels", None)
@@ -476,26 +518,487 @@ def make_test_info(test_dataset):
         info["num_gallery"] = int(len(gallery_indices))
     return info
 
+
 def get_data_split_seed(args):
     """Return the fixed seed used for validation/test split construction."""
 
     data_split_seed = getattr(args, "data_split_seed", None)
     return DEFAULT_DATA_SPLIT_SEED if data_split_seed is None else int(data_split_seed)
 
+
+def _make_training_split(args, ssl_config, train_dataset):
+    """Apply the label budget while keeping supervised and SSL supports aligned."""
+
+    if ssl_config.enabled:
+        return semi_supervised.prepare_ssl_split(train_dataset, ssl_config)
+    if is_supervised_mode(args):
+        logger.info("Training supervised baseline")
+        return semi_supervised.prepare_label_split(train_dataset, ssl_config)
+    return None
+
+
+def _apply_validation_configuration(args, ssl_config, dataset_bundle, ssl_split, cv_fold):
+    """Materialize the requested holdout/CV validation split."""
+
+    if getattr(args, "final_full_train", False):
+        logger.info("Final HPO fit uses the complete development set without validation or early stopping")
+        return dataset_bundle, ssl_split
+
+    if args.val_mode == utils.VAL_MODE_SPLIT_AFTER_APPORTION:
+        labeled_positions = None if ssl_split is None else ssl_split.labeled_positions
+        unlabeled_positions = None if ssl_split is None else ssl_split.unlabeled_positions
+        if cv_fold is None:
+            dataset_bundle, labeled_positions, unlabeled_positions = utils.apply_post_apportion_validation_split(
+                dataset_bundle=dataset_bundle,
+                labeled_positions=labeled_positions,
+                unlabeled_positions=unlabeled_positions,
+                seed=ssl_config.support_seed,
+            )
+        else:
+            dataset_bundle, labeled_positions, unlabeled_positions = utils.apply_apportioned_cross_validation_split(
+                dataset_bundle=dataset_bundle,
+                labeled_positions=labeled_positions,
+                unlabeled_positions=unlabeled_positions,
+                include_unlabeled=ssl_config.enabled,
+                cv_k=args.cv_k,
+                cv_fold=cv_fold,
+                cv_mode=args.cv_mode,
+                seed=ssl_config.support_seed,
+            )
+        if ssl_split is not None:
+            ssl_split = semi_supervised.SemiSupervisedSplit(
+                labeled_positions=labeled_positions,
+                unlabeled_positions=unlabeled_positions,
+            )
+        return dataset_bundle, ssl_split
+
+    if ssl_split is None:
+        target_train_size = len(dataset_bundle.train_dataset)
+        target_train_num_classes = len(set(int(label) for label in dataset_bundle.train_dataset.labels))
+    else:
+        target_train_size = len(ssl_split.labeled_positions)
+        train_labels = np.asarray(dataset_bundle.train_dataset.labels, dtype=np.int64)
+        target_train_num_classes = int(len(np.unique(train_labels[np.asarray(ssl_split.labeled_positions)])))
+    dataset_bundle = utils.apply_validation_mode(
+        dataset_bundle=dataset_bundle,
+        val_mode=args.val_mode,
+        target_train_size=target_train_size,
+        target_train_num_classes=target_train_num_classes,
+        seed=ssl_config.support_seed,
+    )
+    return dataset_bundle, ssl_split
+
+
+def _prepare_datasets(
+    args,
+    ssl_config,
+    cv_fold,
+    *,
+    precompute_frozen_features,
+    augmented_frozen_feature_precompute,
+    frozen_feature_train_views,
+):
+    """Build datasets, apply support/validation splits, and attach external data."""
+
+    dataset_bundle = utils.setup_dataset_bundle(
+        args.dataset,
+        seed=args.seed,
+        data_split_seed=get_data_split_seed(args),
+        cv_k=args.cv_k if cv_fold is not None else 1,
+        cv_fold=cv_fold,
+        cv_mode=args.cv_mode,
+        val_mode=args.val_mode,
+        dataset_protocol=args.dataset_protocol,
+        cifar_imbalance_factor=args.cifar_imbalance_factor,
+        cifar_train_fraction=args.cifar_train_fraction,
+        cifar_test_fraction=args.cifar_test_fraction,
+        full_train=bool(getattr(args, "final_full_train", False)),
+    )
+    if args.use_cache and not augmented_frozen_feature_precompute:
+        utils.use_feature_transform_for_training(dataset_bundle.train_dataset)
+        if precompute_frozen_features:
+            logger.info(
+                "Frozen feature precompute enabled: training uses deterministic transforms and "
+                "one in-memory backbone feature tensor per active dataset"
+            )
+        else:
+            logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
+    elif augmented_frozen_feature_precompute:
+        logger.info(
+            "Augmented frozen feature precompute enabled: training keeps stochastic transforms while "
+            f"precomputing {frozen_feature_train_views} backbone feature views per sample"
+        )
+
+    ssl_split = _make_training_split(args, ssl_config, dataset_bundle.train_dataset)
+    dataset_bundle, ssl_split = _apply_validation_configuration(
+        args,
+        ssl_config,
+        dataset_bundle,
+        ssl_split,
+        cv_fold,
+    )
+    if ssl_config.enabled:
+        dataset_bundle, ssl_split = configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
+    return dataset_bundle, ssl_split
+
+
+class _EpochTrainer:
+    """Own the mutable state and batch mechanics for one fold's epoch loop."""
+
+    def __init__(
+        self,
+        args,
+        ssl_config,
+        model,
+        model_optimizer,
+        main_objective,
+        warmup_objective,
+        regularizer,
+        metrics_logger,
+        train_labels_mapper,
+        train_label_lookup,
+        model_use_cache,
+    ):
+        self.args = args
+        self.ssl_config = ssl_config
+        self.model = model
+        self.model_optimizer = model_optimizer
+        self.main_objective = main_objective
+        self.warmup_objective = warmup_objective
+        self.regularizer = regularizer
+        self.metrics_logger = metrics_logger
+        self.train_labels_mapper = train_labels_mapper
+        self.train_label_lookup = train_label_lookup
+        self.model_use_cache = model_use_cache
+        self.device_type = torch.device(args.device).type
+        self.batch_timing_enabled = bool(getattr(args, "debug_batch_timing", False))
+        self.batch_timing_interval = int(getattr(args, "debug_batch_timing_interval", 5))
+        self.batch_diagnostics_enabled = bool(getattr(args, "log_batch_diagnostics", False))
+        self.teacher_model = None
+        self.regularizer_state = None
+        self.global_step = 0
+        self.progress_bar = None
+
+    def _resolve_phase(self, epoch):
+        warmup_active = self.ssl_config.enabled and epoch < self.ssl_config.warmup_epochs
+        standalone_stml = self.ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS and not warmup_active
+        regularized_phase = self.regularizer is not None and not warmup_active
+        regularization_active = regularized_phase and self.regularizer.regularizer_weight > 0
+        regularizer_disabled = regularized_phase and self.regularizer.regularizer_weight == 0
+        objective = self.warmup_objective if warmup_active else self.main_objective
+
+        if warmup_active:
+            warmup_loss_name = (
+                self.args.loss
+                if uses_main_objective_for_warmup(self.args, self.ssl_config)
+                else self.args.warmup_loss
+            )
+            description = f"warmup ({warmup_loss_name})"
+        elif regularization_active:
+            description = f"{self.args.loss} + {self.regularizer.name} regularization"
+        elif regularizer_disabled:
+            description = f"{self.args.loss} (regularizer weight 0; supervised-only sanity path)"
+        else:
+            description = self.args.loss
+        return _EpochPhase(
+            objective,
+            standalone_stml,
+            regularization_active,
+            regularizer_disabled,
+            description,
+        )
+
+    def _compute_batch_loss(self, batch, phase, timer, data_ready_time):
+        objective = phase.objective
+        if phase.standalone_stml:
+            images, _, instance_ids = batch
+            if not isinstance(images, (list, tuple)) or len(images) != objective.criterion.num_views:
+                raise ValueError(
+                    f"STML batches must contain {objective.criterion.num_views} augmented views per sample"
+                )
+            images = torch.cat(images, dim=0)
+            instance_ids = instance_ids.repeat(objective.criterion.num_views).to(
+                self.args.device,
+                non_blocking=True,
+            )
+        else:
+            supervised_batch, regularizer_batch = batch if phase.regularization_active else (batch, None)
+            images, labels, sample_weights, supervised_indices = unpack_training_batch(supervised_batch)
+            supervised_inputs = images
+            supervised_batch_size = len(labels)
+            joint_forward_active = bool(
+                phase.regularization_active and self.regularizer.uses_joint_forward
+            )
+            if joint_forward_active:
+                images = concatenate_joint_forward_inputs(images, regularizer_batch)
+        timer.stop("unpack_batch", data_ready_time)
+
+        miner_outputs = None
+        supervised_loss = None
+        regularization_loss = None
+        with torch.autocast(device_type=self.device_type, dtype=torch.bfloat16):
+            if phase.standalone_stml:
+                started = timer.start()
+                student_g, student_f = self.model.forward_stml_cached(images, self.args.device)
+                with torch.no_grad():
+                    teacher_g = self.teacher_model.forward_stml_teacher_cached(images, self.args.device)
+                timer.stop("forward", started)
+
+                started = timer.start()
+                loss = objective.criterion(student_f, student_g, teacher_g, instance_ids)
+                timer.stop("loss", started)
+                return loss, supervised_loss, regularization_loss, miner_outputs
+
+            started = timer.start()
+            embeddings = utils.forward_model_inputs(
+                self.model,
+                images,
+                self.args.device,
+                use_cache=self.model_use_cache,
+            )
+            regularizer_embeddings = None
+            if joint_forward_active:
+                regularizer_embeddings = embeddings[supervised_batch_size:]
+                embeddings = embeddings[:supervised_batch_size]
+            timer.stop("forward", started)
+
+            started = timer.start()
+            labels = map_training_labels(
+                labels,
+                self.train_label_lookup,
+                self.train_labels_mapper,
+                self.args.device,
+            )
+            sample_weights = sample_weights.to(self.args.device, non_blocking=True)
+            timer.stop("label_weight_prep", started)
+
+            started = timer.start()
+            if getattr(objective.criterion, "supports_sample_weights", False):
+                supervised_loss = objective.criterion(
+                    embeddings,
+                    labels,
+                    sample_weights=sample_weights,
+                )
+            elif not objective.is_classification and objective.miner is not None:
+                miner_outputs = objective.miner(embeddings, labels)
+                supervised_loss = objective.criterion(embeddings, labels, miner_outputs)
+            else:
+                supervised_loss = objective.criterion(embeddings, labels)
+            timer.stop("miner_and_loss", started)
+
+            if phase.regularization_active:
+                started = timer.start()
+                regularizer_loss_kwargs = {}
+                if joint_forward_active:
+                    regularizer_loss_kwargs = {
+                        "supervised_embeddings": embeddings,
+                        "supervised_labels": labels,
+                        "regularizer_embeddings": regularizer_embeddings,
+                    }
+                if self.regularizer.requires_supervised_objective:
+                    regularizer_loss_kwargs.update(
+                        {
+                            "supervised_inputs": supervised_inputs,
+                            "supervised_indices": supervised_indices,
+                            "supervised_criterion": objective.criterion,
+                            "supervised_miner": objective.miner,
+                            "supervised_is_classification": objective.is_classification,
+                        }
+                    )
+                regularization_loss = self.regularizer.compute_loss(
+                    student_model=self.model,
+                    state=self.regularizer_state,
+                    batch=regularizer_batch,
+                    device=self.args.device,
+                    timings=timer.totals if self.batch_timing_enabled else None,
+                    **regularizer_loss_kwargs,
+                )
+                loss = self.regularizer.combine_losses(supervised_loss, regularization_loss)
+                timer.stop("regularization_loss", started)
+            elif phase.regularizer_disabled:
+                loss = self.regularizer.supervised_weight * supervised_loss
+            else:
+                loss = supervised_loss
+        return loss, supervised_loss, regularization_loss, miner_outputs
+
+    def _make_batch_diagnostics(
+        self,
+        phase,
+        loss_value,
+        supervised_loss,
+        regularization_loss,
+        miner_diagnostics,
+    ):
+        if not self.batch_diagnostics_enabled:
+            return None
+        diagnostics = {
+            "train/zero_loss_batch": float(loss_value == 0.0),
+            "train/gradient_norm/model": utils.gradient_l2_norm(self.model.parameters()),
+            **utils.optimizer_learning_rates(self.model_optimizer, "model"),
+            **miner_diagnostics,
+            "train/stml_active": float(phase.standalone_stml),
+            "train/regularization_active": float(phase.regularization_active),
+        }
+        if phase.objective.is_classification:
+            diagnostics["train/gradient_norm/criterion"] = utils.gradient_l2_norm(
+                phase.objective.criterion.parameters()
+            )
+            diagnostics.update(utils.optimizer_learning_rates(phase.objective.optimizer, "criterion"))
+        if supervised_loss is not None:
+            diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
+        if regularization_loss is not None:
+            diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
+            diagnostics.update(self.regularizer.batch_diagnostics())
+        return diagnostics
+
+    def train_epoch(self, train_loader, epoch):
+        phase = self._resolve_phase(epoch)
+        logger.info(f"Epoch {epoch}: training with {phase.description}")
+        self.teacher_model = initialize_stml_teacher_for_phase(
+            teacher_model=self.teacher_model,
+            student_model=self.model,
+            active_criterion=phase.objective.criterion,
+            device=self.args.device,
+        )
+        if phase.regularization_active and self.regularizer_state is None:
+            self.regularizer_state = self.regularizer.initialize_state(self.model, self.args.device)
+
+        self.model.train()
+        if self.teacher_model is not None:
+            self.teacher_model.eval()
+        epoch_loss = 0.0
+        num_batches = 0
+        zero_loss_batches = 0
+        epoch_miner_totals = defaultdict(float)
+        timer = _BatchTimer(self.args.device, self.batch_timing_enabled)
+        last_timing_log_batch = 0
+        last_timing_totals = {}
+        next_batch_wait_start = timer.start()
+        self.progress_bar = tqdm(train_loader, total=len(train_loader))
+
+        try:
+            for batch_index, batch in enumerate(self.progress_bar):
+                data_ready_time = timer.start()
+                timer.stop("data_wait", next_batch_wait_start, data_ready_time)
+                loss, supervised_loss, regularization_loss, miner_outputs = self._compute_batch_loss(
+                    batch,
+                    phase,
+                    timer,
+                    data_ready_time,
+                )
+
+                started = timer.start()
+                loss_value = loss.detach().item()
+                timer.stop("loss_item", started)
+
+                started = timer.start()
+                loss.backward()
+                timer.stop("backward", started)
+
+                started = timer.start() if self.batch_diagnostics_enabled else None
+                miner_diagnostics = utils.summarize_miner_outputs(miner_outputs)
+                batch_diagnostics = self._make_batch_diagnostics(
+                    phase,
+                    loss_value,
+                    supervised_loss,
+                    regularization_loss,
+                    miner_diagnostics,
+                )
+                timer.stop("diagnostics", started)
+
+                started = timer.start()
+                self.model_optimizer.step()
+                self.model_optimizer.zero_grad()
+                if phase.objective.is_classification:
+                    phase.objective.optimizer.step()
+                    phase.objective.optimizer.zero_grad()
+                timer.stop("optimizer_step", started)
+
+                started = timer.start()
+                if phase.standalone_stml:
+                    update_ema_teacher(
+                        self.teacher_model,
+                        self.model,
+                        momentum=phase.objective.criterion.teacher_momentum,
+                        excluded_parameter_prefixes=("fc.",),
+                        only_trainable_parameters=True,
+                    )
+                if phase.regularization_active:
+                    self.regularizer.after_optimizer_step(self.model, self.regularizer_state)
+                timer.stop("post_step_hooks", started)
+
+                started = timer.start()
+                self.metrics_logger.log_train_batch(
+                    loss_value,
+                    epoch,
+                    self.global_step,
+                    diagnostics=batch_diagnostics,
+                )
+                timer.stop("metrics_logging", started)
+
+                epoch_loss += loss_value
+                num_batches += 1
+                zero_loss_batches += int(loss_value == 0.0)
+                for name, value in miner_diagnostics.items():
+                    epoch_miner_totals[name] += value
+                self.global_step += 1
+                self.progress_bar.set_description(f"loss = {loss_value:.5f}", refresh=False)
+
+                if self.batch_timing_enabled and (batch_index + 1) % self.batch_timing_interval == 0:
+                    current_batch_count = batch_index + 1
+                    interval_batches = current_batch_count - last_timing_log_batch
+                    interval_timings = {
+                        name: total - last_timing_totals.get(name, 0.0)
+                        for name, total in timer.totals.items()
+                    }
+                    logger.info(
+                        "Batch timing interval "
+                        f"epoch={epoch} batch={current_batch_count}/{len(train_loader)} "
+                        f"last_batches={interval_batches} phase={phase.description}: "
+                        + ", ".join(
+                            f"{name}={total / interval_batches:.4f}s"
+                            for name, total in sorted(interval_timings.items())
+                        )
+                    )
+                    last_timing_log_batch = current_batch_count
+                    last_timing_totals = dict(timer.totals)
+                next_batch_wait_start = timer.start()
+        finally:
+            self.close_progress_bar()
+
+        if num_batches == 0:
+            return None
+        mean_loss = epoch_loss / num_batches
+        epoch_diagnostics = {
+            "train/zero_loss_batches": zero_loss_batches,
+            "train/zero_loss_fraction": zero_loss_batches / num_batches,
+        }
+        for name, total in epoch_miner_totals.items():
+            epoch_diagnostics[f"{name}_total"] = total
+            epoch_diagnostics[f"{name}_mean_per_batch"] = total / num_batches
+        self.metrics_logger.log_train_epoch(
+            mean_loss,
+            epoch,
+            self.global_step,
+            diagnostics=epoch_diagnostics,
+        )
+        return mean_loss
+
+    def close_progress_bar(self):
+        if self.progress_bar is not None:
+            self.progress_bar.close()
+            self.progress_bar = None
+
+
 def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fold=None):
     """Build the data/model, train one fold, and return its best metrics.
 
-    Training has four possible loader phases:
-    1. labeled-only warmup;
-    2. a single static pseudo-labeled dataset; or
-    3. a pseudo-labeled dataset regenerated on a configured epoch cadence; or
-    4. STML nearest-neighbor batches regenerated from student g on the same cadence.
-    Validation selects the checkpoint and can trigger early stopping. A final
-    HPO fit instead trains for a fixed duration without validation. Test data is
-    evaluated only when the caller explicitly enables it.
+    Training can use labeled warmup, static or periodically rebuilt pseudo
+    labels, STML neighbor batches, or supervised batches paired with a
+    regularizer. Validation selects the checkpoint and can trigger early
+    stopping; a final HPO fit instead trains for a fixed duration.
     """
 
-    normalize_backbone_tuning_args(args)
     # Record the resolved dataclass, including defaults and HPO overrides, on
     # the namespace that will later be serialized into run_config.json.
     args.ssl_config_resolved = ssl_config.to_dict()
@@ -507,12 +1010,13 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # configuration mistakes fail quickly and cheaply.
     validate_run_args(args, ssl_config)
     utils.seed_everything(args.seed, device=args.device)
+    batch_diagnostics_enabled = bool(getattr(args, "log_batch_diagnostics", False))
     loss_driven_ssl = ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS
     ssl_method = semi_supervised.get_method(ssl_config)
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
     if regularizer is not None:
-        regularizer.set_batch_diagnostics_enabled(_batch_diagnostics_enabled(args))
+        regularizer.set_batch_diagnostics_enabled(batch_diagnostics_enabled)
     stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
     supervised_mode = is_supervised_mode(args)
     precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
@@ -527,7 +1031,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         and frozen_feature_train_views > 1
     )
     model_use_cache = bool(args.use_cache)
-    pin_memory = use_cuda_pin_memory(args.device)
+    pin_memory = torch.device(args.device).type == "cuda"
 
     args.torch_sharing_strategy_resolved = utils.configure_torch_sharing_strategy()
     utils.initialize_logger(args)
@@ -561,6 +1065,29 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     args.frozen_feature_precompute = precompute_frozen_features
     args.frozen_feature_batch_size_resolved = get_frozen_feature_batch_size(args)
     args.frozen_feature_train_views_resolved = frozen_feature_train_views
+    pseudo_label_diagnostics = semi_supervised.make_pseudo_label_diagnostics_tracker(
+        args.log_dir,
+        ssl_config,
+    )
+
+    dataset_bundle, ssl_split = _prepare_datasets(
+        args,
+        ssl_config,
+        cv_fold,
+        precompute_frozen_features=precompute_frozen_features,
+        augmented_frozen_feature_precompute=augmented_frozen_feature_precompute,
+        frozen_feature_train_views=frozen_feature_train_views,
+    )
+    if regularizer is not None:
+        # Some methods add trainable training-only heads whose class and bank
+        # sizes are known only after the actual train split has been built.
+        regularizer.configure_model(
+            student_model=model,
+            train_dataset=dataset_bundle.train_dataset,
+            split=ssl_split,
+            train_labels_mapper=dataset_bundle.train_labels_mapper,
+            device=args.device,
+        )
     args.model_total_parameters = sum(parameter.numel() for parameter in model.parameters())
     args.model_trainable_parameters = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
@@ -572,125 +1099,17 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         f"Frozen feature precompute: {precompute_frozen_features}."
     )
     write_run_config(args, ssl_config)
-    pseudo_label_diagnostics = semi_supervised.make_pseudo_label_diagnostics_tracker(
-        args.log_dir,
-        ssl_config,
-    )
-
-    # For a normal run this creates one holdout split.  During CV, cv_fold tells
-    # the utility which fold to materialize for this independent training run.
-    data_split_seed = get_data_split_seed(args)
-    dataset_bundle = utils.setup_dataset_bundle(
-        args.dataset,
-        seed=args.seed,
-        data_split_seed=data_split_seed,
-        cv_k=args.cv_k if cv_fold is not None else 1,
-        cv_fold=cv_fold,
-        cv_mode=args.cv_mode,
-        val_mode=args.val_mode,
-        dataset_protocol=args.dataset_protocol,
-        cifar_imbalance_factor=args.cifar_imbalance_factor,
-        cifar_train_fraction=args.cifar_train_fraction,
-        cifar_test_fraction=args.cifar_test_fraction,
-        full_train=final_full_train,
-    )
-    if args.use_cache and not augmented_frozen_feature_precompute:
-        # A reusable per-sample DINO embedding requires stable image inputs.
-        # Training therefore uses the same deterministic transform as feature
-        # extraction instead of stochastic RandAugment.
-        utils.use_feature_transform_for_training(dataset_bundle.train_dataset)
-        if precompute_frozen_features:
-            logger.info(
-                "Frozen feature precompute enabled: training uses deterministic transforms and "
-                "one in-memory backbone feature tensor per active dataset"
-            )
-        else:
-            logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
-    elif augmented_frozen_feature_precompute:
-        logger.info(
-            "Augmented frozen feature precompute enabled: training keeps stochastic transforms while "
-            f"precomputing {frozen_feature_train_views} backbone feature views per sample"
-        )
-    # Even the supervised baseline uses the SSL config's label-selection rules
-    # so supervised and SSL runs receive exactly the same labeled examples.
-    if ssl_config.enabled:
-        # Enabled SSL produces both true-labeled positions and candidates whose
-        # hidden labels may be replaced by pseudo-labels.
-        ssl_split = semi_supervised.prepare_ssl_split(dataset_bundle.train_dataset, ssl_config)
-    elif supervised_mode:
-        logger.info("Training supervised baseline")
-        # method="none" disables pseudo-labeling but prepare_label_split still
-        # applies the same label budget used by the corresponding SSL method.
-        ssl_split = semi_supervised.prepare_label_split(dataset_bundle.train_dataset, ssl_config)
-    else:
-        # A fully supervised run without a split config uses every train sample.
-        ssl_split = None
-
-    if final_full_train:
-        logger.info("Final HPO fit uses the complete development set without validation or early stopping")
-    elif args.val_mode == utils.VAL_MODE_SPLIT_AFTER_APPORTION:
-        labeled_positions = None if ssl_split is None else ssl_split.labeled_positions
-        unlabeled_positions = None if ssl_split is None else ssl_split.unlabeled_positions
-        if cv_fold is None:
-            # Validation is part of the support draw for this mode.
-            dataset_bundle, labeled_positions, unlabeled_positions = utils.apply_post_apportion_validation_split(
-                dataset_bundle=dataset_bundle,
-                labeled_positions=labeled_positions,
-                unlabeled_positions=unlabeled_positions,
-                seed=ssl_config.support_seed,
-            )
-        else:
-            dataset_bundle, labeled_positions, unlabeled_positions = utils.apply_apportioned_cross_validation_split(
-                dataset_bundle=dataset_bundle,
-                labeled_positions=labeled_positions,
-                unlabeled_positions=unlabeled_positions,
-                include_unlabeled=ssl_config.enabled,
-                cv_k=args.cv_k,
-                cv_fold=cv_fold,
-                cv_mode=args.cv_mode,
-                seed=ssl_config.support_seed,
-            )
-        if ssl_split is not None:
-            ssl_split = semi_supervised.SemiSupervisedSplit(
-                labeled_positions=labeled_positions,
-                unlabeled_positions=unlabeled_positions,
-            )
-    else:
-        if ssl_split is None:
-            # With all samples labeled, validation matching targets the complete
-            # current training subset.
-            target_train_size = len(dataset_bundle.train_dataset)
-            target_train_num_classes = len(set(int(label) for label in dataset_bundle.train_dataset.labels))
-        else:
-            # With a label budget, match_train uses only labeled count and class
-            # coverage, not the larger unlabeled candidate pool.
-            target_train_size = len(ssl_split.labeled_positions)
-            train_labels = np.asarray(dataset_bundle.train_dataset.labels, dtype=np.int64)
-            target_train_num_classes = int(len(np.unique(train_labels[np.asarray(ssl_split.labeled_positions)])))
-        dataset_bundle = utils.apply_validation_mode(
-            dataset_bundle=dataset_bundle,
-            val_mode=args.val_mode,
-            target_train_size=target_train_size,
-            target_train_num_classes=target_train_num_classes,
-            seed=ssl_config.support_seed,
-        )
-    if ssl_config.enabled:
-        dataset_bundle, ssl_split = configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
     # Persist both subset-relative positions and source-dataset indices before
     # training so the exact experiment split is recoverable.
     write_split_manifest(args.log_dir, dataset_bundle, ssl_config, ssl_split)
     precomputed_train_samples = None
     if regularized_frozen_feature_precompute:
-        dataset_bundle.train_dataset = utils.precompute_backbone_feature_dataset(
-            model=model,
-            dataset=dataset_bundle.train_dataset,
-            device=args.device,
-            batch_size=get_frozen_feature_batch_size(args),
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            desc="precompute frozen regularized train features",
-            pin_memory=pin_memory,
+        dataset_bundle.train_dataset = _precompute_backbone_features(
+            args,
+            model,
+            dataset_bundle.train_dataset,
+            "precompute frozen regularized train features",
+            pin_memory,
             require_feature_transform=True,
             use_feature_transform=True,
         )
@@ -709,47 +1128,45 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             split=ssl_split,
         )
         if precompute_frozen_features:
-            train_dataset = utils.precompute_backbone_feature_dataset(
-                model=model,
-                dataset=train_dataset,
-                device=args.device,
-                batch_size=get_frozen_feature_batch_size(args),
-                seed=args.seed,
-                num_workers=args.num_workers,
-                start_method=args.dataloader_start_method,
-                desc="precompute frozen train features",
-                pin_memory=pin_memory,
+            train_dataset = _precompute_backbone_features(
+                args,
+                model,
+                train_dataset,
+                "precompute frozen train features",
+                pin_memory,
                 require_feature_transform=not augmented_frozen_feature_precompute,
                 use_feature_transform=not augmented_frozen_feature_precompute,
                 num_views=frozen_feature_train_views,
             )
-        static_train_loader = utils.make_train_loader(
+        static_train_loader = _make_train_loader(
+            args,
             train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            length_before_new_iter=args.length_before_new_iter,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            pin_memory=pin_memory,
+            args.seed,
+            pin_memory,
         )
     elif ssl_config.enabled and (ssl_config.warmup_epochs > 0 or regularized_ssl):
         # Regularization methods keep this labeled loader active after warm-up
         # and pair it with each unlabeled regularizer batch.
+        supervised_source_dataset = (
+            dataset_bundle.train_dataset
+            if regularizer is None
+            else regularizer.make_supervised_source_dataset(dataset_bundle.train_dataset)
+        )
         warmup_train_dataset = semi_supervised.build_labeled_training_dataset(
-            train_dataset=dataset_bundle.train_dataset,
+            train_dataset=supervised_source_dataset,
             train_labels_mapper=dataset_bundle.train_labels_mapper,
             split=ssl_split,
+            return_indices=bool(
+                regularizer is not None
+                and regularizer.regularizer_weight > 0
+                and regularizer.requires_labeled_indices
+            ),
         )
-        warmup_train_loader = utils.make_train_loader(
+        warmup_train_loader = _make_train_loader(
+            args,
             warmup_train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            length_before_new_iter=args.length_before_new_iter,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            pin_memory=pin_memory,
+            args.seed,
+            pin_memory,
         )
     if loss_driven_ssl:
         loss_driven_train_dataset = semi_supervised.build_loss_driven_training_dataset(
@@ -778,64 +1195,36 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             log_dir=args.log_dir,
         )
         ssl_training_dataset_update_epoch = 0
-        static_train_loader = utils.make_train_loader(
+        static_train_loader = _make_train_loader(
+            args,
             train_dataset,
-            args.batch_size,
-            args.sampler_m,
-            seed=args.seed,
-            length_before_new_iter=args.length_before_new_iter,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            pin_memory=pin_memory,
+            args.seed,
+            pin_memory,
         )
     # Evaluation loaders never shuffle because metric computation needs only a
     # deterministic pass over all embeddings and labels.
     valid_loader = None
     if not final_full_train:
-        valid_dataset = dataset_bundle.valid_dataset
-        if precompute_frozen_features:
-            valid_dataset = utils.precompute_backbone_feature_dataset(
-                model=model,
-                dataset=valid_dataset,
-                device=args.device,
-                batch_size=get_frozen_feature_batch_size(args),
-                seed=args.seed,
-                num_workers=args.num_workers,
-                start_method=args.dataloader_start_method,
-                desc="precompute frozen valid features",
-                pin_memory=pin_memory,
-            )
-        valid_loader = utils.make_eval_loader(
-            valid_dataset,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            pin_memory=pin_memory,
+        valid_loader = _make_eval_loader(
+            args,
+            model,
+            dataset_bundle.valid_dataset,
+            "precompute frozen valid features",
+            pin_memory,
+            precompute_features=precompute_frozen_features,
         )
     evaluate_test = bool(getattr(args, "evaluate_test", False))
     test_loader = None
     if evaluate_test:
         # Test evaluation is opt-in so HPO and intermediate runs cannot select
         # models based on held-out test performance.
-        test_dataset = dataset_bundle.test_dataset
-        if precompute_frozen_features:
-            test_dataset = utils.precompute_backbone_feature_dataset(
-                model=model,
-                dataset=test_dataset,
-                device=args.device,
-                batch_size=get_frozen_feature_batch_size(args),
-                seed=args.seed,
-                num_workers=args.num_workers,
-                start_method=args.dataloader_start_method,
-                desc="precompute frozen test features",
-                pin_memory=pin_memory,
-            )
-        test_loader = utils.make_eval_loader(
-            test_dataset,
-            seed=args.seed,
-            num_workers=args.num_workers,
-            start_method=args.dataloader_start_method,
-            pin_memory=pin_memory,
+        test_loader = _make_eval_loader(
+            args,
+            model,
+            dataset_bundle.test_dataset,
+            "precompute frozen test features",
+            pin_memory,
+            precompute_features=precompute_frozen_features,
         )
     # Source datasets can use sparse/non-zero-based class IDs.  Training losses
     # receive this dense mapping, while datasets continue returning original IDs.
@@ -844,25 +1233,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
 
     # Frozen backbone parameters are deliberately omitted from optimizer state.
     trainable_model_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    # First create the optimizer for model/backbone parameters.
-    if args.optim == "adamw":
-        optim = torch.optim.AdamW(
-            trainable_model_parameters,
-            lr=args.lr,
-            weight_decay=0.0,
-        )
-    elif args.optim == "adam":
-        optim = torch.optim.Adam(
-            trainable_model_parameters,
-            lr=args.lr,
-        )
-    elif args.optim == "rmsprop":
-        optim = torch.optim.RMSprop(
-            trainable_model_parameters,
-            lr=args.lr,
-        )
+    optim = make_optimizer(args, trainable_model_parameters, lr=args.lr)
     num_train_classes = len(dataset_bundle.train_labels_mapper)
-    criterion, is_classification, miner, classifier_optim = make_training_loss_components(
+    main_objective = make_training_loss_components(
         args=args,
         loss_name=args.loss,
         loss_params=getattr(args, "loss_params", {}),
@@ -871,30 +1244,33 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         num_classes=num_train_classes,
         embedding_size=model.feat_dim,
     )
-    warmup_criterion = None
-    warmup_is_classification = False
-    warmup_miner = None
-    warmup_classifier_optim = None
+    warmup_objective = None
     if uses_ssl_warmup_objective(ssl_config):
-        warmup_criterion, warmup_is_classification, warmup_miner, warmup_classifier_optim = (
-            make_warmup_loss_components(
-                args=args,
-                ssl_config=ssl_config,
-                criterion=criterion,
-                is_classification=is_classification,
-                miner=miner,
-                classifier_optim=classifier_optim,
-                num_classes=num_train_classes,
-                embedding_size=model.feat_dim,
-            )
+        warmup_objective = make_warmup_loss_components(
+            args=args,
+            ssl_config=ssl_config,
+            criterion=main_objective.criterion,
+            is_classification=main_objective.is_classification,
+            miner=main_objective.miner,
+            classifier_optim=main_objective.optimizer,
+            num_classes=num_train_classes,
+            embedding_size=model.feat_dim,
         )
-    teacher_model = None
-    # Stateful regularizers such as STML initialize their teacher only when the
-    # regularized phase begins.
-    regularizer_state = None
-
     # MetricsLogger mirrors values to TensorBoard and a CSV in the run folder.
     metrics_logger = utils.MetricsLogger(args.log_dir, args)
+    epoch_trainer = _EpochTrainer(
+        args=args,
+        ssl_config=ssl_config,
+        model=model,
+        model_optimizer=optim,
+        main_objective=main_objective,
+        warmup_objective=warmup_objective,
+        regularizer=regularizer,
+        metrics_logger=metrics_logger,
+        train_labels_mapper=train_labels_mapper,
+        train_label_lookup=train_label_lookup,
+        model_use_cache=model_use_cache,
+    )
     # The checkpoint is temporary: it is used to restore the selected epoch and
     # removed after final evaluation because the run currently returns metrics.
     best_model_path = args.log_dir / "best_model.pth"
@@ -911,10 +1287,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     train_loader = None
     loss_driven_train_loader = None
     loss_driven_sampling_rebuild_epoch = None
-    tqdm_bar = None
 
     try:
-        global_step = 0
         last_epoch = -1
         if not final_full_train:
             # Epoch -1 measures the pretrained/off-the-shelf embedding before
@@ -1000,7 +1374,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                         train_dataset=loss_driven_train_dataset,
                         sampling_embeddings=sampling_embeddings,
                         batch_size=args.batch_size,
-                        neighbors_per_query=criterion.num_neighbors,
+                        neighbors_per_query=main_objective.criterion.num_neighbors,
                         seed=args.seed + num_epoch,
                         num_workers=args.num_workers,
                         start_method=args.dataloader_start_method,
@@ -1049,16 +1423,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     diagnostics_tracker=pseudo_label_diagnostics,
                     log_dir=args.log_dir,
                 )
-                train_loader = utils.make_train_loader(
+                train_loader = _make_train_loader(
+                    args,
                     train_dataset,
-                    args.batch_size,
-                    args.sampler_m,
-                    seed=args.seed + num_epoch,
-                    length_before_new_iter=args.length_before_new_iter,
-                    num_workers=args.num_workers,
-                    start_method=args.dataloader_start_method,
+                    args.seed + num_epoch,
+                    pin_memory,
                     persistent_workers=ssl_config.update_mode != "every_epoch",
-                    pin_memory=pin_memory,
                 )
                 ssl_training_dataset_update_epoch = num_epoch
                 if ssl_config.update_mode == "every_epoch":
@@ -1070,308 +1440,15 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     raise RuntimeError("SSL training loader was not built before reuse")
                 train_loader = static_train_loader
 
-            warmup_active = is_ssl_warmup_epoch(ssl_config, num_epoch)
-            legacy_stml_active = loss_driven_ssl and not warmup_active
-            regularized_phase_active = regularized_ssl and not warmup_active
-            regularization_active = (
-                regularized_phase_active and regularizer.regularizer_weight > 0
-            )
-            regularizer_disabled = (
-                regularized_phase_active and regularizer.regularizer_weight == 0
-            )
-            active_criterion = warmup_criterion if warmup_active else criterion
-            active_is_classification = warmup_is_classification if warmup_active else is_classification
-            active_miner = warmup_miner if warmup_active else miner
-            active_classifier_optim = warmup_classifier_optim if warmup_active else classifier_optim
-            warmup_loss_name = (
-                args.loss if uses_main_objective_for_warmup(args, ssl_config) else args.warmup_loss
-            )
-            loss_phase = f"warmup ({warmup_loss_name})" if warmup_active else args.loss
-            if regularization_active:
-                loss_phase = f"{args.loss} + {regularizer.name} regularization"
-            elif regularizer_disabled:
-                loss_phase = f"{args.loss} (regularizer weight 0; supervised-only sanity path)"
-            logger.info(f"Epoch {num_epoch}: training with {loss_phase}")
-            teacher_model = initialize_stml_teacher_for_phase(
-                teacher_model=teacher_model,
-                student_model=model,
-                active_criterion=active_criterion,
-                device=args.device,
-            )
-            if regularization_active and regularizer_state is None:
-                regularizer_state = regularizer.initialize_state(model, args.device)
-            model.train()
-            if teacher_model is not None:
-                teacher_model.eval()
-            # Accumulate detached scalar losses for epoch-level reporting while
-            # global_step counts optimizer updates across all epochs.
-            epoch_loss = 0.0
-            num_batches = 0
-            zero_loss_batches = 0
-            epoch_miner_totals = {}
-            tqdm_bar = tqdm(total=len(train_loader))
-            epoch_timings = defaultdict(float)
-            last_timing_log_batch = 0
-            last_timing_totals = {}
-            next_batch_wait_start = _now(args.device) if _timing_enabled(args) else None
-
-            for batch_idx, batch in enumerate(train_loader):
-                timing = _timing_enabled(args)
-
-                data_ready_time = _now(args.device) if timing else None
-                if timing and next_batch_wait_start is not None:
-                    _add_time(epoch_timings, "data_wait", next_batch_wait_start, data_ready_time)
-                if legacy_stml_active:
-                    images, _, instance_ids = batch
-                    if not isinstance(images, (list, tuple)) or len(images) != active_criterion.num_views:
-                        raise ValueError(
-                            f"STML batches must contain {active_criterion.num_views} augmented views per sample"
-                    )
-                    images = torch.cat(list(images), dim=0)
-                    instance_ids = instance_ids.repeat(active_criterion.num_views).to(args.device, non_blocking=True)
-                else:
-                    supervised_batch, regularizer_batch = batch if regularization_active else (batch, None)
-                    images, labels, sample_weights = unpack_training_batch(supervised_batch)
-                    supervised_batch_size = len(labels)
-                    joint_forward_active = bool(
-                        regularization_active and regularizer.uses_joint_forward
-                    )
-                    if joint_forward_active:
-                        images = concatenate_joint_forward_inputs(images, regularizer_batch)
-                    if regularization_active and getattr(regularizer, "name", None) == "hoffer_entropy":
-                        hoffer_roles = torch.as_tensor(regularizer_batch[1])
-                        hoffer_reference_count = int(hoffer_roles.bool().sum().item())
-                        hoffer_unlabeled_count = int(hoffer_roles.numel() - hoffer_reference_count)
-                        logger.debug(
-                            "Hoffer combined training batch: "
-                            f"epoch={num_epoch}, "
-                            f"batch={batch_idx}, "
-                            f"supervised_labeled_count={len(labels)}, "
-                            f"regularizer_unlabeled_count={hoffer_unlabeled_count}, "
-                            f"regularizer_reference_count={hoffer_reference_count}, "
-                            f"regularizer_total_count={int(hoffer_roles.numel())}"
-                        )
-
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "unpack_batch", data_ready_time, t1)
-                # Autocast reduces memory/compute cost while leaving parameters
-                # and the optimizer responsible for their normal precision.
-                with torch.autocast(device_type=torch.device(args.device).type, dtype=torch.bfloat16):
-                    miner_outputs = None
-                    supervised_loss = None
-                    regularization_loss = None
-
-                    if legacy_stml_active:
-                        t0 = _now(args.device) if timing else None
-                        student_g, student_f = model.forward_stml_cached(images, args.device)
-                        with torch.no_grad():
-                            teacher_g = teacher_model.forward_stml_teacher_cached(images, args.device)
-                        t1 = _now(args.device) if timing else None
-                        if timing:
-                            _add_time(epoch_timings, "forward", t0, t1)
-
-                        t0 = _now(args.device) if timing else None
-                        loss = active_criterion(student_f, student_g, teacher_g, instance_ids)
-                        t1 = _now(args.device) if timing else None
-                        if timing:
-                            _add_time(epoch_timings, "loss", t0, t1)
-
-                    else:
-                        t0 = _now(args.device) if timing else None
-                        embeddings = utils.forward_model_inputs(
-                            model,
-                            images,
-                            args.device,
-                            use_cache=model_use_cache,
-                        )
-                        regularizer_embeddings = None
-                        if joint_forward_active:
-                            regularizer_embeddings = embeddings[supervised_batch_size:]
-                            embeddings = embeddings[:supervised_batch_size]
-                        t1 = _now(args.device) if timing else None
-                        if timing:
-                            _add_time(epoch_timings, "forward", t0, t1)
-
-                        t0 = _now(args.device) if timing else None
-                        labels = map_training_labels(
-                            labels,
-                            train_label_lookup,
-                            train_labels_mapper,
-                            args.device,
-                        )
-                        sample_weights = sample_weights.to(args.device, non_blocking=True)
-                        t1 = _now(args.device) if timing else None
-                        if timing:
-                            _add_time(epoch_timings, "label_weight_prep", t0, t1)
-
-                        t0 = _now(args.device) if timing else None
-                        if getattr(active_criterion, "supports_sample_weights", False):
-                            supervised_loss = active_criterion(embeddings, labels, sample_weights=sample_weights)
-                        elif not active_is_classification and active_miner is not None:
-                            miner_outputs = active_miner(embeddings, labels)
-                            supervised_loss = active_criterion(embeddings, labels, miner_outputs)
-                        else:
-                            supervised_loss = active_criterion(embeddings, labels)
-                        t1 = _now(args.device) if timing else None
-                        if timing:
-                            _add_time(epoch_timings, "miner_and_loss", t0, t1)
-
-                        if regularization_active:
-                            t0 = _now(args.device) if timing else None
-                            regularizer_loss_kwargs = {}
-                            if joint_forward_active:
-                                regularizer_loss_kwargs = {
-                                    "supervised_embeddings": embeddings,
-                                    "supervised_labels": labels,
-                                    "regularizer_embeddings": regularizer_embeddings,
-                                }
-                            regularization_loss = regularizer.compute_loss(
-                                student_model=model,
-                                state=regularizer_state,
-                                batch=regularizer_batch,
-                                device=args.device,
-                                timings=epoch_timings if timing else None,
-                                **regularizer_loss_kwargs,
-                            )
-                            loss = regularizer.combine_losses(supervised_loss, regularization_loss)
-                            t1 = _now(args.device) if timing else None
-                            if timing:
-                                _add_time(epoch_timings, "regularization_loss", t0, t1)
-                        elif regularizer_disabled:
-                            loss = regularizer.supervised_weight * supervised_loss
-                        else:
-                            loss = supervised_loss
-
-                t0 = _now(args.device) if timing else None
-                loss_value = loss.detach().item()
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "loss_item", t0, t1)
-
-                t0 = _now(args.device) if timing else None
-                loss.backward()
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "backward", t0, t1)
-
-                log_batch_diagnostics = _batch_diagnostics_enabled(args)
-                t0 = _now(args.device) if timing and log_batch_diagnostics else None
-                miner_diagnostics = utils.summarize_miner_outputs(miner_outputs)
-                batch_diagnostics = None
-                if log_batch_diagnostics:
-                    batch_diagnostics = {
-                        "train/zero_loss_batch": float(loss_value == 0.0),
-                        "train/gradient_norm/model": utils.gradient_l2_norm(model.parameters()),
-                        **utils.optimizer_learning_rates(optim, "model"),
-                        **miner_diagnostics,
-                    }
-                    if active_is_classification:
-                        batch_diagnostics["train/gradient_norm/criterion"] = utils.gradient_l2_norm(
-                            active_criterion.parameters()
-                        )
-                        batch_diagnostics.update(utils.optimizer_learning_rates(active_classifier_optim, "criterion"))
-                    batch_diagnostics["train/stml_active"] = float(legacy_stml_active)
-                    batch_diagnostics["train/regularization_active"] = float(regularization_active)
-                    if supervised_loss is not None:
-                        batch_diagnostics["train/supervised_loss"] = supervised_loss.detach().item()
-                    if regularization_loss is not None:
-                        batch_diagnostics["train/regularization_loss"] = regularization_loss.detach().item()
-                        batch_diagnostics.update(regularizer.batch_diagnostics())
-                t1 = _now(args.device) if timing and log_batch_diagnostics else None
-                if timing and log_batch_diagnostics:
-                    _add_time(epoch_timings, "diagnostics", t0, t1)
-
-                t0 = _now(args.device) if timing else None
-                optim.step()
-                optim.zero_grad()
-                if active_is_classification:
-                    active_classifier_optim.step()
-                    active_classifier_optim.zero_grad()
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "optimizer_step", t0, t1)
-
-                t0 = _now(args.device) if timing else None
-                if legacy_stml_active:
-                    update_ema_teacher(
-                        teacher_model,
-                        model,
-                        momentum=active_criterion.teacher_momentum,
-                        excluded_parameter_prefixes=("fc.",),
-                    )
-                if regularization_active:
-                    regularizer.after_optimizer_step(model, regularizer_state)
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "post_step_hooks", t0, t1)
-
-                t0 = _now(args.device) if timing else None
-                metrics_logger.log_train_batch(
-                    loss_value,
-                    num_epoch,
-                    global_step,
-                    diagnostics=batch_diagnostics,
-                )
-                t1 = _now(args.device) if timing else None
-                if timing:
-                    _add_time(epoch_timings, "metrics_logging", t0, t1)
-
-                epoch_loss += loss_value
-                num_batches += 1
-                zero_loss_batches += int(loss_value == 0.0)
-                for name, value in miner_diagnostics.items():
-                    epoch_miner_totals[name] = epoch_miner_totals.get(name, 0) + value
-                global_step += 1
-                tqdm_bar.set_description(f"loss = {loss_value:.5f}")
-                tqdm_bar.update(1)
-
-                if timing and (batch_idx + 1) % _timing_interval(args) == 0:
-                    current_batch_count = batch_idx + 1
-                    interval_batches = current_batch_count - last_timing_log_batch
-                    interval_timings = {
-                        name: total - last_timing_totals.get(name, 0.0)
-                        for name, total in epoch_timings.items()
-                    }
-                    logger.info(
-                        "Batch timing interval "
-                        f"epoch={num_epoch} batch={current_batch_count}/{len(train_loader)} "
-                        f"last_batches={interval_batches} "
-                        f"phase={loss_phase}: "
-                        + ", ".join(
-                            f"{name}={total / interval_batches:.4f}s"
-                            for name, total in sorted(interval_timings.items())
-                        )
-                    )
-                    last_timing_log_batch = current_batch_count
-                    last_timing_totals = dict(epoch_timings)
-                if timing:
-                    next_batch_wait_start = _now(args.device)
-            tqdm_bar.close()
-            tqdm_bar = None
+            epoch_train_loss = epoch_trainer.train_epoch(train_loader, num_epoch)
+            if epoch_train_loss is not None:
+                final_train_loss = epoch_train_loss
             shutdown_epoch_train_loader(
                 train_loader,
                 warmup_train_loader,
                 static_train_loader,
                 loss_driven_train_loader,
             )
-            gc.collect()
-            if num_batches > 0:
-                # The epoch metric is an unweighted mean of batch loss values.
-                final_train_loss = epoch_loss / num_batches
-                epoch_diagnostics = {
-                    "train/zero_loss_batches": zero_loss_batches,
-                    "train/zero_loss_fraction": zero_loss_batches / num_batches,
-                }
-                for name, total in epoch_miner_totals.items():
-                    epoch_diagnostics[f"{name}_total"] = total
-                    epoch_diagnostics[f"{name}_mean_per_batch"] = total / num_batches
-                metrics_logger.log_train_epoch(
-                    final_train_loss,
-                    num_epoch,
-                    global_step,
-                    diagnostics=epoch_diagnostics,
-                )
             if final_full_train:
                 # No validation or early stopping is permitted in the final
                 # fit; the HPO-selected duration determines the resulting model.
@@ -1391,7 +1468,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 "valid",
                 cur_precision,
                 cur_map,
-                step=global_step,
+                step=epoch_trainer.global_step,
                 epoch=num_epoch,
                 per_class_metrics=cur_per_class,
             )
@@ -1404,8 +1481,6 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 metric=optuna_metric,
                 epoch=num_epoch,
                 train_loss=final_train_loss,
-                valid_precision=cur_precision,
-                valid_map=cur_map,
                 best_precision=best_precision_for_report,
                 best_map=best_map_for_report,
             )
@@ -1433,9 +1508,6 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 # Equal or worse selected metric consumes one patience unit.
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
-                    # Restore immediately before leaving the loop; the load
-                    # below also covers runs that finish all requested epochs.
-                    model.load_state_dict(torch.load(best_model_path, weights_only=True))
                     break
 
         if not final_full_train:
@@ -1460,7 +1532,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 "test",
                 test_precision,
                 test_map,
-                step=global_step,
+                step=epoch_trainer.global_step,
                 epoch=last_epoch,
                 per_class_metrics=test_per_class,
             )
@@ -1485,8 +1557,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     finally:
         # Ensure file handles and TensorBoard writers close even when training,
         # evaluation, or an Optuna pruning decision raises an exception.
-        if tqdm_bar is not None:
-            tqdm_bar.close()
+        epoch_trainer.close_progress_bar()
         shutdown_epoch_train_loader(
             train_loader,
             warmup_train_loader,
@@ -1522,16 +1593,11 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             }
             write_json(args.log_dir / "frozen_feature_precompute_stats.json", feature_stats)
             logger.info(f"Frozen feature precompute stats: {feature_stats}")
-            if args.use_cache:
-                cache_stats = model.cache_stats()
-                write_json(args.log_dir / "backbone_cache_stats.json", cache_stats)
-                logger.info(f"Backbone cache stats: {cache_stats}")
-        elif args.use_cache:
+        if args.use_cache:
             cache_stats = model.cache_stats()
             write_json(args.log_dir / "backbone_cache_stats.json", cache_stats)
             logger.info(f"Backbone cache stats: {cache_stats}")
-        if best_model_path.exists():
-            os.remove(best_model_path)
+        best_model_path.unlink(missing_ok=True)
 
     return TrainingResult(
         log_dir=args.log_dir,
@@ -1543,7 +1609,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         final_train_loss=None if final_train_loss is None else float(final_train_loss),
         last_epoch=last_epoch,
         selected_epoch=selected_epoch,
-        global_step=global_step,
+        global_step=epoch_trainer.global_step,
         epoch0_test_precision_at_1=None if epoch0_test_precision is None else float(epoch0_test_precision),
         epoch0_test_mean_average_precision_at_r=None if epoch0_test_map is None else float(epoch0_test_map),
         cv_k=args.cv_k if cv_fold is not None else 1,
@@ -1593,6 +1659,7 @@ def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None
     write_cross_validation_summary(cv_dir, args, fold_results, aggregate)
     return aggregate
 
+
 def aggregate_cross_validation_result(cv_dir, args, fold_results):
     # Keep full fold dictionaries inside the aggregate result for JSON metadata
     # while exposing arithmetic means through the normal TrainingResult fields.
@@ -1616,14 +1683,17 @@ def aggregate_cross_validation_result(cv_dir, args, fold_results):
         fold_results=fold_dicts,
     )
 
+
 def mean_metric(results, attr):
     return float(sum(getattr(result, attr) for result in results) / len(results))
+
 
 def mean_optional_metric(results, attr):
     values = [getattr(result, attr) for result in results if getattr(result, attr) is not None]
     if not values:
         return None
     return float(sum(values) / len(values))
+
 
 def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
     # During execution only completed folds are written. The final call adds a
@@ -1669,6 +1739,7 @@ def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
         },
     )
 
+
 def make_cv_summary_row(result, fold=None):
     return {
         "fold": result.cv_fold if fold is None else fold,
@@ -1692,13 +1763,12 @@ def make_cv_summary_row(result, fold=None):
         "global_step": result.global_step,
     }
 
+
 def maybe_report_cv_to_optuna(optuna_trial, metric, fold_results, fold_index):
     if optuna_trial is None or metric is None:
         return
-    # Aggregate only folds completed so far. This gives the pruner an
-    # increasingly representative estimate as cross-validation progresses.
-    partial_result = aggregate_cross_validation_result(Path("."), make_cv_args_stub(fold_results), fold_results)
-    value = getattr(partial_result, metric)
+    # The partial fold mean becomes more representative as CV progresses.
+    value = mean_optional_metric(fold_results, metric)
     if value is None:
         # Optional metrics such as test performance may be unavailable when
         # test evaluation is disabled during HPO.
@@ -1709,11 +1779,6 @@ def maybe_report_cv_to_optuna(optuna_trial, metric, fold_results, fold_index):
 
         raise optuna.TrialPruned()
 
-def make_cv_args_stub(fold_results):
-    stub = argparse.Namespace()
-    stub.cv_k = fold_results[0].cv_k
-    stub.cv_mode = fold_results[0].cv_mode
-    return stub
 
 def validate_run_args(args, ssl_config):
     """Fail early on invalid combinations before allocating model resources."""
@@ -1751,7 +1816,8 @@ def validate_run_args(args, ssl_config):
                 "mixed_label_propagation proxy warmup must name "
                 "warmup_loss='MixedLabelPropagationProxyLoss'; the same proxy module is reused"
             )
-    unlabeled_source, external_unlabeled_dir = resolve_unlabeled_source_args(args)
+    unlabeled_source = getattr(args, "unlabeled_source", "split")
+    external_unlabeled_dir = getattr(args, "external_unlabeled_dir", None)
     external_unlabeled_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
     if external_unlabeled_filter not in utils.EXTERNAL_UNLABELED_FILTERS:
         raise ValueError(
@@ -1806,7 +1872,7 @@ def validate_run_args(args, ssl_config):
     except ValueError as exc:
         raise ValueError(f"{exc}: {args.device}") from exc
     if args.optim not in {"adamw", "adam", "rmsprop"}:
-        raise ValueError(f"optim must be 'adam' or 'rmsprop': {args.optim}")
+        raise ValueError(f"optim must be 'adamw', 'adam', or 'rmsprop': {args.optim}")
     if args.mode not in {"supervised", "ssl"}:
         raise ValueError("mode must be 'supervised' or 'ssl'")
     if args.batch_size <= 0:
@@ -1860,6 +1926,7 @@ def validate_run_args(args, ssl_config):
         ssl_embedding_num_workers=ssl_config.embedding_num_workers if ssl_config.enabled else 0,
         start_method=args.dataloader_start_method,
     )
+
 
 def validate_effective_miner_params(loss_name, miner_name, miner_params, param_name):
     """Validate miner params only when the training loop will actually use the miner."""
@@ -1947,17 +2014,6 @@ def validate_batch_easy_hard_allowed_range(value, name):
     return (lower, upper)
 
 
-def make_loss(args, num_classes=None, embedding_size=None):
-    """Construct the selected loss with HPO-resolved constructor parameters."""
-
-    return make_named_loss(
-        name=args.loss,
-        params=getattr(args, "loss_params", {}),
-        num_classes=num_classes,
-        embedding_size=embedding_size,
-    )
-
-
 def make_named_loss(name, params=None, num_classes=None, embedding_size=None):
     """Construct a selected loss name with explicit constructor parameters."""
 
@@ -2002,7 +2058,7 @@ def make_training_loss_components(
         miner = None
     else:
         miner = make_named_miner(miner_name, miner_params)
-    return criterion, is_classification, miner, classifier_optim
+    return TrainingLossComponents(criterion, is_classification, miner, classifier_optim)
 
 
 def make_warmup_loss_components(
@@ -2020,7 +2076,7 @@ def make_warmup_loss_components(
     if uses_main_objective_for_warmup(args, ssl_config):
         # Alias the objects so trainable criterion state (for example class
         # proxies) and optimizer moments continue after labeled-only warmup.
-        return criterion, is_classification, miner, classifier_optim
+        return TrainingLossComponents(criterion, is_classification, miner, classifier_optim)
     return make_training_loss_components(
         args=args,
         loss_name=args.warmup_loss,
@@ -2064,24 +2120,43 @@ def initialize_stml_teacher_for_phase(teacher_model, student_model, active_crite
 
 
 @torch.no_grad()
-def update_ema_teacher(teacher_model, student_model, momentum, excluded_parameter_prefixes=()):
+def update_ema_teacher(
+    teacher_model,
+    student_model,
+    momentum,
+    excluded_parameter_prefixes=(),
+    only_trainable_parameters=False,
+):
     """Update teacher state by EMA, copying only non-floating counters."""
 
     if not 0 <= momentum < 1:
         raise ValueError("teacher momentum must be in [0, 1)")
+    excluded_parameter_prefixes = tuple(excluded_parameter_prefixes)
     teacher_parameters = dict(teacher_model.named_parameters())
+    teacher_updates = []
+    student_updates = []
     for name, student_parameter in student_model.named_parameters():
-        if name.startswith(tuple(excluded_parameter_prefixes)):
+        if name.startswith(excluded_parameter_prefixes) or (
+            only_trainable_parameters and not student_parameter.requires_grad
+        ):
             continue
-        teacher_parameter = teacher_parameters[name]
-        teacher_parameter.lerp_(student_parameter.detach(), 1 - momentum)
+        teacher_updates.append(teacher_parameters[name])
+        student_updates.append(student_parameter.detach())
+    if teacher_updates:
+        torch._foreach_lerp_(teacher_updates, student_updates, 1 - momentum)
+
     teacher_buffers = dict(teacher_model.named_buffers())
+    floating_teacher_buffers = []
+    floating_student_buffers = []
     for name, student_buffer in student_model.named_buffers():
         teacher_buffer = teacher_buffers[name]
         if torch.is_floating_point(teacher_buffer):
-            teacher_buffer.lerp_(student_buffer.detach(), 1 - momentum)
+            floating_teacher_buffers.append(teacher_buffer)
+            floating_student_buffers.append(student_buffer.detach())
         else:
             teacher_buffer.copy_(student_buffer.detach())
+    if floating_teacher_buffers:
+        torch._foreach_lerp_(floating_teacher_buffers, floating_student_buffers, 1 - momentum)
 
 
 def get_loss_class(name):
@@ -2091,22 +2166,18 @@ def get_loss_class(name):
         return metric_losses.LOSS_REGISTRY[name]
     return getattr(losses, name)
 
+
 def unpack_training_batch(batch):
-    """Normalize two- or three-item training batches to include confidence."""
+    """Normalize training batches to images, labels, confidence, and index."""
 
     if len(batch) == 2:
         images, labels = batch
-        sample_weights = torch.ones(len(labels), dtype=torch.float32)
-        return images, labels, sample_weights
-    if len(batch) == 3:
-        images, labels, sample_weights = batch
-        return images, labels, sample_weights.to(dtype=torch.float32)
-    raise ValueError(f"Training batches must contain images, labels, and optional confidence; got {len(batch)} items")
-
-def make_miner(args):
-    """Construct the selected miner with HPO-resolved constructor parameters."""
-
-    return make_named_miner(args.miner, getattr(args, "miner_params", {}))
+        return images, labels, torch.ones(len(labels), dtype=torch.float32), None
+    if len(batch) in {3, 4}:
+        images, labels, sample_weights, *optional_index = batch
+        index = optional_index[0] if optional_index else None
+        return images, labels, sample_weights.to(dtype=torch.float32), index
+    raise ValueError(f"Training batches must contain 2 to 4 items; got {len(batch)}")
 
 
 def make_named_miner(name, params=None):
@@ -2121,6 +2192,7 @@ def make_named_miner(name, params=None):
         return getattr(miners, name)(**params)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid parameters for miner {name}: {raw_params}") from exc
+
 
 def make_supervised_split_config(ssl_config):
     # Preserve label-selection settings and seed so the supervised baseline
@@ -2140,13 +2212,12 @@ def make_supervised_split_config(ssl_config):
     semi_supervised.validate_ssl_config(config)
     return config
 
+
 def maybe_report_to_optuna(
     optuna_trial,
     metric,
     epoch,
     train_loss,
-    valid_precision,
-    valid_map,
     best_precision,
     best_map,
 ):
@@ -2173,6 +2244,7 @@ def maybe_report_to_optuna(
         import optuna
 
         raise optuna.TrialPruned()
+
 
 def write_run_config(args, ssl_config):
     write_json(
