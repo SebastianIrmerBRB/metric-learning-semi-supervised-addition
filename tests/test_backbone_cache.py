@@ -1,12 +1,11 @@
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import torch
 import torch.nn as nn
 
-import retrieval_model
+from models import retrieval_model
 
 
 class FakeBackbone(nn.Module):

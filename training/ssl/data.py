@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
 import utils
-from ssl_config import UNLABELED_TARGET
+from .config import UNLABELED_TARGET
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,15 @@ class RelabeledSubset(Dataset):
     confidence-aware losses.
     """
 
-    def __init__(self, dataset, positions, orig_labels, mapped_labels, confidences=None):
+    def __init__(
+        self,
+        dataset,
+        positions,
+        orig_labels,
+        mapped_labels,
+        confidences=None,
+        return_indices=False,
+    ):
         if confidences is None:
             confidences = np.ones(len(positions), dtype=np.float32)
         if not (len(positions) == len(orig_labels) == len(mapped_labels) == len(confidences)):
@@ -46,6 +54,7 @@ class RelabeledSubset(Dataset):
         # __getitem__, so it receives dense true/pseudo labels here.
         self.labels = [int(label) for label in mapped_labels]
         self.confidences = np.asarray(confidences, dtype=np.float32)
+        self.return_indices = bool(return_indices)
         if not np.all(np.isfinite(self.confidences)):
             raise ValueError("confidences must be finite")
         if np.any((self.confidences < 0) | (self.confidences > 1)):
@@ -58,7 +67,12 @@ class RelabeledSubset(Dataset):
         # Ignore the label returned by the wrapped dataset because pseudo-labeled
         # samples must expose their predicted label instead of the hidden truth.
         image = self.dataset[int(self.positions[index])][0]
-        return image, self.orig_labels[index], self.confidences[index]
+        item = (image, self.orig_labels[index], self.confidences[index])
+        if self.return_indices:
+            # This is the stable row in the labeled memory bank, not a source-
+            # dataset index. MPerClassSampler supplies this same view index.
+            return (*item, int(index))
+        return item
 
 
 class UnlabeledSubset(Dataset):
@@ -106,6 +120,87 @@ class LRMLGraphDataset(Dataset):
             return image, node_id, index.edge_indices
         image = self.dataset[int(self.positions[index])][0]
         return image, index
+
+
+class LRMLEdgeDataset(Dataset):
+    """Expose each undirected LRML edge once for ordinary shuffled loading.
+
+    ``edge_index`` follows PyG's ``[2, num_directed_edges]`` convention and is
+    expected to contain both directions. Dataset items are canonical global
+    graph-node pairs; endpoint images are fetched exactly once later by
+    :func:`collate_lrml_edge_batch`.
+    """
+
+    def __init__(self, edge_index, num_nodes):
+        edge_index = torch.as_tensor(edge_index, dtype=torch.long).detach().cpu()
+        if edge_index.ndim != 2 or edge_index.shape[0] != 2:
+            raise ValueError("lrml edge_index must have shape [2, num_directed_edges]")
+        if edge_index.shape[1] == 0:
+            raise ValueError("lrml graph regularization requires at least one edge")
+        self.num_nodes = int(num_nodes)
+        if self.num_nodes < 2:
+            raise ValueError("lrml graph regularization requires at least two nodes")
+        if int(edge_index.min()) < 0 or int(edge_index.max()) >= self.num_nodes:
+            raise ValueError("lrml edge_index refers to a node outside the graph")
+
+        canonical_edges = torch.sort(edge_index.t().contiguous(), dim=1).values
+        if torch.any(canonical_edges[:, 0] == canonical_edges[:, 1]):
+            raise ValueError("lrml edge_index must not contain self loops")
+        edges, direction_counts = torch.unique(
+            canonical_edges,
+            dim=0,
+            sorted=True,
+            return_counts=True,
+        )
+        if torch.any(direction_counts != 2):
+            raise ValueError(
+                "lrml edge_index must contain each undirected edge in both directions once"
+            )
+        self.edge_index = edge_index.contiguous()
+        self.edges = edges.contiguous()
+
+    def __len__(self):
+        return self.edges.shape[0]
+
+    def __getitem__(self, index):
+        return self.edges[int(index)]
+
+
+def collate_lrml_edge_batch(batch, node_dataset):
+    """Fetch unique endpoints and build a local PyG edge index for an edge batch."""
+
+    if len(batch) == 0:
+        raise ValueError("lrml edge collation requires at least one edge")
+    edges = torch.stack(
+        [torch.as_tensor(edge, dtype=torch.long) for edge in batch],
+        dim=0,
+    )
+    if edges.ndim != 2 or edges.shape[1] != 2:
+        raise ValueError("lrml edge dataset items must have shape [2]")
+
+    unique_node_ids = []
+    local_index_by_node = {}
+    local_edges = []
+    for left_node, right_node in edges.tolist():
+        local_pair = []
+        for node_id in (int(left_node), int(right_node)):
+            if node_id < 0 or node_id >= len(node_dataset):
+                raise ValueError("lrml edge refers to a node outside the node dataset")
+            local_index = local_index_by_node.get(node_id)
+            if local_index is None:
+                local_index = len(unique_node_ids)
+                local_index_by_node[node_id] = local_index
+                unique_node_ids.append(node_id)
+            local_pair.append(local_index)
+        local_edges.append(local_pair)
+
+    node_items = [node_dataset[node_id] for node_id in unique_node_ids]
+    images = [item[0] for item in node_items]
+    return (
+        default_collate(images),
+        torch.as_tensor(unique_node_ids, dtype=torch.long),
+        torch.as_tensor(local_edges, dtype=torch.long).t().contiguous(),
+    )
 
 
 class HofferReferenceDataset(Dataset):
@@ -248,91 +343,238 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
     ``graph_batch_size`` is a number of graph edges, independent of the
     supervised example batch size. The selected endpoints are deduplicated into
     at most ``2 * graph_batch_size`` ``GraphBatchNodeIndex`` values, with an
-    explicit local edge map attached to the batch. Consumers evaluate only that
-    map, so no lower-ranked edge can be omitted permanently and no incidental
-    induced-subgraph edge is counted with a degree-dependent probability.
-    Without an explicit step count, a complete iterator visits each
-    upper-triangle edge once in a fresh random order. With ``num_batches`` it
-    emits exactly that many estimator batches, starting a new permutation only
-    after consuming the current one.
+    explicit local edge map attached to the batch.
+
+    When ``debug=True``, information about the first ``debug_max_batches``
+    batches is printed each time a new iterator is created.
     """
 
-    def __init__(self, adjacency, graph_batch_size, seed, num_batches=None):
+    def __init__(
+        self,
+        adjacency,
+        graph_batch_size,
+        seed,
+        num_batches=None,
+        *,
+        debug=True,
+        debug_max_batches=1,
+        debug_fn=print,
+    ):
         if graph_batch_size <= 0:
             raise ValueError("graph_batch_size must be positive")
+
         self.graph_batch_size = int(graph_batch_size)
         self.edges_per_batch = self.graph_batch_size
+
         self.num_batches = None if num_batches is None else int(num_batches)
         if self.num_batches is not None and self.num_batches <= 0:
-            raise ValueError("graph sampler num_batches must be positive when set")
+            raise ValueError(
+                "graph sampler num_batches must be positive when set"
+            )
+
+        if debug_max_batches is not None and debug_max_batches < 0:
+            raise ValueError("debug_max_batches must be non-negative or None")
+
+        self.debug = True
+        self.debug_max_batches = debug_max_batches
+        self.debug_fn = debug_fn
+
         self.generator = utils.make_torch_generator(seed)
         self.set_graph(adjacency)
 
     def set_graph(self, adjacency):
         adjacency = adjacency.tocsr()
+
         if adjacency.shape[0] != adjacency.shape[1]:
             raise ValueError("graph adjacency must be square")
+
         if adjacency.shape[0] < 2:
-            raise ValueError("graph regularization requires at least two graph samples")
+            raise ValueError(
+                "graph regularization requires at least two graph samples"
+            )
+
         difference = (adjacency - adjacency.T).tocsr()
         if difference.nnz and not np.allclose(difference.data, 0.0):
             raise ValueError("graph adjacency must be symmetric")
 
         coo = adjacency.tocoo()
         upper = coo.row < coo.col
+
         edge_rows = np.asarray(coo.row[upper], dtype=np.int64)
         edge_cols = np.asarray(coo.col[upper], dtype=np.int64)
         edge_weights = np.asarray(coo.data[upper], dtype=np.float64)
-        if len(edge_rows) == 0:
-            raise ValueError("graph regularization requires at least one edge")
-        if not np.all(np.isfinite(edge_weights)) or np.any(edge_weights <= 0):
-            raise ValueError("graph edge weights must be finite and positive")
 
-        self.edge_rows = torch.as_tensor(edge_rows, dtype=torch.long)
-        self.edge_cols = torch.as_tensor(edge_cols, dtype=torch.long)
+        if len(edge_rows) == 0:
+            raise ValueError(
+                "graph regularization requires at least one edge"
+            )
+
+        if (
+            not np.all(np.isfinite(edge_weights))
+            or np.any(edge_weights <= 0)
+        ):
+            raise ValueError(
+                "graph edge weights must be finite and positive"
+            )
+
+        self.edge_rows = torch.as_tensor(
+            edge_rows,
+            dtype=torch.long,
+        )
+        self.edge_cols = torch.as_tensor(
+            edge_cols,
+            dtype=torch.long,
+        )
+        self.edge_weights = torch.as_tensor(
+            edge_weights,
+            dtype=torch.float64,
+        )
+
         self.num_edges = int(len(edge_rows))
 
+    def _should_debug_batch(self, batch_number):
+        if not self.debug:
+            return False
+
+        if self.debug_max_batches is None:
+            return True
+
+        return batch_number < self.debug_max_batches
+
+    def _debug_batch(
+        self,
+        *,
+        batch_number,
+        selected_edge_ids,
+        endpoint_pairs,
+        selected_weights,
+        unique_nodes,
+        edge_indices,
+    ):
+        reconstructed_pairs = [
+            (
+                unique_nodes[left_local_index],
+                unique_nodes[right_local_index],
+            )
+            for left_local_index, right_local_index in edge_indices
+        ]
+
+        expected_pairs = [
+            (int(left_node), int(right_node))
+            for left_node, right_node in endpoint_pairs
+        ]
+
+        if reconstructed_pairs != expected_pairs:
+            raise RuntimeError(
+                "Local graph edge map does not reconstruct the selected "
+                "global graph edges.\n"
+                f"Expected:      {expected_pairs}\n"
+                f"Reconstructed: {reconstructed_pairs}"
+            )
+
+        lines = [
+            "",
+            f"[GraphEdgeBatchSampler] batch={batch_number}",
+            f"  selected edge IDs:  {selected_edge_ids}",
+            f"  global node pairs:  {expected_pairs}",
+            f"  edge weights:       {selected_weights}",
+            f"  unique global nodes:{unique_nodes}",
+            f"  local edge map:     {list(edge_indices)}",
+            f"  reconstructed pairs:{reconstructed_pairs}",
+            (
+                "  counts: "
+                f"{len(expected_pairs)} edges, "
+                f"{len(unique_nodes)} unique nodes"
+            ),
+        ]
+
+        self.debug_fn("\n".join(lines))
+
     def __iter__(self):
-        edge_order = torch.randperm(self.num_edges, generator=self.generator)
+        edge_order = torch.randperm(
+            self.num_edges,
+            generator=self.generator,
+        )
+
         yielded = 0
         start = 0
         target_batches = len(self)
+
         while yielded < target_batches:
             if start >= self.num_edges:
-                edge_order = torch.randperm(self.num_edges, generator=self.generator)
+                edge_order = torch.randperm(
+                    self.num_edges,
+                    generator=self.generator,
+                )
                 start = 0
-            selected = edge_order[start : start + self.edges_per_batch]
+
+            selected = edge_order[
+                start : start + self.edges_per_batch
+            ]
+
             endpoint_pairs = torch.stack(
-                [self.edge_rows[selected], self.edge_cols[selected]], dim=1
+                [
+                    self.edge_rows[selected],
+                    self.edge_cols[selected],
+                ],
+                dim=1,
             ).tolist()
+
             unique_nodes = []
             local_index_by_node = {}
             edge_indices = []
+
             for left_node, right_node in endpoint_pairs:
                 local_pair = []
+
                 for node_id in (int(left_node), int(right_node)):
                     local_index = local_index_by_node.get(node_id)
+
                     if local_index is None:
                         local_index = len(unique_nodes)
                         local_index_by_node[node_id] = local_index
                         unique_nodes.append(node_id)
+
                     local_pair.append(local_index)
+
                 edge_indices.append(tuple(local_pair))
+
             edge_indices = tuple(edge_indices)
+
+            if self._should_debug_batch(yielded):
+                self._debug_batch(
+                    batch_number=yielded,
+                    selected_edge_ids=selected.tolist(),
+                    endpoint_pairs=endpoint_pairs,
+                    selected_weights=self.edge_weights[selected].tolist(),
+                    unique_nodes=unique_nodes,
+                    edge_indices=edge_indices,
+                )
+
             yield [
                 GraphBatchNodeIndex(
                     node_id=node_id,
-                    edge_indices=edge_indices if local_index == 0 else (),
+                    edge_indices=(
+                        edge_indices
+                        if local_index == 0
+                        else ()
+                    ),
                 )
                 for local_index, node_id in enumerate(unique_nodes)
             ]
+
             yielded += 1
             start += self.edges_per_batch
 
     def __len__(self):
         if self.num_batches is not None:
             return self.num_batches
-        return int(math.ceil(self.num_edges / self.edges_per_batch))
+
+        return int(
+            math.ceil(
+                self.num_edges / self.edges_per_batch
+            )
+        )
 
 
 class HofferReferenceBatchSampler(torch.utils.data.Sampler):

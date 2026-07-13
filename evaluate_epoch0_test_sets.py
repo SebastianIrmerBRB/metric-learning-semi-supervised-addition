@@ -12,6 +12,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from pytorch_metric_learning.utils.accuracy_calculator import (
+    AccuracyCalculator,
+    maybe_get_avg_of_avgs,
+    nan_accuracy,
+    try_getting_not_lone_labels,
+)
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -21,9 +27,32 @@ if str(REPO_ROOT) not in sys.path:
 os.chdir(REPO_ROOT)
 
 import main as experiment_main  # noqa: E402
-import semi_supervised  # noqa: E402
 import utils  # noqa: E402
-from retrieval_model import DinoWrapper  # noqa: E402
+from models.retrieval_model import DinoWrapper  # noqa: E402
+from training import semi_supervised  # noqa: E402
+
+
+DEFAULT_PRECISION_KS = (2, 4, 8)
+
+
+def precision_rank(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 1:
+        raise argparse.ArgumentTypeError(
+            "additional precision k values must be at least 2; Precision@1 is already reported"
+        )
+    return parsed
+
+
+def normalize_precision_ks(precision_ks) -> tuple[int, ...]:
+    normalized = tuple(sorted(set(int(k) for k in precision_ks)))
+    if not normalized:
+        raise ValueError("at least one additional precision k value is required")
+    if normalized[0] <= 1:
+        raise ValueError(
+            "additional precision k values must be at least 2; Precision@1 is already reported"
+        )
+    return normalized
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +95,19 @@ def parse_args() -> argparse.Namespace:
         "--per-class",
         action="store_true",
         help="Write per-class retrieval metrics for each evaluated test set.",
+    )
+    parser.add_argument(
+        "--precision-k",
+        dest="precision_ks",
+        type=precision_rank,
+        nargs="+",
+        default=DEFAULT_PRECISION_KS,
+        metavar="K",
+        help=(
+            "Additional ranks used for Precision@k (default: 2 4 8). Precision@1 is "
+            "already reported separately. For example, use "
+            "'--precision-k 10 20 30 50' for In-Shop-style reporting."
+        ),
     )
     parser.add_argument(
         "--pacmap",
@@ -169,6 +211,172 @@ def relative_config_label(path: Path) -> str:
         return str(path)
 
 
+class PrecisionAtKAccuracyCalculator(AccuracyCalculator):
+    """Extend pytorch-metric-learning's calculator with top-k retrieval precision."""
+
+    def __init__(self, precision_ks: tuple[int, ...], **kwargs):
+        self.precision_ks = normalize_precision_ks(precision_ks)
+        super().__init__(**kwargs)
+
+    def requires_knn(self):
+        return [*super().requires_knn(), "precision_at_k"]
+
+    def determine_k(self, bin_counts, num_reference_embeddings, ref_includes_query):
+        metric_k = super().determine_k(bin_counts, num_reference_embeddings, ref_includes_query)
+        available_neighbors = num_reference_embeddings - int(ref_includes_query)
+        precision_k = max(self.precision_ks, default=0)
+        return min(max(metric_k, precision_k), available_neighbors)
+
+    def calculate_precision_at_k(
+        self,
+        knn_labels,
+        query_labels,
+        not_lone_query_mask,
+        label_counts,
+        **kwargs,
+    ):
+        knn_labels, query_labels = try_getting_not_lone_labels(
+            knn_labels,
+            query_labels,
+            not_lone_query_mask,
+        )
+        if knn_labels is None:
+            return {
+                k: nan_accuracy(label_counts[0], self.return_per_class)
+                for k in self.precision_ks
+            }
+
+        ground_truth = query_labels[:, None]
+        precisions = {}
+        for k in self.precision_ks:
+            effective_k = min(k, knn_labels.shape[1])
+            matches = self.label_comparison_fn(ground_truth, knn_labels[:, :effective_k])
+            hits = torch.any(matches, dim=1).to(torch.float64)
+            precisions[k] = maybe_get_avg_of_avgs(
+                hits,
+                ground_truth,
+                self.avg_of_avgs,
+                self.return_per_class,
+            )
+        return precisions
+
+
+def make_report_per_class_metrics(
+    query_labels: np.ndarray,
+    accuracy: dict,
+    reference_labels: np.ndarray | None,
+    ref_includes_query: bool,
+) -> dict:
+    per_class_metrics = utils.make_per_class_retrieval_metrics(
+        query_labels,
+        accuracy,
+        reference_labels=reference_labels,
+        ref_includes_query=ref_includes_query,
+    )
+    additional_values = {
+        "r_precision": accuracy["r_precision"],
+        **{
+            f"precision_at_{k}": values
+            for k, values in accuracy["precision_at_k"].items()
+        },
+    }
+    for metric_name, values in additional_values.items():
+        if len(values) != len(per_class_metrics):
+            raise ValueError(
+                f"Per-class {metric_name} count does not match eligible evaluation classes"
+            )
+        for class_metrics, value in zip(per_class_metrics.values(), values):
+            class_metrics[metric_name] = float(value)
+    return per_class_metrics
+
+
+def evaluate_report_metrics(
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    *,
+    name: str,
+    dataset,
+    precision_ks: tuple[int, ...],
+    return_per_class: bool,
+) -> tuple[dict, dict | None]:
+    """Calculate all retrieval metrics needed by the epoch-0 report in one KNN pass."""
+
+    precision_ks = normalize_precision_ks(precision_ks)
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    labels = np.asarray(labels).reshape(-1)
+    utils.validate_finite_embeddings(embeddings, name)
+    evaluation_sets = utils.make_evaluation_embedding_sets(embeddings, labels, dataset=dataset)
+    query_embeddings = evaluation_sets["query_embeddings"]
+    query_labels = evaluation_sets["query_labels"]
+    reference_embeddings = evaluation_sets["reference_embeddings"]
+    reference_labels = evaluation_sets["reference_labels"]
+    ref_includes_query = evaluation_sets["ref_includes_query"]
+
+    calculator = PrecisionAtKAccuracyCalculator(
+        precision_ks,
+        include=(
+            "precision_at_1",
+            "mean_average_precision_at_r",
+            "r_precision",
+            "precision_at_k",
+        ),
+        return_per_class=return_per_class,
+        k="max_bin_count",
+        device=torch.device("cpu"),
+    )
+    accuracy = calculator.get_accuracy(
+        query_embeddings,
+        query_labels,
+        reference=reference_embeddings,
+        reference_labels=reference_labels,
+        ref_includes_query=ref_includes_query,
+    )
+
+    if return_per_class:
+        per_class_metrics = make_report_per_class_metrics(
+            query_labels,
+            accuracy,
+            reference_labels,
+            ref_includes_query,
+        )
+        metrics = {
+            metric_name: utils.weighted_per_class_metric(per_class_metrics, metric_name)
+            for metric_name in (
+                "precision_at_1",
+                "mean_average_precision_at_r",
+                "r_precision",
+                *(f"precision_at_{k}" for k in precision_ks),
+            )
+        }
+    else:
+        per_class_metrics = None
+        metrics = {
+            "precision_at_1": float(accuracy["precision_at_1"]),
+            "mean_average_precision_at_r": float(accuracy["mean_average_precision_at_r"]),
+            "r_precision": float(accuracy["r_precision"]),
+            **{
+                f"precision_at_{k}": float(value)
+                for k, value in accuracy["precision_at_k"].items()
+            },
+        }
+
+    if evaluation_sets["mode"] == utils.QUERY_GALLERY_EVALUATION:
+        utils.logger.info(
+            f"{name}: query-gallery retrieval with {len(query_labels)} queries and "
+            f"{len(reference_labels)} gallery images"
+        )
+    precision_log = ", ".join(
+        f"Precision@{k} = {metrics[f'precision_at_{k}'] * 100:.1f}"
+        for k in precision_ks
+    )
+    utils.logger.info(
+        f"{name}: Precision@1 = {metrics['precision_at_1'] * 100:.1f}, "
+        f"MAP@R = {metrics['mean_average_precision_at_r'] * 100:.1f}, "
+        f"R-Precision = {metrics['r_precision'] * 100:.1f}, {precision_log}"
+    )
+    return metrics, per_class_metrics
+
+
 def write_pacmap_artifacts(
     config_path: Path,
     dataset,
@@ -226,22 +434,15 @@ def evaluate_config(config_path: Path, cli_args: argparse.Namespace) -> dict:
         name=f"{args.dataset} epoch0 test",
         device=args.device,
     )
-    if cli_args.per_class:
-        precision_at_1, map_at_r, per_class_metrics = utils.evaluate_embeddings(
-            embeddings,
-            labels,
-            name=f"{args.dataset} epoch0 test",
-            return_per_class=True,
-            dataset=dataset_bundle.test_dataset,
-        )
-    else:
-        precision_at_1, map_at_r = utils.evaluate_embeddings(
-            embeddings,
-            labels,
-            name=f"{args.dataset} epoch0 test",
-            dataset=dataset_bundle.test_dataset,
-        )
-        per_class_metrics = None
+    precision_ks = normalize_precision_ks(cli_args.precision_ks)
+    metrics, per_class_metrics = evaluate_report_metrics(
+        embeddings,
+        labels,
+        name=f"{args.dataset} epoch0 test",
+        dataset=dataset_bundle.test_dataset,
+        precision_ks=precision_ks,
+        return_per_class=cli_args.per_class,
+    )
 
     test_size, test_num_classes = label_summary(dataset_bundle.test_dataset)
     row = {
@@ -258,8 +459,13 @@ def evaluate_config(config_path: Path, cli_args: argparse.Namespace) -> dict:
         "test_num_classes": test_num_classes,
         "optimization_steps": 0,
         "training_epochs": 0,
-        "test_precision_at_1": float(precision_at_1),
-        "test_mean_average_precision_at_r": float(map_at_r),
+        "test_precision_at_1": metrics["precision_at_1"],
+        "test_mean_average_precision_at_r": metrics["mean_average_precision_at_r"],
+        "test_r_precision": metrics["r_precision"],
+        **{
+            f"test_precision_at_{k}": metrics[f"precision_at_{k}"]
+            for k in precision_ks
+        },
     }
     if cli_args.pacmap:
         row.update(
@@ -311,10 +517,24 @@ def write_outputs(results: list[dict], output_dir: Path) -> None:
     print(f"Wrote epoch-0 test summary: {csv_path}")
     print(f"Wrote epoch-0 test details: {json_path}")
     for row in rows:
+        precision_fields = sorted(
+            (
+                (int(key.removeprefix("test_precision_at_")), value)
+                for key, value in row.items()
+                if key.startswith("test_precision_at_")
+                and key != "test_precision_at_1"
+            ),
+            key=lambda item: item[0],
+        )
+        metric_summary = [
+            f"P@1={row['test_precision_at_1']:.6f}",
+            f"MAP@R={row['test_mean_average_precision_at_r']:.6f}",
+            f"R-Precision={row['test_r_precision']:.6f}",
+            *(f"P@{k}={value:.6f}" for k, value in precision_fields),
+        ]
         print(
             f"{row['experiment_config']}: "
-            f"P@1={row['test_precision_at_1']:.6f}, "
-            f"MAP@R={row['test_mean_average_precision_at_r']:.6f}, "
+            f"{', '.join(metric_summary)}, "
             f"test_size={row['test_size']}, classes={row['test_num_classes']}"
         )
 

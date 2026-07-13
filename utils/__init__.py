@@ -34,8 +34,8 @@ from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, Str
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
-import local_datasets
-from dataset_constants import (
+from . import local_datasets
+from .dataset_constants import (
     CIFAR100_DEVELOPMENT_CLASSES,
     CIFAR100_FINE_CLASS_DISJOINT_DEVELOPMENT_CLASSES,
     CIFAR100_FINE_CLASS_DISJOINT_TEST_CLASSES,
@@ -70,7 +70,7 @@ from dataset_constants import (
     VAL_MODE_MATCH_TRAIN,
     VAL_MODE_SPLIT_AFTER_APPORTION,
 )
-from dataset_composition import (
+from .dataset_composition import (
     CombinedDataset,
     DatasetBundle,
     EXTERNAL_UNLABELED_FILTERS,
@@ -80,7 +80,7 @@ from dataset_composition import (
     append_external_unlabeled_dataset,
     get_nested_transform,
 )
-from dataset_protocols import (
+from .dataset_protocols import (
     apply_cifar_long_tail,
     get_dataset_class,
     is_dataset_ready,
@@ -91,7 +91,7 @@ from dataset_protocols import (
     validate_cifar_imbalance_factor,
     validate_dataset_protocol,
 )
-from dataset_splits import (
+from .dataset_splits import (
     apply_apportioned_cross_validation_split,
     apply_post_apportion_validation_split,
     apply_validation_mode,

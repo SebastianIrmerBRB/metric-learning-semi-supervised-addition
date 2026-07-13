@@ -1,12 +1,13 @@
 """Optional graph plots and sampled-edge diagnostics for SSL methods."""
 
 import csv
+from pathlib import Path
 
 import numpy as np
 from loguru import logger
 from scipy import sparse
 
-from ssl_config import GraphDiagnosticsRequest
+from .config import GraphDiagnosticsRequest
 
 
 def _safe_diagnostic_slug(value):
@@ -143,11 +144,22 @@ def save_graph_diagnostics(
     sampled_known = None if known_mask is None else known_mask[node_indices]
     scatter_graph_nodes(ax, coords, sampled_labels, sampled_known)
     if len(node_indices) <= request.max_labels:
+        label_offsets = (
+            (4, 4),
+            (-10, 4),
+            (4, -11),
+            (-10, -11),
+            (10, 0),
+            (-14, 0),
+            (0, 10),
+            (0, -14),
+        )
         for local_index, position in enumerate(positions[node_indices]):
-            ax.text(
-                coords[local_index, 0],
-                coords[local_index, 1],
+            ax.annotate(
                 str(int(position)),
+                xy=(coords[local_index, 0], coords[local_index, 1]),
+                xytext=label_offsets[local_index % len(label_offsets)],
+                textcoords="offset points",
                 fontsize=6,
                 alpha=0.82,
                 zorder=5,

@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
-from ssl_config import PSEUDO_LABEL_DIAGNOSTICS_MODES, PseudoLabelResult
-from ssl_data import RelabeledSubset
+from .config import PSEUDO_LABEL_DIAGNOSTICS_MODES, PseudoLabelResult
+from .data import RelabeledSubset
 
 
 class PseudoLabelDiagnosticsTracker:
@@ -289,7 +289,13 @@ def format_change_summary(changes):
     )
 
 
-def make_relabeled_training_dataset(train_dataset, train_labels_mapper, labeled_positions, pseudo_labels):
+def make_relabeled_training_dataset(
+    train_dataset,
+    train_labels_mapper,
+    labeled_positions,
+    pseudo_labels,
+    return_indices=False,
+):
     """Combine true and pseudo labels into the dataset view used for training."""
 
     # labels contains dense mapped IDs; orig_labels contains source class IDs.
@@ -329,4 +335,5 @@ def make_relabeled_training_dataset(train_dataset, train_labels_mapper, labeled_
         orig_labels=all_orig_labels,
         mapped_labels=all_mapped_labels,
         confidences=all_confidences,
+        return_indices=return_indices,
     )

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from torch.utils.data import Dataset, Subset
 
-import local_datasets
+from . import local_datasets
 
 
 EXTERNAL_UNLABELED_FILTER_NONE = "none"

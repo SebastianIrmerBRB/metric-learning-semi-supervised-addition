@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import utils  # noqa: E402
-from experiment_types import DATASETS  # noqa: E402
+from training.types import DATASETS  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

@@ -18,11 +18,11 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
 os.environ.setdefault("BLIS_NUM_THREADS", "1")
 
-import experiment_hpo as _experiment_hpo
-from experiment_cli import *  # noqa: F403
-from experiment_hpo import *  # noqa: F403
-from experiment_io import *  # noqa: F403
-from experiment_reporting import (
+from training import hpo as _experiment_hpo
+from training.cli import *  # noqa: F403
+from training.hpo import *  # noqa: F403
+from training.io import *  # noqa: F403
+from training.reporting import (
     comparison_scenario_to_dict,
     make_comparison_deltas,
     make_final_epoch_plan,
@@ -35,8 +35,8 @@ from experiment_reporting import (
     write_hparam_train_val_evaluation_summary,
     write_single_method_grid_summary,
 )
-from experiment_training import *  # noqa: F403
-from experiment_types import *  # noqa: F403
+from training.engine import *  # noqa: F403
+from training.types import *  # noqa: F403
 
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)

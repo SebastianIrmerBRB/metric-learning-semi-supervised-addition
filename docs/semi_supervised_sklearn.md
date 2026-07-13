@@ -172,7 +172,7 @@ Use `--val_mode split_after_apportion` when the labeled/fractioned training subs
 
 ## Extension Points
 
-New SSL methods should be added in `semi_supervised.py`.
+New SSL methods should be added in `training/semi_supervised.py`, with focused algorithms and support code placed in `training/ssl/`.
 
 Implement a class with:
 
@@ -194,5 +194,5 @@ The common filtering code drops pseudo-labels outside known training classes and
 ## Files Changed
 
 - `main.py`: adds `--seed`, `--ssl_config`, CUDA-safe DataLoader settings, seed initialization, and SSL dataset expansion.
-- `utils.py`: adds seed helpers, CUDA-safe DataLoader validation, seeded dataset splitting, seeded loaders, and reusable dataset-bundle setup.
-- `semi_supervised.py`: contains the SSL config, warmup and update-mode handling, method registry, sklearn methods, pseudo-label filtering, and relabeled dataset wrapper.
+- `utils/`: adds seed helpers, CUDA-safe DataLoader validation, seeded dataset splitting, seeded loaders, and reusable dataset-bundle setup.
+- `training/semi_supervised.py`: contains warmup and update-mode handling, the method registry, and method orchestration; focused configuration, algorithms, pseudo-label filtering, and data wrappers live in `training/ssl/`.

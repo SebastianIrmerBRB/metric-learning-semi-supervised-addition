@@ -34,9 +34,9 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
 import utils
-import metric_losses
+from losses import metric_losses
 
-from ssl_algorithms import (
+from .ssl.algorithms import (
     build_lrml_knn_graph,
     build_slrml_graph,
     build_slrml_supervised_graph,
@@ -54,7 +54,7 @@ from ssl_algorithms import (
     solve_sparse_label_system_cholmod,
     stable_softmax,
 )
-from ssl_config import (
+from .ssl.config import (
     DEFAULT_SUPPORT_SEED,
     GRAPH_DIAGNOSTICS_LAYOUTS,
     GRAPH_DIAGNOSTICS_MODES,
@@ -69,7 +69,7 @@ from ssl_config import (
     SemiSupervisedSplit,
     should_rebuild_on_epoch,
 )
-from ssl_data import (
+from .ssl.data import (
     CombinedTrainingLoader,
     GraphEdgeBatchSampler,
     HofferReferenceBatchSampler,
@@ -79,13 +79,13 @@ from ssl_data import (
     UnlabeledSubset,
     collate_graph_edge_batch,
 )
-from ssl_embeddings import (
+from .ssl.embeddings import (
     extract_embeddings,
     make_embedding_loader,
     make_feature_dataset,
     set_nested_transform,
 )
-from ssl_graph_diagnostics import (
+from .ssl.graph_diagnostics import (
     choose_graph_diagnostic_nodes,
     dataset_labels_for_positions,
     graph_node_kind,
@@ -97,8 +97,9 @@ from ssl_graph_diagnostics import (
     scatter_graph_nodes,
     write_graph_edge_csv,
 )
-from ssl_interfaces import BaseSemiSupervisedMethod, BaseTrainingRegularizer
-from ssl_pseudo_labels import (
+from .ssl.interfaces import BaseSemiSupervisedMethod, BaseTrainingRegularizer
+from .ssl.simmatch_v2 import SimMatchV2Regularizer
+from .ssl.pseudo_labels import (
     PseudoLabelDiagnosticsTracker,
     _average_ranks,
     confidence_correctness_diagnostics,
@@ -112,7 +113,7 @@ from ssl_pseudo_labels import (
     summarize_pseudo_label_changes,
     summarize_pseudo_label_result,
 )
-from ssl_sampling import (
+from .ssl.sampling import (
     concatenate_position_groups,
     make_permuted_positions_by_label,
     make_semi_supervised_split,
@@ -328,7 +329,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 f"normalized_laplacian={self.normalized_laplacian}"
             )
         else:
-
             if self._embedding_loader is None:
                 self._embedding_loader = make_embedding_loader(
                     train_dataset, self.graph_positions,
@@ -348,7 +348,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 embedding_kind="default",
                 loader=self._embedding_loader
             )
-
             neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
                 embeddings, n_neighbors=self.n_neighbors,
             )
@@ -435,6 +434,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         else:
             images, node_ids = batch
             edge_indices = None
+
         embeddings = utils.forward_model_inputs(
             student_model,
             images,
@@ -966,6 +966,8 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
         self._last_diagnostics = {}
+        self._last_comparison_diagnostics = {}
+        self.collect_comparison_diagnostics = False
         self._warned_eta_fallback = False
 
     def validate_run_args(self, args):
@@ -995,6 +997,7 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
         self._last_diagnostics = {}
+        self._last_comparison_diagnostics = {}
         return self.dataset
 
     def make_loader(
@@ -1063,7 +1066,12 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             return embeddings.new_empty((0,))
         return torch.pdist(embeddings, p=2).pow(2)
 
-    def _batch_eta(self, supervised_embeddings, supervised_labels):
+    def _batch_eta(
+        self,
+        supervised_embeddings,
+        supervised_labels,
+        return_pair_details=False,
+    ):
         if supervised_labels is None:
             raise ValueError("seraph_entropy eta_mode='batch' requires supervised labels")
         labels = torch.as_tensor(supervised_labels, device=supervised_embeddings.device).reshape(-1)
@@ -1081,7 +1089,21 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             if same_class.any() and (~same_class).any():
                 positive_mean = distances[same_class].mean()
                 negative_mean = distances[~same_class].mean()
-                return 0.5 * (positive_mean + negative_mean)
+                eta = 0.5 * (positive_mean + negative_mean)
+                eta_source = "batch_midpoint"
+            else:
+                eta = supervised_embeddings.new_tensor(self.eta, dtype=torch.float32)
+                eta_source = "configured_fallback"
+
+        if eta_source == "batch_midpoint":
+            if return_pair_details:
+                return eta, {
+                    "eta_source": eta_source,
+                    "pair_indices": label_pairs,
+                    "squared_distances": distances,
+                    "same_class": same_class,
+                }
+            return eta
 
         if not self._warned_eta_fallback:
             logger.warning(
@@ -1089,7 +1111,14 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 f"pairs; falling back to configured eta={self.eta}"
             )
             self._warned_eta_fallback = True
-        return supervised_embeddings.new_tensor(self.eta, dtype=torch.float32)
+        if return_pair_details:
+            return eta, {
+                "eta_source": eta_source,
+                "pair_indices": label_pairs,
+                "squared_distances": distances,
+                "same_class": same_class,
+            }
+        return eta
 
     def _select_pairs(self, squared_distances, eta):
         if self.entropy_band is None or len(squared_distances) == 0:
@@ -1103,6 +1132,284 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         probabilities = torch.sigmoid(logits)
         entropy = F.softplus(logits) - probabilities * logits
         return entropy, probabilities
+
+    def set_comparison_diagnostics_enabled(self, enabled):
+        """Capture exact SERAPH endpoint and pair values for interactive debugging.
+
+        This is deliberately separate from scalar batch diagnostics: a SERAPH
+        batch has a quadratic number of pairs, so normal experiment logging
+        should not copy every comparison to the host.
+        """
+
+        self.collect_comparison_diagnostics = bool(enabled)
+        if not self.collect_comparison_diagnostics:
+            self._last_comparison_diagnostics = {}
+
+    @staticmethod
+    def _comparison_positions(positions, count, name):
+        if positions is None:
+            return [None] * int(count)
+        values = torch.as_tensor(positions).detach().reshape(-1).cpu().tolist()
+        if len(values) != count:
+            raise ValueError(
+                f"SERAPH {name} positions must align with its {count} embeddings"
+            )
+        return [int(value) for value in values]
+
+    @staticmethod
+    def _comparison_samples(role, embeddings, positions, labels=None):
+        if embeddings is None:
+            return []
+        host_embeddings = embeddings.detach().float().cpu().tolist()
+        host_positions = SeraphEntropyRegularizer._comparison_positions(
+            positions,
+            len(host_embeddings),
+            role,
+        )
+        if labels is None:
+            host_labels = [None] * len(host_embeddings)
+        else:
+            host_labels = (
+                torch.as_tensor(labels).detach().reshape(-1).cpu().tolist()
+            )
+            if len(host_labels) != len(host_embeddings):
+                raise ValueError(
+                    f"SERAPH {role} labels must align with its embeddings"
+                )
+        return [
+            {
+                "role": role,
+                "batch_index": int(index),
+                "source_position": position,
+                "mapped_label": None if label is None else int(label),
+                "embedding": [float(value) for value in embedding],
+            }
+            for index, (position, label, embedding) in enumerate(
+                zip(host_positions, host_labels, host_embeddings)
+            )
+        ]
+
+    def _comparison_selection_mask(self, squared_distances, eta):
+        if self.entropy_band is None:
+            return torch.ones_like(squared_distances, dtype=torch.bool)
+        return (
+            squared_distances.detach().float() - eta.detach().float()
+        ).abs() <= self.entropy_band
+
+    def _capture_comparison_diagnostics(
+        self,
+        *,
+        eta,
+        eta_pair_details,
+        labeled_embeddings,
+        supervised_labels,
+        supervised_positions,
+        unlabeled_embeddings,
+        unlabeled_positions,
+        uu_distances,
+        lu_distances,
+    ):
+        """Snapshot the exact comparisons without retaining an autograd graph."""
+
+        labeled_samples = self._comparison_samples(
+            "labeled",
+            labeled_embeddings,
+            supervised_positions,
+            supervised_labels,
+        )
+        unlabeled_samples = self._comparison_samples(
+            "unlabeled",
+            unlabeled_embeddings,
+            unlabeled_positions,
+        )
+
+        eta_pairs = []
+        eta_summary = {
+            "source": "fixed" if eta_pair_details is None else eta_pair_details["eta_source"],
+            "positive_pair_count": 0,
+            "negative_pair_count": 0,
+            "positive_mean_squared_distance": None,
+            "negative_mean_squared_distance": None,
+        }
+        if eta_pair_details is not None:
+            pair_indices = eta_pair_details["pair_indices"].detach().cpu().T.tolist()
+            distances = (
+                eta_pair_details["squared_distances"].detach().float().cpu().tolist()
+            )
+            same_class = eta_pair_details["same_class"].detach().cpu().tolist()
+            for (left, right), distance, same in zip(
+                pair_indices,
+                distances,
+                same_class,
+            ):
+                eta_pairs.append(
+                    {
+                        "kind": "ll",
+                        "left_role": "labeled",
+                        "left_index": int(left),
+                        "right_role": "labeled",
+                        "right_index": int(right),
+                        "squared_distance": float(distance),
+                        "same_label": bool(same),
+                        "eta_group": "positive" if same else "negative",
+                    }
+                )
+            distance_tensor = eta_pair_details["squared_distances"].detach().float()
+            same_tensor = eta_pair_details["same_class"].detach()
+            eta_summary.update(
+                positive_pair_count=int(same_tensor.sum().item()),
+                negative_pair_count=int((~same_tensor).sum().item()),
+                positive_mean_squared_distance=(
+                    float(distance_tensor[same_tensor].mean().cpu())
+                    if same_tensor.any()
+                    else None
+                ),
+                negative_mean_squared_distance=(
+                    float(distance_tensor[~same_tensor].mean().cpu())
+                    if (~same_tensor).any()
+                    else None
+                ),
+            )
+
+        pair_blocks = []
+        if len(uu_distances) > 0:
+            uu_indices = torch.triu_indices(
+                len(unlabeled_embeddings),
+                len(unlabeled_embeddings),
+                offset=1,
+                device=uu_distances.device,
+            )
+            pair_blocks.append(
+                (
+                    "uu",
+                    "unlabeled",
+                    "unlabeled",
+                    uu_indices,
+                    uu_distances,
+                )
+            )
+        if len(lu_distances) > 0:
+            labeled_count = len(labeled_embeddings)
+            unlabeled_count = len(unlabeled_embeddings)
+            lu_indices = torch.stack(
+                [
+                    torch.arange(labeled_count, device=lu_distances.device).repeat_interleave(
+                        unlabeled_count
+                    ),
+                    torch.arange(unlabeled_count, device=lu_distances.device).repeat(
+                        labeled_count
+                    ),
+                ]
+            )
+            pair_blocks.append(
+                (
+                    "lu",
+                    "labeled",
+                    "unlabeled",
+                    lu_indices,
+                    lu_distances,
+                )
+            )
+
+        block_values = []
+        for kind, left_role, right_role, pair_indices, distances in pair_blocks:
+            selection = self._comparison_selection_mask(distances, eta)
+            selected_count = int(selection.sum().item())
+            logits = (eta.detach().float() - distances.detach().float()) / self.temperature
+            entropies, probabilities = self._pair_label_entropy_from_logits(logits)
+            block_values.append(
+                {
+                    "kind": kind,
+                    "left_role": left_role,
+                    "right_role": right_role,
+                    "pair_indices": pair_indices.detach(),
+                    "distances": distances.detach().float(),
+                    "selection": selection.detach(),
+                    "logits": logits.detach(),
+                    "probabilities": probabilities.detach(),
+                    "entropies": entropies.detach(),
+                    "selected_count": selected_count,
+                }
+            )
+
+        active_block_count = sum(
+            block["selected_count"] > 0 for block in block_values
+        )
+        loss_pairs = []
+        loss_blocks = []
+        for block in block_values:
+            selected_count = block["selected_count"]
+            block_weight = (
+                1.0 / float(active_block_count)
+                if selected_count > 0 and active_block_count > 0
+                else 0.0
+            )
+            mean_selected_entropy = (
+                float(block["entropies"][block["selection"]].mean().cpu())
+                if selected_count > 0
+                else None
+            )
+            loss_blocks.append(
+                {
+                    "kind": block["kind"],
+                    "candidate_count": int(len(block["distances"])),
+                    "selected_count": selected_count,
+                    "mean_selected_entropy": mean_selected_entropy,
+                    "block_weight": block_weight,
+                }
+            )
+
+            pair_indices = block["pair_indices"].cpu().T.tolist()
+            distances = block["distances"].cpu().tolist()
+            selection = block["selection"].cpu().tolist()
+            logits = block["logits"].cpu().tolist()
+            probabilities = block["probabilities"].cpu().tolist()
+            entropies = block["entropies"].cpu().tolist()
+            for (left, right), distance, selected, logit, probability, entropy in zip(
+                pair_indices,
+                distances,
+                selection,
+                logits,
+                probabilities,
+                entropies,
+            ):
+                contribution = (
+                    float(entropy) * block_weight / float(selected_count)
+                    if selected and selected_count > 0
+                    else 0.0
+                )
+                loss_pairs.append(
+                    {
+                        "kind": block["kind"],
+                        "left_role": block["left_role"],
+                        "left_index": int(left),
+                        "right_role": block["right_role"],
+                        "right_index": int(right),
+                        "squared_distance": float(distance),
+                        "logit": float(logit),
+                        "same_probability": float(probability),
+                        "entropy": float(entropy),
+                        "selected": bool(selected),
+                        "loss_contribution": contribution,
+                    }
+                )
+
+        self._last_comparison_diagnostics = {
+            "eta": float(eta.detach().float().cpu()),
+            "temperature": self.temperature,
+            "entropy_band": self.entropy_band,
+            "eta_summary": eta_summary,
+            "samples": {
+                "labeled": labeled_samples,
+                "unlabeled": unlabeled_samples,
+            },
+            "eta_pairs": eta_pairs,
+            "loss_blocks": loss_blocks,
+            "loss_pairs": loss_pairs,
+            "reconstructed_loss": float(
+                sum(pair["loss_contribution"] for pair in loss_pairs)
+            ),
+        }
 
     def _pair_diagnostics(
         self,
@@ -1168,7 +1475,9 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         supervised_embeddings=None,
         supervised_labels=None,
         regularizer_embeddings=None,
+        supervised_positions=None,
     ):
+        self._last_comparison_diagnostics = {}
         if regularizer_embeddings is None:
             if batch is None:
                 raise ValueError("seraph_entropy requires a regularizer batch or embeddings")
@@ -1196,11 +1505,17 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             if supervised_embeddings is None
             else self._prepare_embeddings(supervised_embeddings)
         )
-        eta = (
-            unlabeled.new_tensor(self.eta, dtype=torch.float32)
-            if self.eta_mode == "fixed"
-            else self._batch_eta(labeled, supervised_labels)
-        )
+        eta_pair_details = None
+        if self.eta_mode == "fixed":
+            eta = unlabeled.new_tensor(self.eta, dtype=torch.float32)
+        elif self.collect_comparison_diagnostics:
+            eta, eta_pair_details = self._batch_eta(
+                labeled,
+                supervised_labels,
+                return_pair_details=True,
+            )
+        else:
+            eta = self._batch_eta(labeled, supervised_labels)
 
         all_uu_distances = self._upper_triangle_squared_distances(unlabeled)
         selected_uu_distances = self._select_pairs(all_uu_distances, eta)
@@ -1219,6 +1534,22 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             )
         else:
             self._last_diagnostics = {}
+
+        if self.collect_comparison_diagnostics:
+            unlabeled_positions = None
+            if isinstance(batch, (tuple, list)) and len(batch) >= 3:
+                unlabeled_positions = batch[2]
+            self._capture_comparison_diagnostics(
+                eta=eta,
+                eta_pair_details=eta_pair_details,
+                labeled_embeddings=labeled,
+                supervised_labels=supervised_labels,
+                supervised_positions=supervised_positions,
+                unlabeled_embeddings=unlabeled,
+                unlabeled_positions=unlabeled_positions,
+                uu_distances=all_uu_distances,
+                lu_distances=all_lu_distances,
+            )
 
         pair_blocks = [selected_uu_distances]
         if self.include_labeled_unlabeled:
@@ -1252,6 +1583,11 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 {name: float(value) for (name, _), value in zip(tensor_items, host_values)}
             )
         return diagnostics
+
+    def comparison_diagnostics(self):
+        """Return the most recently captured sample-level SERAPH trace."""
+
+        return copy.deepcopy(self._last_comparison_diagnostics)
 
 
 class HofferEntropyRegularizer(BaseTrainingRegularizer):
@@ -1992,6 +2328,7 @@ REGULARIZER_REGISTRY = {
     "slrml": SLRMLRegularizer,
     "seraph_entropy": SeraphEntropyRegularizer,
     "hoffer_entropy": HofferEntropyRegularizer,
+    "simmatch_v2": SimMatchV2Regularizer,
 }
 
 
@@ -2014,6 +2351,12 @@ METHOD_REGISTRY = {
     "mixed_label_propagation": MixedLabelPropagationPseudoLabeler(),
     # Generic composition point for supervised loss + unlabeled regularizer.
     "regularized": RegularizedSemiSupervisedMethod(name="regularized"),
+    # Convenience alias; this is still the same supervised-loss + regularizer
+    # composition and therefore works with every supported PML loss/miner.
+    "simmatch_v2": RegularizedSemiSupervisedMethod(
+        name="simmatch_v2",
+        default_regularizer="simmatch_v2",
+    ),
 }
 
 
@@ -2287,7 +2630,12 @@ def build_ssl_training_dataset(
     )
 
 
-def build_labeled_training_dataset(train_dataset, train_labels_mapper, split):
+def build_labeled_training_dataset(
+    train_dataset,
+    train_labels_mapper,
+    split,
+    return_indices=False,
+):
     """Build the supervised baseline from only the split's labeled positions."""
 
     # Reuse the same relabeling/merging function as SSL, but provide an empty
@@ -2302,6 +2650,7 @@ def build_labeled_training_dataset(train_dataset, train_labels_mapper, split):
         train_labels_mapper=train_labels_mapper,
         labeled_positions=split.labeled_positions,
         pseudo_labels=empty_pseudo_labels,
+        return_indices=return_indices,
     )
 
 

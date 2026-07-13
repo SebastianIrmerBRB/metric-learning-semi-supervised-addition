@@ -35,6 +35,8 @@ class BaseTrainingRegularizer:
     name = None
     provides_trainable_projection_without_feat_dim = False
     uses_joint_forward = False
+    requires_labeled_indices = False
+    requires_supervised_objective = False
 
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0):
         self.regularizer_weight = float(regularizer_weight)
@@ -50,6 +52,16 @@ class BaseTrainingRegularizer:
 
     def model_kwargs(self, args):
         return {}
+
+    def configure_model(self, student_model, train_dataset, split, train_labels_mapper, device):
+        """Attach trainable method-specific modules before optimizer creation."""
+
+        return None
+
+    def make_supervised_source_dataset(self, train_dataset):
+        """Optionally replace the labeled stream's augmentation source."""
+
+        return train_dataset
 
     def validate_run_args(self, args):
         return None

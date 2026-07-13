@@ -7,9 +7,9 @@ import numpy as np
 import pytorch_metric_learning.datasets as datasets
 from torch.utils.data import Subset
 
-import local_datasets
-from dataset_composition import CombinedDataset
-from dataset_constants import (
+from . import local_datasets
+from .dataset_composition import CombinedDataset
+from .dataset_constants import (
     CIFAR_DATASETS,
     CIFAR_LONG_TAIL_SOURCE,
     CIFAR_UNSEEN_CLASS_PROTOCOLS,
@@ -18,7 +18,7 @@ from dataset_constants import (
     DATASET_PROTOCOLS,
     QUERY_GALLERY_EVALUATION,
 )
-from dataset_splits import (
+from .dataset_splits import (
     assert_disjoint_dataset_classes,
     split_cifar_balanced_by_fraction,
     subset_dataset_by_classes,
