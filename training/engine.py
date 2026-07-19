@@ -66,8 +66,9 @@ class _EpochPhase(NamedTuple):
 
 
 def _sync_if_cuda(device):
-    if torch.device(device).type == "cuda":
-        torch.cuda.synchronize()
+    device = torch.device(device)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 
 
 def _now(device):

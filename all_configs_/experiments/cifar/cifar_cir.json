@@ -1,0 +1,29 @@
+{
+  "save_dir": "cifar_first",
+  "dataset": "CIFAR100",
+  "length_before_new_iter": 22800,
+  "dataset_protocol": "cifar100_fine_class_disjoint",
+  "val_mode": "match_train",
+  "cv_k": 1,
+  "final_test_after_hpo": false,
+  "cv_mode": "superclass_balanced_group_kfold",
+  "mode": "supervised",
+  "patience": 20,
+  "backbone_tuning": "frozen",
+  "epochs": 600,
+  "feat_dim": 768,
+  "ssl_config": "configs/ssl_faiss_knn.json",
+  "hparam_config": "configs/supervised/classification/cifar_first_task.json",
+  "label_budget_grid": [
+    1
+  ],
+  "k_shot_grid": [
+        25
+  ],
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "loss_miner_grid": [
+    "CircleLoss:no_miner"
+  ]
+}
