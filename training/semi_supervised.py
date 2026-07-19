@@ -97,8 +97,9 @@ from .ssl.sampling import (
 )
 
 def _sync_timing_device(device):
-    if torch.device(device).type == "cuda":
-        torch.cuda.synchronize()
+    device = torch.device(device)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 
 
 def _timing_now(device):

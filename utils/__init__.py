@@ -191,6 +191,18 @@ def normalize_device_name(device_name):
     raise ValueError("device must be 'cpu', 'cuda', or 'cuda:<index>'")
 
 
+def activate_torch_device(device_name):
+    """Make an explicitly indexed CUDA device active for process-wide APIs."""
+
+    device = torch.device(normalize_device_name(device_name))
+    if device.type == "cuda" and device.index is not None:
+        # Moving a tensor to cuda:N does not change torch.cuda.current_device().
+        # FAISS and CUDA calls without a device argument use that current device,
+        # so select it before any CUDA initialization or seeding can touch cuda:0.
+        torch.cuda.set_device(device)
+    return device
+
+
 def initialize_logger(args):
     """Create or reuse a run directory and configure console/file logging."""
 
@@ -226,13 +238,15 @@ def is_hpo_trial_run(args):
 def seed_everything(seed, device="cpu"):
     """Seed Python, NumPy, and Torch for reproducible split/training behavior."""
 
+    device = activate_torch_device(device)
     # Different libraries maintain independent random-number generators.
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if str(device).startswith("cuda"):
-        # Seed every visible CUDA device, not only the currently selected one.
-        torch.cuda.manual_seed_all(seed)
+    # torch.manual_seed() seeds every CUDA device as well as the CPU. Seed the
+    # CPU generator directly so an otherwise unused GPU does not get a context.
+    torch.default_generator.manual_seed(seed)
+    if device.type == "cuda":
+        torch.cuda.manual_seed(seed)
 
 def seed_worker(_):
     """Derive deterministic NumPy/Python seeds for each DataLoader worker."""

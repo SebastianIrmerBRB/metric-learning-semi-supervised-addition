@@ -484,13 +484,23 @@ def mixed_label_propagation(
         "solve_sparse_label_system",
         solve_sparse_label_system,
     )
+    linear_solver = str(linear_solver)
+    # Both mixed-LP matrices have the affinity graph's sparsity pattern. Keep
+    # one CHOLMOD factor cache so the second numeric factorization can reuse
+    # the first solve's symbolic analysis and fill-reducing permutation.
+    cholmod_solve_kwargs = (
+        {"cholmod_factor_cache": {}}
+        if linear_solver == "cholmod"
+        else {}
+    )
     initial_labels = solve_system(
         initial_system,
         right_hand_side,
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="initial label propagation",
-        linear_solver=str(linear_solver),
+        linear_solver=linear_solver,
+        **cholmod_solve_kwargs,
     )
 
     dissimilarity = _dependency(
@@ -527,11 +537,12 @@ def mixed_label_propagation(
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="mixed label propagation",
-        linear_solver=str(linear_solver),
+        linear_solver=linear_solver,
         # Warm start from the initial-LP solution: the mixed system differs only
         # by the signless-Laplacian term, so CG typically converges in a
         # handful of iterations from here.
         warm_start=initial_labels,
+        **cholmod_solve_kwargs,
     )
     normalized_scores = _dependency(
         _dependencies,
@@ -949,6 +960,7 @@ def solve_sparse_label_system(
         linear_solver="cg",
         warm_start=None,
         allow_nonconvergence=False,
+        cholmod_factor_cache=None,
 ):
     """Solve a sparse SPD system with SciPy CG or CHOLMOD.
 
@@ -1010,6 +1022,7 @@ def solve_sparse_label_system(
             matrix,
             right_hand_side,
             name=name,
+            factor_cache=cholmod_factor_cache,
         )
         return restore_shape(np.asarray(solution))
 
@@ -1081,11 +1094,13 @@ def solve_sparse_label_system_cholmod(
     right_hand_side,
     name,
     cholmod_module=None,
+    factor_cache=None,
 ):
     """Factor once with CHOLMOD and solve all class columns together.
 
     scikit-sparse 0.5 replaced the callable ``Factor`` returned by
-    ``cholesky`` with ``cho_factor`` and ``CholeskyFactor.solve``.  Support
+    ``cholesky`` with ``cho_factor`` and ``CholeskyFactor.solve``. It also
+    renamed same-pattern numeric refactorization to ``factorize``. Support
     both APIs because scikit-sparse is intentionally not version-pinned.
     """
 
@@ -1097,35 +1112,83 @@ def solve_sparse_label_system_cholmod(
                 f"{name}: linear_solver='cholmod' requires scikit-sparse"
             ) from exc
 
-    matrix = matrix.tocsc()
+    # Retain a reference to the caller's canonical CSR matrix for the pattern
+    # comparison. Mixed LP already keeps both systems alive, so this avoids
+    # copying their potentially large index arrays into the factor cache.
+    pattern_matrix = matrix.tocsr(copy=False)
+    pattern_matrix.sum_duplicates()
+    pattern_matrix.sort_indices()
+    cached_pattern = (
+        factor_cache.get("pattern_matrix")
+        if factor_cache is not None
+        else None
+    )
+    cached_pattern_matches = (
+        cached_pattern is not None
+        and cached_pattern.shape == pattern_matrix.shape
+        and np.array_equal(cached_pattern.indptr, pattern_matrix.indptr)
+        and np.array_equal(cached_pattern.indices, pattern_matrix.indices)
+    )
+
+    matrix = pattern_matrix.tocsc()
+    matrix.sum_duplicates()
+    matrix.sort_indices()
     right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
+    cached_pattern_matches = (
+        cached_pattern_matches
+        and factor_cache.get("factor") is not None
+    )
 
     factor_started_at = time.perf_counter()
-    if hasattr(cholmod_module, "cho_factor"):
+    factor = factor_cache.get("factor") if cached_pattern_matches else None
+    symbolic_reused = factor is not None
+    if factor is not None and hasattr(factor, "factorize"):
+        # scikit-sparse >= 0.5: repeat only the numeric factorization.
+        factor.factorize(matrix)
+        factorization_api = "factor.factorize"
+    elif factor is not None and hasattr(factor, "cholesky_inplace"):
+        # scikit-sparse 0.4: in-place numeric refactorization.
+        factor.cholesky_inplace(matrix)
+        factorization_api = "factor.cholesky_inplace"
+    elif factor is not None and hasattr(factor, "cholesky"):
+        # Older Factor fallback that preserves the cached symbolic analysis.
+        factor = factor.cholesky(matrix)
+        factorization_api = "factor.cholesky"
+    elif hasattr(cholmod_module, "cho_factor"):
         factor = cholmod_module.cho_factor(matrix)
-        api = "cho_factor.solve"
+        factorization_api = "cho_factor"
+        symbolic_reused = False
     else:
         factor = cholmod_module.cholesky(matrix)
-        api = "cholesky.__call__"
+        factorization_api = "cholesky"
+        symbolic_reused = False
+
+    if factor_cache is not None:
+        factor_cache["factor"] = factor
+        factor_cache["pattern_matrix"] = pattern_matrix
+
     _log_debug_timing(
         "cholmod.factorization",
         factor_started_at,
         system=name,
-        api=api,
+        api=factorization_api,
+        symbolic_reused=symbolic_reused,
         rows=matrix.shape[0],
         matrix_nnz=matrix.nnz,
     )
 
     solve_started_at = time.perf_counter()
-    if api == "cho_factor.solve":
+    if hasattr(factor, "solve"):
         solution = factor.solve(right_hand_side)
+        solve_api = "factor.solve"
     else:
         solution = factor(right_hand_side)
+        solve_api = "factor.__call__"
     _log_debug_timing(
         "cholmod.solve",
         solve_started_at,
         system=name,
-        api=api,
+        api=solve_api,
         rows=matrix.shape[0],
         right_hand_sides=(
             1 if right_hand_side.ndim == 1 else right_hand_side.shape[1]
