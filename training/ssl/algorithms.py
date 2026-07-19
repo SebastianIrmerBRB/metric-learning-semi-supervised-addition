@@ -1,5 +1,8 @@
 """Pure graph construction and label-propagation algorithms."""
 
+import time
+from functools import wraps
+
 import numpy as np
 import torch
 from loguru import logger
@@ -13,6 +16,36 @@ from .graph_diagnostics import maybe_save_graph_diagnostics
 FAISS_GPU_MAX_K = 2048
 
 
+def _log_debug_timing(operation, started_at, **details):
+    """Emit one timing record at the application's console-visible level."""
+
+    elapsed_seconds = time.perf_counter() - started_at
+    detail_text = " ".join(
+        f"{key}={value!r}" for key, value in details.items()
+    )
+    suffix = f" {detail_text}" if detail_text else ""
+    # The application configures stdout and info.log at INFO; DEBUG is written
+    # only to debug.log. Keep timing records visible in live server output.
+    logger.info(
+        f"SSL timing | operation={operation!r} "
+        f"seconds={elapsed_seconds:.6f}{suffix}"
+    )
+
+
+def _debug_timed(function):
+    """Log total wall time for an algorithm helper, including failed calls."""
+
+    @wraps(function)
+    def timed_function(*args, **kwargs):
+        started_at = time.perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _log_debug_timing(function.__name__, started_at)
+
+    return timed_function
+
+
 def _dependency(overrides, name, default):
     """Resolve a helper supplied by the orchestration façade, if any."""
 
@@ -21,6 +54,7 @@ def _dependency(overrides, name, default):
     return overrides.get(name, default)
 
 
+@_debug_timed
 def require_faiss(purpose):
     """Import a FAISS build with an actionable package hint on failure."""
 
@@ -34,6 +68,7 @@ def require_faiss(purpose):
     return faiss
 
 
+@_debug_timed
 def _faiss_gpu_device_id(faiss, purpose):
     """Return the active FAISS GPU ID, or ``None`` for a CPU-only build/host."""
 
@@ -61,6 +96,7 @@ def _faiss_gpu_device_id(faiss, purpose):
     return 0
 
 
+@_debug_timed
 def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None):
     """Run exact inner-product search on GPU whenever FAISS supports it.
 
@@ -83,6 +119,7 @@ def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None):
     cpu_index = faiss.IndexFlatIP(database.shape[1])
     gpu_device_id = _faiss_gpu_device_id(faiss, purpose)
     if gpu_device_id is not None and k <= FAISS_GPU_MAX_K:
+        gpu_started_at = time.perf_counter()
         try:
             # Keep resources alive until search has copied its results back to
             # host memory. GPU indexes do not own StandardGpuResources.
@@ -93,8 +130,28 @@ def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None):
             logger.debug(
                 f"{purpose}: used FAISS GPU IndexFlatIP on CUDA device {gpu_device_id}"
             )
+            _log_debug_timing(
+                "faiss_flat_ip_search.backend",
+                gpu_started_at,
+                purpose=purpose,
+                backend=f"cuda:{gpu_device_id}",
+                database_size=len(database),
+                query_size=len(queries),
+                k=k,
+                outcome="success",
+            )
             return results
         except Exception as exc:
+            _log_debug_timing(
+                "faiss_flat_ip_search.backend",
+                gpu_started_at,
+                purpose=purpose,
+                backend=f"cuda:{gpu_device_id}",
+                database_size=len(database),
+                query_size=len(queries),
+                k=k,
+                outcome="failed",
+            )
             logger.warning(
                 f"{purpose}: FAISS GPU search failed on CUDA device {gpu_device_id} "
                 f"({exc}); retrying on CPU"
@@ -105,10 +162,23 @@ def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None):
             f"of {FAISS_GPU_MAX_K}; using CPU"
         )
 
+    cpu_started_at = time.perf_counter()
     cpu_index.add(database)
-    return cpu_index.search(queries, k)
+    results = cpu_index.search(queries, k)
+    _log_debug_timing(
+        "faiss_flat_ip_search.backend",
+        cpu_started_at,
+        purpose=purpose,
+        backend="cpu",
+        database_size=len(database),
+        query_size=len(queries),
+        k=k,
+        outcome="success",
+    )
+    return results
 
 
+@_debug_timed
 def faiss_label_spreading(
     features,
     targets,
@@ -118,7 +188,7 @@ def faiss_label_spreading(
     alpha=0.2,
     cg_rtol=1e-5,
     cg_max_iter=1000,
-    linear_solver="auto",
+    linear_solver="cg",
     graph_diagnostics=None,
     _dependencies=None,
 ):
@@ -157,6 +227,7 @@ def faiss_label_spreading(
             known_mask=graph_diagnostics.get("known_mask"),
         )
 
+    system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
     inverse_sqrt_degrees = np.zeros_like(degrees, dtype=np.float64)
     positive_degree = degrees > 0.0
@@ -171,6 +242,13 @@ def faiss_label_spreading(
     ).tocsr()
     one_hot_targets = np.zeros((len(features), num_classes), dtype=np.float64)
     one_hot_targets[np.flatnonzero(labeled), targets[labeled]] = 1.0
+    _log_debug_timing(
+        "faiss_label_spreading.system_construction",
+        system_started_at,
+        samples=len(features),
+        classes=num_classes,
+        matrix_nnz=system.nnz,
+    )
     scores = _dependency(
         _dependencies,
         "solve_sparse_label_system",
@@ -192,6 +270,7 @@ def faiss_label_spreading(
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
+@_debug_timed
 def iscen_label_spreading(
     features,
     targets,
@@ -201,6 +280,7 @@ def iscen_label_spreading(
     alpha=0.99,
     cg_rtol=1e-6,
     cg_max_iter=20,
+    linear_solver="cg",
     graph_diagnostics=None,
     _dependencies=None,
 ):
@@ -208,8 +288,9 @@ def iscen_label_spreading(
 
     This follows Iscen et al. (CVPR 2019) and their reference implementation:
     cosine kNN affinities are symmetrized and degree-normalized, class-balanced
-    label seeds are diffused with a truncated conjugate-gradient solve, and the
-    propagated rows are converted to entropy-based certainty weights.
+    label seeds are diffused with the reference truncated conjugate-gradient
+    solve (or optional exact CHOLMOD solve), and the propagated rows are
+    converted to entropy-based certainty weights.
     """
 
     features = np.asarray(features, dtype=np.float32)
@@ -232,6 +313,11 @@ def iscen_label_spreading(
         raise ValueError("iscen_label_spreading cg_rtol must be finite and positive")
     if int(cg_max_iter) <= 0:
         raise ValueError("iscen_label_spreading cg_max_iter must be positive")
+    linear_solver = str(linear_solver)
+    if linear_solver not in {"cg", "cholmod"}:
+        raise ValueError(
+            "iscen_label_spreading linear_solver must be one of ['cg', 'cholmod']"
+        )
     labeled = targets != UNLABELED_TARGET
     if not np.any(labeled):
         raise ValueError("iscen_label_spreading requires at least one labeled target")
@@ -257,6 +343,7 @@ def iscen_label_spreading(
             known_mask=graph_diagnostics.get("known_mask"),
         )
 
+    system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1), dtype=np.float64).ravel()
     inverse_sqrt_degrees = np.zeros_like(degrees)
     positive_degree = degrees > 0.0
@@ -277,22 +364,32 @@ def iscen_label_spreading(
     class_seed_counts = np.bincount(labeled_targets, minlength=int(num_classes)).astype(np.float64)
     one_hot_targets = np.zeros((len(features), int(num_classes)), dtype=np.float64)
     one_hot_targets[labeled_indices, labeled_targets] = 1.0 / class_seed_counts[labeled_targets]
+    _log_debug_timing(
+        "iscen_label_spreading.system_construction",
+        system_started_at,
+        samples=len(features),
+        classes=int(num_classes),
+        matrix_nnz=system.nnz,
+    )
 
     scores = _dependency(
         _dependencies,
-        "solve_iscen_label_system",
-        solve_iscen_label_system,
+        "solve_sparse_label_system",
+        solve_sparse_label_system,
     )(
         system,
         one_hot_targets,
         rtol=float(cg_rtol),
         max_iter=int(cg_max_iter),
         name="Iscen label spreading",
+        linear_solver=linear_solver,
+        # The public LP-DeepSSL implementation uses SciPy's final iterate when
+        # its reference limit of 20 CG iterations is reached.
+        allow_nonconvergence=linear_solver == "cg",
     )
 
     # A finite truncated CG solve can contain negative numerical overshoot.
-    # LP-DeepSSL clamps it before row normalization, exactly as the reference
-    # implementation does.
+    # Clamp either solver's output consistently before row normalization.
     nonnegative_scores = np.maximum(np.asarray(scores, dtype=np.float64), 0.0)
     probabilities = _dependency(
         _dependencies,
@@ -315,6 +412,7 @@ def iscen_label_spreading(
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
+@_debug_timed
 def mixed_label_propagation(
     features,
     targets,
@@ -327,7 +425,7 @@ def mixed_label_propagation(
     cg_rtol=1e-5,
     cg_max_iter=1000,
     edge_batch_size=65536,
-    linear_solver="auto",
+    linear_solver="cg",
     graph_diagnostics=None,
     _dependencies=None,
 ):
@@ -365,6 +463,7 @@ def mixed_label_propagation(
             labels=graph_diagnostics.get("labels"),
             known_mask=graph_diagnostics.get("known_mask"),
         )
+    initial_system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
     laplacian = sparse.diags(degrees) - affinity
     anchors = sparse.diags(np.where(labeled, float(mu), 0.0))
@@ -373,6 +472,13 @@ def mixed_label_propagation(
     one_hot_targets[np.flatnonzero(labeled), targets[labeled]] = 1.0
     right_hand_side = anchors @ one_hot_targets
     initial_system = (laplacian + anchors).tocsr()
+    _log_debug_timing(
+        "mixed_label_propagation.initial_system_construction",
+        initial_system_started_at,
+        samples=len(features),
+        classes=num_classes,
+        matrix_nnz=initial_system.nnz,
+    )
     solve_system = _dependency(
         _dependencies,
         "solve_sparse_label_system",
@@ -398,6 +504,7 @@ def mixed_label_propagation(
         temperature=float(temperature),
         edge_batch_size=int(edge_batch_size),
     )
+    mixed_system_started_at = time.perf_counter()
     dissimilarity_degrees = np.asarray(dissimilarity.sum(axis=1)).ravel()
     signless_laplacian = sparse.diags(dissimilarity_degrees) + dissimilarity
     # Equation (24) sums both directions of each symmetric edge, yielding the
@@ -407,6 +514,13 @@ def mixed_label_propagation(
         + anchors
         + 2.0 * float(beta) * signless_laplacian
     ).tocsr()
+    _log_debug_timing(
+        "mixed_label_propagation.mixed_system_construction",
+        mixed_system_started_at,
+        samples=len(features),
+        classes=num_classes,
+        matrix_nnz=mixed_system.nnz,
+    )
     mixed_labels = solve_system(
         mixed_system,
         right_hand_side,
@@ -435,6 +549,7 @@ def mixed_label_propagation(
     return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
 
+@_debug_timed
 def _find_lrml_knn_neighbors(embeddings, n_neighbors):
     """Return exact non-self FAISS neighbors for each LRML graph node."""
 
@@ -476,6 +591,7 @@ def _find_lrml_knn_neighbors(embeddings, n_neighbors):
     return neighbor_indices
 
 
+@_debug_timed
 def _lrml_pyg_utils():
     """Load the PyG graph utilities only when the LRML edge path is used."""
 
@@ -489,6 +605,7 @@ def _lrml_pyg_utils():
     return to_undirected, degree, get_laplacian
 
 
+@_debug_timed
 def build_lrml_knn_edge_index(embeddings, n_neighbors):
     """Build LRML's binary symmetric kNN graph as a PyG ``edge_index``.
 
@@ -514,6 +631,7 @@ def build_lrml_knn_edge_index(embeddings, n_neighbors):
     return neighbor_indices, edge_index, degrees
 
 
+@_debug_timed
 def validate_lrml_laplacian(edge_index, embeddings, normalized_laplacian):
     """Materialize a PyG Laplacian and verify its quadratic graph energy.
 
@@ -577,6 +695,7 @@ def validate_lrml_laplacian(edge_index, embeddings, normalized_laplacian):
     return laplacian_edge_index, laplacian_edge_weight
 
 
+@_debug_timed
 def build_lrml_knn_graph(embeddings, n_neighbors):
     """Build the legacy SciPy LRML graph used by the weighted SLRML path."""
 
@@ -606,6 +725,7 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
     return neighbor_indices, symmetric, degrees
 
 
+@_debug_timed
 def make_slrml_graph_labels(train_dataset, graph_positions, labeled_positions):
     """Return SLRML graph-node labels with unlabeled nodes masked as unknown."""
 
@@ -627,6 +747,7 @@ def make_slrml_graph_labels(train_dataset, graph_positions, labeled_positions):
     return graph_labels
 
 
+@_debug_timed
 def build_slrml_supervised_graph(labels):
     """Build SLRML's supervised same-class adjacency W^l.
 
@@ -670,6 +791,7 @@ def build_slrml_supervised_graph(labels):
     return supervised, positive_pair_count
 
 
+@_debug_timed
 def build_slrml_graph(
     embeddings,
     n_neighbors,
@@ -709,6 +831,7 @@ def build_slrml_graph(
     return neighbor_indices, graph, degrees, positive_pair_count
 
 
+@_debug_timed
 def induced_subgraph_edges(adjacency, node_ids):
     """Upper-triangular edges of the sub-graph induced on ``node_ids``.
 
@@ -722,6 +845,7 @@ def induced_subgraph_edges(adjacency, node_ids):
     return sub.row[upper], sub.col[upper], sub.data[upper]
 
 
+@_debug_timed
 def make_mixed_label_affinity(features, n_neighbors, gamma):
     """Build equation (15)'s sparse symmetric cosine-affinity graph (vectorized)."""
 
@@ -761,6 +885,7 @@ def make_mixed_label_affinity(features, n_neighbors, gamma):
     return affinity
 
 
+@_debug_timed
 def make_dissimilarity_affinity(
     affinity,
     degrees,
@@ -814,25 +939,25 @@ def make_dissimilarity_affinity(
     return dissimilarity
 
 
+@_debug_timed
 def solve_sparse_label_system(
         matrix,
         right_hand_side,
         rtol,
         max_iter,
         name,
-        linear_solver="auto",
+        linear_solver="cg",
         warm_start=None,
+        allow_nonconvergence=False,
 ):
-    """Solve a sparse SPD system for one or more right-hand sides.
+    """Solve a sparse SPD system with SciPy CG or CHOLMOD.
 
-    linear_solver:
-      - "cholmod": sparse Cholesky via scikit-sparse.
-      - "cg": SciPy conjugate gradient, independently for each class column,
-        using a Jacobi preconditioner and optional warm starts.
-      - "auto": CHOLMOD if importable, then SciPy SPLU, then SciPy CG.
+    SciPy CG is run independently for each right-hand-side column, matching
+    the formulation used by both label-propagation papers.  CHOLMOD factors
+    the matrix once and solves all columns together.
     """
 
-    matrix = matrix.tocsr()
+    matrix = matrix.tocsr().astype(np.float64, copy=False)
     right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
 
     # Normalize a single RHS to shape (N, 1), then restore it before returning.
@@ -854,11 +979,17 @@ def solve_sparse_label_system(
             f"right_hand_side={right_hand_side.shape}"
         )
 
-    if linear_solver not in {"auto", "cholmod", "cg"}:
+    linear_solver = str(linear_solver)
+    if linear_solver not in {"cholmod", "cg"}:
         raise ValueError(
             f"{name}: unsupported linear_solver={linear_solver!r}; "
-            "expected 'auto', 'cholmod', or 'cg'"
+            "expected 'cholmod' or 'cg'"
         )
+
+    if not np.isfinite(float(rtol)) or float(rtol) <= 0.0:
+        raise ValueError(f"{name}: rtol must be finite and positive")
+    if int(max_iter) <= 0:
+        raise ValueError(f"{name}: max_iter must be positive")
 
     if warm_start is not None:
         warm_start = np.asarray(warm_start, dtype=np.float64)
@@ -874,53 +1005,17 @@ def solve_sparse_label_system(
     def restore_shape(solution):
         return solution[:, 0] if single_rhs else solution
 
-    if linear_solver in ("auto", "cholmod"):
-        try:
-            solution = solve_sparse_label_system_cholmod(
-                matrix,
-                right_hand_side,
-                name=name,
-            )
-            return restore_shape(np.asarray(solution))
-        except ImportError:
-            if linear_solver == "cholmod":
-                raise ImportError(
-                    f"{name}: linear_solver='cholmod' requires scikit-sparse"
-                )
-
-    if linear_solver == "auto":
-        try:
-            lu = sparse_linalg.splu(matrix.tocsc())
-            return restore_shape(lu.solve(right_hand_side))
-        except (MemoryError, RuntimeError) as exc:
-            logger.warning(
-                "%s: direct factorization failed (%s); falling back to CG",
-                name,
-                exc,
-            )
-
-    diagonal = matrix.diagonal()
-    if np.any(~np.isfinite(diagonal)) or np.any(diagonal <= 0.0):
-        invalid = np.flatnonzero(
-            ~np.isfinite(diagonal) | (diagonal <= 0.0)
+    if linear_solver == "cholmod":
+        solution = solve_sparse_label_system_cholmod(
+            matrix,
+            right_hand_side,
+            name=name,
         )
-        raise ValueError(
-            f"{name}: Jacobi CG requires a finite, positive diagonal; "
-            f"invalid entries at indices {invalid[:10].tolist()}"
-        )
+        return restore_shape(np.asarray(solution))
 
-    inverse_diagonal = 1.0 / diagonal
-
-    # M represents the approximate inverse used as the preconditioner.
-    preconditioner = sparse_linalg.LinearOperator(
-        shape=matrix.shape,
-        matvec=lambda vector: inverse_diagonal * vector,
-        rmatvec=lambda vector: inverse_diagonal * vector,
-        dtype=np.float64,
-    )
-
-    solutions = np.empty_like(right_hand_side)
-    failures = []
+    solutions = np.zeros_like(right_hand_side)
+    unconverged = []
+    cg_started_at = time.perf_counter()
 
     for class_index in range(right_hand_side.shape[1]):
         rhs = right_hand_side[:, class_index]
@@ -941,138 +1036,112 @@ def solve_sparse_label_system(
             matrix,
             rhs,
             x0=x0,
-            rtol=rtol,
+            rtol=float(rtol),
+            atol=0.0,
             maxiter=int(max_iter),
-            M=preconditioner,
         )
 
         solutions[:, class_index] = solution
 
-        if info != 0:
-            failures.append((class_index, info))
-
-    if failures:
-        failed_classes = [class_index for class_index, _ in failures[:10]]
-        breakdown_classes = [
-            class_index
-            for class_index, info in failures[:10]
-            if info < 0
-        ]
-
-        if breakdown_classes:
+        if info < 0:
             raise RuntimeError(
                 f"{name}: scipy conjugate gradient failed due to numerical "
-                f"breakdown for classes {breakdown_classes}"
+                f"breakdown for class {class_index}"
             )
+        if info > 0:
+            unconverged.append(class_index)
 
-        raise RuntimeError(
+    _log_debug_timing(
+        "scipy.sparse.linalg.cg",
+        cg_started_at,
+        system=name,
+        rows=matrix.shape[0],
+        matrix_nnz=matrix.nnz,
+        right_hand_sides=right_hand_side.shape[1],
+        warm_start=warm_start is not None,
+        unconverged=len(unconverged),
+    )
+
+    if unconverged:
+        message = (
             f"{name}: scipy conjugate gradient did not converge within "
-            f"{max_iter} iterations for classes {failed_classes}"
+            f"{max_iter} iterations for classes {unconverged[:10]}"
         )
+        if allow_nonconvergence:
+            logger.warning(f"{message}; using the truncated iterates")
+        else:
+            raise RuntimeError(message)
 
     return restore_shape(solutions)
 
 
-def solve_iscen_label_system(matrix, right_hand_side, rtol, max_iter, name):
-    """Run unpreconditioned batched CG and retain the truncated iterates.
-
-    LP-DeepSSL deliberately caps diffusion at 20 CG iterations and its public
-    implementation uses the current iterate even when SciPy reports that the
-    requested tolerance was not reached. The batched formulation below is the
-    same independent CG recurrence for every class, while using one sparse by
-    dense multiplication per iteration.
-    """
-
-    matrix = matrix.tocsr()
-    right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
-    if matrix.shape[0] != matrix.shape[1]:
-        raise ValueError(f"{name} system matrix must be square")
-    if right_hand_side.ndim == 1:
-        right_hand_side = right_hand_side[:, None]
-    if right_hand_side.ndim != 2 or right_hand_side.shape[0] != matrix.shape[0]:
-        raise ValueError(f"{name} right-hand side must align with the system matrix")
-    if float(rtol) <= 0.0 or not np.isfinite(float(rtol)):
-        raise ValueError(f"{name} rtol must be finite and positive")
-    if int(max_iter) <= 0:
-        raise ValueError(f"{name} max_iter must be positive")
-
-    solutions = np.zeros_like(right_hand_side)
-    residuals = right_hand_side.copy()
-    directions = residuals.copy()
-    residual_squared = np.einsum("ij,ij->j", residuals, residuals)
-    rhs_norms = np.sqrt(residual_squared)
-    thresholds = float(rtol) * rhs_norms
-
-    iterations = 0
-    for iteration in range(int(max_iter)):
-        residual_norms = np.sqrt(np.maximum(residual_squared, 0.0))
-        active = (rhs_norms > 0.0) & (residual_norms > thresholds)
-        if not np.any(active):
-            break
-
-        # Frozen columns stay exactly zero in the shared sparse-dense product.
-        directions[:, ~active] = 0.0
-        matrix_directions = matrix @ directions
-        curvature = np.einsum("ij,ij->j", directions, matrix_directions)
-        invalid_curvature = active & (~np.isfinite(curvature) | (curvature <= 0.0))
-        if np.any(invalid_curvature):
-            bad = np.flatnonzero(invalid_curvature)
-            raise RuntimeError(
-                f"{name} conjugate gradient encountered non-positive curvature "
-                f"for classes {bad[:10].tolist()}"
-            )
-
-        step = np.zeros_like(curvature)
-        step[active] = residual_squared[active] / curvature[active]
-        solutions[:, active] += directions[:, active] * step[active]
-        residuals[:, active] -= matrix_directions[:, active] * step[active]
-
-        new_residual_squared = np.einsum("ij,ij->j", residuals, residuals)
-        new_residual_norms = np.sqrt(np.maximum(new_residual_squared, 0.0))
-        next_active = (rhs_norms > 0.0) & (new_residual_norms > thresholds)
-        beta = np.zeros_like(curvature)
-        continuing = active & next_active
-        beta[continuing] = new_residual_squared[continuing] / residual_squared[continuing]
-        directions = residuals + directions * beta
-        directions[:, ~next_active] = 0.0
-        residual_squared = new_residual_squared
-        iterations = iteration + 1
-
-    residual_norms = np.linalg.norm(right_hand_side - matrix @ solutions, axis=0)
-    unconverged = np.flatnonzero((rhs_norms > 0.0) & (residual_norms > thresholds))
-    if len(unconverged) > 0:
-        logger.warning(
-            f"{name} reached the reference limit of {max_iter} CG iterations; "
-            f"using truncated iterates for classes {unconverged[:10].tolist()}"
-        )
-    else:
-        logger.debug(f"{name} conjugate gradient converged in {iterations} iterations")
-    return solutions
-
-
+@_debug_timed
 def solve_sparse_label_system_cholmod(
     matrix,
     right_hand_side,
     name,
     cholmod_module=None,
 ):
-    """Factor once with CHOLMOD and solve all class columns together."""
+    """Factor once with CHOLMOD and solve all class columns together.
+
+    scikit-sparse 0.5 replaced the callable ``Factor`` returned by
+    ``cholesky`` with ``cho_factor`` and ``CholeskyFactor.solve``.  Support
+    both APIs because scikit-sparse is intentionally not version-pinned.
+    """
 
     if cholmod_module is None:
-        from sksparse import cholmod as cholmod_module
-    try:
-        factor = cholmod_module.cholesky(matrix.tocsc())
-        return factor(np.asarray(right_hand_side, dtype=np.float64))
-    except ImportError as exc:
-        raise ImportError(f"{name}: linear_solver='cholmod' requires scikit-sparse") from exc
+        try:
+            from sksparse import cholmod as cholmod_module
+        except ImportError as exc:
+            raise ImportError(
+                f"{name}: linear_solver='cholmod' requires scikit-sparse"
+            ) from exc
+
+    matrix = matrix.tocsc()
+    right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
+
+    factor_started_at = time.perf_counter()
+    if hasattr(cholmod_module, "cho_factor"):
+        factor = cholmod_module.cho_factor(matrix)
+        api = "cho_factor.solve"
+    else:
+        factor = cholmod_module.cholesky(matrix)
+        api = "cholesky.__call__"
+    _log_debug_timing(
+        "cholmod.factorization",
+        factor_started_at,
+        system=name,
+        api=api,
+        rows=matrix.shape[0],
+        matrix_nnz=matrix.nnz,
+    )
+
+    solve_started_at = time.perf_counter()
+    if api == "cho_factor.solve":
+        solution = factor.solve(right_hand_side)
+    else:
+        solution = factor(right_hand_side)
+    _log_debug_timing(
+        "cholmod.solve",
+        solve_started_at,
+        system=name,
+        api=api,
+        rows=matrix.shape[0],
+        right_hand_sides=(
+            1 if right_hand_side.ndim == 1 else right_hand_side.shape[1]
+        ),
+    )
+    return solution
 
 
+@_debug_timed
 def stable_softmax(values):
     shifted = values - np.max(values, axis=1, keepdims=True)
     exponentials = np.exp(shifted)
     return exponentials / exponentials.sum(axis=1, keepdims=True)
 
 
+@_debug_timed
 def normalize_label_spreading_rows(values):
     """Convert nonnegative fixed-point scores into per-row class probabilities."""
 
@@ -1097,6 +1166,7 @@ def normalize_label_spreading_rows(values):
     return probabilities / row_sums
 
 
+@_debug_timed
 def normalize_mixed_label_rows(values):
     """Convert propagated scores to the paper's L1-normalized class scores."""
 
@@ -1110,6 +1180,7 @@ def normalize_mixed_label_rows(values):
     return values / l1_norms
 
 
+@_debug_timed
 def entropy_confidence(probabilities):
     """Equation (21): one minus entropy normalized by log(number of classes)."""
 
@@ -1134,6 +1205,7 @@ def entropy_confidence(probabilities):
     return 1.0 - entropy / np.log(probabilities.shape[1])
 
 
+@_debug_timed
 def majority_vote(label_rows):
     """Return the most frequent label and its vote count for every row."""
 

@@ -45,7 +45,6 @@ from .ssl.algorithms import (
     mixed_label_propagation as _mixed_label_propagation,
     normalize_mixed_label_rows as normalize_mixed_label_rows,
     require_faiss,
-    solve_iscen_label_system as solve_iscen_label_system,
     solve_sparse_label_system as solve_sparse_label_system,
     solve_sparse_label_system_cholmod as solve_sparse_label_system_cholmod,
 )
@@ -2155,7 +2154,7 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         "alpha": 0.2,
         "cg_rtol": 1e-5,
         "cg_max_iter": 1000,
-        "linear_solver": "auto",
+        "linear_solver": "cg",
     }
 
     def __init__(self, name="faiss_label_spreading"):
@@ -2253,6 +2252,7 @@ class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         "alpha": 0.99,
         "cg_rtol": 1e-6,
         "cg_max_iter": 20,
+        "linear_solver": "cg",
     }
 
     def __init__(self, name="iscen_label_spreading"):
@@ -2358,7 +2358,7 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
         "cg_rtol": 1e-5,
         "cg_max_iter": 1000,
         "edge_batch_size": 65536,
-        "linear_solver": "auto",
+        "linear_solver": "cg",
     }
 
     def __init__(self, name="mixed_label_propagation"):
@@ -2452,8 +2452,8 @@ def validate_mixed_label_propagation_params(params):
         raise ValueError("mixed_label_propagation cg_max_iter must be positive")
     if int(params["edge_batch_size"]) <= 0:
         raise ValueError("mixed_label_propagation edge_batch_size must be positive")
-    if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
-        raise ValueError("mixed_label_propagation linear_solver must be one of ['auto', 'cholmod', 'cg']")
+    if str(params["linear_solver"]) not in {"cholmod", "cg"}:
+        raise ValueError("mixed_label_propagation linear_solver must be one of ['cholmod', 'cg']")
 
 
 def validate_faiss_label_spreading_params(params):
@@ -2470,8 +2470,8 @@ def validate_faiss_label_spreading_params(params):
         raise ValueError("faiss_label_spreading alpha must be in (0, 1)")
     if int(params["cg_max_iter"]) <= 0:
         raise ValueError("faiss_label_spreading cg_max_iter must be positive")
-    if str(params["linear_solver"]) not in {"auto", "cholmod", "cg"}:
-        raise ValueError("faiss_label_spreading linear_solver must be one of ['auto', 'cholmod', 'cg']")
+    if str(params["linear_solver"]) not in {"cholmod", "cg"}:
+        raise ValueError("faiss_label_spreading linear_solver must be one of ['cholmod', 'cg']")
 
 
 def validate_iscen_label_spreading_params(params):
@@ -2488,6 +2488,8 @@ def validate_iscen_label_spreading_params(params):
         raise ValueError("iscen_label_spreading alpha must be in (0, 1)")
     if int(params["cg_max_iter"]) <= 0:
         raise ValueError("iscen_label_spreading cg_max_iter must be positive")
+    if str(params["linear_solver"]) not in {"cg", "cholmod"}:
+        raise ValueError("iscen_label_spreading linear_solver must be one of ['cg', 'cholmod']")
 
 
 REGULARIZER_REGISTRY = {
