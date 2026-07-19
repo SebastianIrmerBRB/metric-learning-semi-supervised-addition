@@ -186,6 +186,8 @@ class TrainingResult:
     fold_results: list[dict[str, Any]] | None = None
     test_pacmap_coordinates: Path | None = None
     test_pacmap_plot: Path | None = None
+    test_tsne_coordinates: Path | None = None
+    test_tsne_plot: Path | None = None
 
 @dataclass(frozen=True)
 class HParamSearchConfig:

@@ -579,7 +579,7 @@ def setup_dataset_bundle(
         [
             v2.RGB(),
             tfm.Resize(size=(224, 224), antialias=True),
-            tfm.RandAugment(num_ops=3, interpolation=tfm.InterpolationMode.BILINEAR),
+            # tfm.RandAugment(num_ops=3, interpolation=tfm.InterpolationMode.BILINEAR),
             tfm.ToTensor(),
             tfm.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ]
@@ -706,6 +706,179 @@ def setup_dataset_bundle(
     )
 
 
+class TwoStreamMPerClassBatchSampler(torch.utils.data.Sampler):
+    """Build M-per-class batches with fixed pseudo- and true-label quotas.
+
+    The pseudo-labeled (originally unlabeled) stream is primary: without an
+    explicit epoch length, its size determines the number of full batches.
+    The true-labeled stream is sampled repeatedly for the same number of
+    batches. Each stream independently follows ``MPerClassSampler`` semantics,
+    including replacement when a selected class has fewer than ``m`` samples.
+    """
+
+    def __init__(
+        self,
+        labels,
+        labeled_indices,
+        unlabeled_indices,
+        batch_size,
+        labeled_batch_size,
+        m,
+        seed=0,
+        length_before_new_iter=None,
+    ):
+        labels = torch.as_tensor(labels, dtype=torch.long).cpu().numpy()
+        if labels.ndim != 1:
+            raise ValueError("TwoStreamMPerClassBatchSampler labels must be one-dimensional")
+
+        self.batch_size = int(batch_size)
+        self.labeled_batch_size = int(labeled_batch_size)
+        self.unlabeled_batch_size = self.batch_size - self.labeled_batch_size
+        self.m_per_class = int(m)
+        if self.batch_size <= 0:
+            raise ValueError("TwoStreamMPerClassBatchSampler batch_size must be positive")
+        if not 0 < self.labeled_batch_size < self.batch_size:
+            raise ValueError(
+                "TwoStreamMPerClassBatchSampler labeled_batch_size must be greater than zero "
+                "and smaller than batch_size"
+            )
+        if self.m_per_class <= 0:
+            raise ValueError("TwoStreamMPerClassBatchSampler m must be positive")
+        for stream_name, stream_batch_size in (
+            ("labeled", self.labeled_batch_size),
+            ("unlabeled", self.unlabeled_batch_size),
+        ):
+            if stream_batch_size % self.m_per_class != 0:
+                raise ValueError(
+                    f"TwoStreamMPerClassBatchSampler {stream_name} batch size must be divisible by m: "
+                    f"{stream_name}_batch_size={stream_batch_size}, m={self.m_per_class}."
+                )
+
+        self.labeled_indices = self._validate_indices(
+            labeled_indices,
+            len(labels),
+            "labeled_indices",
+        )
+        self.unlabeled_indices = self._validate_indices(
+            unlabeled_indices,
+            len(labels),
+            "unlabeled_indices",
+        )
+        if np.intersect1d(self.labeled_indices, self.unlabeled_indices).size:
+            raise ValueError(
+                "TwoStreamMPerClassBatchSampler labeled_indices and unlabeled_indices must be disjoint"
+            )
+        if len(self.labeled_indices) == 0 or len(self.unlabeled_indices) == 0:
+            raise ValueError(
+                "TwoStreamMPerClassBatchSampler requires non-empty labeled and unlabeled streams"
+            )
+
+        labeled_stream_labels = labels[self.labeled_indices]
+        unlabeled_stream_labels = labels[self.unlabeled_indices]
+        self._validate_stream_capacity(
+            labeled_stream_labels,
+            self.labeled_batch_size,
+            "labeled",
+            self.m_per_class,
+        )
+        self._validate_stream_capacity(
+            unlabeled_stream_labels,
+            self.unlabeled_batch_size,
+            "unlabeled",
+            self.m_per_class,
+        )
+        self._labeled_by_class = self._group_indices_by_label(
+            self.labeled_indices,
+            labeled_stream_labels,
+        )
+        self._unlabeled_by_class = self._group_indices_by_label(
+            self.unlabeled_indices,
+            unlabeled_stream_labels,
+        )
+
+        if length_before_new_iter is None:
+            # Match LP-DeepSSL's primary-stream epoch definition at the batch
+            # level. M-per-class balancing means individual pseudo-labeled
+            # samples can still be replaced or omitted within that many draws.
+            self.num_batches = max(
+                1,
+                len(self.unlabeled_indices) // self.unlabeled_batch_size,
+            )
+        else:
+            sampler_length = make_sampler_epoch_length(
+                len(labels),
+                self.batch_size,
+                length_before_new_iter=length_before_new_iter,
+            )
+            self.num_batches = sampler_length // self.batch_size
+        self.num_samples = self.num_batches * self.batch_size
+        self.generator = np.random.default_rng(seed)
+
+    @staticmethod
+    def _validate_indices(indices, num_samples, name):
+        indices = torch.as_tensor(indices, dtype=torch.long).cpu().numpy()
+        if indices.ndim != 1:
+            raise ValueError(f"TwoStreamMPerClassBatchSampler {name} must be one-dimensional")
+        if np.any((indices < 0) | (indices >= num_samples)):
+            raise ValueError(f"TwoStreamMPerClassBatchSampler {name} contains an out-of-range index")
+        if len(np.unique(indices)) != len(indices):
+            raise ValueError(f"TwoStreamMPerClassBatchSampler {name} must not contain duplicates")
+        return indices.astype(np.int64, copy=False)
+
+    @staticmethod
+    def _validate_stream_capacity(labels, batch_size, stream_name, m_per_class):
+        try:
+            validate_m_per_class_sampler_capacity(
+                labels,
+                batch_size,
+                sampler_m=m_per_class,
+            )
+        except MPerClassSamplerCapacityError as exc:
+            raise MPerClassSamplerCapacityError(
+                f"TwoStreamMPerClassBatchSampler {stream_name} stream cannot fill its batch: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _group_indices_by_label(indices, labels):
+        grouped = {}
+        for index, label in zip(indices, labels):
+            grouped.setdefault(int(label), []).append(int(index))
+        return {
+            label: np.asarray(class_indices, dtype=np.int64)
+            for label, class_indices in grouped.items()
+        }
+
+    def _sample_stream(self, grouped_indices, stream_batch_size):
+        classes_per_batch = stream_batch_size // self.m_per_class
+        labels = np.asarray(list(grouped_indices), dtype=np.int64)
+        selected_labels = self.generator.permutation(labels)[:classes_per_batch]
+        batch = []
+        for label in selected_labels:
+            candidates = grouped_indices[int(label)]
+            sampled = self.generator.choice(
+                candidates,
+                size=self.m_per_class,
+                replace=len(candidates) < self.m_per_class,
+            )
+            batch.extend(int(index) for index in sampled)
+        return batch
+
+    def __iter__(self):
+        for _ in range(self.num_batches):
+            # Keep the reference implementation's primary-then-secondary
+            # ordering: pseudo-labeled samples first, true-labeled samples last.
+            yield self._sample_stream(
+                self._unlabeled_by_class,
+                self.unlabeled_batch_size,
+            ) + self._sample_stream(
+                self._labeled_by_class,
+                self.labeled_batch_size,
+            )
+
+    def __len__(self):
+        return self.num_batches
+
+
 def make_train_loader(
     train_dataset,
     batch_size,
@@ -716,10 +889,54 @@ def make_train_loader(
     persistent_workers=True,
     length_before_new_iter=None,
     pin_memory=False,
+    labeled_batch_size=None,
 ):
-    """Create a loader whose batches contain ``sampler_m`` samples per class."""
+    """Create an M-per-class loader, optionally with labeled/pseudo streams."""
 
     num_workers = dataloader_num_workers_for_dataset(train_dataset, num_workers)
+    if labeled_batch_size is not None:
+        for attribute in ("labeled_indices", "unlabeled_indices"):
+            if not hasattr(train_dataset, attribute):
+                raise ValueError(
+                    "Two-stream M-per-class sampling requires a relabeled dataset exposing "
+                    f"{attribute}"
+                )
+        if len(train_dataset.unlabeled_indices) > 0:
+            sampler = TwoStreamMPerClassBatchSampler(
+                labels=train_dataset.labels,
+                labeled_indices=train_dataset.labeled_indices,
+                unlabeled_indices=train_dataset.unlabeled_indices,
+                batch_size=batch_size,
+                labeled_batch_size=labeled_batch_size,
+                m=sampler_m,
+                seed=seed,
+                length_before_new_iter=length_before_new_iter,
+            )
+            train_loader = DataLoader(
+                train_dataset,
+                batch_sampler=sampler,
+                **make_dataloader_kwargs(
+                    num_workers,
+                    seed,
+                    start_method,
+                    persistent_workers=persistent_workers,
+                    pin_memory=pin_memory,
+                ),
+            )
+            logger.info(
+                "Two-stream train loader: "
+                f"{len(train_dataset)} samples, {len(train_dataset.labeled_indices)} true-labeled, "
+                f"{len(train_dataset.unlabeled_indices)} pseudo-labeled, "
+                f"batch={sampler.unlabeled_batch_size} pseudo + {sampler.labeled_batch_size} true, "
+                f"m={sampler.m_per_class} per stream, {sampler.num_samples} sampled examples/epoch, "
+                f"{len(train_loader)} batches/epoch"
+            )
+            return train_loader
+        logger.warning(
+            "Two-stream M-per-class sampling was requested, but no pseudo-labeled samples were accepted; "
+            "falling back to the labeled-only MPerClassSampler"
+        )
+
     sampler_length = make_sampler_epoch_length(
         len(train_dataset),
         batch_size,
@@ -1478,24 +1695,82 @@ def dataset_classes(dataset):
     return None
 
 
-def write_pacmap_visualization(
-    embeddings,
+def _embedding_visualization_inputs(embeddings, labels, method_name):
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    labels = np.asarray(labels).reshape(-1)
+    if embeddings.ndim != 2:
+        raise ValueError(f"{method_name} visualization requires an embedding matrix")
+    if len(embeddings) != len(labels):
+        raise ValueError(f"{method_name} embeddings and labels must have the same number of samples")
+    if len(embeddings) < 2:
+        raise ValueError(f"{method_name} visualization requires at least two test embeddings")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError(f"{method_name} embeddings must be finite")
+    return embeddings, labels
+
+
+def project_tsne_embeddings(embeddings, seed=0, perplexity=None):
+    """Project an embedding matrix to two reproducible t-SNE coordinates."""
+
+    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    if embeddings.ndim != 2:
+        raise ValueError("t-SNE projection requires an embedding matrix")
+    if len(embeddings) < 2:
+        raise ValueError("t-SNE projection requires at least two embeddings")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("t-SNE embeddings must be finite")
+
+    if perplexity is None:
+        # sklearn requires perplexity < n_samples. Retain its normal default
+        # whenever possible and shrink it only for smaller diagnostic sets.
+        perplexity = min(30.0, float(len(embeddings) - 1))
+    perplexity = float(perplexity)
+    if not np.isfinite(perplexity) or not 0.0 < perplexity < len(embeddings):
+        raise ValueError(
+            "t-SNE perplexity must be finite, positive, and smaller than the number of embeddings"
+        )
+
+    from sklearn.decomposition import PCA
+    from sklearn.manifold import TSNE
+
+    projection_input = embeddings
+    if embeddings.shape[1] > 50:
+        # sklearn recommends a preliminary reduction for high-dimensional
+        # dense inputs to suppress noise and make pairwise distances cheaper.
+        pca_components = min(50, len(embeddings), embeddings.shape[1])
+        projection_input = PCA(
+            n_components=pca_components,
+            random_state=int(seed),
+        ).fit_transform(embeddings)
+
+    init = "pca" if projection_input.shape[1] >= 2 else "random"
+    coordinates = TSNE(
+        n_components=2,
+        perplexity=perplexity,
+        learning_rate="auto",
+        init=init,
+        random_state=int(seed),
+    ).fit_transform(projection_input)
+    coordinates = np.asarray(coordinates, dtype=np.float32)
+    if coordinates.shape != (len(embeddings), 2) or not np.all(np.isfinite(coordinates)):
+        raise ValueError(
+            f"t-SNE returned invalid coordinates with shape {coordinates.shape}, expected [N, 2]"
+        )
+    return coordinates
+
+
+def _write_embedding_visualization_artifacts(
+    coordinates,
     labels,
     output_dir,
-    stem="test_pacmap",
-    title="Test embeddings - PacMAP",
+    stem,
+    title,
+    coordinate_prefix,
+    axis_label,
     dataset=None,
     dataset_name=None,
 ):
-    """Write PacMAP 2D coordinates and a plot-group-colored scatter plot."""
-
-    try:
-        import pacmap
-    except ImportError as exc:
-        raise ImportError(
-            "PacMAP visualization requires the pacmap package. "
-            "Install it with `pip install -r requirements.txt`."
-        ) from exc
+    """Write shared CSV and scatter-plot artifacts for a 2-D projection."""
 
     import matplotlib
 
@@ -1503,19 +1778,12 @@ def write_pacmap_visualization(
 
     import matplotlib.pyplot as plt
 
-    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+    coordinates = np.asarray(coordinates, dtype=np.float32)
     labels = np.asarray(labels).reshape(-1)
-    if embeddings.ndim != 2:
-        raise ValueError("PacMAP visualization requires an embedding matrix")
-    if len(embeddings) != len(labels):
-        raise ValueError("PacMAP embeddings and labels must have the same number of samples")
-    if len(embeddings) < 2:
-        raise ValueError("PacMAP visualization requires at least two test embeddings")
-
-    coordinates = np.asarray(pacmap.PaCMAP().fit_transform(embeddings), dtype=np.float32)
-    if coordinates.ndim != 2 or coordinates.shape[1] < 2:
-        raise ValueError(f"PacMAP returned coordinates with shape {coordinates.shape}, expected [N, 2]")
-    coordinates = coordinates[:, :2]
+    if coordinates.shape != (len(labels), 2):
+        raise ValueError(
+            f"{axis_label} coordinates must have shape ({len(labels)}, 2); got {coordinates.shape}"
+        )
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1526,8 +1794,10 @@ def write_pacmap_visualization(
     plot_group_labels = np.asarray(plot_groups["labels"], dtype=np.int64).reshape(-1)
     plot_group_names = list(plot_groups["names"])
     if len(plot_group_labels) != len(labels) or len(plot_group_names) != len(labels):
-        raise ValueError("PacMAP plot-group metadata must align with embeddings and labels")
+        raise ValueError("Visualization plot-group metadata must align with embeddings and labels")
 
+    x_field = f"{coordinate_prefix}_x"
+    y_field = f"{coordinate_prefix}_y"
     with coordinates_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(
             csv_file,
@@ -1537,8 +1807,8 @@ def write_pacmap_visualization(
                 "class_name",
                 "plot_group_label",
                 "plot_group_name",
-                "pacmap_x",
-                "pacmap_y",
+                x_field,
+                y_field,
             ],
         )
         writer.writeheader()
@@ -1552,8 +1822,8 @@ def write_pacmap_visualization(
                     "class_name": class_name,
                     "plot_group_label": int(group_label),
                     "plot_group_name": group_name,
-                    "pacmap_x": float(coordinate[0]),
-                    "pacmap_y": float(coordinate[1]),
+                    x_field: float(coordinate[0]),
+                    y_field: float(coordinate[1]),
                 }
             )
 
@@ -1588,8 +1858,8 @@ def write_pacmap_visualization(
         fig.colorbar(scatter, ax=ax, label=str(plot_groups["legend_title"]))
 
     ax.set_title(title)
-    ax.set_xlabel("PacMAP 1")
-    ax.set_ylabel("PacMAP 2")
+    ax.set_xlabel(f"{axis_label} 1")
+    ax.set_ylabel(f"{axis_label} 2")
     ax.grid(alpha=0.18, linewidth=0.6)
     fig.tight_layout()
     fig.savefig(plot_path, dpi=160)
@@ -1601,6 +1871,76 @@ def write_pacmap_visualization(
         "sample_count": int(len(labels)),
         "color_basis": str(plot_groups["basis"]),
     }
+
+
+def write_pacmap_visualization(
+    embeddings,
+    labels,
+    output_dir,
+    stem="test_pacmap",
+    title="Test embeddings - PacMAP",
+    dataset=None,
+    dataset_name=None,
+):
+    """Write PacMAP 2D coordinates and a plot-group-colored scatter plot."""
+
+    embeddings, labels = _embedding_visualization_inputs(embeddings, labels, "PacMAP")
+
+    try:
+        import pacmap
+    except ImportError as exc:
+        raise ImportError(
+            "PacMAP visualization requires the pacmap package. "
+            "Install it with `pip install -r requirements.txt`."
+        ) from exc
+
+    coordinates = np.asarray(pacmap.PaCMAP().fit_transform(embeddings), dtype=np.float32)
+    if coordinates.ndim != 2 or coordinates.shape[1] < 2:
+        raise ValueError(f"PacMAP returned coordinates with shape {coordinates.shape}, expected [N, 2]")
+    coordinates = coordinates[:, :2]
+    return _write_embedding_visualization_artifacts(
+        coordinates=coordinates,
+        labels=labels,
+        output_dir=output_dir,
+        stem=stem,
+        title=title,
+        coordinate_prefix="pacmap",
+        axis_label="PacMAP",
+        dataset=dataset,
+        dataset_name=dataset_name,
+    )
+
+
+def write_tsne_visualization(
+    embeddings,
+    labels,
+    output_dir,
+    stem="test_tsne",
+    title="Test embeddings - t-SNE",
+    dataset=None,
+    dataset_name=None,
+    seed=0,
+    perplexity=None,
+):
+    """Write t-SNE 2D coordinates and a plot-group-colored scatter plot."""
+
+    embeddings, labels = _embedding_visualization_inputs(embeddings, labels, "t-SNE")
+    coordinates = project_tsne_embeddings(
+        embeddings,
+        seed=seed,
+        perplexity=perplexity,
+    )
+    return _write_embedding_visualization_artifacts(
+        coordinates=coordinates,
+        labels=labels,
+        output_dir=output_dir,
+        stem=stem,
+        title=title,
+        coordinate_prefix="tsne",
+        axis_label="t-SNE",
+        dataset=dataset,
+        dataset_name=dataset_name,
+    )
 
 
 def make_per_class_retrieval_metrics(labels, accuracy, reference_labels=None, ref_includes_query=True):

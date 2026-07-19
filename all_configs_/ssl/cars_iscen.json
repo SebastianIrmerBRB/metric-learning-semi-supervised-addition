@@ -2,9 +2,10 @@
   "enabled": true,
   "n_trials": 60,
   "timeout": null,
+  "n_jobs": 3,
   "direction": "maximize",
   "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "faiss_label_spreading_search",
+  "study_name": "lrml_search",
   "study_dir": null,
   "storage": null,
   "load_if_exists": true,
@@ -15,8 +16,8 @@
   "spaces": {
     "lr": {
       "type": "float",
-      "low": 1e-7,
-      "high": 1e-5,
+      "low": 1e-6,
+      "high": 1,
       "log": true
     },
     "classifier_lr": {
@@ -25,32 +26,31 @@
       "high": 1e+2,
       "log": true
     },
+    "ssl_config.warmup_epochs": {
+      "type": "int",
+      "low": 0,
+      "high": 10,
+      "step": 1
+    },
     "ssl_config.method_params.n_neighbors": {
       "type": "categorical",
-      "choices": [3, 5, 10, 20, 50]
+      "choices": [3, 6, 10, 15, 25, 50]
     },
-    "ssl_config.method_params.gamma": {
-      "type": "float",
-      "low": 0.25,
-      "high": 16,
-      "log": true
-    },
+    "ssl_config.method_params.confidence_threshold": {"type": "float", "low": 0, "high": 0.9, "log": true},
+    "ssl_config.method_params.gamma": {"type": "float", "low": 1, "high": 8, "step": 1},
     "ssl_config.method_params.alpha": {
-      "type": "float",
-      "low": 0.05,
-      "high": 0.99,
-      "log": false
-    },
-    "ssl_config.confidence_threshold": {
-      "type": "float",
-      "low": 0.0,
-      "high": 0.9,
-      "log": false
+      "type": "categorical",
+      "choices": [0.5, 0.8, 0.9, 0.95, 0.99, 0.995, 0.999]
     },
     "batch_sampler": {
       "type": "categorical",
       "choices": [
-        "16:4"
+        "16:4",
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4",
+        "512:8"
       ]
     }
   }

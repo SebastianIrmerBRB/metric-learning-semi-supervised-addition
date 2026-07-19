@@ -71,6 +71,12 @@ def extract_embeddings(
 def make_feature_dataset(dataset):
     """Copy a dataset and replace augmentation with its feature transform."""
 
+    if utils.dataset_has_precomputed_backbone_features(dataset):
+        # Raw backbone feature tensors are already deterministic and have no
+        # image transform to replace. Reuse the read-only dataset so every
+        # pseudo-label refresh does not duplicate the full in-memory matrix.
+        return dataset
+
     # Copy before changing transforms so the real training dataset continues to
     # use stochastic augmentation.
     feature_dataset = copy.deepcopy(dataset)

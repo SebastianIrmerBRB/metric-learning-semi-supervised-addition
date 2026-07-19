@@ -25,6 +25,10 @@ def result_to_dict(result):
         if result.test_pacmap_coordinates is None
         else str(result.test_pacmap_coordinates),
         "test_pacmap_plot": None if result.test_pacmap_plot is None else str(result.test_pacmap_plot),
+        "test_tsne_coordinates": None
+        if result.test_tsne_coordinates is None
+        else str(result.test_tsne_coordinates),
+        "test_tsne_plot": None if result.test_tsne_plot is None else str(result.test_tsne_plot),
     }
 
 def namespace_to_dict(args):

@@ -28,8 +28,8 @@ from .cli import (
 )
 from .io import is_scalar, namespace_to_dict, result_to_dict, to_jsonable, write_json
 from .engine import (
-    get_loss_class,
     get_data_split_seed,
+    get_loss_class,
     resolve_loss_driven_supervised_args,
     resolve_mode_ssl_config,
     run_experiment,
@@ -37,6 +37,7 @@ from .engine import (
     validate_named_miner_params,
     validate_run_args,
 )
+from .frozen_feature_cache import FrozenFeatureDatasetCache
 from .types import (
     ALL_LOSSES,
     ALL_MINERS,
@@ -56,6 +57,66 @@ from .types import (
 
 SAMPLER_STATE_FILENAME = "sampler.pkl"
 _SAMPLER_STATE_LOCK = threading.Lock()
+
+
+class ParallelOptunaSampler:
+    """Serialize access to one resumable sampler shared by Optuna worker threads.
+
+    ``Study.optimize(n_jobs>1)`` calls ``reseed_rng`` once in every worker. That
+    behavior is useful when workers own independent sampler copies, but this
+    project deliberately keeps one sampler state and checkpoints it to disk.
+    Sampling is therefore serialized through one shared sampler and reseeding
+    is suppressed so loading ``sampler.pkl`` actually continues its RNG state.
+    """
+
+    def __init__(self, sampler):
+        self._sampler = sampler
+        self._state_lock = threading.RLock()
+
+    @property
+    def wrapped_sampler(self):
+        return self._sampler
+
+    @property
+    def state_lock(self):
+        return self._state_lock
+
+    def __getattr__(self, name):
+        return getattr(self._sampler, name)
+
+    def __str__(self):
+        return str(self._sampler)
+
+    def before_trial(self, study, trial):
+        with self._state_lock:
+            return self._sampler.before_trial(study, trial)
+
+    def infer_relative_search_space(self, study, trial):
+        with self._state_lock:
+            return self._sampler.infer_relative_search_space(study, trial)
+
+    def sample_relative(self, study, trial, search_space):
+        with self._state_lock:
+            return self._sampler.sample_relative(study, trial, search_space)
+
+    def sample_independent(self, study, trial, param_name, param_distribution):
+        with self._state_lock:
+            return self._sampler.sample_independent(
+                study,
+                trial,
+                param_name,
+                param_distribution,
+            )
+
+    def after_trial(self, study, trial, state, values):
+        with self._state_lock:
+            return self._sampler.after_trial(study, trial, state, values)
+
+    def reseed_rng(self):
+        # All Optuna jobs in this process share the wrapped sampler. Its calls
+        # are serialized, so independent thread-local reseeding is unnecessary
+        # and would discard a state restored from sampler.pkl.
+        return None
 
 
 def terminate_active_children(timeout=5.0):
@@ -317,6 +378,7 @@ def run_hparam_search(args, config):
         sampler_state_path,
         tpe_startup_trials=resolved_tpe_startup_trials,
     )
+    sampler = make_parallel_optuna_sampler(sampler, config.n_jobs)
     pruner = make_optuna_pruner(optuna, config)
     study = optuna.create_study(
         direction=config.direction,
@@ -342,11 +404,25 @@ def run_hparam_search(args, config):
     trials_csv = study_dir / "trials.csv"
     trials_jsonl = study_dir / "trials.jsonl"
     retry_failed_trials_mode = should_retry_failed_hpo_trials(args, config)
+    frozen_feature_cache = None
+    if (
+        bool(getattr(args, "use_cache", False))
+        and args.backbone_tuning == BACKBONE_TUNING_FROZEN
+    ):
+        frozen_feature_cache = FrozenFeatureDatasetCache()
+        logger.info(
+            "Enabled one in-memory frozen-feature cache shared by all trials "
+            "and cross-validation folds in this HPO study"
+        )
 
     def objective(trial):
         # Resolve trial suggestions into a fresh argparse namespace and SSL
         # config so trials cannot mutate one another's settings.
-        trial_args, ssl_config, suggested_params = make_trial_args_and_ssl_config(args, config, trial)
+        trial_args, ssl_config, suggested_params = run_with_sampler_checkpoint(
+            study.sampler,
+            sampler_state_path,
+            lambda: make_trial_args_and_ssl_config(args, config, trial),
+        )
         trial_args.hparam_config_resolved = config.to_dict()
         trial_args.hparam_params = suggested_params
         trial_args.hparam_study_dir = study_dir
@@ -370,7 +446,20 @@ def run_hparam_search(args, config):
                 ssl_config,
                 optuna_trial=trial,
                 optuna_metric=config.metric,
+                frozen_feature_cache=frozen_feature_cache,
             )
+        except utils.NonFiniteEmbeddingError as exc:
+            # Numerical divergence is an expected outcome for some sampled
+            # hyperparameters. Reject only this trial instead of aborting the
+            # entire study, while preserving the diagnostic in study outputs.
+            pruning_reason = str(exc)
+            cleanup_after_trial(terminate_children=config.n_jobs == 1)
+            trial.set_user_attr("pruning_reason", pruning_reason)
+            logger.warning(
+                f"Pruning HPO trial {trial.number} after numerical divergence: "
+                f"{pruning_reason}"
+            )
+            raise optuna.TrialPruned(pruning_reason) from exc
         except optuna.TrialPruned:
             raise
         except Exception as exc:
@@ -383,20 +472,31 @@ def run_hparam_search(args, config):
             trial.set_user_attr(key, value)
         return get_objective_value(result, config.metric)
 
+    record_trial_lock = threading.Lock()
+
     def record_trial(study, trial):
         nonlocal last_completed_sampler
-        last_completed_sampler = update_optuna_sampler_after_trial(
-            optuna,
-            study,
-            trial,
-            sampler_state_path,
-            last_completed_sampler,
-            restore_after_incomplete=config.n_jobs == 1,
-        )
-        cleanup_after_trial(terminate_children=config.n_jobs == 1)
-        # Refresh summaries after each finished trial so interrupted studies
-        # still leave readable progress outside the Optuna database.
-        write_trials_summary(study, trials_csv, trials_jsonl)
+        # Optuna invokes callbacks concurrently for n_jobs>1. Serialize the
+        # sampler snapshot and summary rewrite so neither artifact can regress
+        # to an older callback's view.
+        with record_trial_lock:
+            if config.n_jobs == 1:
+                last_completed_sampler = update_optuna_sampler_after_trial(
+                    optuna,
+                    study,
+                    trial,
+                    sampler_state_path,
+                    last_completed_sampler,
+                )
+            else:
+                # A failed parallel trial cannot be rolled back independently
+                # after other trials have sampled. The suggestion checkpoint
+                # already includes it; persist sampler after_trial state too.
+                save_optuna_sampler(study.sampler, sampler_state_path)
+            cleanup_after_trial(terminate_children=config.n_jobs == 1)
+            # Refresh summaries after each finished trial so interrupted studies
+            # still leave readable progress outside the Optuna database.
+            write_trials_summary(study, trials_csv, trials_jsonl)
 
     if retry_failed_trials_mode:
         enqueued_retries = enqueue_failed_hpo_trial_retries(optuna, study)
@@ -523,6 +623,34 @@ def resolve_optuna_storage(configured_storage, study_dir):
     storage_path = (Path(study_dir) / "optuna_study.db").resolve()
     return f"sqlite:///{storage_path.as_posix()}"
 
+def make_parallel_optuna_sampler(sampler, n_jobs):
+    """Wrap the sampler when Optuna will share it across worker threads."""
+
+    if n_jobs == 1 or isinstance(sampler, ParallelOptunaSampler):
+        return sampler
+    return ParallelOptunaSampler(sampler)
+
+def run_with_sampler_checkpoint(sampler, path, operation):
+    """Run trial suggestion atomically with a parallel sampler checkpoint.
+
+    The outer sampler lock remains held until every ``trial.suggest_*`` call
+    has also written its value to Optuna storage. The checkpoint therefore
+    cannot contain an RNG advance whose corresponding parameter is still only
+    in another thread's local state.
+    """
+
+    if not isinstance(sampler, ParallelOptunaSampler):
+        return operation()
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _SAMPLER_STATE_LOCK:
+        with sampler.state_lock:
+            try:
+                return operation()
+            finally:
+                _write_optuna_sampler_state(sampler.wrapped_sampler, path)
+
 def load_or_make_optuna_sampler(optuna, config, seed, sampler_state_path, tpe_startup_trials=None):
     if config.load_if_exists and sampler_state_path.exists():
         sampler = load_optuna_sampler(sampler_state_path)
@@ -540,6 +668,8 @@ def load_or_make_optuna_sampler(optuna, config, seed, sampler_state_path, tpe_st
     )
 
 def validate_loaded_sampler_matches_config(sampler, config, sampler_state_path):
+    if isinstance(sampler, ParallelOptunaSampler):
+        sampler = sampler.wrapped_sampler
     expected_class_names = {
         "tpe": "TPESampler",
         "random": "RandomSampler",
@@ -566,21 +696,34 @@ def load_optuna_sampler(path):
         ) from exc
 
 def save_optuna_sampler(sampler, path):
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
     with _SAMPLER_STATE_LOCK:
-        try:
-            with tmp_path.open("wb") as sampler_file:
-                pickle.dump(sampler, sampler_file)
-            tmp_path.replace(path)
-        finally:
-            if tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
+        if isinstance(sampler, ParallelOptunaSampler):
+            with sampler.state_lock:
+                _write_optuna_sampler_state(sampler.wrapped_sampler, path)
+        else:
+            _write_optuna_sampler_state(sampler, path)
+
+def _write_optuna_sampler_state(sampler, path):
+    """Write a sampler while the caller holds the sampler-file lock."""
+
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    try:
+        with tmp_path.open("wb") as sampler_file:
+            pickle.dump(sampler, sampler_file)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
 def clone_optuna_sampler(sampler):
+    if isinstance(sampler, ParallelOptunaSampler):
+        with sampler.state_lock:
+            return pickle.loads(pickle.dumps(sampler.wrapped_sampler))
     return pickle.loads(pickle.dumps(sampler))
 
 def update_optuna_sampler_after_trial(
