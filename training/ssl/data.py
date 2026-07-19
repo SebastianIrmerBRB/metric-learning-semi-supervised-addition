@@ -40,6 +40,7 @@ class RelabeledSubset(Dataset):
         mapped_labels,
         confidences=None,
         return_indices=False,
+        labeled_count=None,
     ):
         if confidences is None:
             confidences = np.ones(len(positions), dtype=np.float32)
@@ -55,6 +56,20 @@ class RelabeledSubset(Dataset):
         self.labels = [int(label) for label in mapped_labels]
         self.confidences = np.asarray(confidences, dtype=np.float32)
         self.return_indices = bool(return_indices)
+        if labeled_count is None:
+            labeled_count = len(positions)
+        self.labeled_count = int(labeled_count)
+        if not 0 <= self.labeled_count <= len(self.positions):
+            raise ValueError("labeled_count must be between zero and the dataset size")
+        # Relabeling keeps known-label samples first and accepted pseudo-labels
+        # second. Expose that provenance explicitly so two-stream samplers do
+        # not have to infer it from confidence values or predicted labels.
+        self.labeled_indices = np.arange(self.labeled_count, dtype=np.int64)
+        self.unlabeled_indices = np.arange(
+            self.labeled_count,
+            len(self.positions),
+            dtype=np.int64,
+        )
         if not np.all(np.isfinite(self.confidences)):
             raise ValueError("confidences must be finite")
         if np.any((self.confidences < 0) | (self.confidences > 1)):
@@ -242,7 +257,11 @@ class HofferReferenceDataset(Dataset):
 
 
 class CombinedTrainingLoader:
-    """Pair every supervised batch with one regularizer batch."""
+    """Pair a full supervised epoch with a cycling regularizer stream.
+
+    Recreating the regularizer iterator on each wrap also gives shuffled
+    samplers a fresh permutation.
+    """
 
     def __init__(self, supervised_loader, regularizer_loader):
         if len(supervised_loader) == 0:
@@ -337,6 +356,52 @@ def collate_graph_edge_batch(batch):
     )
 
 
+def graph_upper_triangle_edges(adjacency):
+    """Validate an undirected adjacency and return each edge exactly once."""
+
+    adjacency = adjacency.tocsr()
+
+    if adjacency.shape[0] != adjacency.shape[1]:
+        raise ValueError("graph adjacency must be square")
+
+    if adjacency.shape[0] < 2:
+        raise ValueError(
+            "graph regularization requires at least two graph samples"
+        )
+
+    difference = (adjacency - adjacency.T).tocsr()
+    if difference.nnz and not np.allclose(difference.data, 0.0):
+        raise ValueError("graph adjacency must be symmetric")
+
+    diagonal = adjacency.diagonal()
+    assert diagonal.sum() == 0, (
+        "graph adjacency must not contain self-loops"
+    )
+    if np.any(diagonal):
+        raise ValueError("graph adjacency must not contain self-loops")
+
+    coo = adjacency.tocoo()
+    upper = coo.row < coo.col
+    edge_rows = np.asarray(coo.row[upper], dtype=np.int64)
+    edge_cols = np.asarray(coo.col[upper], dtype=np.int64)
+    edge_weights = np.asarray(coo.data[upper], dtype=np.float64)
+
+    if len(edge_rows) == 0:
+        raise ValueError(
+            "graph regularization requires at least one edge"
+        )
+
+    if (
+        not np.all(np.isfinite(edge_weights))
+        or np.any(edge_weights <= 0)
+    ):
+        raise ValueError(
+            "graph edge weights must be finite and positive"
+        )
+
+    return edge_rows, edge_cols, edge_weights
+
+
 class GraphEdgeBatchSampler(torch.utils.data.Sampler):
     """Uniformly batch the undirected graph edges themselves.
 
@@ -356,7 +421,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         seed,
         num_batches=None,
         *,
-        debug=True,
+        debug=False,
         debug_max_batches=1,
         debug_fn=print,
     ):
@@ -375,7 +440,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         if debug_max_batches is not None and debug_max_batches < 0:
             raise ValueError("debug_max_batches must be non-negative or None")
 
-        self.debug = True
+        self.debug = False
         self.debug_max_batches = debug_max_batches
         self.debug_fn = debug_fn
 
@@ -383,39 +448,9 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         self.set_graph(adjacency)
 
     def set_graph(self, adjacency):
-        adjacency = adjacency.tocsr()
-
-        if adjacency.shape[0] != adjacency.shape[1]:
-            raise ValueError("graph adjacency must be square")
-
-        if adjacency.shape[0] < 2:
-            raise ValueError(
-                "graph regularization requires at least two graph samples"
-            )
-
-        difference = (adjacency - adjacency.T).tocsr()
-        if difference.nnz and not np.allclose(difference.data, 0.0):
-            raise ValueError("graph adjacency must be symmetric")
-
-        coo = adjacency.tocoo()
-        upper = coo.row < coo.col
-
-        edge_rows = np.asarray(coo.row[upper], dtype=np.int64)
-        edge_cols = np.asarray(coo.col[upper], dtype=np.int64)
-        edge_weights = np.asarray(coo.data[upper], dtype=np.float64)
-
-        if len(edge_rows) == 0:
-            raise ValueError(
-                "graph regularization requires at least one edge"
-            )
-
-        if (
-            not np.all(np.isfinite(edge_weights))
-            or np.any(edge_weights <= 0)
-        ):
-            raise ValueError(
-                "graph edge weights must be finite and positive"
-            )
+        edge_rows, edge_cols, edge_weights = graph_upper_triangle_edges(
+            adjacency
+        )
 
         self.edge_rows = torch.as_tensor(
             edge_rows,

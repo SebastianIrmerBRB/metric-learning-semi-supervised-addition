@@ -11,6 +11,10 @@ scikit-learn
 torch
 torchvision
 tqdm
-faiss-cpu
+# The CUDA wheel also contains CPU indexes for runtime fallback. PyPI currently
+# publishes it for Linux x86-64; keep development on other platforms working.
+faiss-gpu; sys_platform == "linux" and platform_machine == "x86_64"
+faiss-cpu; sys_platform != "linux" or platform_machine != "x86_64"
 tensorboard
 optuna
+scikit-sparse

@@ -7,6 +7,8 @@ import numpy as np
 from loguru import logger
 from scipy import sparse
 
+import utils
+
 from .config import GraphDiagnosticsRequest
 
 
@@ -263,6 +265,15 @@ def project_graph_embeddings_2d(embeddings, layout="pacmap", seed=0):
             )
         except Exception as exc:
             logger.warning(f"PaCMAP graph projection failed; falling back to PCA: {exc}")
+    elif layout == "tsne" and len(embeddings) >= 2:
+        try:
+            coordinates = utils.project_tsne_embeddings(
+                embeddings,
+                seed=seed,
+            ).astype(np.float64, copy=False)
+            return coordinates, "t-SNE"
+        except Exception as exc:
+            logger.warning(f"t-SNE graph projection failed; falling back to PCA: {exc}")
 
     centered = embeddings - embeddings.mean(axis=0, keepdims=True)
     if embeddings.shape[1] == 1:

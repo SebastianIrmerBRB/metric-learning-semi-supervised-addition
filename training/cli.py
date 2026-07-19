@@ -22,7 +22,12 @@ DEFAULT_DATA_SPLIT_SEED = 7
 DEFAULT_SUPPORT_SEED = semi_supervised.DEFAULT_SUPPORT_SEED
 FINAL_TEST_VISUALIZATION_NONE = "none"
 FINAL_TEST_VISUALIZATION_PACMAP = "pacmap"
-FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, FINAL_TEST_VISUALIZATION_PACMAP)
+FINAL_TEST_VISUALIZATION_TSNE = "tsne"
+FINAL_TEST_VISUALIZATION_MODES = (
+    FINAL_TEST_VISUALIZATION_NONE,
+    FINAL_TEST_VISUALIZATION_PACMAP,
+    FINAL_TEST_VISUALIZATION_TSNE,
+)
 STUDY_DIR_MODE_FINAL_TRAIN = "final_train"
 STUDY_DIR_MODE_TRAIN_VAL = "train_val"
 STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL = "cross_seed_train_val"
@@ -73,7 +78,7 @@ parser.add_argument(
     "--experiment_config",
     "--experiment-config",
     type=Path,
-    default=None,
+    default="configs/experiments/class/cars196_testing_all.json",
     help=(
         "top-level JSON config containing CLI argument values. "
         "Explicit CLI arguments override values from this file."
@@ -82,6 +87,17 @@ parser.add_argument(
 parser.add_argument("--batch_size", type=int, default=16, help="batch size")
 parser.add_argument("--lr", type=float, default=1e-6, help="LR")
 parser.add_argument("--classifier_lr", type=float, default=1.0, help="classifier LR (only for classification losses)")
+parser.add_argument(
+    "--weight_decay",
+    "--weight-decay",
+    dest="weight_decay",
+    type=float,
+    default=0.0,
+    help=(
+        "weight decay for the model optimizer and any classification-loss optimizer; "
+        "0 disables weight decay"
+    ),
+)
 parser.add_argument("--sampler_m", type=int, default=4, help="M value for MPerClassSampler")
 parser.add_argument(
     "--length_before_new_iter",
@@ -260,7 +276,7 @@ parser.add_argument(
     choices=SELECTION_METRICS,
     help="validation metric used for checkpoint selection and early stopping",
 )
-parser.add_argument("--num_workers", type=int, default=8, help="DataLoader worker count for training/evaluation")
+parser.add_argument("--num_workers", type=int, default=0, help="DataLoader worker count for training/evaluation")
 parser.add_argument(
     "--dataloader_start_method",
     type=str,
@@ -440,7 +456,7 @@ parser.add_argument(
     "--final-test-study-dir-mode",
     dest="study_dir_mode",
     choices=STUDY_DIR_MODES,
-    default=STUDY_DIR_MODE_TRAIN_VAL,
+    default=STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
     help=(
         "how to replay an existing HPO study: final_train trains once on the full development set "
         "and evaluates D_test; train_val ranks selected trials on one validation split and then fully "
@@ -509,7 +525,7 @@ parser.add_argument(
 parser.add_argument(
     "--save_dir",
     type=Path,
-    default="test",
+    default="logs",
     help="name of directory in which to save the logs, under logs/save_dir",
 )
 
@@ -592,7 +608,7 @@ def get_experiment_config_path(argv=None):
         "--experiment_config",
         "--experiment-config",
         type=Path,
-        default=parser.get_default("experiment_config"),
+        default="configs/experiments/class/cars_faiss_label_spreading.json",
     )
     config_args, _ = config_parser.parse_known_args(argv)
     return config_args.experiment_config

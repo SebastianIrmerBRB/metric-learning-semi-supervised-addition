@@ -19,7 +19,7 @@ PSEUDO_LABEL_DIAGNOSTICS_MODES = {"off", "log", "save"}
 GRAPH_DIAGNOSTICS_MODES = {"off", "save"}
 
 
-GRAPH_DIAGNOSTICS_LAYOUTS = {"pacmap", "pca"}
+GRAPH_DIAGNOSTICS_LAYOUTS = {"pacmap", "tsne", "pca"}
 
 
 LABEL_SAMPLING_MODES = {
@@ -51,6 +51,7 @@ class SemiSupervisedConfig:
     seed: int | None = None
     support_seed: int | None = DEFAULT_SUPPORT_SEED
     confidence_threshold: float = 0.0
+    labeled_batch_size: int | None = None
     pseudo_label_diagnostics_mode: str = "save"
     graph_diagnostics_mode: str = "off"
     graph_diagnostics_max_nodes: int = 400

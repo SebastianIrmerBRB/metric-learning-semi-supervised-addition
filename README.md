@@ -41,6 +41,7 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 - Long-tailed CIFAR generation: [docs/cifar_long_tail.md](docs/cifar_long_tail.md)
 - Semi-supervised FixMatch training: [docs/semi_supervised_fixmatch.md](docs/semi_supervised_fixmatch.md)
 - Semi-supervised sklearn graph baselines: [docs/semi_supervised_sklearn.md](docs/semi_supervised_sklearn.md)
+- LP-DeepSSL / Iscen label spreading: [docs/iscen_label_spreading.md](docs/iscen_label_spreading.md)
 - Deep mixed label propagation: [docs/mixed_label_propagation.md](docs/mixed_label_propagation.md)
 - STML with supervised warm-up: [docs/stml.md](docs/stml.md)
 - Example config values: [docs/example_config.yaml](docs/example_config.yaml)

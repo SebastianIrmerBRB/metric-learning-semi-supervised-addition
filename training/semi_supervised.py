@@ -11,16 +11,13 @@ dataset, not indices in the original source dataset.
 """
 
 import copy
-import csv
 import json
 import math
 import time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, Optional
 
 from scipy import sparse
-from scipy.sparse import linalg as sparse_linalg
 
 import numpy as np
 import torch
@@ -29,9 +26,7 @@ from loguru import logger
 from sklearn.semi_supervised import LabelPropagation, LabelSpreading
 
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, Subset
-
-from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 import utils
 from losses import metric_losses
@@ -39,20 +34,20 @@ from losses import metric_losses
 from .ssl.algorithms import (
     build_lrml_knn_graph,
     build_slrml_graph,
-    build_slrml_supervised_graph,
-    entropy_confidence,
+    entropy_confidence as entropy_confidence,
+    faiss_flat_ip_search,
     faiss_label_spreading as _faiss_label_spreading,
-    induced_subgraph_edges,
+    iscen_label_spreading as _iscen_label_spreading,
     majority_vote,
-    make_dissimilarity_affinity,
-    make_mixed_label_affinity,
+    make_dissimilarity_affinity as make_dissimilarity_affinity,
+    make_mixed_label_affinity as make_mixed_label_affinity,
     make_slrml_graph_labels,
     mixed_label_propagation as _mixed_label_propagation,
-    normalize_label_spreading_rows,
-    normalize_mixed_label_rows,
-    solve_sparse_label_system,
-    solve_sparse_label_system_cholmod,
-    stable_softmax,
+    normalize_mixed_label_rows as normalize_mixed_label_rows,
+    require_faiss,
+    solve_iscen_label_system as solve_iscen_label_system,
+    solve_sparse_label_system as solve_sparse_label_system,
+    solve_sparse_label_system_cholmod as solve_sparse_label_system_cholmod,
 )
 from .ssl.config import (
     DEFAULT_SUPPORT_SEED,
@@ -63,10 +58,10 @@ from .ssl.config import (
     PSEUDO_LABEL_DIAGNOSTICS_MODES,
     UNLABELED_TARGET,
     UPDATE_MODES,
-    GraphDiagnosticsRequest,
+    GraphDiagnosticsRequest as GraphDiagnosticsRequest,
     PseudoLabelResult,
     SemiSupervisedConfig,
-    SemiSupervisedSplit,
+    SemiSupervisedSplit as SemiSupervisedSplit,
     should_rebuild_on_epoch,
 )
 from .ssl.data import (
@@ -75,57 +70,32 @@ from .ssl.data import (
     HofferReferenceBatchSampler,
     HofferReferenceDataset,
     LRMLGraphDataset,
-    RelabeledSubset,
     UnlabeledSubset,
     collate_graph_edge_batch,
+    graph_upper_triangle_edges,
 )
 from .ssl.embeddings import (
     extract_embeddings,
     make_embedding_loader,
-    make_feature_dataset,
-    set_nested_transform,
 )
 from .ssl.graph_diagnostics import (
-    choose_graph_diagnostic_nodes,
     dataset_labels_for_positions,
-    graph_node_kind,
     make_graph_diagnostics_request,
     maybe_save_graph_diagnostics,
-    project_graph_embeddings_2d,
-    sample_graph_diagnostic_edges,
-    save_graph_diagnostics,
-    scatter_graph_nodes,
-    write_graph_edge_csv,
+    project_graph_embeddings_2d as project_graph_embeddings_2d,
+    save_graph_diagnostics as save_graph_diagnostics,
 )
 from .ssl.interfaces import BaseSemiSupervisedMethod, BaseTrainingRegularizer
 from .ssl.simmatch_v2 import SimMatchV2Regularizer
 from .ssl.pseudo_labels import (
     PseudoLabelDiagnosticsTracker,
-    _average_ranks,
-    confidence_correctness_diagnostics,
-    count_values,
     filter_pseudo_labels,
-    format_change_summary,
-    format_optional_metric,
     make_relabeled_training_dataset,
-    pseudo_labels_to_position_map,
     summarize_numeric_values,
-    summarize_pseudo_label_changes,
-    summarize_pseudo_label_result,
 )
 from .ssl.sampling import (
-    concatenate_position_groups,
-    make_permuted_positions_by_label,
     make_semi_supervised_split,
-    per_class_min_count,
-    select_class_subset_k_shot_labeled_positions,
-    select_class_subset_labeled_positions,
-    select_global_budget_labeled_positions,
-    select_labeled_positions,
-    select_per_class_imbalanced_labeled_positions,
-    select_per_class_min_labeled_positions,
 )
-
 
 def _sync_timing_device(device):
     if torch.device(device).type == "cuda":
@@ -176,13 +146,20 @@ def _graph_edge_batch(adjacency, node_ids, edge_indices=None):
     return left_indices, right_indices, weights
 
 
-def _reduce_sampled_graph_energy(energy, sampled_edges, graph_edges, graph_weight, reduction):
+def _reduce_sampled_graph_energy(
+    energy,
+    sampled_edges,
+    graph_edges,
+    graph_weight,
+    reduction,
+):
     """Scale a uniform edge mini-batch to an unbiased graph objective estimate."""
-
-    scale = float(graph_edges) / float(sampled_edges)
+    # FIXME: if we don't use LRML, this might not work as intended.
+    # Maybe follow edge weight like in https://www.jmlr.org/papers/v7/belkin06a.html
+    # this might make sense, because then
     if reduction == "mean":
-        scale /= float(graph_weight)
-    return energy * scale
+        return energy / float(sampled_edges)
+    return energy * float(graph_edges) / float(sampled_edges)
 
 
 def faiss_label_spreading(*args, **kwargs):
@@ -190,6 +167,13 @@ def faiss_label_spreading(*args, **kwargs):
 
     kwargs.setdefault("_dependencies", globals())
     return _faiss_label_spreading(*args, **kwargs)
+
+
+def iscen_label_spreading(*args, **kwargs):
+    """Call LP-DeepSSL with facade-level helper overrides."""
+
+    kwargs.setdefault("_dependencies", globals())
+    return _iscen_label_spreading(*args, **kwargs)
 
 
 def mixed_label_propagation(*args, **kwargs):
@@ -223,6 +207,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
     """
 
     name = "lrml"
+    supports_frozen_feature_precompute = True
 
     DEFAULT_PARAMS = {
         "n_neighbors": 6,             # paper uses 6 nearest neighbors
@@ -283,7 +268,10 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         positions = np.unique(np.asarray(positions, dtype=np.int64))  # sorted + deterministic
         if len(positions) < 2:
             raise ValueError("LRML regularization requires at least two graph samples")
-        utils.shutdown_dataloaders(self._regularizer_loader)
+        utils.shutdown_dataloaders(
+            self._regularizer_loader,
+            self._embedding_loader,
+        )
         self.graph_positions = positions
         self.graph_known_mask = np.isin(positions, np.asarray(split.labeled_positions, dtype=np.int64))
         regularizer_dataset = self.make_regularizer_source_dataset(train_dataset, use_cache=use_cache)
@@ -298,6 +286,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self._regularizer_sampler = None
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
+        self._embedding_loader = None
         return self.dataset
 
     def make_loader(
@@ -313,6 +302,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             and self.adjacency is not None
             and self.degrees is not None
             and self.node_scale is not None
+            and self.graph_edge_count is not None
+            and self.graph_weight_sum is not None
         )
         should_rebuild_graph = not has_cached_graph or should_rebuild_on_epoch(
             config.update_mode,
@@ -324,7 +315,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             self.node_scale = self.node_scale.to(device)
             logger.info(
                 "Reusing LRML graph: "
-                f"{self.adjacency.shape[0]} nodes, {self.adjacency.nnz // 2} undirected edges, "
+                f"{self.adjacency.shape[0]} nodes, {self.graph_edge_count} undirected edges, "
                 f"mean_degree={float(self.degrees.mean()):.2f}, "
                 f"normalized_laplacian={self.normalized_laplacian}"
             )
@@ -334,7 +325,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                     train_dataset, self.graph_positions,
                     config.embedding_batch_size, config.embedding_num_workers, seed, start_method,
                 )
-
             embeddings = extract_embeddings(
                 model=model,
                 dataset=train_dataset,
@@ -346,11 +336,43 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 start_method=start_method,
                 desc=f"LRML graph embeddings - epoch {epoch}",
                 embedding_kind="default",
-                loader=self._embedding_loader
+                loader=self._embedding_loader,
             )
+
+            embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
+
+            norms = np.linalg.norm(embeddings, axis=1)
+            deviations = np.abs(norms - 1.0)
+
+            print(
+                "LRML embedding norms: "
+                f"min={norms.min():.9f}, "
+                f"mean={norms.mean():.9f}, "
+                f"max={norms.max():.9f}, "
+                f"max_abs_deviation={deviations.max():.3e}, "
+                f"normalized={np.allclose(norms, 1.0, rtol=1e-4, atol=1e-5)}"
+            )
+
+            if not np.all(np.isfinite(norms)):
+                raise ValueError("LRML embeddings have non-finite norms")
+
+            if np.any(norms <= 1e-12):
+                bad = np.flatnonzero(norms <= 1e-12)
+                raise ValueError(
+                    "LRML embeddings contain zero-norm vectors at indices "
+                    f"{bad[:10].tolist()}"
+                )
+
+            if not np.allclose(norms, 1.0, rtol=1e-4, atol=1e-5):
+                raise ValueError(
+                    "IndexFlatIP requires L2-normalized LRML embeddings; "
+                    f"observed norm range [{norms.min():.9f}, {norms.max():.9f}]"
+                )
             neighbor_indices, adjacency, degrees = build_lrml_knn_graph(
-                embeddings, n_neighbors=self.n_neighbors,
+                embeddings,
+                n_neighbors=self.n_neighbors,
             )
+            edge_rows, _, edge_weights = graph_upper_triangle_edges(adjacency)
             maybe_save_graph_diagnostics(
                 request=make_graph_diagnostics_request(
                     config=config,
@@ -368,8 +390,8 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             self.neighbor_indices = neighbor_indices
             self.adjacency = adjacency
             self.degrees = degrees
-            self.graph_edge_count = int(adjacency.nnz // 2)
-            self.graph_weight_sum = float(adjacency.sum() / 2.0)
+            self.graph_edge_count = int(len(edge_rows))
+            self.graph_weight_sum = float(edge_weights.sum())
             self._last_graph_rebuild_epoch = None if epoch is None else int(epoch)
             scale = (
                 1.0 / np.sqrt(np.maximum(degrees, 1.0))
@@ -379,7 +401,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             self.node_scale = torch.as_tensor(scale, dtype=torch.float32, device=device)
             logger.info(
                 "Built LRML graph: "
-                f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected edges, "
+                f"{adjacency.shape[0]} nodes, {self.graph_edge_count} undirected edges, "
                 f"mean_degree={float(degrees.mean()):.2f}, "
                 f"normalized_laplacian={self.normalized_laplacian}"
             )
@@ -445,16 +467,16 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         # Fold the per-node 1/sqrt(deg) factor in: normalized-Laplacian energy equals
         # the unnormalized energy on degree-scaled embeddings.
         scaled = embeddings * self.node_scale[node_ids.to(device)][:, None]
-
         left_indices, right_indices, weights = _graph_edge_batch(
             self.adjacency, node_ids, edge_indices
         )
-        edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device)
+        # edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device) # this is super not needed at all, because weight is always 1.
         differences = (
             scaled[left_indices.to(device)] - scaled[right_indices.to(device)]
         )
         squared_distances = (differences * differences).sum(dim=1)
-        energy = (edge_weight * squared_distances).sum()
+        energy = squared_distances.sum() # edge_weight *
+
         return _reduce_sampled_graph_energy(
             energy=energy,
             sampled_edges=len(weights),
@@ -483,6 +505,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
     """
 
     name = "slrml"
+    supports_frozen_feature_precompute = True
 
     DEFAULT_PARAMS = {
         "n_neighbors": 6,
@@ -536,7 +559,10 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
         )
         if len(positions) < 2:
             raise ValueError("SLRML regularization requires at least two graph samples")
-        utils.shutdown_dataloaders(self._regularizer_loader)
+        utils.shutdown_dataloaders(
+            self._regularizer_loader,
+            self._embedding_loader,
+        )
         self.graph_positions = positions
         self.graph_known_mask = np.isin(
             positions, np.asarray(split.labeled_positions, dtype=np.int64)
@@ -570,7 +596,12 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
         if self.dataset is None or self.graph_positions is None:
             raise RuntimeError("build_dataset must be called before make_loader")
 
-        has_cached_graph = self.adjacency is not None and self.degrees is not None
+        has_cached_graph = (
+            self.adjacency is not None
+            and self.degrees is not None
+            and self.graph_edge_count is not None
+            and self.graph_weight_sum is not None
+        )
         should_rebuild_graph = not has_cached_graph or should_rebuild_on_epoch(
             config.update_mode,
             config.update_interval_epochs,
@@ -611,6 +642,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
                 labels=self.graph_labels,
                 include_supervised_graph=self.include_supervised_graph,
             )
+            edge_rows, _, edge_weights = graph_upper_triangle_edges(adjacency)
             graph_seconds = time.perf_counter() - graph_start
             maybe_save_graph_diagnostics(
                 request=make_graph_diagnostics_request(
@@ -629,8 +661,8 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
             self.adjacency = adjacency
             self.degrees = degrees
             self.positive_pair_count = positive_pair_count
-            self.graph_edge_count = int(adjacency.nnz // 2)
-            self.graph_weight_sum = float(adjacency.sum() / 2.0)
+            self.graph_edge_count = int(len(edge_rows))
+            self.graph_weight_sum = float(edge_weights.sum())
             self._last_graph_rebuild_epoch = None if epoch is None else int(epoch)
         else:
             adjacency = self.adjacency
@@ -638,7 +670,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
             positive_pair_count = self.positive_pair_count
             logger.info(
                 "Reusing SLRML graph: "
-                f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected weighted edges, "
+                f"{adjacency.shape[0]} nodes, {self.graph_edge_count} undirected weighted edges, "
                 f"mean_degree={float(degrees.mean()):.4f}, "
                 f"positive_pairs={positive_pair_count}, "
                 f"n_neighbors={self.n_neighbors}"
@@ -691,7 +723,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
         if should_rebuild_graph:
             logger.info(
                 "Built SLRML graph: "
-                f"{adjacency.shape[0]} nodes, {adjacency.nnz // 2} undirected weighted edges, "
+                f"{adjacency.shape[0]} nodes, {self.graph_edge_count} undirected weighted edges, "
                 f"mean_degree={float(degrees.mean()):.4f}, "
                 f"positive_pairs={positive_pair_count}, "
                 f"n_neighbors={self.n_neighbors}, "
@@ -725,7 +757,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
         _record_timing(timings, "slrml_edge_lookup", t0, device)
 
         t0 = _timing_start(device, timings)
-        edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device)
+        edge_weight = torch.as_tensor(weights, dtype=embeddings.dtype, device=device) #
         _record_timing(timings, "slrml_tensor_prep", t0, device)
 
         t0 = _timing_start(device, timings)
@@ -915,11 +947,12 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
     """
 
     name = "seraph_entropy"
+    supports_frozen_feature_precompute = True
     uses_joint_forward = True
 
     DEFAULT_PARAMS = {
-        "temperature": 0.25,
-        "eta_mode": "batch",
+        "temperature": 0.1,
+        "eta_mode": "fixed",
         "eta": 1.0,
         "unlabeled_ratio": 1.0,
         "unlabeled_batch_size": None,
@@ -1062,9 +1095,26 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
 
     @staticmethod
     def _upper_triangle_squared_distances(embeddings):
+        """Squared distances between distinct L2-normalized embedding rows."""
+
         if len(embeddings) < 2:
             return embeddings.new_empty((0,))
-        return torch.pdist(embeddings, p=2).pow(2)
+        pair_indices = torch.triu_indices(
+            len(embeddings),
+            len(embeddings),
+            offset=1,
+            device=embeddings.device,
+        )
+        similarities = embeddings @ embeddings.T
+        squared_distances = 2.0 - 2.0 * similarities
+        return squared_distances[pair_indices[0], pair_indices[1]]
+
+    @staticmethod
+    def _cross_squared_distances(left_embeddings, right_embeddings):
+        """Squared distances across two sets of L2-normalized embedding rows."""
+
+        similarities = left_embeddings @ right_embeddings.T
+        return (2.0 - 2.0 * similarities).reshape(-1)
 
     def _batch_eta(
         self,
@@ -1332,16 +1382,14 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 }
             )
 
-        active_block_count = sum(
-            block["selected_count"] > 0 for block in block_values
-        )
+        total_selected_count = sum(block["selected_count"] for block in block_values)
         loss_pairs = []
         loss_blocks = []
         for block in block_values:
             selected_count = block["selected_count"]
             block_weight = (
-                1.0 / float(active_block_count)
-                if selected_count > 0 and active_block_count > 0
+                float(selected_count) / float(total_selected_count)
+                if selected_count > 0 and total_selected_count > 0
                 else 0.0
             )
             mean_selected_entropy = (
@@ -1374,8 +1422,8 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 entropies,
             ):
                 contribution = (
-                    float(entropy) * block_weight / float(selected_count)
-                    if selected and selected_count > 0
+                    float(entropy) / float(total_selected_count)
+                    if selected and total_selected_count > 0
                     else 0.0
                 )
                 loss_pairs.append(
@@ -1522,7 +1570,7 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         all_lu_distances = unlabeled.new_empty((0,))
         selected_lu_distances = unlabeled.new_empty((0,))
         if self.include_labeled_unlabeled:
-            all_lu_distances = torch.cdist(labeled, unlabeled, p=2).pow(2).reshape(-1)
+            all_lu_distances = self._cross_squared_distances(labeled, unlabeled)
             selected_lu_distances = self._select_pairs(all_lu_distances, eta)
         if self.collect_batch_diagnostics:
             self._last_diagnostics = self._pair_diagnostics(
@@ -1559,12 +1607,12 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             _record_timing(timings, "seraph_entropy", t0, device)
             return regularizer_embeddings.sum() * 0.0
 
-        block_entropies = []
-        for pair_block in nonempty_pair_blocks:
-            logits = (eta - pair_block.float()) / self.temperature
-            entropy, _ = self._pair_label_entropy_from_logits(logits)
-            block_entropies.append(entropy.mean())
-        loss = torch.stack(block_entropies).mean()
+        # Pool first so every selected UU or LU pair receives identical weight.
+        selected_distances = torch.cat(nonempty_pair_blocks)
+        logits = (eta - selected_distances.float()) / self.temperature
+        entropy, _ = self._pair_label_entropy_from_logits(logits)
+        loss = entropy.mean()
+        sum_loss = entropy.sum()
         _record_timing(timings, "seraph_entropy", t0, device)
         return loss
 
@@ -1625,6 +1673,7 @@ class HofferEntropyRegularizer(BaseTrainingRegularizer):
     """
 
     name = "hoffer_entropy"
+    supports_frozen_feature_precompute = True
 
     DEFAULT_PARAMS = {
         "distance_scale": 1.0,
@@ -1999,10 +2048,7 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         if n_neighbors <= 0:
             raise ValueError(f"{self.name} n_neighbors must be positive")
 
-        try:
-            import faiss
-        except ImportError as exc:
-            raise ImportError(f"{self.name} requires the faiss-cpu package") from exc
+        faiss = require_faiss(self.name)
 
         # FAISS cannot retrieve more labeled neighbors than exist.
         k = min(n_neighbors, len(split.labeled_positions))
@@ -2044,11 +2090,15 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
 
         # IndexFlatIP performs exact inner-product search. After normalization,
         # the returned similarity is cosine similarity.
-        index = faiss.IndexFlatIP(labeled_embeddings.shape[1])
-        index.add(labeled_embeddings)
         # neighbor_indices has shape [num_unlabeled, k] and contains row offsets
         # into labeled_embeddings/labeled_targets.
-        similarities, neighbor_indices = index.search(unlabeled_embeddings, k)
+        similarities, neighbor_indices = faiss_flat_ip_search(
+            database=labeled_embeddings,
+            queries=unlabeled_embeddings,
+            k=k,
+            purpose=self.name,
+            faiss_module=faiss,
+        )
         request = make_graph_diagnostics_request(
             config=config,
             log_dir=log_dir,
@@ -2194,6 +2244,108 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         )
 
     
+class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
+    """LP-DeepSSL label propagation from Iscen et al., CVPR 2019."""
+
+    DEFAULT_PARAMS = {
+        "n_neighbors": 50,
+        "gamma": 3.0,
+        "alpha": 0.99,
+        "cg_rtol": 1e-6,
+        "cg_max_iter": 20,
+    }
+
+    def __init__(self, name="iscen_label_spreading"):
+        self.name = name
+
+    def validate_config(self, config, source=""):
+        params = dict(self.DEFAULT_PARAMS)
+        params.update(config.method_params)
+        try:
+            validate_iscen_label_spreading_params(params)
+        except ValueError as exc:
+            raise ValueError(f"Invalid {self.name} configuration{source}: {exc}") from exc
+
+    def generate_pseudo_labels(
+        self,
+        model,
+        train_dataset,
+        split,
+        device,
+        config,
+        epoch=None,
+        start_method="spawn",
+        log_dir=None,
+    ):
+        if len(split.unlabeled_positions) == 0:
+            return PseudoLabelResult(
+                positions=np.array([], dtype=np.int64),
+                mapped_labels=np.array([], dtype=np.int64),
+                confidences=np.array([], dtype=np.float32),
+            )
+        if len(split.labeled_positions) == 0:
+            raise ValueError(f"{self.name} requires at least one labeled sample")
+
+        params = dict(self.DEFAULT_PARAMS)
+        params.update(config.method_params)
+        validate_iscen_label_spreading_params(params)
+        logger.info(f"Running {self.name} with params: {params}")
+
+        # The common graph-method ordering contract makes the unlabeled output
+        # a direct suffix slice after propagation.
+        ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
+        features = extract_embeddings(
+            model=model,
+            dataset=train_dataset,
+            positions=ssl_positions,
+            device=device,
+            batch_size=config.embedding_batch_size,
+            num_workers=0,
+            seed=config.seed if epoch is None else config.seed + epoch,
+            start_method=start_method,
+            desc=f"{self.name} embeddings",
+        )
+
+        labels = np.asarray(train_dataset.labels, dtype=np.int64)
+        targets = np.concatenate(
+            [
+                labels[split.labeled_positions],
+                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
+            ]
+        )
+        probabilities, confidences = iscen_label_spreading(
+            features=features,
+            targets=targets,
+            num_classes=int(labels.max()) + 1,
+            graph_diagnostics={
+                "request": make_graph_diagnostics_request(
+                    config=config,
+                    log_dir=log_dir,
+                    name=f"{self.name}_affinity",
+                    epoch=epoch,
+                    title=f"{self.name} LP-DeepSSL affinity graph",
+                ),
+                "positions": ssl_positions,
+                "labels": labels[ssl_positions],
+                "known_mask": targets != UNLABELED_TARGET,
+            },
+            **params,
+        )
+        unlabeled_start = len(split.labeled_positions)
+        unlabeled_probabilities = probabilities[unlabeled_start:]
+        pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
+        unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
+        logger.info(
+            f"{self.name} entropy-certainty distribution: "
+            f"{summarize_numeric_values(unlabeled_confidences)}"
+        )
+        return PseudoLabelResult(
+            positions=split.unlabeled_positions,
+            mapped_labels=pseudo_labels,
+            confidences=unlabeled_confidences,
+        )
+
+
 class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
     """Sparse mixed label propagation from Zhuang and Moulin, CVPR 2023."""
 
@@ -2322,6 +2474,22 @@ def validate_faiss_label_spreading_params(params):
         raise ValueError("faiss_label_spreading linear_solver must be one of ['auto', 'cholmod', 'cg']")
 
 
+def validate_iscen_label_spreading_params(params):
+    unknown = sorted(set(params) - set(IscenLabelSpreadingPseudoLabeler.DEFAULT_PARAMS))
+    if unknown:
+        raise ValueError(f"Unknown iscen_label_spreading params: {unknown}")
+    if int(params["n_neighbors"]) <= 0:
+        raise ValueError("iscen_label_spreading n_neighbors must be positive")
+    for name in ("gamma", "cg_rtol"):
+        if not np.isfinite(float(params[name])) or float(params[name]) <= 0:
+            raise ValueError(f"iscen_label_spreading {name} must be positive")
+    alpha = float(params["alpha"])
+    if not np.isfinite(alpha) or not (0.0 < alpha < 1.0):
+        raise ValueError("iscen_label_spreading alpha must be in (0, 1)")
+    if int(params["cg_max_iter"]) <= 0:
+        raise ValueError("iscen_label_spreading cg_max_iter must be positive")
+
+
 REGULARIZER_REGISTRY = {
     "stml": STMLRegularizer,
     "lrml": LRMLRegularizer,
@@ -2348,6 +2516,7 @@ METHOD_REGISTRY = {
         default_params={"kernel": "knn", "n_neighbors": 10, "max_iter": 30},
     ),
     "faiss_label_spreading": FaissLabelSpreadingPseudoLabeler(),
+    "iscen_label_spreading": IscenLabelSpreadingPseudoLabeler(),
     "mixed_label_propagation": MixedLabelPropagationPseudoLabeler(),
     # Generic composition point for supervised loss + unlabeled regularizer.
     "regularized": RegularizedSemiSupervisedMethod(name="regularized"),
@@ -2449,6 +2618,19 @@ def validate_ssl_config(config, path=None):
         raise ValueError(f"class_subset_k_shot requires labeled_per_class to set k-shot{source}")
     if not (0 <= config.confidence_threshold <= 1):
         raise ValueError(f"confidence_threshold must be in [0, 1]{source}")
+    if config.labeled_batch_size is not None:
+        if isinstance(config.labeled_batch_size, bool) or not isinstance(
+            config.labeled_batch_size,
+            (int, np.integer),
+        ):
+            raise ValueError(f"labeled_batch_size must be an integer or null{source}")
+        if config.labeled_batch_size <= 0:
+            raise ValueError(f"labeled_batch_size must be positive when set{source}")
+        if config.method != "iscen_label_spreading":
+            raise ValueError(
+                "labeled_batch_size currently enables TwoStreamMPerClassBatchSampler only for "
+                f"method='iscen_label_spreading'{source}"
+            )
     if config.pseudo_label_diagnostics_mode not in PSEUDO_LABEL_DIAGNOSTICS_MODES:
         raise ValueError(
             f"pseudo_label_diagnostics_mode must be one of {sorted(PSEUDO_LABEL_DIAGNOSTICS_MODES)}{source}"

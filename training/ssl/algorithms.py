@@ -10,12 +10,103 @@ from .config import UNLABELED_TARGET
 from .graph_diagnostics import maybe_save_graph_diagnostics
 
 
+FAISS_GPU_MAX_K = 2048
+
+
 def _dependency(overrides, name, default):
     """Resolve a helper supplied by the orchestration façade, if any."""
 
     if overrides is None:
         return default
     return overrides.get(name, default)
+
+
+def require_faiss(purpose):
+    """Import a FAISS build with an actionable package hint on failure."""
+
+    try:
+        import faiss
+    except (ImportError, OSError) as exc:
+        raise ImportError(
+            f"{purpose} requires FAISS; install faiss-gpu-cu12 on a supported "
+            "CUDA 12 host or faiss-cpu on a CPU-only host"
+        ) from exc
+    return faiss
+
+
+def _faiss_gpu_device_id(faiss, purpose):
+    """Return the active FAISS GPU ID, or ``None`` for a CPU-only build/host."""
+
+    gpu_api = ("get_num_gpus", "StandardGpuResources", "index_cpu_to_gpu")
+    if not all(hasattr(faiss, name) for name in gpu_api):
+        return None
+    try:
+        gpu_count = int(faiss.get_num_gpus())
+    except Exception as exc:
+        logger.warning(f"{purpose}: FAISS GPU discovery failed ({exc}); using CPU")
+        return None
+    if gpu_count <= 0:
+        return None
+
+    # Follow the CUDA device selected by the training process. CUDA_VISIBLE_DEVICES
+    # remaps both PyTorch and FAISS device IDs, so this also behaves correctly in
+    # the usual one-process-per-GPU distributed setup.
+    try:
+        if torch.cuda.is_available():
+            device_id = int(torch.cuda.current_device())
+            if 0 <= device_id < gpu_count:
+                return device_id
+    except Exception as exc:
+        logger.debug(f"{purpose}: could not read PyTorch's active CUDA device ({exc})")
+    return 0
+
+
+def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None):
+    """Run exact inner-product search on GPU whenever FAISS supports it.
+
+    ``faiss-gpu-cu12`` contains the CPU indexes too, which makes the CPU retry
+    usable when CUDA is unavailable or a GPU allocation/search fails. GPU FAISS
+    only supports ``k <= 2048``, so larger exact searches stay on the CPU.
+    """
+
+    database = np.ascontiguousarray(database, dtype=np.float32)
+    queries = np.ascontiguousarray(queries, dtype=np.float32)
+    if database.ndim != 2 or database.shape[1] == 0 or len(database) == 0:
+        raise ValueError("FAISS database must be a non-empty feature matrix")
+    if queries.ndim != 2 or queries.shape[1] != database.shape[1]:
+        raise ValueError("FAISS queries must be a feature matrix matching the database")
+    k = int(k)
+    if k <= 0 or k > len(database):
+        raise ValueError("FAISS k must be positive and no larger than the database")
+
+    faiss = require_faiss(purpose) if faiss_module is None else faiss_module
+    cpu_index = faiss.IndexFlatIP(database.shape[1])
+    gpu_device_id = _faiss_gpu_device_id(faiss, purpose)
+    if gpu_device_id is not None and k <= FAISS_GPU_MAX_K:
+        try:
+            # Keep resources alive until search has copied its results back to
+            # host memory. GPU indexes do not own StandardGpuResources.
+            gpu_resources = faiss.StandardGpuResources()
+            gpu_index = faiss.index_cpu_to_gpu(gpu_resources, gpu_device_id, cpu_index)
+            gpu_index.add(database)
+            results = gpu_index.search(queries, k)
+            logger.debug(
+                f"{purpose}: used FAISS GPU IndexFlatIP on CUDA device {gpu_device_id}"
+            )
+            return results
+        except Exception as exc:
+            logger.warning(
+                f"{purpose}: FAISS GPU search failed on CUDA device {gpu_device_id} "
+                f"({exc}); retrying on CPU"
+            )
+    elif gpu_device_id is not None:
+        logger.debug(
+            f"{purpose}: requested k={k} exceeds the FAISS GPU limit "
+            f"of {FAISS_GPU_MAX_K}; using CPU"
+        )
+
+    cpu_index.add(database)
+    return cpu_index.search(queries, k)
 
 
 def faiss_label_spreading(
@@ -98,6 +189,129 @@ def faiss_label_spreading(
         normalize_label_spreading_rows,
     )(scores)
     confidences = probabilities.max(axis=1)
+    return probabilities.astype(np.float32), confidences.astype(np.float32)
+
+
+def iscen_label_spreading(
+    features,
+    targets,
+    num_classes,
+    n_neighbors=50,
+    gamma=3.0,
+    alpha=0.99,
+    cg_rtol=1e-6,
+    cg_max_iter=20,
+    graph_diagnostics=None,
+    _dependencies=None,
+):
+    """Run the LP-DeepSSL diffusion and entropy-certainty calculation.
+
+    This follows Iscen et al. (CVPR 2019) and their reference implementation:
+    cosine kNN affinities are symmetrized and degree-normalized, class-balanced
+    label seeds are diffused with a truncated conjugate-gradient solve, and the
+    propagated rows are converted to entropy-based certainty weights.
+    """
+
+    features = np.asarray(features, dtype=np.float32)
+    targets = np.asarray(targets, dtype=np.int64)
+    if features.ndim != 2 or features.shape[1] == 0 or targets.ndim != 1 or len(features) != len(targets):
+        raise ValueError("features must be a matrix aligned with targets")
+    if len(features) < 2:
+        raise ValueError("iscen_label_spreading requires at least two samples")
+    if not np.all(np.isfinite(features)):
+        raise ValueError("iscen_label_spreading features must be finite")
+    if int(num_classes) <= 0:
+        raise ValueError("num_classes must be positive")
+    if int(n_neighbors) <= 0:
+        raise ValueError("iscen_label_spreading n_neighbors must be positive")
+    if not np.isfinite(float(gamma)) or float(gamma) <= 0.0:
+        raise ValueError("iscen_label_spreading gamma must be finite and positive")
+    if not np.isfinite(float(alpha)) or not (0.0 < float(alpha) < 1.0):
+        raise ValueError("iscen_label_spreading alpha must be in (0, 1)")
+    if not np.isfinite(float(cg_rtol)) or float(cg_rtol) <= 0.0:
+        raise ValueError("iscen_label_spreading cg_rtol must be finite and positive")
+    if int(cg_max_iter) <= 0:
+        raise ValueError("iscen_label_spreading cg_max_iter must be positive")
+    labeled = targets != UNLABELED_TARGET
+    if not np.any(labeled):
+        raise ValueError("iscen_label_spreading requires at least one labeled target")
+    if np.any((targets[labeled] < 0) | (targets[labeled] >= int(num_classes))):
+        raise ValueError("labeled targets must be in [0, num_classes)")
+
+    affinity = _dependency(
+        _dependencies,
+        "make_mixed_label_affinity",
+        make_mixed_label_affinity,
+    )(features, n_neighbors=int(n_neighbors), gamma=float(gamma))
+    if graph_diagnostics is not None:
+        _dependency(
+            _dependencies,
+            "maybe_save_graph_diagnostics",
+            maybe_save_graph_diagnostics,
+        )(
+            request=graph_diagnostics.get("request"),
+            embeddings=features,
+            adjacency=affinity,
+            positions=graph_diagnostics.get("positions"),
+            labels=graph_diagnostics.get("labels"),
+            known_mask=graph_diagnostics.get("known_mask"),
+        )
+
+    degrees = np.asarray(affinity.sum(axis=1), dtype=np.float64).ravel()
+    inverse_sqrt_degrees = np.zeros_like(degrees)
+    positive_degree = degrees > 0.0
+    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(degrees[positive_degree])
+    degree_scaling = sparse.diags(inverse_sqrt_degrees)
+    normalized_affinity = (degree_scaling @ affinity @ degree_scaling).tocsr()
+    system = (
+        sparse.eye(len(features), format="csr", dtype=np.float64)
+        - float(alpha) * normalized_affinity
+    ).tocsr()
+    
+    # The public LP-DeepSSL implementation gives every class unit total seed
+    # mass. This is a deliberate reference-code detail beyond paper equation
+    # (5), and prevents classes with more labeled examples from dominating the
+    # diffusion before the later class-balanced training sampler is applied.
+    labeled_indices = np.flatnonzero(labeled)
+    labeled_targets = targets[labeled]
+    class_seed_counts = np.bincount(labeled_targets, minlength=int(num_classes)).astype(np.float64)
+    one_hot_targets = np.zeros((len(features), int(num_classes)), dtype=np.float64)
+    one_hot_targets[labeled_indices, labeled_targets] = 1.0 / class_seed_counts[labeled_targets]
+
+    scores = _dependency(
+        _dependencies,
+        "solve_iscen_label_system",
+        solve_iscen_label_system,
+    )(
+        system,
+        one_hot_targets,
+        rtol=float(cg_rtol),
+        max_iter=int(cg_max_iter),
+        name="Iscen label spreading",
+    )
+
+    # A finite truncated CG solve can contain negative numerical overshoot.
+    # LP-DeepSSL clamps it before row normalization, exactly as the reference
+    # implementation does.
+    nonnegative_scores = np.maximum(np.asarray(scores, dtype=np.float64), 0.0)
+    probabilities = _dependency(
+        _dependencies,
+        "normalize_label_spreading_rows",
+        normalize_label_spreading_rows,
+    )(nonnegative_scores)
+    confidences = _dependency(
+        _dependencies,
+        "entropy_confidence",
+        entropy_confidence,
+    )(probabilities)
+    max_confidence = float(np.max(confidences))
+    if max_confidence > 0.0:
+        confidences = confidences / max_confidence
+    else:
+        # Uniform predictions carry no information. Keep their certainty at
+        # zero rather than reproducing the reference implementation's 0 / 0.
+        confidences = np.zeros_like(confidences)
+    confidences[labeled] = 1.0
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
@@ -224,11 +438,6 @@ def mixed_label_propagation(
 def _find_lrml_knn_neighbors(embeddings, n_neighbors):
     """Return exact non-self FAISS neighbors for each LRML graph node."""
 
-    try:
-        import faiss
-    except ImportError as exc:
-        raise ImportError("lrml regularization requires the faiss-cpu package") from exc
-
     features = np.ascontiguousarray(embeddings, dtype=np.float32)
     if features.ndim != 2 or features.shape[1] == 0:
         raise ValueError("lrml embeddings must be a non-empty feature matrix")
@@ -239,10 +448,14 @@ def _find_lrml_knn_neighbors(embeddings, n_neighbors):
     if k <= 0:
         raise ValueError("lrml graph needs at least two samples and one neighbor")
 
-    index = faiss.IndexFlatIP(features.shape[1])
-    index.add(features)
-    # Query k + 1 because the first hit of each row is the node itself.
-    _, neighbors = index.search(features, k + 1)
+    # Query k + 1 because the indexed database contains each query itself. Filter
+    # by node ID below instead of assuming ties always leave self in column zero.
+    _, neighbors = faiss_flat_ip_search(
+        database=features,
+        queries=features,
+        k=k + 1,
+        purpose="lrml regularization",
+    )
 
     neighbor_indices = np.empty((num_nodes, k), dtype=np.int64)
     for node, neighbor_row in enumerate(neighbors):
@@ -369,6 +582,9 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
 
     neighbor_indices = _find_lrml_knn_neighbors(embeddings, n_neighbors)
     num_nodes, k = neighbor_indices.shape
+    assert not np.any(
+        neighbor_indices == np.arange(num_nodes, dtype=np.int64)[:, None]
+    ), "LRML neighbor search must exclude self-matches"
     rows = np.repeat(np.arange(num_nodes, dtype=np.int64), k)
     cols = neighbor_indices.reshape(-1)
 
@@ -383,6 +599,9 @@ def build_lrml_knn_graph(embeddings, n_neighbors):
     symmetric.data[:] = 1.0
     symmetric.setdiag(0)
     symmetric.eliminate_zeros()
+    assert symmetric.diagonal().sum() == 0, (
+        "LRML adjacency must not contain self-loops"
+    )
     degrees = np.asarray(symmetric.sum(axis=1), dtype=np.float64).ravel()
     return neighbor_indices, symmetric, degrees
 
@@ -506,17 +725,17 @@ def induced_subgraph_edges(adjacency, node_ids):
 def make_mixed_label_affinity(features, n_neighbors, gamma):
     """Build equation (15)'s sparse symmetric cosine-affinity graph (vectorized)."""
 
-    try:
-        import faiss
-    except ImportError as exc:
-        raise ImportError("mixed_label_propagation requires the faiss-cpu package") from exc
-
+    faiss = require_faiss("mixed label propagation")
     normalized = np.ascontiguousarray(features, dtype=np.float32).copy()
     faiss.normalize_L2(normalized)
     k = min(int(n_neighbors), len(normalized) - 1)
-    index = faiss.IndexFlatIP(normalized.shape[1])
-    index.add(normalized)
-    similarities, neighbors = index.search(normalized, k + 1)
+    similarities, neighbors = faiss_flat_ip_search(
+        database=normalized,
+        queries=normalized,
+        k=k + 1,
+        purpose="mixed label propagation",
+        faiss_module=faiss,
+    )
 
     num_samples, retrieved = neighbors.shape
     query_indices = np.repeat(np.arange(num_samples, dtype=np.int64), retrieved)
@@ -683,6 +902,83 @@ def solve_sparse_label_system(
         f"{name} conjugate gradient did not converge within {max_iter} iterations "
         f"for classes {unconverged[:10].tolist()}"
     )
+
+
+def solve_iscen_label_system(matrix, right_hand_side, rtol, max_iter, name):
+    """Run unpreconditioned batched CG and retain the truncated iterates.
+
+    LP-DeepSSL deliberately caps diffusion at 20 CG iterations and its public
+    implementation uses the current iterate even when SciPy reports that the
+    requested tolerance was not reached. The batched formulation below is the
+    same independent CG recurrence for every class, while using one sparse by
+    dense multiplication per iteration.
+    """
+
+    matrix = matrix.tocsr()
+    right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
+    if matrix.shape[0] != matrix.shape[1]:
+        raise ValueError(f"{name} system matrix must be square")
+    if right_hand_side.ndim == 1:
+        right_hand_side = right_hand_side[:, None]
+    if right_hand_side.ndim != 2 or right_hand_side.shape[0] != matrix.shape[0]:
+        raise ValueError(f"{name} right-hand side must align with the system matrix")
+    if float(rtol) <= 0.0 or not np.isfinite(float(rtol)):
+        raise ValueError(f"{name} rtol must be finite and positive")
+    if int(max_iter) <= 0:
+        raise ValueError(f"{name} max_iter must be positive")
+
+    solutions = np.zeros_like(right_hand_side)
+    residuals = right_hand_side.copy()
+    directions = residuals.copy()
+    residual_squared = np.einsum("ij,ij->j", residuals, residuals)
+    rhs_norms = np.sqrt(residual_squared)
+    thresholds = float(rtol) * rhs_norms
+
+    iterations = 0
+    for iteration in range(int(max_iter)):
+        residual_norms = np.sqrt(np.maximum(residual_squared, 0.0))
+        active = (rhs_norms > 0.0) & (residual_norms > thresholds)
+        if not np.any(active):
+            break
+
+        # Frozen columns stay exactly zero in the shared sparse-dense product.
+        directions[:, ~active] = 0.0
+        matrix_directions = matrix @ directions
+        curvature = np.einsum("ij,ij->j", directions, matrix_directions)
+        invalid_curvature = active & (~np.isfinite(curvature) | (curvature <= 0.0))
+        if np.any(invalid_curvature):
+            bad = np.flatnonzero(invalid_curvature)
+            raise RuntimeError(
+                f"{name} conjugate gradient encountered non-positive curvature "
+                f"for classes {bad[:10].tolist()}"
+            )
+
+        step = np.zeros_like(curvature)
+        step[active] = residual_squared[active] / curvature[active]
+        solutions[:, active] += directions[:, active] * step[active]
+        residuals[:, active] -= matrix_directions[:, active] * step[active]
+
+        new_residual_squared = np.einsum("ij,ij->j", residuals, residuals)
+        new_residual_norms = np.sqrt(np.maximum(new_residual_squared, 0.0))
+        next_active = (rhs_norms > 0.0) & (new_residual_norms > thresholds)
+        beta = np.zeros_like(curvature)
+        continuing = active & next_active
+        beta[continuing] = new_residual_squared[continuing] / residual_squared[continuing]
+        directions = residuals + directions * beta
+        directions[:, ~next_active] = 0.0
+        residual_squared = new_residual_squared
+        iterations = iteration + 1
+
+    residual_norms = np.linalg.norm(right_hand_side - matrix @ solutions, axis=0)
+    unconverged = np.flatnonzero((rhs_norms > 0.0) & (residual_norms > thresholds))
+    if len(unconverged) > 0:
+        logger.warning(
+            f"{name} reached the reference limit of {max_iter} CG iterations; "
+            f"using truncated iterates for classes {unconverged[:10].tolist()}"
+        )
+    else:
+        logger.debug(f"{name} conjugate gradient converged in {iterations} iterations")
+    return solutions
 
 
 def solve_sparse_label_system_cholmod(

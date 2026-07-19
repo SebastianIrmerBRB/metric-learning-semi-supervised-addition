@@ -28,8 +28,10 @@ from .cli import (
     FINAL_TEST_VISUALIZATION_MODES,
     FINAL_TEST_VISUALIZATION_NONE,
     FINAL_TEST_VISUALIZATION_PACMAP,
+    FINAL_TEST_VISUALIZATION_TSNE,
     normalize_backbone_tuning_args,
 )
+from .frozen_feature_cache import make_frozen_feature_cache_key
 from .io import namespace_to_dict, result_to_dict, write_json
 from .types import (
     ALL_LOSSES,
@@ -107,13 +109,18 @@ def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
 
 def should_precompute_frozen_features(args, ssl_config):
     regularized_ssl = is_cacheable_regularized_ssl(ssl_config)
+    # Every registered pseudo-label method consumes the common deterministic
+    # embedding-extraction path. Materializing the raw frozen-backbone matrix is
+    # therefore method-agnostic: Iscen, mixed propagation, sklearn, and FAISS
+    # methods all re-project the same matrix through the current trainable head.
+    pseudo_label_ssl = semi_supervised.is_pseudo_label_method(ssl_config)
     supervised = is_supervised_mode(args)
     return (
         bool(getattr(args, "use_cache", False))
         and args.backbone_tuning == BACKBONE_TUNING_FROZEN
         and (
             (supervised and not ssl_config.enabled)
-            or (not supervised and regularized_ssl)
+            or (not supervised and (regularized_ssl or pseudo_label_ssl))
         )
     )
 
@@ -125,7 +132,7 @@ def is_cacheable_regularized_ssl(ssl_config):
     if ssl_method is None or not ssl_method.is_regularization_method:
         return False
     regularizer = ssl_method.make_regularizer(ssl_config)
-    return regularizer.name in {"hoffer_entropy", "lrml", "slrml", "seraph_entropy"}
+    return regularizer.supports_frozen_feature_precompute
 
 
 def get_frozen_feature_batch_size(args):
@@ -147,24 +154,52 @@ def _precompute_backbone_features(
     require_feature_transform=False,
     use_feature_transform=True,
     num_views=1,
+    frozen_feature_cache=None,
 ):
-    return utils.precompute_backbone_feature_dataset(
-        model=model,
-        dataset=dataset,
-        device=args.device,
-        batch_size=get_frozen_feature_batch_size(args),
-        seed=args.seed,
-        num_workers=args.num_workers,
-        start_method=args.dataloader_start_method,
-        desc=desc,
-        pin_memory=pin_memory,
+    def compute():
+        return utils.precompute_backbone_feature_dataset(
+            model=model,
+            dataset=dataset,
+            device=args.device,
+            batch_size=get_frozen_feature_batch_size(args),
+            seed=args.seed,
+            num_workers=args.num_workers,
+            start_method=args.dataloader_start_method,
+            desc=desc,
+            pin_memory=pin_memory,
+            require_feature_transform=require_feature_transform,
+            use_feature_transform=use_feature_transform,
+            num_views=num_views,
+        )
+
+    if frozen_feature_cache is None:
+        return compute()
+    cache_key = make_frozen_feature_cache_key(
+        args,
+        model,
+        dataset,
         require_feature_transform=require_feature_transform,
         use_feature_transform=use_feature_transform,
         num_views=num_views,
     )
+    if cache_key is None:
+        logger.warning(
+            f"Cannot safely identify the frozen backbone for {desc}; "
+            "skipping cross-trial in-memory feature reuse"
+        )
+        return compute()
+    return frozen_feature_cache.get_or_compute(cache_key, compute, desc)
 
 
-def _make_train_loader(args, dataset, seed, pin_memory, *, persistent_workers=True):
+def _make_train_loader(
+    args,
+    dataset,
+    seed,
+    pin_memory,
+    *,
+    persistent_workers=True,
+    labeled_batch_size=None,
+):
     return utils.make_train_loader(
         dataset,
         args.batch_size,
@@ -175,10 +210,28 @@ def _make_train_loader(args, dataset, seed, pin_memory, *, persistent_workers=Tr
         start_method=args.dataloader_start_method,
         persistent_workers=persistent_workers,
         pin_memory=pin_memory,
+        labeled_batch_size=labeled_batch_size,
     )
 
 
-def _make_eval_loader(args, model, dataset, desc, pin_memory, *, precompute_features):
+def _pseudo_label_labeled_batch_size(ssl_config):
+    """Return the optional Iscen two-stream quota for post-warmup loaders."""
+
+    if ssl_config.method != "iscen_label_spreading":
+        return None
+    return ssl_config.labeled_batch_size
+
+
+def _make_eval_loader(
+    args,
+    model,
+    dataset,
+    desc,
+    pin_memory,
+    *,
+    precompute_features,
+    frozen_feature_cache=None,
+):
     if precompute_features:
         dataset = _precompute_backbone_features(
             args,
@@ -186,6 +239,7 @@ def _make_eval_loader(args, model, dataset, desc, pin_memory, *, precompute_feat
             dataset,
             desc,
             pin_memory,
+            frozen_feature_cache=frozen_feature_cache,
         )
     return utils.make_eval_loader(
         dataset,
@@ -238,7 +292,13 @@ def shutdown_epoch_train_loader(train_loader, warmup_train_loader=None, static_t
     utils.shutdown_dataloaders(train_loader)
 
 
-def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
+def run_experiment(
+    args,
+    ssl_config,
+    optuna_trial=None,
+    optuna_metric=None,
+    frozen_feature_cache=None,
+):
     """Run either one holdout training job or all requested CV folds."""
 
     args = resolve_loss_driven_supervised_args(args)
@@ -246,8 +306,20 @@ def run_experiment(args, ssl_config, optuna_trial=None, optuna_metric=None):
     if args.cv_k > 1:
         # The Optuna trial is reported only after folds complete; individual
         # folds do not independently prune the same trial.
-        return run_cross_validation(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
-    return run_training(args, ssl_config, optuna_trial=optuna_trial, optuna_metric=optuna_metric)
+        return run_cross_validation(
+            args,
+            ssl_config,
+            optuna_trial=optuna_trial,
+            optuna_metric=optuna_metric,
+            frozen_feature_cache=frozen_feature_cache,
+        )
+    return run_training(
+        args,
+        ssl_config,
+        optuna_trial=optuna_trial,
+        optuna_metric=optuna_metric,
+        frozen_feature_cache=frozen_feature_cache,
+    )
 
 
 def resolve_platform_dataloader_workers(args, ssl_config, platform_name=None):
@@ -537,6 +609,53 @@ def _make_training_split(args, ssl_config, train_dataset):
     return None
 
 
+def make_labeled_support_mapper(train_dataset, split):
+    """Map only the original class labels exposed by the supervised support."""
+
+    if split is None:
+        raise ValueError("A supervised label-budget run requires a labeled-position split")
+
+    original_labels = getattr(train_dataset, "orig_labels", None)
+    if original_labels is None or len(original_labels) != len(train_dataset):
+        raise ValueError(
+            "The supervised training dataset must expose one original label per sample "
+            "before its support label mapper can be built"
+        )
+
+    labeled_positions = np.asarray(split.labeled_positions, dtype=np.int64)
+    if len(labeled_positions) == 0:
+        raise ValueError("The supervised labeled support must contain at least one sample")
+    if np.any(labeled_positions < 0) or np.any(labeled_positions >= len(train_dataset)):
+        raise ValueError("The supervised labeled support contains an out-of-range position")
+
+    support_labels = np.asarray(original_labels, dtype=np.int64)[labeled_positions]
+    return {
+        int(original_label): mapped_label
+        for mapped_label, original_label in enumerate(sorted(np.unique(support_labels).tolist()))
+    }
+
+
+def restrict_supervised_label_mapper(args, dataset_bundle, ssl_split):
+    """Prevent hidden, non-support classes from allocating supervised proxies."""
+
+    if not is_supervised_mode(args) or ssl_split is None:
+        return dataset_bundle
+
+    source_class_count = len(dataset_bundle.train_labels_mapper)
+    dataset_bundle.train_labels_mapper = make_labeled_support_mapper(
+        dataset_bundle.train_dataset,
+        ssl_split,
+    )
+    support_class_count = len(dataset_bundle.train_labels_mapper)
+    if support_class_count != source_class_count:
+        logger.info(
+            "Restricted supervised label mapping to "
+            f"{support_class_count} labeled support classes "
+            f"({source_class_count} classes existed in the source training pool)"
+        )
+    return dataset_bundle
+
+
 def _apply_validation_configuration(args, ssl_config, dataset_bundle, ssl_split, cv_fold):
     """Materialize the requested holdout/CV validation split."""
 
@@ -639,6 +758,8 @@ def _prepare_datasets(
     )
     if ssl_config.enabled:
         dataset_bundle, ssl_split = configure_external_unlabeled_pool(args, dataset_bundle, ssl_split)
+    else:
+        dataset_bundle = restrict_supervised_label_mapper(args, dataset_bundle, ssl_split)
     return dataset_bundle, ssl_split
 
 
@@ -990,7 +1111,14 @@ class _EpochTrainer:
             self.progress_bar = None
 
 
-def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fold=None):
+def run_training(
+    args,
+    ssl_config,
+    optuna_trial=None,
+    optuna_metric=None,
+    cv_fold=None,
+    frozen_feature_cache=None,
+):
     """Build the data/model, train one fold, and return its best metrics.
 
     Training can use labeled warmup, static or periodically rebuilt pseudo
@@ -1020,14 +1148,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
     supervised_mode = is_supervised_mode(args)
     precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
-    regularized_frozen_feature_precompute = bool(precompute_frozen_features and regularized_ssl)
+    ssl_frozen_feature_precompute = bool(
+        precompute_frozen_features and ssl_config.enabled
+    )
     requested_frozen_feature_train_views = get_frozen_feature_train_views(args)
     frozen_feature_train_views = (
-        1 if regularized_frozen_feature_precompute else requested_frozen_feature_train_views
+        1 if ssl_frozen_feature_precompute else requested_frozen_feature_train_views
     )
     augmented_frozen_feature_precompute = (
         precompute_frozen_features
-        and not regularized_frozen_feature_precompute
+        and not ssl_frozen_feature_precompute
         and frozen_feature_train_views > 1
     )
     model_use_cache = bool(args.use_cache)
@@ -1036,9 +1166,9 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     args.torch_sharing_strategy_resolved = utils.configure_torch_sharing_strategy()
     utils.initialize_logger(args)
     logger.info(f"Torch multiprocessing sharing strategy: {args.torch_sharing_strategy_resolved}")
-    if regularized_frozen_feature_precompute and requested_frozen_feature_train_views != 1:
+    if ssl_frozen_feature_precompute and requested_frozen_feature_train_views != 1:
         logger.warning(
-            "Regularized frozen feature precompute uses one deterministic view per sample; "
+            "SSL frozen feature precompute uses one deterministic view per sample; "
             f"ignoring frozen_feature_train_views={requested_frozen_feature_train_views}"
         )
     # DinoWrapper supplies a pretrained DINO backbone and, when feat_dim is
@@ -1103,15 +1233,16 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # training so the exact experiment split is recoverable.
     write_split_manifest(args.log_dir, dataset_bundle, ssl_config, ssl_split)
     precomputed_train_samples = None
-    if regularized_frozen_feature_precompute:
+    if ssl_frozen_feature_precompute:
         dataset_bundle.train_dataset = _precompute_backbone_features(
             args,
             model,
             dataset_bundle.train_dataset,
-            "precompute frozen regularized train features",
+            f"precompute frozen {ssl_config.method} train features",
             pin_memory,
             require_feature_transform=True,
             use_feature_transform=True,
+            frozen_feature_cache=frozen_feature_cache,
         )
         precomputed_train_samples = len(dataset_bundle.train_dataset)
     # Build loaders that are known before training.  For every-epoch SSL, the
@@ -1137,6 +1268,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 require_feature_transform=not augmented_frozen_feature_precompute,
                 use_feature_transform=not augmented_frozen_feature_precompute,
                 num_views=frozen_feature_train_views,
+                frozen_feature_cache=frozen_feature_cache,
             )
         static_train_loader = _make_train_loader(
             args,
@@ -1200,6 +1332,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             train_dataset,
             args.seed,
             pin_memory,
+            labeled_batch_size=_pseudo_label_labeled_batch_size(ssl_config),
         )
     # Evaluation loaders never shuffle because metric computation needs only a
     # deterministic pass over all embeddings and labels.
@@ -1212,6 +1345,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             "precompute frozen valid features",
             pin_memory,
             precompute_features=precompute_frozen_features,
+            frozen_feature_cache=frozen_feature_cache,
         )
     evaluate_test = bool(getattr(args, "evaluate_test", False))
     test_loader = None
@@ -1225,6 +1359,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
             "precompute frozen test features",
             pin_memory,
             precompute_features=precompute_frozen_features,
+            frozen_feature_cache=frozen_feature_cache,
         )
     # Source datasets can use sparse/non-zero-based class IDs.  Training losses
     # receive this dense mapping, while datasets continue returning original IDs.
@@ -1234,7 +1369,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     # Frozen backbone parameters are deliberately omitted from optimizer state.
     trainable_model_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
     optim = make_optimizer(args, trainable_model_parameters, lr=args.lr)
-    num_train_classes = len(dataset_bundle.train_labels_mapper)
+    num_train_classes = len(train_labels_mapper)
     main_objective = make_training_loss_components(
         args=args,
         loss_name=args.loss,
@@ -1279,6 +1414,8 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
     test_map = None
     test_pacmap_coordinates = None
     test_pacmap_plot = None
+    test_tsne_coordinates = None
+    test_tsne_plot = None
     epoch0_test_precision = None
     epoch0_test_map = None
     best_precision = None
@@ -1429,6 +1566,7 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                     args.seed + num_epoch,
                     pin_memory,
                     persistent_workers=ssl_config.update_mode != "every_epoch",
+                    labeled_batch_size=_pseudo_label_labeled_batch_size(ssl_config),
                 )
                 ssl_training_dataset_update_epoch = num_epoch
                 if ssl_config.update_mode == "every_epoch":
@@ -1536,10 +1674,12 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 epoch=last_epoch,
                 per_class_metrics=test_per_class,
             )
-            if (
-                getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
-                == FINAL_TEST_VISUALIZATION_PACMAP
-            ):
+            final_test_visualization = getattr(
+                args,
+                "final_test_visualization",
+                FINAL_TEST_VISUALIZATION_NONE,
+            )
+            if final_test_visualization == FINAL_TEST_VISUALIZATION_PACMAP:
                 pacmap_artifacts = utils.write_pacmap_visualization(
                     test_embeddings,
                     test_labels,
@@ -1552,6 +1692,20 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 test_pacmap_coordinates = pacmap_artifacts["coordinates"]
                 test_pacmap_plot = pacmap_artifacts["plot"]
                 logger.info(f"PacMAP final test visualization written to {test_pacmap_plot}")
+            elif final_test_visualization == FINAL_TEST_VISUALIZATION_TSNE:
+                tsne_artifacts = utils.write_tsne_visualization(
+                    test_embeddings,
+                    test_labels,
+                    output_dir=args.log_dir,
+                    stem="test_tsne",
+                    title=f"{args.dataset} final test embeddings - t-SNE",
+                    dataset=dataset_bundle.test_dataset,
+                    dataset_name=args.dataset,
+                    seed=args.seed,
+                )
+                test_tsne_coordinates = tsne_artifacts["coordinates"]
+                test_tsne_plot = tsne_artifacts["plot"]
+                logger.info(f"t-SNE final test visualization written to {test_tsne_plot}")
         else:
             logger.info("Skipping test evaluation for this run")
     finally:
@@ -1590,6 +1744,11 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
                 "backbone": f"dinov2_vit{args.dino_size}14",
                 "persistent_cache_enabled": bool(args.use_cache),
                 "persistent_cache_dir": None if model.cache_dir is None else str(model.cache_dir),
+                "shared_hpo_cache": (
+                    None
+                    if frozen_feature_cache is None
+                    else frozen_feature_cache.stats()
+                ),
             }
             write_json(args.log_dir / "frozen_feature_precompute_stats.json", feature_stats)
             logger.info(f"Frozen feature precompute stats: {feature_stats}")
@@ -1617,10 +1776,18 @@ def run_training(args, ssl_config, optuna_trial=None, optuna_metric=None, cv_fol
         cv_fold=cv_fold,
         test_pacmap_coordinates=test_pacmap_coordinates,
         test_pacmap_plot=test_pacmap_plot,
+        test_tsne_coordinates=test_tsne_coordinates,
+        test_tsne_plot=test_tsne_plot,
     )
 
 
-def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None):
+def run_cross_validation(
+    args,
+    ssl_config,
+    optuna_trial=None,
+    optuna_metric=None,
+    frozen_feature_cache=None,
+):
     """Train each CV fold independently and aggregate fold-level metrics."""
 
     validate_run_args(args, ssl_config)
@@ -1644,6 +1811,7 @@ def run_cross_validation(args, ssl_config, optuna_trial=None, optuna_metric=None
             optuna_trial=None,
             optuna_metric=None,
             cv_fold=fold_index,
+            frozen_feature_cache=frozen_feature_cache,
         )
         fold_results.append(result)
         # Rewrite the summary after every fold so interrupted CV still leaves
@@ -1715,6 +1883,8 @@ def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
         "test_mean_average_precision_at_r",
         "test_pacmap_coordinates",
         "test_pacmap_plot",
+        "test_tsne_coordinates",
+        "test_tsne_plot",
         "final_train_loss",
         "last_epoch",
         "selected_epoch",
@@ -1757,6 +1927,10 @@ def make_cv_summary_row(result, fold=None):
         if result.test_pacmap_coordinates is None
         else str(result.test_pacmap_coordinates),
         "test_pacmap_plot": "" if result.test_pacmap_plot is None else str(result.test_pacmap_plot),
+        "test_tsne_coordinates": ""
+        if result.test_tsne_coordinates is None
+        else str(result.test_tsne_coordinates),
+        "test_tsne_plot": "" if result.test_tsne_plot is None else str(result.test_tsne_plot),
         "final_train_loss": "" if result.final_train_loss is None else result.final_train_loss,
         "last_epoch": result.last_epoch,
         "selected_epoch": result.selected_epoch,
@@ -1889,8 +2063,29 @@ def validate_run_args(args, ssl_config):
         raise ValueError("lr must be positive")
     if args.classifier_lr <= 0:
         raise ValueError("classifier_lr must be positive")
+    weight_decay = float(getattr(args, "weight_decay", 0.0))
+    if not np.isfinite(weight_decay) or weight_decay < 0:
+        raise ValueError("weight_decay must be finite and non-negative")
     if args.sampler_m <= 0:
         raise ValueError("sampler_m must be positive")
+    if ssl_config.labeled_batch_size is not None:
+        labeled_batch_size = int(ssl_config.labeled_batch_size)
+        unlabeled_batch_size = args.batch_size - labeled_batch_size
+        if labeled_batch_size <= 0 or labeled_batch_size >= args.batch_size:
+            raise ValueError(
+                "Iscen labeled_batch_size must be greater than zero and smaller than batch_size "
+                "so both streams are non-empty"
+            )
+        if labeled_batch_size % args.sampler_m != 0:
+            raise ValueError(
+                "Iscen labeled_batch_size must be divisible by sampler_m: "
+                f"labeled_batch_size={labeled_batch_size}, sampler_m={args.sampler_m}"
+            )
+        if unlabeled_batch_size % args.sampler_m != 0:
+            raise ValueError(
+                "Iscen unlabeled batch size (batch_size - labeled_batch_size) must be divisible by "
+                f"sampler_m: unlabeled_batch_size={unlabeled_batch_size}, sampler_m={args.sampler_m}"
+            )
     if args.epochs < 0 or (args.epochs == 0 and not getattr(args, "final_full_train", False)):
         raise ValueError("epochs must be positive, except a final full-train run may use zero selected epochs")
     if args.patience <= 0:
@@ -2089,12 +2284,13 @@ def make_warmup_loss_components(
 
 
 def make_optimizer(args, parameters, lr):
+    weight_decay = float(getattr(args, "weight_decay", 0.0))
     if args.optim == "adamw":
-        return torch.optim.AdamW(parameters, lr=lr, weight_decay=0.0)
+        return torch.optim.AdamW(parameters, lr=lr, weight_decay=weight_decay)
     if args.optim == "adam":
-        return torch.optim.Adam(parameters, lr=lr)
+        return torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay)
     if args.optim == "rmsprop":
-        return torch.optim.RMSprop(parameters, lr=lr)
+        return torch.optim.RMSprop(parameters, lr=lr, weight_decay=weight_decay)
     raise ValueError(f"Unknown optimizer: {args.optim}")
 
 
@@ -2205,6 +2401,7 @@ def make_supervised_split_config(ssl_config):
             "update_interval_epochs": 1,
             "warmup_epochs": 0,
             "confidence_threshold": 0.0,
+            "labeled_batch_size": None,
             "method_params": {},
         }
     )

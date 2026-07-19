@@ -182,11 +182,13 @@ Resuming is supported through persistent Optuna storage.
 By default, when `storage` is omitted, the script writes:
 
 ```text
-logs/<save_dir>/<study_name>/optuna_study.db
+old_logs/<save_dir>/<study_name>/optuna_study.db
 ```
 
 With `load_if_exists: true`, rerunning the same command with the same `--save_dir` and `study_name` loads the existing study.
-Optuna rebuilds the TPE/Bayesian optimization state from the completed and pruned trial history stored in the database.
+Trial history is restored from the database and the sampler RNG/state is restored from `sampler.pkl`.
+
+For `n_jobs > 1`, model training still runs in Optuna's worker threads, but parameter suggestion is serialized through one shared sampler. Optuna's per-thread sampler reseeding is suppressed, and `sampler.pkl` is atomically refreshed immediately after each trial's complete parameter set has been written to Optuna storage. This makes an interrupted parallel run continue from the saved sampler state instead of starting a newly reseeded sequence.
 
 `n_trials` is interpreted as a total target, not as "run this many more".
 For example, if the database already contains 7 complete or pruned trials and `n_trials` is 20, the next run schedules 13 more trials.
@@ -195,7 +197,7 @@ Interrupted trials are not resumed from the middle of training.
 If a process stops during an epoch, the next run resets any unfinished Optuna `RUNNING` trials to `WAITING`.
 Those trials are rerun with the same trial number and sampled parameters before new trials are suggested.
 Per-trial training logs written before the interruption remain on disk, but the model training state is not checkpoint-resumed.
-Optuna rebuilds the TPE/Bayesian optimization state from the completed and pruned trial history stored in the database, then incorporates rerun trials once they finish.
+After reload, history-dependent samplers such as TPE combine the restored sampler state with the completed and pruned trials in the database, then incorporate rerun trials once they finish.
 
 ## Output Layout
 
@@ -208,12 +210,13 @@ python main.py --hparam_config configs/hparam_search.json --save_dir experiments
 the study output directory is:
 
 ```text
-logs/experiments/cars196_search/metric_learning_search/
+old_logs/experiments/cars196_search/metric_learning_search/
 ```
 
 Study-level files:
 
 - `optuna_study.db`: SQLite storage for trial history and resume.
+- `sampler.pkl`: atomic checkpoint of the Optuna sampler and its RNG state.
 - `study_config.json`: base CLI args, hyperparameter config, resolved study name, and resolved storage URL.
 - `trials.csv`: flat table of trial number, state, objective value, params, and scalar result attributes.
 - `trials.jsonl`: one JSON object per trial, including params, user attrs, resolved args, resolved SSL config, timestamps, and duration.
@@ -221,8 +224,8 @@ Study-level files:
 Each trial also has its own normal training run directory:
 
 ```text
-logs/<save_dir>/<study_name>/trial_0000/<timestamp>/
-logs/<save_dir>/<study_name>/trial_0001/<timestamp>/
+old_logs/<save_dir>/<study_name>/trial_0000/<timestamp>/
+old_logs/<save_dir>/<study_name>/trial_0001/<timestamp>/
 ...
 ```
 
@@ -591,7 +594,7 @@ final fit:
 
 ```json
 {
-  "final_test_study_dir": "logs/path/to/method/study",
+  "final_test_study_dir": "old_logs/path/to/method/study",
   "study_dir_mode": "cross_seed_train_val",
   "final_test_top_n": 5,
   "comparison_seeds": [2, 7, 8],

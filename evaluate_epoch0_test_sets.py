@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("logs/epoch0_test_sets"),
+        default=Path("old_logs/epoch0_test_sets"),
         help="Directory for summary.csv and summary.json.",
     )
     parser.add_argument("--device", default=None, help="Override config device. Use 'auto' for cuda-if-available.")
@@ -113,6 +113,11 @@ def parse_args() -> argparse.Namespace:
         "--pacmap",
         action="store_true",
         help="Write PacMAP 2D coordinates and a group-colored PNG scatter plot for each evaluated test set.",
+    )
+    parser.add_argument(
+        "--tsne",
+        action="store_true",
+        help="Write t-SNE 2D coordinates and a group-colored PNG scatter plot for each evaluated test set.",
     )
     return parser.parse_args()
 
@@ -404,6 +409,34 @@ def write_pacmap_artifacts(
     }
 
 
+def write_tsne_artifacts(
+    config_path: Path,
+    dataset,
+    embeddings: np.ndarray,
+    labels: np.ndarray,
+    args: argparse.Namespace,
+    cli_args: argparse.Namespace,
+) -> dict:
+    config_token = safe_token(relative_config_label(config_path))
+    artifacts = utils.write_tsne_visualization(
+        embeddings,
+        labels,
+        output_dir=cli_args.output_dir,
+        stem=f"{config_token}_tsne",
+        title=f"{args.dataset} epoch-0 test embeddings - t-SNE",
+        dataset=dataset,
+        dataset_name=args.dataset,
+        seed=args.seed,
+    )
+    return {
+        "tsne_coordinates": str(artifacts["coordinates"]),
+        "tsne_plot": str(artifacts["plot"]),
+        "tsne_sample_count": int(artifacts["sample_count"]),
+        "tsne_total_count": int(len(labels)),
+        "tsne_color_basis": str(artifacts["color_basis"]),
+    }
+
+
 def evaluate_config(config_path: Path, cli_args: argparse.Namespace) -> dict:
     args = parse_experiment_config(config_path)
     args = apply_cli_overrides(args, cli_args)
@@ -470,6 +503,17 @@ def evaluate_config(config_path: Path, cli_args: argparse.Namespace) -> dict:
     if cli_args.pacmap:
         row.update(
             write_pacmap_artifacts(
+                config_path,
+                dataset_bundle.test_dataset,
+                embeddings,
+                labels,
+                args,
+                cli_args,
+            )
+        )
+    if cli_args.tsne:
+        row.update(
+            write_tsne_artifacts(
                 config_path,
                 dataset_bundle.test_dataset,
                 embeddings,

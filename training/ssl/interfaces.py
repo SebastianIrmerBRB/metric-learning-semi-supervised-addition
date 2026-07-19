@@ -33,6 +33,9 @@ class BaseTrainingRegularizer:
     """Pluggable unlabeled regularization term combined with a supervised loss."""
 
     name = None
+    # Opt in explicitly: regularizers needing stochastic/paired image views
+    # cannot safely train from one deterministic frozen-backbone feature row.
+    supports_frozen_feature_precompute = False
     provides_trainable_projection_without_feat_dim = False
     uses_joint_forward = False
     requires_labeled_indices = False
