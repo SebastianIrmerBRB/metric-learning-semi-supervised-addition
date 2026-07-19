@@ -823,85 +823,154 @@ def solve_sparse_label_system(
         linear_solver="auto",
         warm_start=None,
 ):
-    """Solve the sparse SPD system for all classes at once when possible.
+    """Solve a sparse SPD system for one or more right-hand sides.
 
     linear_solver:
-      - "cholmod": sparse Cholesky via scikit-sparse (fails loudly if missing).
-      - "cg": batched conjugate gradient (all class columns at once) with a
-        Jacobi preconditioner and an optional warm start (e.g. the initial-LP
-        solution for the mixed system).
-      - "auto": CHOLMOD if importable, else scipy splu, else preconditioned CG.
-        Direct factorizations solve all C right-hand sides after one
-        factorization, so their advantage grows linearly with the number of
-        classes. For very large graphs (N >> 1e5) where factorization fill-in
-        exhausts memory, fall back to "cg".
+      - "cholmod": sparse Cholesky via scikit-sparse.
+      - "cg": SciPy conjugate gradient, independently for each class column,
+        using a Jacobi preconditioner and optional warm starts.
+      - "auto": CHOLMOD if importable, then SciPy SPLU, then SciPy CG.
     """
 
+    matrix = matrix.tocsr()
     right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
+
+    # Normalize a single RHS to shape (N, 1), then restore it before returning.
+    single_rhs = right_hand_side.ndim == 1
+    if single_rhs:
+        right_hand_side = right_hand_side[:, None]
+    elif right_hand_side.ndim != 2:
+        raise ValueError(
+            f"{name}: right_hand_side must be one- or two-dimensional, "
+            f"got shape {right_hand_side.shape}"
+        )
+
+    if matrix.shape[0] != matrix.shape[1]:
+        raise ValueError(f"{name}: matrix must be square, got shape {matrix.shape}")
+
+    if matrix.shape[0] != right_hand_side.shape[0]:
+        raise ValueError(
+            f"{name}: incompatible shapes: matrix={matrix.shape}, "
+            f"right_hand_side={right_hand_side.shape}"
+        )
+
+    if linear_solver not in {"auto", "cholmod", "cg"}:
+        raise ValueError(
+            f"{name}: unsupported linear_solver={linear_solver!r}; "
+            "expected 'auto', 'cholmod', or 'cg'"
+        )
+
+    if warm_start is not None:
+        warm_start = np.asarray(warm_start, dtype=np.float64)
+        if single_rhs and warm_start.ndim == 1:
+            warm_start = warm_start[:, None]
+
+        if warm_start.shape != right_hand_side.shape:
+            raise ValueError(
+                f"{name}: warm_start has shape {warm_start.shape}, "
+                f"expected {right_hand_side.shape}"
+            )
+
+    def restore_shape(solution):
+        return solution[:, 0] if single_rhs else solution
 
     if linear_solver in ("auto", "cholmod"):
         try:
-            return solve_sparse_label_system_cholmod(
+            solution = solve_sparse_label_system_cholmod(
                 matrix,
                 right_hand_side,
                 name=name,
             )
+            return restore_shape(np.asarray(solution))
         except ImportError:
             if linear_solver == "cholmod":
-                raise ImportError(f"{name}: linear_solver='cholmod' requires scikit-sparse")
+                raise ImportError(
+                    f"{name}: linear_solver='cholmod' requires scikit-sparse"
+                )
 
     if linear_solver == "auto":
         try:
             lu = sparse_linalg.splu(matrix.tocsc())
-            return lu.solve(right_hand_side)
+            return restore_shape(lu.solve(right_hand_side))
         except (MemoryError, RuntimeError) as exc:
-            logger.warning(f"{name}: direct factorization failed ({exc}); falling back to CG")
+            logger.warning(
+                "%s: direct factorization failed (%s); falling back to CG",
+                name,
+                exc,
+            )
 
-    # Batched Jacobi-preconditioned CG: solve every class column simultaneously
-    # so each iteration is one sparse @ dense matmul instead of C separate
-    # sparse @ vector products. Per-column alpha/beta keep the iterates
-    # identical to running scipy's preconditioned CG independently per class
-    # (same Jacobi preconditioner, same rtol * ||b|| stopping rule), but the
-    # matmul form is far more cache-friendly and removes C solver-call
-    # overheads. The diagonal is strictly positive (degrees + mu anchors
-    # [+ dissimilarity degrees]) so the Jacobi preconditioner is well-defined.
-    matrix = matrix.tocsr()
-    inverse_diagonal = (1.0 / matrix.diagonal())[:, None]
-    if warm_start is None:
-        solutions = np.zeros_like(right_hand_side)
-        residuals = right_hand_side.copy()
-    else:
-        solutions = np.array(warm_start, dtype=np.float64, copy=True)
-        residuals = right_hand_side - matrix @ solutions
-    rhs_norms = np.linalg.norm(right_hand_side, axis=0)
-    # Zero columns are already solved by x=0; avoid dividing by zero below.
-    rhs_norms[rhs_norms == 0.0] = 1.0
-    preconditioned = inverse_diagonal * residuals
-    directions = preconditioned.copy()
-    residual_dots = np.einsum("ij,ij->j", residuals, preconditioned)
-    for _ in range(int(max_iter)):
-        if np.all(np.linalg.norm(residuals, axis=0) <= rtol * rhs_norms):
-            return solutions
-        matrix_directions = matrix @ directions
-        curvature = np.einsum("ij,ij->j", directions, matrix_directions)
-        # Converged columns can have ~zero curvature; freeze them instead of
-        # producing NaN steps.
-        safe_curvature = np.where(curvature > 0.0, curvature, 1.0)
-        step = np.where(curvature > 0.0, residual_dots / safe_curvature, 0.0)
-        solutions += step * directions
-        residuals -= step * matrix_directions
-        preconditioned = inverse_diagonal * residuals
-        new_residual_dots = np.einsum("ij,ij->j", residuals, preconditioned)
-        safe_dots = np.where(residual_dots > 0.0, residual_dots, 1.0)
-        directions = preconditioned + (new_residual_dots / safe_dots) * directions
-        residual_dots = new_residual_dots
-    if np.all(np.linalg.norm(residuals, axis=0) <= rtol * rhs_norms):
-        return solutions
-    unconverged = np.flatnonzero(np.linalg.norm(residuals, axis=0) > rtol * rhs_norms)
-    raise RuntimeError(
-        f"{name} conjugate gradient did not converge within {max_iter} iterations "
-        f"for classes {unconverged[:10].tolist()}"
+    diagonal = matrix.diagonal()
+    if np.any(~np.isfinite(diagonal)) or np.any(diagonal <= 0.0):
+        invalid = np.flatnonzero(
+            ~np.isfinite(diagonal) | (diagonal <= 0.0)
+        )
+        raise ValueError(
+            f"{name}: Jacobi CG requires a finite, positive diagonal; "
+            f"invalid entries at indices {invalid[:10].tolist()}"
+        )
+
+    inverse_diagonal = 1.0 / diagonal
+
+    # M represents the approximate inverse used as the preconditioner.
+    preconditioner = sparse_linalg.LinearOperator(
+        shape=matrix.shape,
+        matvec=lambda vector: inverse_diagonal * vector,
+        rmatvec=lambda vector: inverse_diagonal * vector,
+        dtype=np.float64,
     )
+
+    solutions = np.empty_like(right_hand_side)
+    failures = []
+
+    for class_index in range(right_hand_side.shape[1]):
+        rhs = right_hand_side[:, class_index]
+
+        # The exact solution for a zero RHS is zero. Special-casing it avoids
+        # the purely relative stopping tolerance becoming zero.
+        if not np.any(rhs):
+            solutions[:, class_index] = 0.0
+            continue
+
+        x0 = (
+            None
+            if warm_start is None
+            else warm_start[:, class_index]
+        )
+
+        solution, info = sparse_linalg.cg(
+            matrix,
+            rhs,
+            x0=x0,
+            rtol=rtol,
+            maxiter=int(max_iter),
+            M=preconditioner,
+        )
+
+        solutions[:, class_index] = solution
+
+        if info != 0:
+            failures.append((class_index, info))
+
+    if failures:
+        failed_classes = [class_index for class_index, _ in failures[:10]]
+        breakdown_classes = [
+            class_index
+            for class_index, info in failures[:10]
+            if info < 0
+        ]
+
+        if breakdown_classes:
+            raise RuntimeError(
+                f"{name}: scipy conjugate gradient failed due to numerical "
+                f"breakdown for classes {breakdown_classes}"
+            )
+
+        raise RuntimeError(
+            f"{name}: scipy conjugate gradient did not converge within "
+            f"{max_iter} iterations for classes {failed_classes}"
+        )
+
+    return restore_shape(solutions)
 
 
 def solve_iscen_label_system(matrix, right_hand_side, rtol, max_iter, name):
