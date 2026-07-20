@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from dataclasses import replace
 from datetime import datetime
-from numbers import Real
+from numbers import Integral, Real
 from pathlib import Path
 from typing import NamedTuple
 
@@ -29,6 +29,11 @@ from .cli import (
     FINAL_TEST_VISUALIZATION_NONE,
     FINAL_TEST_VISUALIZATION_PACMAP,
     FINAL_TEST_VISUALIZATION_TSNE,
+    LR_SCHEDULER_COSINE,
+    LR_SCHEDULER_COSINE_WARM_RESTARTS,
+    LR_SCHEDULER_NONE,
+    LR_SCHEDULER_STEP,
+    LR_SCHEDULERS,
     normalize_backbone_tuning_args,
 )
 from .frozen_feature_cache import make_frozen_feature_cache_key
@@ -221,6 +226,22 @@ def _pseudo_label_labeled_batch_size(ssl_config):
     if ssl_config.method != "iscen_label_spreading":
         return None
     return ssl_config.labeled_batch_size
+
+
+def _pseudo_label_capacity_filter_kwargs(args, ssl_config):
+    """Describe the pseudo-label diversity needed by an Iscen stream batch."""
+
+    labeled_batch_size = _pseudo_label_labeled_batch_size(ssl_config)
+    if labeled_batch_size is None:
+        return {}
+    sampler_m = int(args.sampler_m)
+    pseudo_batch_size = int(args.batch_size) - int(labeled_batch_size)
+    return {
+        "required_pseudo_label_classes": (pseudo_batch_size + sampler_m - 1) // sampler_m,
+        # Unless explicitly overridden in the SSL config, rescue up to one full
+        # M-per-class group for every newly admitted pseudo class.
+        "pseudo_label_rescue_top_k": sampler_m,
+    }
 
 
 def _make_eval_loader(
@@ -797,6 +818,29 @@ class _EpochTrainer:
         self.batch_timing_enabled = bool(getattr(args, "debug_batch_timing", False))
         self.batch_timing_interval = int(getattr(args, "debug_batch_timing_interval", 5))
         self.batch_diagnostics_enabled = bool(getattr(args, "log_batch_diagnostics", False))
+        self._lr_scheduler_uses_batch_steps = (
+            getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
+            == LR_SCHEDULER_COSINE_WARM_RESTARTS
+        )
+        self._lr_schedulers = {}
+        for optimizer in (
+            model_optimizer,
+            main_objective.optimizer,
+            None if warmup_objective is None else warmup_objective.optimizer,
+        ):
+            if optimizer is None or id(optimizer) in self._lr_schedulers:
+                continue
+            scheduler = make_lr_scheduler(args, optimizer)
+            if scheduler is not None:
+                self._lr_schedulers[id(optimizer)] = scheduler
+        self._lr_scheduler_active_epochs = {
+            optimizer_id: 0 for optimizer_id in self._lr_schedulers
+        }
+        if self._lr_schedulers:
+            logger.info(
+                f"LR scheduler: {args.lr_scheduler}, "
+                f"params={resolve_lr_scheduler_params(args)}"
+            )
         self.teacher_model = None
         self.regularizer_state = None
         self.global_step = 0
@@ -974,6 +1018,72 @@ class _EpochTrainer:
             diagnostics.update(self.regularizer.batch_diagnostics())
         return diagnostics
 
+    def _active_optimizers(self, phase):
+        active_optimizers = [self.model_optimizer]
+        if phase.objective.is_classification:
+            active_optimizers.append(phase.objective.optimizer)
+        unique_optimizers = []
+        optimizer_ids = set()
+        for optimizer in active_optimizers:
+            optimizer_id = id(optimizer)
+            if optimizer_id in optimizer_ids:
+                continue
+            optimizer_ids.add(optimizer_id)
+            unique_optimizers.append(optimizer)
+        return unique_optimizers
+
+    def _active_learning_rates(self, phase):
+        learning_rates = utils.optimizer_learning_rates(self.model_optimizer, "model")
+        if phase.objective.is_classification:
+            learning_rates.update(
+                utils.optimizer_learning_rates(phase.objective.optimizer, "criterion")
+            )
+        return learning_rates
+
+    def _step_batch_lr_schedulers(self, phase, batch_fraction):
+        if not self._lr_scheduler_uses_batch_steps:
+            return
+        for optimizer in self._active_optimizers(phase):
+            optimizer_id = id(optimizer)
+            scheduler = self._lr_schedulers.get(optimizer_id)
+            if scheduler is not None:
+                scheduler.step(
+                    self._lr_scheduler_active_epochs[optimizer_id] + batch_fraction
+                )
+
+    def _finish_lr_scheduler_epoch(self, phase):
+        for optimizer in self._active_optimizers(phase):
+            optimizer_id = id(optimizer)
+            scheduler = self._lr_schedulers.get(optimizer_id)
+            if scheduler is None:
+                continue
+            if self._lr_scheduler_uses_batch_steps:
+                self._lr_scheduler_active_epochs[optimizer_id] += 1
+            else:
+                scheduler.step()
+
+    @staticmethod
+    def _summarize_epoch_learning_rates(epoch_learning_rates):
+        diagnostics = {}
+        for name, values in epoch_learning_rates.items():
+            mean_value = sum(values) / len(values)
+            diagnostics[name] = mean_value
+            summary_name = name.replace(
+                "train/learning_rate/",
+                "train/learning_rate_summary/",
+                1,
+            )
+            diagnostics.update(
+                {
+                    f"{summary_name}/start": values[0],
+                    f"{summary_name}/mean": mean_value,
+                    f"{summary_name}/min": min(values),
+                    f"{summary_name}/max": max(values),
+                    f"{summary_name}/end": values[-1],
+                }
+            )
+        return diagnostics
+
     def train_epoch(self, train_loader, epoch):
         phase = self._resolve_phase(epoch)
         logger.info(f"Epoch {epoch}: training with {phase.description}")
@@ -993,16 +1103,24 @@ class _EpochTrainer:
         num_batches = 0
         zero_loss_batches = 0
         epoch_miner_totals = defaultdict(float)
+        epoch_learning_rates = defaultdict(list)
+        if not self._lr_scheduler_uses_batch_steps:
+            for name, value in self._active_learning_rates(phase).items():
+                epoch_learning_rates[name].append(value)
         timer = _BatchTimer(self.args.device, self.batch_timing_enabled)
         last_timing_log_batch = 0
         last_timing_totals = {}
         next_batch_wait_start = timer.start()
-        self.progress_bar = tqdm(train_loader, total=len(train_loader))
+        batches_per_epoch = len(train_loader)
+        self.progress_bar = tqdm(train_loader, total=batches_per_epoch)
 
         try:
             for batch_index, batch in enumerate(self.progress_bar):
                 data_ready_time = timer.start()
                 timer.stop("data_wait", next_batch_wait_start, data_ready_time)
+                if self._lr_scheduler_uses_batch_steps:
+                    for name, value in self._active_learning_rates(phase).items():
+                        epoch_learning_rates[name].append(value)
                 loss, supervised_loss, regularization_loss, miner_outputs = self._compute_batch_loss(
                     batch,
                     phase,
@@ -1035,6 +1153,10 @@ class _EpochTrainer:
                 if phase.objective.is_classification:
                     phase.objective.optimizer.step()
                     phase.objective.optimizer.zero_grad()
+                self._step_batch_lr_schedulers(
+                    phase,
+                    (batch_index + 1) / max(1, batches_per_epoch),
+                )
                 timer.stop("optimizer_step", started)
 
                 started = timer.start()
@@ -1095,6 +1217,7 @@ class _EpochTrainer:
         epoch_diagnostics = {
             "train/zero_loss_batches": zero_loss_batches,
             "train/zero_loss_fraction": zero_loss_batches / num_batches,
+            **self._summarize_epoch_learning_rates(epoch_learning_rates),
         }
         for name, total in epoch_miner_totals.items():
             epoch_diagnostics[f"{name}_total"] = total
@@ -1105,6 +1228,9 @@ class _EpochTrainer:
             self.global_step,
             diagnostics=epoch_diagnostics,
         )
+        # Epoch schedulers advance here. Warm-restart schedulers already moved
+        # after each batch; only their active-epoch counters need advancing.
+        self._finish_lr_scheduler_epoch(phase)
         return mean_loss
 
     def close_progress_bar(self):
@@ -1327,6 +1453,7 @@ def run_training(
             start_method=args.dataloader_start_method,
             diagnostics_tracker=pseudo_label_diagnostics,
             log_dir=args.log_dir,
+            **_pseudo_label_capacity_filter_kwargs(args, ssl_config),
         )
         ssl_training_dataset_update_epoch = 0
         static_train_loader = _make_train_loader(
@@ -1432,12 +1559,13 @@ def run_training(
         if not final_full_train:
             # Epoch -1 measures the pretrained/off-the-shelf embedding before
             # task-specific updates. It is also a valid initial checkpoint.
-            valid_precision, valid_map, valid_per_class = utils.evaluate(
+            valid_precision, valid_map, valid_per_class, valid_diagnostics = utils.evaluate(
                 model,
                 valid_loader,
                 "valid",
                 device=args.device,
                 return_per_class=True,
+                return_diagnostics=True,
             )
             metrics_logger.log_eval(
                 "valid",
@@ -1446,6 +1574,7 @@ def run_training(
                 step=0,
                 epoch=-1,
                 per_class_metrics=valid_per_class,
+                diagnostics=valid_diagnostics,
             )
 
             # Track both metrics for reporting, but only selection_metric decides
@@ -1561,6 +1690,7 @@ def run_training(
                     start_method=args.dataloader_start_method,
                     diagnostics_tracker=pseudo_label_diagnostics,
                     log_dir=args.log_dir,
+                    **_pseudo_label_capacity_filter_kwargs(args, ssl_config),
                 )
                 train_loader = _make_train_loader(
                     args,
@@ -1597,12 +1727,13 @@ def run_training(
 
             # Validation runs after every epoch and supplies both early-stopping
             # decisions and intermediate values for Optuna pruning.
-            cur_precision, cur_map, cur_per_class = utils.evaluate(
+            cur_precision, cur_map, cur_per_class, cur_diagnostics = utils.evaluate(
                 model,
                 valid_loader,
                 f"valid - epoch {num_epoch:>2}",
                 device=args.device,
                 return_per_class=True,
+                return_diagnostics=True,
             )
             metrics_logger.log_eval(
                 "valid",
@@ -1611,6 +1742,7 @@ def run_training(
                 step=epoch_trainer.global_step,
                 epoch=num_epoch,
                 per_class_metrics=cur_per_class,
+                diagnostics=cur_diagnostics,
             )
             # Report the running best rather than only the current epoch when
             # the HPO objective is a "best_valid_*" metric.
@@ -2049,6 +2181,10 @@ def validate_run_args(args, ssl_config):
         raise ValueError(f"{exc}: {args.device}") from exc
     if args.optim not in {"adamw", "adam", "rmsprop"}:
         raise ValueError(f"optim must be 'adamw', 'adam', or 'rmsprop': {args.optim}")
+    scheduler_name = getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
+    if scheduler_name not in LR_SCHEDULERS:
+        raise ValueError(f"lr_scheduler must be one of {LR_SCHEDULERS}: {scheduler_name}")
+    args.lr_scheduler_params_resolved = resolve_lr_scheduler_params(args)
     if args.mode not in {"supervised", "ssl"}:
         raise ValueError("mode must be 'supervised' or 'ssl'")
     if args.batch_size <= 0:
@@ -2296,6 +2432,100 @@ def make_optimizer(args, parameters, lr):
     raise ValueError(f"Unknown optimizer: {args.optim}")
 
 
+def resolve_lr_scheduler_params(args):
+    """Return validated constructor parameters for the selected LR scheduler."""
+
+    scheduler_name = getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
+    params = getattr(args, "lr_scheduler_params", {})
+    if not isinstance(params, dict):
+        raise ValueError("lr_scheduler_params must be a JSON object")
+    if scheduler_name == LR_SCHEDULER_NONE:
+        return {}
+    if scheduler_name == LR_SCHEDULER_STEP:
+        defaults = {"step_size": 10, "gamma": 0.1}
+    elif scheduler_name == LR_SCHEDULER_COSINE:
+        defaults = {
+            "T_max": max(1, int(getattr(args, "epochs", 1))),
+            "eta_min": 0.0,
+        }
+    elif scheduler_name == LR_SCHEDULER_COSINE_WARM_RESTARTS:
+        defaults = {"T_0": 10, "T_mult": 1, "eta_min": 0.0}
+    else:
+        raise ValueError(f"lr_scheduler must be one of {LR_SCHEDULERS}: {scheduler_name}")
+
+    unknown_params = sorted(set(params) - set(defaults))
+    if unknown_params:
+        raise ValueError(
+            f"Unknown parameters for lr_scheduler={scheduler_name!r}: {unknown_params}. "
+            f"Supported parameters are {sorted(defaults)}"
+        )
+    resolved = {**defaults, **params}
+
+    if scheduler_name == LR_SCHEDULER_STEP:
+        step_size = resolved["step_size"]
+        gamma = resolved["gamma"]
+        if isinstance(step_size, bool) or not isinstance(step_size, Integral) or step_size <= 0:
+            raise ValueError("lr_scheduler_params.step_size must be a positive integer")
+        if (
+            isinstance(gamma, bool)
+            or not isinstance(gamma, Real)
+            or not np.isfinite(gamma)
+            or gamma <= 0
+        ):
+            raise ValueError("lr_scheduler_params.gamma must be finite and positive")
+        resolved["step_size"] = int(step_size)
+        resolved["gamma"] = float(gamma)
+    elif scheduler_name == LR_SCHEDULER_COSINE:
+        t_max = resolved["T_max"]
+        eta_min = resolved["eta_min"]
+        if isinstance(t_max, bool) or not isinstance(t_max, Integral) or t_max <= 0:
+            raise ValueError("lr_scheduler_params.T_max must be a positive integer")
+        if (
+            isinstance(eta_min, bool)
+            or not isinstance(eta_min, Real)
+            or not np.isfinite(eta_min)
+            or eta_min < 0
+        ):
+            raise ValueError("lr_scheduler_params.eta_min must be finite and non-negative")
+        resolved["T_max"] = int(t_max)
+        resolved["eta_min"] = float(eta_min)
+    else:
+        t_0 = resolved["T_0"]
+        t_mult = resolved["T_mult"]
+        eta_min = resolved["eta_min"]
+        if isinstance(t_0, bool) or not isinstance(t_0, Integral) or t_0 <= 0:
+            raise ValueError("lr_scheduler_params.T_0 must be a positive integer")
+        if isinstance(t_mult, bool) or not isinstance(t_mult, Integral) or t_mult < 1:
+            raise ValueError("lr_scheduler_params.T_mult must be an integer >= 1")
+        if (
+            isinstance(eta_min, bool)
+            or not isinstance(eta_min, Real)
+            or not np.isfinite(eta_min)
+            or eta_min < 0
+        ):
+            raise ValueError("lr_scheduler_params.eta_min must be finite and non-negative")
+        resolved["T_0"] = int(t_0)
+        resolved["T_mult"] = int(t_mult)
+        resolved["eta_min"] = float(eta_min)
+    return resolved
+
+
+def make_lr_scheduler(args, optimizer):
+    """Construct the selected learning-rate scheduler, or None when disabled."""
+
+    scheduler_name = getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
+    params = resolve_lr_scheduler_params(args)
+    if scheduler_name == LR_SCHEDULER_NONE:
+        return None
+    if scheduler_name == LR_SCHEDULER_STEP:
+        return torch.optim.lr_scheduler.StepLR(optimizer, **params)
+    if scheduler_name == LR_SCHEDULER_COSINE:
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, **params)
+    if scheduler_name == LR_SCHEDULER_COSINE_WARM_RESTARTS:
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, **params)
+    raise ValueError(f"lr_scheduler must be one of {LR_SCHEDULERS}: {scheduler_name}")
+
+
 def make_stml_teacher(student_model):
     """Create STML's teacher with the student's current backbone and a fresh g head."""
 
@@ -2403,6 +2633,8 @@ def make_supervised_split_config(ssl_config):
             "update_interval_epochs": 1,
             "warmup_epochs": 0,
             "confidence_threshold": 0.0,
+            "pseudo_label_rescue_confidence_floor": 0.0,
+            "pseudo_label_rescue_top_k": None,
             "labeled_batch_size": None,
             "method_params": {},
         }

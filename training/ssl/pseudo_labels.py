@@ -36,6 +36,10 @@ class PseudoLabelDiagnosticsTracker:
             "epoch": epoch,
             "method": config.method,
             "confidence_threshold": config.confidence_threshold,
+            "pseudo_label_rescue_confidence_floor": (
+                config.pseudo_label_rescue_confidence_floor
+            ),
+            "pseudo_label_rescue_top_k": config.pseudo_label_rescue_top_k,
             "raw": raw_summary,
             "accepted": accepted_summary,
             "raw_changes_from_previous_generation": raw_changes,
@@ -65,28 +69,162 @@ class PseudoLabelDiagnosticsTracker:
         self.generation_index += 1
 
 
-def filter_pseudo_labels(pseudo_labels, confidence_threshold, valid_mapped_labels):
-    """Drop low-confidence predictions and labels unknown to the train mapping."""
+def filter_pseudo_labels(
+    pseudo_labels,
+    confidence_threshold,
+    valid_mapped_labels,
+    *,
+    required_classes=None,
+    rescue_confidence_floor=0.0,
+    rescue_top_k=None,
+):
+    """Filter predictions, rescuing missing classes only when a sampler needs them.
 
-    # Start with predictions that refer to a class represented in the current
-    # training label mapping. This protects against invalid estimator outputs.
-    keep = np.isin(pseudo_labels.mapped_labels, list(valid_mapped_labels))
+    The configured confidence threshold remains the normal acceptance rule. If
+    it leaves fewer distinct predicted classes than an M-per-class stream needs,
+    add the strongest rejected predictions from missing classes. Rescue uses a
+    lower absolute confidence floor and takes at most ``rescue_top_k`` examples
+    from each newly admitted class. This changes nothing when the global filter
+    already has sufficient class coverage.
+    """
 
-    if pseudo_labels.confidences is not None:
-        # Combine conditions elementwise so positions, labels, and confidences
-        # remain aligned after boolean indexing.
-        keep = keep & (pseudo_labels.confidences >= confidence_threshold)
+    positions = np.asarray(pseudo_labels.positions)
+    mapped_labels = np.asarray(pseudo_labels.mapped_labels)
+    confidences = (
+        None
+        if pseudo_labels.confidences is None
+        else np.asarray(pseudo_labels.confidences)
+    )
+    if len(positions) != len(mapped_labels) or (
+        confidences is not None and len(confidences) != len(mapped_labels)
+    ):
+        raise ValueError("Pseudo-label positions, labels, and confidences must be aligned")
+
+    # Predictions outside the current training label mapping are never eligible,
+    # including through the class-capacity rescue path.
+    known_class = np.isin(mapped_labels, list(valid_mapped_labels))
+    keep = known_class.copy()
+    if confidences is not None:
+        keep &= confidences >= float(confidence_threshold)
+
+    global_keep = keep.copy()
+    global_class_count = _count_selected_classes(mapped_labels, global_keep)
+    rescue_applied = False
+    rescued_count = 0
+    rescued_class_count = 0
+
+    if required_classes is not None:
+        required_classes = int(required_classes)
+        if required_classes <= 0:
+            raise ValueError("required_classes must be positive when set")
+        if rescue_top_k is None:
+            rescue_top_k = 1
+        rescue_top_k = int(rescue_top_k)
+        if rescue_top_k <= 0:
+            raise ValueError("rescue_top_k must be positive when class rescue is requested")
+
+        if global_class_count < required_classes:
+            rescue_applied = True
+            if confidences is not None:
+                rescue_keep = _select_class_capacity_rescue(
+                    mapped_labels=mapped_labels,
+                    confidences=confidences,
+                    known_class=known_class,
+                    globally_kept=global_keep,
+                    required_classes=required_classes,
+                    confidence_floor=float(rescue_confidence_floor),
+                    top_k=rescue_top_k,
+                )
+                keep |= rescue_keep
+                rescued_count = int(rescue_keep.sum())
+                rescued_class_count = _count_selected_classes(mapped_labels, rescue_keep)
+
+            final_class_count = _count_selected_classes(mapped_labels, keep)
+            logger.warning(
+                "Global pseudo-label filter retained "
+                f"{int(global_keep.sum())} samples across {global_class_count}/{required_classes} "
+                "required classes. "
+                f"Per-class top-{rescue_top_k} rescue added {rescued_count} samples across "
+                f"{rescued_class_count} classes at confidence floor {float(rescue_confidence_floor):.6g}; "
+                f"final coverage is {final_class_count}/{required_classes} classes."
+            )
+            if final_class_count < required_classes:
+                logger.warning(
+                    "Pseudo-label class rescue could not satisfy the sampler: "
+                    f"only {final_class_count} eligible predicted classes are available, "
+                    f"but {required_classes} are required."
+                )
 
     dropped = int(len(keep) - keep.sum())
     if dropped > 0:
-        logger.info(f"Dropped {dropped} pseudo-labels below confidence threshold or outside known classes")
+        if rescue_applied:
+            logger.info(
+                f"Dropped {dropped} pseudo-labels after global confidence filtering "
+                "and class-capacity rescue"
+            )
+        else:
+            logger.info(
+                f"Dropped {dropped} pseudo-labels below confidence threshold or outside known classes"
+            )
 
-    # Apply the same mask to every aligned result array.
+    # Boolean indexing retains source order, keeping positions, labels, and
+    # confidences aligned even though rescue candidates were ranked by score.
     return PseudoLabelResult(
-        positions=pseudo_labels.positions[keep],
-        mapped_labels=pseudo_labels.mapped_labels[keep],
-        confidences=None if pseudo_labels.confidences is None else pseudo_labels.confidences[keep],
+        positions=positions[keep],
+        mapped_labels=mapped_labels[keep],
+        confidences=None if confidences is None else confidences[keep],
     )
+
+
+def _count_selected_classes(mapped_labels, keep):
+    if not bool(np.any(keep)):
+        return 0
+    return int(len(np.unique(mapped_labels[keep])))
+
+
+def _select_class_capacity_rescue(
+    *,
+    mapped_labels,
+    confidences,
+    known_class,
+    globally_kept,
+    required_classes,
+    confidence_floor,
+    top_k,
+):
+    """Return a mask adding the best missing classes until capacity is met."""
+
+    if not 0.0 <= confidence_floor <= 1.0:
+        raise ValueError("rescue_confidence_floor must be in [0, 1]")
+
+    accepted_classes = set(int(label) for label in mapped_labels[globally_kept])
+    classes_needed = max(0, int(required_classes) - len(accepted_classes))
+    rescue_keep = np.zeros(len(mapped_labels), dtype=bool)
+    if classes_needed == 0:
+        return rescue_keep
+
+    eligible = known_class & (~globally_kept) & (confidences >= confidence_floor)
+    if accepted_classes:
+        eligible &= ~np.isin(mapped_labels, list(accepted_classes))
+    indices_by_class = {}
+    for index in np.flatnonzero(eligible):
+        indices_by_class.setdefault(int(mapped_labels[index]), []).append(int(index))
+
+    candidate_groups = []
+    for label, class_indices in indices_by_class.items():
+        indices = np.asarray(class_indices, dtype=np.int64)
+        # Stable ordering makes ties deterministic and preserves the original
+        # propagation order among equal-confidence candidates.
+        confidence_order = np.argsort(-confidences[indices], kind="stable")
+        selected = indices[confidence_order[:top_k]]
+        candidate_groups.append((float(confidences[selected[0]]), label, selected))
+
+    # Prefer missing classes whose best available prediction is most credible.
+    # Label ID is a deterministic tie-breaker when class maxima are equal.
+    candidate_groups.sort(key=lambda item: (-item[0], item[1]))
+    for _, _, selected in candidate_groups[:classes_needed]:
+        rescue_keep[selected] = True
+    return rescue_keep
 
 
 def _average_ranks(values):

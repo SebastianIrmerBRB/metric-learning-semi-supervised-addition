@@ -262,7 +262,9 @@ Trial-level files follow the standard training output format:
 - `metrics.csv`: batch losses, epoch losses, validation metrics, and test metrics.
 - `run_config.json`: resolved argparse values and resolved SSL config used for that trial.
 - `info.log` and `debug.log`: loguru logs.
-- `tensorboard/`: TensorBoard event files.
+- `tensorboard/`: TensorBoard event files, including global-step training and
+  validation curves plus the epoch-indexed validation analysis dashboard under
+  `epoch/valid/`.
 
 ## Trial Tracking
 

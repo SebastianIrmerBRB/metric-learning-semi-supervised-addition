@@ -51,6 +51,13 @@ class SemiSupervisedConfig:
     seed: int | None = None
     support_seed: int | None = DEFAULT_SUPPORT_SEED
     confidence_threshold: float = 0.0
+    # A two-stream M-per-class batch needs enough distinct pseudo-label classes.
+    # When the global threshold removes too many classes, rejected predictions
+    # can be rescued class-by-class down to this lower absolute floor.
+    pseudo_label_rescue_confidence_floor: float = 0.0
+    # ``None`` uses sampler_m, giving every rescued class up to one complete
+    # M-per-class group without introducing a second required hyperparameter.
+    pseudo_label_rescue_top_k: int | None = None
     labeled_batch_size: int | None = None
     pseudo_label_diagnostics_mode: str = "save"
     graph_diagnostics_mode: str = "off"
