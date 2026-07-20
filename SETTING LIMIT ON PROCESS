@@ -1,0 +1,16 @@
+prlimit --pid 3759162 --nofile=65535:1048576
+
+ulimit -n 65535
+
+PID=4091158
+
+watch -n 3 '
+echo -n "fds main: "; ls /proc/'"$PID"'/fd | wc -l
+echo -n "children: "; pgrep -P '"$PID"' | wc -l
+cat /proc/'"$PID"'/limits | grep "Max open files"
+ps --ppid '"$PID"' -o pid,ppid,nlwp,stat,cmd | grep -E "resource_tracker|spawn_main" | wc -l
+'
+
+
+source "$HOME/miniforge3/etc/profile.d/conda.sh"
+conda activate sparse-env

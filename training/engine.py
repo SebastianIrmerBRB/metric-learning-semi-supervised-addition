@@ -520,14 +520,15 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
     filter_info = getattr(external_dataset, "filter_info", None)
     if filter_info is not None:
         dataset_bundle.split_info["external_unlabeled_pool"]["filter_info"] = filter_info
+        category_unit = filter_info.get("category_unit", "model classes")
         logger.info(
             "External unlabeled filter: "
             f"mode={filter_info.get('mode')}, "
             f"candidate_source={filter_info.get('candidate_source')}, "
             f"kept={filter_info.get('kept_images')} images / "
-            f"{filter_info.get('kept_model_classes')} model classes, "
+            f"{filter_info.get('kept_model_classes')} {category_unit}, "
             f"dropped={filter_info.get('dropped_images')} images / "
-            f"{filter_info.get('dropped_model_classes')} model classes"
+            f"{filter_info.get('dropped_model_classes')} {category_unit}"
         )
         if filter_info.get("matches_expected_counts") is False:
             logger.warning(

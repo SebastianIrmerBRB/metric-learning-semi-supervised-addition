@@ -17,10 +17,14 @@ EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT = "compcars_model_min_count"
 EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER = "compcars_stml_paper"
 
 
+EXTERNAL_UNLABELED_FILTER_NABIRDS = "nabirds"
+
+
 EXTERNAL_UNLABELED_FILTERS = (
     EXTERNAL_UNLABELED_FILTER_NONE,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
+    EXTERNAL_UNLABELED_FILTER_NABIRDS,
 )
 
 
@@ -126,6 +130,11 @@ def append_external_unlabeled_dataset(
             transform=train_transform,
             min_images_per_model=compcars_min_model_images,
             strict_paper_counts=compcars_strict_paper_counts,
+        )
+    elif external_filter == EXTERNAL_UNLABELED_FILTER_NABIRDS:
+        external_dataset = local_datasets.NABirdsUnlabeledImageDataset(
+            root=external_root,
+            transform=train_transform,
         )
     else:
         raise ValueError(f"Unknown external_unlabeled_filter: {external_filter}")

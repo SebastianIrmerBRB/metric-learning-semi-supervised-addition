@@ -343,15 +343,45 @@ def iscen_label_spreading(
             known_mask=graph_diagnostics.get("known_mask"),
         )
 
-    system_started_at = time.perf_counter()
+    # A disconnected component without a labeled node has no source term in
+    # any class-specific linear system. Its exact propagated score is therefore
+    # identically zero. Exclude those components from the solve and preserve
+    # all-zero output rows as an explicit "no pseudo-label distribution"
+    # sentinel for the orchestration adapter.
+    component_count, component_ids = sparse.csgraph.connected_components(
+        affinity,
+        directed=False,
+        return_labels=True,
+    )
+    component_has_labeled = np.zeros(component_count, dtype=bool)
+    component_has_labeled[np.unique(component_ids[labeled])] = True
+    seed_reachable = component_has_labeled[component_ids]
+    active_indices = np.flatnonzero(seed_reachable)
+    seedless_unlabeled = (~labeled) & (~seed_reachable)
+
     degrees = np.asarray(affinity.sum(axis=1), dtype=np.float64).ravel()
-    inverse_sqrt_degrees = np.zeros_like(degrees)
-    positive_degree = degrees > 0.0
-    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(degrees[positive_degree])
+    seedless_count = int(seedless_unlabeled.sum())
+    if seedless_count > 0:
+        seedless_components = int(np.unique(component_ids[seedless_unlabeled]).size)
+        zero_degree_count = int(np.sum(seedless_unlabeled & (degrees == 0.0)))
+        logger.warning(
+            "Iscen label spreading found "
+            f"{seedless_count} unlabeled candidates in {seedless_components} "
+            "graph components without a labeled target; marking them "
+            "unpropagatable so pseudo-label training omits them "
+            f"(zero_degree={zero_degree_count})"
+        )
+
+    system_started_at = time.perf_counter()
+    active_affinity = affinity[active_indices][:, active_indices].tocsr()
+    active_degrees = degrees[active_indices]
+    inverse_sqrt_degrees = np.zeros_like(active_degrees)
+    positive_degree = active_degrees > 0.0
+    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(active_degrees[positive_degree])
     degree_scaling = sparse.diags(inverse_sqrt_degrees)
-    normalized_affinity = (degree_scaling @ affinity @ degree_scaling).tocsr()
+    normalized_affinity = (degree_scaling @ active_affinity @ degree_scaling).tocsr()
     system = (
-        sparse.eye(len(features), format="csr", dtype=np.float64)
+        sparse.eye(len(active_indices), format="csr", dtype=np.float64)
         - float(alpha) * normalized_affinity
     ).tocsr()
     
@@ -359,15 +389,18 @@ def iscen_label_spreading(
     # mass. This is a deliberate reference-code detail beyond paper equation
     # (5), and prevents classes with more labeled examples from dominating the
     # diffusion before the later class-balanced training sampler is applied.
-    labeled_indices = np.flatnonzero(labeled)
-    labeled_targets = targets[labeled]
+    active_targets = targets[active_indices]
+    active_labeled = active_targets != UNLABELED_TARGET
+    labeled_indices = np.flatnonzero(active_labeled)
+    labeled_targets = active_targets[active_labeled]
     class_seed_counts = np.bincount(labeled_targets, minlength=int(num_classes)).astype(np.float64)
-    one_hot_targets = np.zeros((len(features), int(num_classes)), dtype=np.float64)
+    one_hot_targets = np.zeros((len(active_indices), int(num_classes)), dtype=np.float64)
     one_hot_targets[labeled_indices, labeled_targets] = 1.0 / class_seed_counts[labeled_targets]
     _log_debug_timing(
         "iscen_label_spreading.system_construction",
         system_started_at,
-        samples=len(features),
+        samples=len(active_indices),
+        omitted_seedless=seedless_count,
         classes=int(num_classes),
         matrix_nnz=system.nnz,
     )
@@ -390,17 +423,38 @@ def iscen_label_spreading(
 
     # A finite truncated CG solve can contain negative numerical overshoot.
     # Clamp either solver's output consistently before row normalization.
-    nonnegative_scores = np.maximum(np.asarray(scores, dtype=np.float64), 0.0)
-    probabilities = _dependency(
-        _dependencies,
-        "normalize_label_spreading_rows",
-        normalize_label_spreading_rows,
-    )(nonnegative_scores)
-    confidences = _dependency(
-        _dependencies,
-        "entropy_confidence",
-        entropy_confidence,
-    )(probabilities)
+    active_nonnegative_scores = np.maximum(np.asarray(scores, dtype=np.float64), 0.0)
+    active_row_masses = active_nonnegative_scores.sum(axis=1)
+    positive_mass = active_row_masses > 0.0
+    zero_mass_active_indices = active_indices[~positive_mass]
+    if len(zero_mass_active_indices) > 0:
+        logger.warning(
+            "Iscen label spreading produced "
+            f"{len(zero_mass_active_indices)} additional zero-mass rows inside "
+            "seed-reachable graph components after the sparse solve; marking "
+            "them unpropagatable. Increase cg_max_iter or use linear_solver='cholmod' "
+            "if this warning recurs"
+        )
+
+    # Rows without positive mass remain exactly zero. The adapter recognizes
+    # that sentinel and removes those candidates before argmax, including when
+    # the configured confidence threshold is zero.
+    probabilities = np.zeros((len(features), int(num_classes)), dtype=np.float64)
+    positive_mass_indices = active_indices[positive_mass]
+    if len(positive_mass_indices) > 0:
+        probabilities[positive_mass_indices] = _dependency(
+            _dependencies,
+            "normalize_label_spreading_rows",
+            normalize_label_spreading_rows,
+        )(active_nonnegative_scores[positive_mass])
+
+    confidences = np.zeros(len(features), dtype=np.float64)
+    if len(positive_mass_indices) > 0:
+        confidences[positive_mass_indices] = _dependency(
+            _dependencies,
+            "entropy_confidence",
+            entropy_confidence,
+        )(probabilities[positive_mass_indices])
     max_confidence = float(np.max(confidences))
     if max_confidence > 0.0:
         confidences = confidences / max_confidence

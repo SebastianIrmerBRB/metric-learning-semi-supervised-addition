@@ -2334,14 +2334,22 @@ class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         )
         unlabeled_start = len(split.labeled_positions)
         unlabeled_probabilities = probabilities[unlabeled_start:]
+        propagated_mask = unlabeled_probabilities.sum(axis=1) > 0.0
+        omitted_count = int((~propagated_mask).sum())
+        if omitted_count > 0:
+            logger.warning(
+                f"{self.name} omitted {omitted_count} unlabeled candidates with no "
+                "propagated class mass; they will not enter pseudo-label training"
+            )
+        unlabeled_probabilities = unlabeled_probabilities[propagated_mask]
         pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
-        unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
+        unlabeled_confidences = confidences[unlabeled_start:][propagated_mask].astype(np.float32)
         logger.info(
             f"{self.name} entropy-certainty distribution: "
             f"{summarize_numeric_values(unlabeled_confidences)}"
         )
         return PseudoLabelResult(
-            positions=split.unlabeled_positions,
+            positions=split.unlabeled_positions[propagated_mask],
             mapped_labels=pseudo_labels,
             confidences=unlabeled_confidences,
         )

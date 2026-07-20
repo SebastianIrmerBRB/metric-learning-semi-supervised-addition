@@ -47,6 +47,10 @@ from .types import (
     HParamSearchConfig,
     HParamStudyResult,
     JOINT_COMPONENT_HPARAM_PREFIX,
+    JOINT_HPARAM_PREFIX,
+    JOINT_TWO_STREAM_HPARAM_KEY,
+    LABELED_BATCH_SIZE_HPARAM_KEY,
+    LABELED_BATCH_SIZE_HPARAM_KEYS,
     LOSS_HPARAM_PREFIX,
     MINER_HPARAM_PREFIX,
     OBJECTIVE_METRICS,
@@ -220,6 +224,12 @@ def validate_hparam_config(config, path=None):
             f"Search space {BATCH_SAMPLER_HPARAM_KEY!r} sets both batch_size and sampler_m. "
             f"Do not also include 'batch_size' or 'sampler_m'{source}."
         )
+    labeled_batch_size_keys = sorted(set(config.spaces) & LABELED_BATCH_SIZE_HPARAM_KEYS)
+    if len(labeled_batch_size_keys) > 1:
+        raise ValueError(
+            "Use only one labeled-batch-size HPO key; "
+            f"these keys are aliases for the same SSL setting: {labeled_batch_size_keys}{source}"
+        )
     for name, spec in config.spaces.items():
         if name in {"loss", "miner", *HPO_MODE_KEYS}:
             instruction = (
@@ -244,6 +254,8 @@ def validate_space_spec(name, spec, source=""):
             raise ValueError(f"Search space {name!r} choices must not be empty{source}")
         if name == BATCH_SAMPLER_HPARAM_KEY:
             validate_batch_sampler_choices(spec, source)
+        if name in LABELED_BATCH_SIZE_HPARAM_KEYS:
+            validate_labeled_batch_size_choices(spec, source)
         if name == "selection_metric":
             validate_selection_metric_choices(spec, source)
         return
@@ -257,11 +269,18 @@ def validate_space_spec(name, spec, source=""):
             raise ValueError(f"Categorical search space {name!r} requires a non-empty choices list{source}")
         if name == BATCH_SAMPLER_HPARAM_KEY:
             validate_batch_sampler_choices(choices, source)
+        if name in LABELED_BATCH_SIZE_HPARAM_KEYS:
+            validate_labeled_batch_size_choices(choices, source)
         if name == "selection_metric":
             validate_selection_metric_choices(choices, source)
     elif space_type in {"float", "int"}:
         if name == BATCH_SAMPLER_HPARAM_KEY:
             raise ValueError(f"Search space {name!r} must be categorical choices like '32:8'{source}")
+        if name in LABELED_BATCH_SIZE_HPARAM_KEYS:
+            raise ValueError(
+                f"Search space {name!r} must use categorical positive-integer choices so it can be "
+                f"paired safely with {BATCH_SAMPLER_HPARAM_KEY!r}{source}"
+            )
         if "low" not in spec or "high" not in spec:
             raise ValueError(f"{space_type} search space {name!r} requires low and high{source}")
         if spec["low"] > spec["high"]:
@@ -296,6 +315,10 @@ def validate_batch_sampler_choices(choices, source=""):
     for choice in choices:
         parse_batch_sampler_choice(choice, source)
 
+def validate_labeled_batch_size_choices(choices, source=""):
+    for choice in choices:
+        parse_labeled_batch_size_choice(choice, source)
+
 def validate_selection_metric_choices(choices, source=""):
     for choice in choices:
         if choice not in SELECTION_METRICS:
@@ -327,6 +350,25 @@ def parse_batch_sampler_choice(choice, source=""):
             f"got {choice!r}{source}"
         )
     return batch_size, sampler_m
+
+def parse_labeled_batch_size_choice(choice, source=""):
+    if isinstance(choice, bool) or not isinstance(choice, (str, int, np.integer)):
+        raise ValueError(
+            f"labeled_batch_size choices must be positive integers or integer strings, "
+            f"got {choice!r}{source}"
+        )
+    try:
+        labeled_batch_size = int(choice)
+    except ValueError as exc:
+        raise ValueError(
+            f"labeled_batch_size choices must be positive integers or integer strings, "
+            f"got {choice!r}{source}"
+        ) from exc
+    if labeled_batch_size <= 0:
+        raise ValueError(
+            f"labeled_batch_size choices must be positive, got {choice!r}{source}"
+        )
+    return labeled_batch_size
 
 def run_hparam_search(args, config):
     """Create or resume an Optuna study and execute its remaining trials."""
@@ -1002,7 +1044,9 @@ def make_args_and_ssl_config_from_params(base_args, params):
         # overrides, and then rebuild/validate a new dataclass instance.
         ssl_dict = ssl_config.to_dict()
         for name, value in ssl_overrides:
-            path_parts = name.split(".")[1:]
+            path_parts = get_ssl_override_path(name)
+            if path_parts == [LABELED_BATCH_SIZE_HPARAM_KEY]:
+                value = parse_labeled_batch_size_choice(value)
             set_nested_value(ssl_dict, path_parts, value)
         ssl_config = semi_supervised.SemiSupervisedConfig(**ssl_dict)
         semi_supervised.validate_ssl_config(ssl_config)
@@ -1011,6 +1055,15 @@ def make_args_and_ssl_config_from_params(base_args, params):
     trial_args = resolve_loss_driven_supervised_args(trial_args)
     trial_args = resolve_hpo_warmup_objective(trial_args, ssl_config)
 
+    if (
+        set(params) & LABELED_BATCH_SIZE_HPARAM_KEYS
+        and ssl_config.labeled_batch_size is not None
+    ):
+        validate_two_stream_hpo_batch_combination(
+            trial_args.batch_size,
+            trial_args.sampler_m,
+            ssl_config.labeled_batch_size,
+        )
     validate_run_args(trial_args, ssl_config)
     return trial_args, ssl_config
 
@@ -1062,7 +1115,16 @@ def suggest_value(trial, name, spec):
     raise ValueError(f"Unsupported search space type for {name!r}: {space_type}")
 
 def is_ssl_override(name):
-    return name.startswith("ssl_config.") or name.startswith("ssl.")
+    return (
+        name == LABELED_BATCH_SIZE_HPARAM_KEY
+        or name.startswith("ssl_config.")
+        or name.startswith("ssl.")
+    )
+
+def get_ssl_override_path(name):
+    if name == LABELED_BATCH_SIZE_HPARAM_KEY:
+        return [LABELED_BATCH_SIZE_HPARAM_KEY]
+    return name.split(".")[1:]
 
 def is_component_override(name):
     return name.startswith(LOSS_HPARAM_PREFIX) or name.startswith(MINER_HPARAM_PREFIX)
@@ -1186,55 +1248,249 @@ def make_sampler_spaces_k_shot_aware(args, config):
     return replace(config, spaces=spaces)
 
 def make_sampler_spaces_label_budget_aware(args, config, training_label_sets_factory=None):
-    """Remove joint batch/sampler choices infeasible for the fixed label split."""
-
-    batch_sampler_spec = config.spaces.get(BATCH_SAMPLER_HPARAM_KEY)
-    if batch_sampler_spec is None:
-        return config
-
-    varying_split_keys = sorted(set(config.spaces) & SAMPLER_CAPACITY_HPARAM_KEYS)
-    if varying_split_keys:
-        logger.info(
-            "Cannot prefilter batch_sampler choices because these HPO dimensions change "
-            f"the labeled training split: {varying_split_keys}"
-        )
-        return config
+    """Constrain sampler spaces by two-stream quotas and labeled-data capacity."""
 
     ssl_config = semi_supervised.load_ssl_config(
         args.ssl_config,
         default_seed=args.seed,
         default_support_seed=get_support_seed(args),
     )
+    config = make_two_stream_sampler_spaces_constraint_aware(args, config, ssl_config)
+    capacity_space = get_sampler_capacity_space(args, config, ssl_config)
+    if capacity_space is None:
+        return config
+
+    space_name, sampler_spec, capacity_choices = capacity_space
+    varying_split_keys = sorted(set(config.spaces) & SAMPLER_CAPACITY_HPARAM_KEYS)
+    if varying_split_keys:
+        logger.info(
+            "Cannot prefilter sampler choices because these HPO dimensions change "
+            f"the labeled training split: {varying_split_keys}"
+        )
+        return config
+
     if ssl_config.label_sampling_mode not in {"class_subset", "class_subset_k_shot"}:
         return config
 
     if training_label_sets_factory is None:
         training_label_sets_factory = make_label_budget_training_label_sets
     training_label_sets = training_label_sets_factory(args, ssl_config)
-    choices = get_categorical_choices(batch_sampler_spec)
-    valid_choices = filter_batch_sampler_choices_for_training_labels(choices, training_label_sets)
-    excluded_count = len(choices) - len(valid_choices)
+    valid_choices = filter_sampler_capacity_choices_for_training_labels(
+        capacity_choices,
+        training_label_sets,
+    )
+    excluded_count = len(capacity_choices) - len(valid_choices)
     if not valid_choices:
         fold_summaries = summarize_training_label_sets(training_label_sets)
         raise ValueError(
-            "No valid batch_sampler choices remain for the selected label budget and validation splits. "
+            "No valid sampler choices remain for the selected label budget and validation splits. "
             f"Fold labeled-data summaries: {fold_summaries}"
         )
 
     if excluded_count:
         logger.info(
-            f"Excluded {excluded_count} batch_sampler hyperparameter choices that cannot form "
+            f"Excluded {excluded_count} sampler hyperparameter choices that cannot form "
             "an MPerClassSampler batch in every labeled training split. "
             f"Remaining choices: {valid_choices}. "
             f"Fold labeled-data summaries: {summarize_training_label_sets(training_label_sets)}"
         )
 
     spaces = dict(config.spaces)
-    spaces[BATCH_SAMPLER_HPARAM_KEY] = replace_categorical_choices_for_label_budget(
-        batch_sampler_spec,
+    spaces[space_name] = replace_categorical_choices_for_label_budget(
+        sampler_spec,
         valid_choices,
     )
     return replace(config, spaces=spaces)
+
+def make_two_stream_sampler_spaces_constraint_aware(args, config, ssl_config=None):
+    """Represent only valid categorical two-stream batch-size combinations."""
+
+    if getattr(args, "mode", None) != "ssl":
+        return config
+    if ssl_config is None:
+        ssl_config = semi_supervised.load_ssl_config(
+            args.ssl_config,
+            default_seed=args.seed,
+            default_support_seed=get_support_seed(args),
+        )
+
+    spaces = dict(config.spaces)
+    labeled_keys = sorted(set(spaces) & LABELED_BATCH_SIZE_HPARAM_KEYS)
+    if len(labeled_keys) > 1:
+        raise ValueError(
+            "Use only one labeled-batch-size HPO key; "
+            f"these keys are aliases for the same SSL setting: {labeled_keys}"
+        )
+    labeled_key = labeled_keys[0] if labeled_keys else None
+    batch_sampler_spec = spaces.get(BATCH_SAMPLER_HPARAM_KEY)
+    independently_tuned_sampler_keys = sorted({"batch_size", "sampler_m"} & set(spaces))
+    if labeled_key is not None and batch_sampler_spec is None and independently_tuned_sampler_keys:
+        raise ValueError(
+            "labeled_batch_size HPO must pair changing batch_size/sampler_m values through "
+            f"the {BATCH_SAMPLER_HPARAM_KEY!r} categorical space; remove separate spaces "
+            f"{independently_tuned_sampler_keys}"
+        )
+    if batch_sampler_spec is None and labeled_key is None:
+        return config
+
+    fixed_labeled_batch_size = ssl_config.labeled_batch_size
+    if labeled_key is None and fixed_labeled_batch_size is None:
+        return config
+    if ssl_config.method != "iscen_label_spreading":
+        raise ValueError(
+            "labeled_batch_size HPO requires an SSL config with method='iscen_label_spreading'"
+        )
+
+    if batch_sampler_spec is None:
+        batch_choices = [f"{int(args.batch_size)}:{int(args.sampler_m)}"]
+    else:
+        batch_choices = get_categorical_choices(batch_sampler_spec)
+
+    if labeled_key is None:
+        labeled_batch_size_spec = None
+        labeled_choices = [int(fixed_labeled_batch_size)]
+    else:
+        labeled_batch_size_spec = spaces[labeled_key]
+        labeled_choices = [
+            parse_labeled_batch_size_choice(choice)
+            for choice in get_categorical_choices(labeled_batch_size_spec)
+        ]
+
+    valid_combinations = []
+    for batch_choice, labeled_batch_size in itertools.product(batch_choices, labeled_choices):
+        batch_size, sampler_m = parse_batch_sampler_choice(batch_choice)
+        try:
+            validate_two_stream_hpo_batch_combination(
+                batch_size,
+                sampler_m,
+                labeled_batch_size,
+            )
+        except ValueError:
+            continue
+        valid_combinations.append((batch_choice, labeled_batch_size))
+
+    combination_count = len(batch_choices) * len(labeled_choices)
+    if not valid_combinations:
+        raise ValueError(
+            "No valid two-stream sampler HPO combinations remain. labeled_batch_size must be "
+            "no larger than unlabeled_batch_size (batch_size - labeled_batch_size), "
+            "and both stream sizes must be divisible by sampler_m."
+        )
+
+    excluded_count = combination_count - len(valid_combinations)
+    if batch_sampler_spec is not None and labeled_key is not None:
+        del spaces[BATCH_SAMPLER_HPARAM_KEY]
+        del spaces[labeled_key]
+        spaces[JOINT_TWO_STREAM_HPARAM_KEY] = [
+            serialize_joint_component_params(
+                {
+                    BATCH_SAMPLER_HPARAM_KEY: batch_choice,
+                    labeled_key: labeled_batch_size,
+                }
+            )
+            for batch_choice, labeled_batch_size in valid_combinations
+        ]
+    elif batch_sampler_spec is not None:
+        valid_batch_choices = [batch_choice for batch_choice, _ in valid_combinations]
+        spaces[BATCH_SAMPLER_HPARAM_KEY] = replace_categorical_choices_for_label_budget(
+            batch_sampler_spec,
+            valid_batch_choices,
+        )
+    else:
+        valid_labeled_choices = list(
+            dict.fromkeys(labeled_batch_size for _, labeled_batch_size in valid_combinations)
+        )
+        spaces[labeled_key] = replace_categorical_choices_for_label_budget(
+            labeled_batch_size_spec,
+            valid_labeled_choices,
+        )
+
+    if excluded_count:
+        logger.info(
+            f"Excluded {excluded_count} of {combination_count} two-stream sampler HPO combinations; "
+            f"retained {len(valid_combinations)} with labeled_batch_size <= unlabeled_batch_size "
+            "and both stream sizes divisible by sampler_m."
+        )
+    return replace(config, spaces=spaces)
+
+def validate_two_stream_hpo_batch_combination(batch_size, sampler_m, labeled_batch_size):
+    labeled_batch_size = parse_labeled_batch_size_choice(labeled_batch_size)
+    batch_size = int(batch_size)
+    sampler_m = int(sampler_m)
+    if batch_size <= 0 or sampler_m <= 0:
+        raise ValueError("Two-stream HPO batch_size and sampler_m must be positive")
+    unlabeled_batch_size = batch_size - labeled_batch_size
+    if labeled_batch_size > unlabeled_batch_size:
+        raise ValueError(
+            "Two-stream HPO requires labeled_batch_size <= unlabeled_batch_size: "
+            f"labeled_batch_size={labeled_batch_size}, "
+            f"unlabeled_batch_size={unlabeled_batch_size}, batch_size={batch_size}"
+        )
+    for stream_name, stream_batch_size in (
+        ("labeled", labeled_batch_size),
+        ("unlabeled", unlabeled_batch_size),
+    ):
+        if stream_batch_size % sampler_m != 0:
+            raise ValueError(
+                f"Two-stream HPO {stream_name} batch size must be divisible by sampler_m: "
+                f"{stream_name}_batch_size={stream_batch_size}, sampler_m={sampler_m}"
+            )
+    return unlabeled_batch_size
+
+def get_sampler_capacity_space(args, config, ssl_config):
+    """Return HPO choices paired with their actual true-labeled stream sizes."""
+
+    spaces = config.spaces
+    joint_spec = spaces.get(JOINT_TWO_STREAM_HPARAM_KEY)
+    if joint_spec is not None:
+        choices = get_categorical_choices(joint_spec)
+        capacity_choices = []
+        for choice in choices:
+            params = expand_joint_component_params({JOINT_TWO_STREAM_HPARAM_KEY: choice})
+            batch_size, sampler_m = parse_batch_sampler_choice(params[BATCH_SAMPLER_HPARAM_KEY])
+            labeled_key = next(iter(set(params) & LABELED_BATCH_SIZE_HPARAM_KEYS))
+            labeled_batch_size = parse_labeled_batch_size_choice(params[labeled_key])
+            capacity_choices.append((choice, labeled_batch_size, sampler_m))
+        return JOINT_TWO_STREAM_HPARAM_KEY, joint_spec, capacity_choices
+
+    batch_sampler_spec = spaces.get(BATCH_SAMPLER_HPARAM_KEY)
+    if batch_sampler_spec is not None:
+        capacity_choices = []
+        for choice in get_categorical_choices(batch_sampler_spec):
+            batch_size, sampler_m = parse_batch_sampler_choice(choice)
+            labeled_batch_size = (
+                batch_size
+                if ssl_config.labeled_batch_size is None or getattr(args, "mode", None) != "ssl"
+                else int(ssl_config.labeled_batch_size)
+            )
+            capacity_choices.append((choice, labeled_batch_size, sampler_m))
+        return BATCH_SAMPLER_HPARAM_KEY, batch_sampler_spec, capacity_choices
+
+    labeled_keys = sorted(set(spaces) & LABELED_BATCH_SIZE_HPARAM_KEYS)
+    if not labeled_keys:
+        return None
+    labeled_key = labeled_keys[0]
+    labeled_spec = spaces[labeled_key]
+    capacity_choices = [
+        (choice, parse_labeled_batch_size_choice(choice), int(args.sampler_m))
+        for choice in get_categorical_choices(labeled_spec)
+    ]
+    return labeled_key, labeled_spec, capacity_choices
+
+def filter_sampler_capacity_choices_for_training_labels(capacity_choices, training_label_sets):
+    valid_choices = []
+    for choice, labeled_batch_size, sampler_m in capacity_choices:
+        try:
+            for labels in training_label_sets:
+                utils.validate_m_per_class_sampler_capacity(
+                    labels,
+                    labeled_batch_size,
+                    sampler_m,
+                )
+        except utils.MPerClassSamplerCapacityError:
+            continue
+        valid_choices.append(choice)
+    return valid_choices
 
 def make_label_budget_training_label_sets(args, ssl_config):
     """Reproduce the deterministic labeled training data used by each fold."""
@@ -1457,7 +1713,7 @@ def serialize_joint_component_params(params):
 def expand_joint_component_params(params):
     expanded = {}
     for name, value in params.items():
-        if not name.startswith(JOINT_COMPONENT_HPARAM_PREFIX):
+        if not name.startswith((JOINT_COMPONENT_HPARAM_PREFIX, JOINT_HPARAM_PREFIX)):
             expanded[name] = value
             continue
         joint_params = json.loads(value)

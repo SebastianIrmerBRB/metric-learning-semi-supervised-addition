@@ -89,3 +89,19 @@ The config uses `unlabeled_source: split_and_external`, so pseudo-label SSL sees
 both the In-Shop unlabeled candidates from the training split and all images
 found below `external_unlabeled_dir`. Use `unlabeled_source: external` to train
 with only the external unlabeled pool.
+
+## CUB With NABirds Unlabeled Images
+
+For the CUB + NABirds semi-supervised metric-learning protocol, download
+NABirds from the [official dataset page](https://dl.allaboutbirds.org/nabirds),
+extract the official metadata and `images/` directory under `data/NABirds`, and
+run:
+
+```powershell
+python main.py --experiment_config configs/experiments/stml_cub_nabirds.json
+```
+
+The dedicated NABirds loader validates `images.txt`,
+`image_class_labels.txt`, and `classes.txt`, then hides all source labels before
+the images enter the SSL pool. See [docs/stml.md](docs/stml.md) for the expected
+layout and protocol details.
