@@ -128,11 +128,23 @@ LABELED_PER_CLASS_HPARAM_KEYS = {
 
 BATCH_SAMPLER_HPARAM_KEY = "batch_sampler"
 
+LABELED_BATCH_SIZE_HPARAM_KEY = "labeled_batch_size"
+
+LABELED_BATCH_SIZE_HPARAM_KEYS = {
+    LABELED_BATCH_SIZE_HPARAM_KEY,
+    "ssl.labeled_batch_size",
+    "ssl_config.labeled_batch_size",
+}
+
 LOSS_HPARAM_PREFIX = "loss."
 
 MINER_HPARAM_PREFIX = "miner."
 
 JOINT_COMPONENT_HPARAM_PREFIX = "__joint_component__."
+
+JOINT_HPARAM_PREFIX = "__joint_hparam__."
+
+JOINT_TWO_STREAM_HPARAM_KEY = f"{JOINT_HPARAM_PREFIX}two_stream_batch_sampler"
 
 HPO_MODE_KEYS = {"backbone_tuning", "use_cache"}
 

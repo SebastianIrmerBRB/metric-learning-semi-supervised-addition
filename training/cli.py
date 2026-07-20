@@ -354,7 +354,8 @@ parser.add_argument(
         "optional filtering applied to external unlabeled images. "
         "compcars_model_min_count keeps CompCars model-level categories with enough images; "
         "compcars_stml_paper reproduces the STML CompCars subset and checks for 16,537 images "
-        "across 145 model classes."
+        "across 145 model classes; nabirds reads the official NABirds metadata and exposes all "
+        "listed images as hidden-label samples for CUB."
     ),
 )
 parser.add_argument(

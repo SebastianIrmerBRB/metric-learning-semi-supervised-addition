@@ -361,6 +361,161 @@ class CompCarsSTMLPaperUnlabeledImageDataset(CompCarsModelFilteredUnlabeledImage
         )
 
 
+class NABirdsUnlabeledImageDataset(Dataset):
+    """Load every official NABirds image while keeping its annotations hidden.
+
+    NABirds is used as the additional unlabeled bird collection for CUB in the
+    SLADE/STML semi-supervised protocol.  Reading ``images.txt`` rather than
+    recursively accepting every image makes the pool reproducible and avoids
+    accidentally including unrelated files placed below the download root.
+    """
+
+    MODE = "nabirds"
+    REQUIRED_METADATA_FILES = (
+        "images.txt",
+        "image_class_labels.txt",
+        "classes.txt",
+    )
+
+    def __init__(self, root, transform=None):
+        self.root = Path(root)
+        if not self.root.is_dir():
+            raise ValueError(f"External unlabeled image directory does not exist: {self.root}")
+
+        self.dataset_root = self.find_dataset_root(self.root)
+        image_names = self.read_indexed_text_file(self.dataset_root / "images.txt", "image path")
+        source_class_ids = self.read_indexed_int_file(
+            self.dataset_root / "image_class_labels.txt",
+            "class label",
+        )
+        class_names = self.read_indexed_text_file(self.dataset_root / "classes.txt", "class name")
+
+        image_ids = set(image_names)
+        label_ids = set(source_class_ids)
+        if image_ids != label_ids:
+            missing_labels = sorted(image_ids - label_ids)
+            missing_images = sorted(label_ids - image_ids)
+            raise ValueError(
+                "NABirds metadata IDs do not align between images.txt and image_class_labels.txt: "
+                f"{len(missing_labels)} images lack labels and {len(missing_images)} labels lack images"
+            )
+
+        unknown_class_ids = sorted(set(source_class_ids.values()) - set(class_names))
+        if unknown_class_ids:
+            raise ValueError(
+                "NABirds image_class_labels.txt references class IDs missing from classes.txt: "
+                f"{unknown_class_ids[:10]}"
+            )
+
+        self.image_ids = sorted(image_names)
+        self.image_names = [image_names[image_id] for image_id in self.image_ids]
+        self.paths = [self.resolve_image_path(image_name) for image_name in self.image_names]
+        missing_paths = [path for path in self.paths if not path.is_file()]
+        if missing_paths:
+            examples = ", ".join(str(path) for path in missing_paths[:3])
+            raise ValueError(
+                f"NABirds is missing {len(missing_paths)} image files listed in images.txt; examples: {examples}"
+            )
+
+        # Source annotations are used only for integrity diagnostics and then
+        # discarded. Every sample exposed to the training pipeline has label -1.
+        ordered_source_class_ids = [source_class_ids[image_id] for image_id in self.image_ids]
+        self.transform = transform
+        self.labels = [-1] * len(self.paths)
+        self.orig_labels = list(self.labels)
+        used_class_ids = set(ordered_source_class_ids)
+        self.filter_info = {
+            "mode": self.MODE,
+            "candidate_source": "official_metadata",
+            "category_unit": "visual categories",
+            "dataset_root": str(self.dataset_root),
+            "discovered_images": int(len(self.paths)),
+            "discovered_model_classes": int(len(used_class_ids)),
+            "kept_images": int(len(self.paths)),
+            "kept_model_classes": int(len(used_class_ids)),
+            "dropped_images": 0,
+            "dropped_model_classes": 0,
+            "metadata_class_count": int(len(class_names)),
+        }
+
+    @classmethod
+    def find_dataset_root(cls, root):
+        root = Path(root)
+        preferred_candidates = [root, root / "nabirds", root / "NABirds"]
+        for child in root.iterdir():
+            if child.is_dir() and child not in preferred_candidates:
+                preferred_candidates.append(child)
+
+        matches = []
+        for candidate in preferred_candidates:
+            if all((candidate / filename).is_file() for filename in cls.REQUIRED_METADATA_FILES):
+                if not (candidate / "images").is_dir():
+                    continue
+                resolved = candidate.resolve()
+                if resolved not in matches:
+                    matches.append(resolved)
+
+        if not matches:
+            expected = ", ".join(cls.REQUIRED_METADATA_FILES)
+            raise ValueError(
+                "NABirds metadata was not found. Expected an official NABirds directory containing "
+                f"images/ and {expected} directly below {root} or one of its immediate subdirectories."
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                "Multiple NABirds dataset roots were found below the external directory: "
+                + ", ".join(str(path) for path in matches)
+            )
+        return matches[0]
+
+    @staticmethod
+    def read_indexed_text_file(path, value_name):
+        records = {}
+        for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            columns = line.split(maxsplit=1)
+            if len(columns) != 2:
+                raise ValueError(f"Invalid NABirds {value_name} row at {path}:{line_number}")
+            try:
+                record_id = int(columns[0])
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid NABirds ID at {path}:{line_number}: {columns[0]!r}"
+                ) from exc
+            if record_id in records:
+                raise ValueError(f"Duplicate NABirds ID {record_id} at {path}:{line_number}")
+            records[record_id] = columns[1]
+        if not records:
+            raise ValueError(f"NABirds metadata file is empty: {path}")
+        return records
+
+    @classmethod
+    def read_indexed_int_file(cls, path, value_name):
+        records = cls.read_indexed_text_file(path, value_name)
+        try:
+            return {record_id: int(value) for record_id, value in records.items()}
+        except ValueError as exc:
+            raise ValueError(f"NABirds {value_name} values must be integers: {path}") from exc
+
+    def resolve_image_path(self, image_name):
+        normalized_name = str(image_name).replace("\\", "/")
+        relative_path = Path(normalized_name)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ValueError(f"NABirds images.txt contains an unsafe image path: {image_name!r}")
+        return self.dataset_root / "images" / relative_path
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, index):
+        image = default_loader(str(self.paths[index]))
+        if self.transform is not None:
+            image = self.transform(image)
+        return image, -1
+
+
 class DeepFashionInShop(Dataset):
     """DeepFashion In-shop Clothes Retrieval dataset.
 

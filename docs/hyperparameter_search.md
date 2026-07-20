@@ -113,6 +113,34 @@ Use the reserved `batch_sampler` key when `batch_size` and `sampler_m` must be s
 Its choices are strings formatted as `"batch_size:sampler_m"`, for example `"32:16"`.
 Do not include `batch_size` or `sampler_m` separately when using `batch_sampler`.
 
+For Iscen's `TwoStreamMPerClassBatchSampler`, the top-level
+`labeled_batch_size` HPO key is a convenience alias for
+`ssl_config.labeled_batch_size`. When both it and `batch_sampler` use
+categorical choices, the runner automatically turns their Cartesian product
+into one joint space and removes every pair that does not satisfy
+`labeled_batch_size <= batch_size - labeled_batch_size`. A 50/50 split is
+therefore valid. It also removes pairs
+where either stream size is not divisible by `sampler_m`, so invalid pairs do
+not consume trials. Integer strings are accepted and normalized to integers:
+
+```json
+{
+  "batch_sampler": {
+    "type": "categorical",
+    "choices": ["16:4", "32:4", "64:4", "128:4", "256:4", "512:8"]
+  },
+  "labeled_batch_size": {
+    "type": "categorical",
+    "choices": ["16", "32", "64", "128"]
+  }
+}
+```
+
+With these choices, Optuna sees only the 14 valid pairs. Trial summaries and
+replay parameters expose the expanded `batch_sampler` and
+`labeled_batch_size` values even though the study stores the valid pair as one
+internal categorical parameter.
+
 Examples:
 
 ```json
