@@ -124,6 +124,8 @@ Common fields:
 - `labeled_fraction`: budget used by `label_sampling_mode`.
 - `labeled_per_class`: fixed labeled sample count per class. Supported with `label_sampling_mode: "per_class_min"` and required by `label_sampling_mode: "class_subset_k_shot"`.
 - `confidence_threshold`: drops pseudo-labels below this confidence when the method provides confidences.
+- `pseudo_label_rescue_confidence_floor`: for Iscen two-stream batches, the lower absolute confidence floor used only when the global threshold leaves too few predicted classes for the M-per-class pseudo stream.
+- `pseudo_label_rescue_top_k`: maximum rejected candidates rescued from each newly admitted predicted class; `null` uses `sampler_m`.
 - `pseudo_label_diagnostics_mode`: controls pseudo-label audit diagnostics for methods that generate pseudo-labels. Use `save` to write `pseudo_label_diagnostics.jsonl`, `log` to only log summaries, or `off` to skip diagnostics.
 - `max_unlabeled_samples`: optional cap applied after all non-labeled training samples are selected as unlabeled candidates.
 - `embedding_batch_size`: batch size for extracting DINO embeddings used by SSL.

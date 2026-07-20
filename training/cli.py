@@ -46,6 +46,16 @@ COMPARISON_SEED_TARGETS = (
     COMPARISON_SEED_TARGET_SUPPORT,
     COMPARISON_SEED_TARGET_HPARAM,
 )
+LR_SCHEDULER_NONE = "none"
+LR_SCHEDULER_STEP = "step"
+LR_SCHEDULER_COSINE = "cosine"
+LR_SCHEDULER_COSINE_WARM_RESTARTS = "cosine_warm_restarts"
+LR_SCHEDULERS = (
+    LR_SCHEDULER_NONE,
+    LR_SCHEDULER_STEP,
+    LR_SCHEDULER_COSINE,
+    LR_SCHEDULER_COSINE_WARM_RESTARTS,
+)
 
 
 def parse_json_object(value):
@@ -209,6 +219,27 @@ parser.add_argument(
     help="device: cpu, cuda, or an indexed CUDA device such as cuda:2",
 )
 parser.add_argument("--optim", type=str, default="adam", choices=["adamw", "adam", "rmsprop"], help="optimizer")
+parser.add_argument(
+    "--lr_scheduler",
+    "--lr-scheduler",
+    choices=LR_SCHEDULERS,
+    default=LR_SCHEDULER_NONE,
+    help=(
+        "learning-rate scheduler. 'none' keeps the learning rate fixed; 'step' and "
+        "'cosine' advance per epoch, while 'cosine_warm_restarts' advances per batch"
+    ),
+)
+parser.add_argument(
+    "--lr_scheduler_params",
+    "--lr-scheduler-params",
+    type=parse_json_object,
+    default={},
+    help=(
+        "JSON object of scheduler parameters. Step defaults: step_size=10, gamma=0.1. "
+        "Cosine defaults: T_max=epochs, eta_min=0. Warm-restart defaults: "
+        "T_0=10, T_mult=1, eta_min=0"
+    ),
+)
 parser.add_argument("--seed", type=int, default=7, help="random seed for training/runtime randomness")
 parser.add_argument(
     "--hparam_seed",

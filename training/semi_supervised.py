@@ -2629,6 +2629,16 @@ def validate_ssl_config(config, path=None):
         raise ValueError(f"class_subset_k_shot requires labeled_per_class to set k-shot{source}")
     if not (0 <= config.confidence_threshold <= 1):
         raise ValueError(f"confidence_threshold must be in [0, 1]{source}")
+    if not (0 <= config.pseudo_label_rescue_confidence_floor <= 1):
+        raise ValueError(f"pseudo_label_rescue_confidence_floor must be in [0, 1]{source}")
+    if config.pseudo_label_rescue_top_k is not None:
+        if isinstance(config.pseudo_label_rescue_top_k, bool) or not isinstance(
+            config.pseudo_label_rescue_top_k,
+            (int, np.integer),
+        ):
+            raise ValueError(f"pseudo_label_rescue_top_k must be an integer or null{source}")
+        if config.pseudo_label_rescue_top_k <= 0:
+            raise ValueError(f"pseudo_label_rescue_top_k must be positive when set{source}")
     if config.labeled_batch_size is not None:
         if isinstance(config.labeled_batch_size, bool) or not isinstance(
             config.labeled_batch_size,
@@ -2753,6 +2763,8 @@ def build_ssl_training_dataset(
     start_method="spawn",
     diagnostics_tracker=None,
     log_dir=None,
+    required_pseudo_label_classes=None,
+    pseudo_label_rescue_top_k=None,
 ):
     """Generate, filter, and merge pseudo-labels with the true labeled subset."""
 
@@ -2800,6 +2812,13 @@ def build_ssl_training_dataset(
         pseudo_labels=raw_pseudo_labels,
         confidence_threshold=config.confidence_threshold,
         valid_mapped_labels=set(train_labels_mapper.values()),
+        required_classes=required_pseudo_label_classes,
+        rescue_confidence_floor=config.pseudo_label_rescue_confidence_floor,
+        rescue_top_k=(
+            config.pseudo_label_rescue_top_k
+            if config.pseudo_label_rescue_top_k is not None
+            else pseudo_label_rescue_top_k
+        ),
     )
     if diagnostics_tracker is not None:
         diagnostics_tracker.log(

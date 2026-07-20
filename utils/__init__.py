@@ -17,6 +17,7 @@ import multiprocessing as mp
 import os
 import random
 import sys
+import time
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
@@ -412,6 +413,42 @@ class MetricsLogger:
         )
         self.diagnostics_writer.writeheader()
         self.writer.add_text("run/arguments", "\n".join(f"{key}: {value}" for key, value in vars(args).items()), 0)
+        self.writer.add_custom_scalars(
+            {
+                "Epoch analysis": {
+                    "Training loss": ["Multiline", ["epoch/train/loss"]],
+                    "Learning rates": [
+                        "Multiline",
+                        [
+                            "epoch/train/learning_rate/model/group_0",
+                            "epoch/train/learning_rate/criterion/group_0",
+                        ],
+                    ],
+                    "Validation retrieval": [
+                        "Multiline",
+                        [
+                            "epoch/valid/precision_at_1",
+                            "epoch/valid/mean_average_precision_at_r",
+                        ],
+                    ],
+                    "Validation timing": [
+                        "Multiline",
+                        [
+                            "epoch/valid/timing/embedding_extraction_seconds",
+                            "epoch/valid/timing/retrieval_metrics_seconds",
+                            "epoch/valid/timing/total_seconds",
+                        ],
+                    ],
+                    "Validation per-class macro means": [
+                        "Multiline",
+                        [
+                            "epoch/valid/per_class_summary/precision_at_1_macro_mean",
+                            "epoch/valid/per_class_summary/mean_average_precision_at_r_macro_mean",
+                        ],
+                    ],
+                }
+            }
+        )
         logger.info(f"TensorBoard logs are being saved in {self.log_dir / 'tensorboard'}")
         logger.info(f"CSV metrics are being saved in {self.csv_path}")
         logger.info(f"Diagnostic metrics are being saved in {self.diagnostics_path}")
@@ -424,8 +461,10 @@ class MetricsLogger:
 
     def log_train_epoch(self, loss, epoch, step, diagnostics=None):
         self.writer.add_scalar("train/epoch_loss", loss, step)
+        self._add_epoch_scalar("train/loss", loss, epoch)
         self._write_row(step=step, epoch=epoch, split="train_epoch", loss=loss)
         self.log_diagnostics(diagnostics, step=step, epoch=epoch, category="train_epoch")
+        self._add_epoch_diagnostics(diagnostics, epoch)
 
     def log_eval(
         self,
@@ -435,10 +474,17 @@ class MetricsLogger:
         step,
         epoch=None,
         per_class_metrics=None,
+        diagnostics=None,
     ):
         # The split prefix keeps validation and test curves separate.
         self.writer.add_scalar(f"{split}/precision_at_1", precision_at_1, step)
         self.writer.add_scalar(f"{split}/mean_average_precision_at_r", mean_average_precision_at_r, step)
+        self._add_epoch_scalar(f"{split}/precision_at_1", precision_at_1, epoch)
+        self._add_epoch_scalar(
+            f"{split}/mean_average_precision_at_r",
+            mean_average_precision_at_r,
+            epoch,
+        )
         self._write_row(
             step=step,
             epoch=epoch,
@@ -446,19 +492,48 @@ class MetricsLogger:
             precision_at_1=precision_at_1,
             mean_average_precision_at_r=mean_average_precision_at_r,
         )
+        qualified_diagnostics = {
+            self._qualify_split_name(split, name): value
+            for name, value in (diagnostics or {}).items()
+        }
+        self.log_diagnostics(
+            qualified_diagnostics,
+            step=step,
+            epoch=epoch,
+            category="eval_epoch",
+        )
+        self._add_epoch_diagnostics(qualified_diagnostics, epoch)
         for label, metrics in (per_class_metrics or {}).items():
+            class_diagnostics = {
+                f"{split}/per_class/{label}/precision_at_1": metrics["precision_at_1"],
+                f"{split}/per_class/{label}/mean_average_precision_at_r": (
+                    metrics["mean_average_precision_at_r"]
+                ),
+                f"{split}/per_class/{label}/sample_count": metrics["count"],
+            }
             self.log_diagnostics(
-                {
-                    f"{split}/per_class/{label}/precision_at_1": metrics["precision_at_1"],
-                    f"{split}/per_class/{label}/mean_average_precision_at_r": (
-                        metrics["mean_average_precision_at_r"]
-                    ),
-                },
+                class_diagnostics,
                 step=step,
                 epoch=epoch,
                 category="eval_per_class",
                 details={"class_label": label},
             )
+            self._add_epoch_diagnostics(class_diagnostics, epoch)
+
+        summary_diagnostics, distributions = self._summarize_per_class_metrics(
+            split,
+            per_class_metrics,
+        )
+        self.log_diagnostics(
+            summary_diagnostics,
+            step=step,
+            epoch=epoch,
+            category="eval_per_class_summary",
+        )
+        self._add_epoch_diagnostics(summary_diagnostics, epoch)
+        if epoch is not None:
+            for name, values in distributions.items():
+                self.writer.add_histogram(f"epoch/{name}", values, int(epoch))
 
     def close(self):
         self.csv_file.close()
@@ -484,6 +559,63 @@ class MetricsLogger:
                 }
             )
         self.diagnostics_file.flush()
+
+    def _add_epoch_scalar(self, name, value, epoch):
+        if epoch is None or value is None:
+            return
+        self.writer.add_scalar(f"epoch/{name}", float(value), int(epoch))
+
+    def _add_epoch_diagnostics(self, diagnostics, epoch):
+        for name, value in (diagnostics or {}).items():
+            self._add_epoch_scalar(name, value, epoch)
+
+    @staticmethod
+    def _qualify_split_name(split, name):
+        name = str(name).lstrip("/")
+        return name if name.startswith(f"{split}/") else f"{split}/{name}"
+
+    @staticmethod
+    def _summarize_per_class_metrics(split, per_class_metrics):
+        if not per_class_metrics:
+            return {}, {}
+
+        diagnostics = {
+            f"{split}/per_class_summary/class_count": len(per_class_metrics),
+        }
+        distributions = {}
+        counts = np.asarray(
+            [metrics["count"] for metrics in per_class_metrics.values()],
+            dtype=np.float64,
+        )
+        diagnostics.update(
+            {
+                f"{split}/per_class_summary/sample_count": counts.sum(),
+                f"{split}/per_class_summary/samples_per_class_min": counts.min(),
+                f"{split}/per_class_summary/samples_per_class_mean": counts.mean(),
+                f"{split}/per_class_summary/samples_per_class_max": counts.max(),
+            }
+        )
+        distributions[f"{split}/per_class_distribution/sample_count"] = counts
+
+        for metric_name in ("precision_at_1", "mean_average_precision_at_r"):
+            values = np.asarray(
+                [metrics[metric_name] for metrics in per_class_metrics.values()],
+                dtype=np.float64,
+            )
+            values = values[np.isfinite(values)]
+            if len(values) == 0:
+                continue
+            prefix = f"{split}/per_class_summary/{metric_name}"
+            diagnostics.update(
+                {
+                    f"{prefix}_min": values.min(),
+                    f"{prefix}_macro_mean": values.mean(),
+                    f"{prefix}_std": values.std(),
+                    f"{prefix}_max": values.max(),
+                }
+            )
+            distributions[f"{split}/per_class_distribution/{metric_name}"] = values
+        return diagnostics, distributions
 
     def _write_row(
         self,
@@ -1577,17 +1709,52 @@ def evaluate_embeddings(all_embeddings, all_labels, name="test set", return_per_
     return precision_at_1, mean_average_precision_at_r
 
 
-def evaluate(model, eval_loader, name="test set", device="cuda", return_per_class=False):
+def evaluate(
+    model,
+    eval_loader,
+    name="test set",
+    device="cuda",
+    return_per_class=False,
+    return_diagnostics=False,
+):
     """Embed a dataset and compute retrieval Precision@1 and MAP@R."""
 
+    total_started = time.perf_counter()
+    embedding_started = time.perf_counter()
     all_embeddings, all_labels = extract_eval_embeddings(model, eval_loader, name=name, device=device)
-    return evaluate_embeddings(
+    embedding_seconds = time.perf_counter() - embedding_started
+    retrieval_started = time.perf_counter()
+    result = evaluate_embeddings(
         all_embeddings,
         all_labels,
         name=name,
         return_per_class=return_per_class,
         dataset=getattr(eval_loader, "dataset", None),
     )
+    retrieval_seconds = time.perf_counter() - retrieval_started
+    if not return_diagnostics:
+        return result
+
+    diagnostics_started = time.perf_counter()
+    embedding_norms = np.linalg.norm(all_embeddings, axis=1)
+    diagnostics = {
+        "timing/embedding_extraction_seconds": embedding_seconds,
+        "timing/retrieval_metrics_seconds": retrieval_seconds,
+        "data/sample_count": len(all_labels),
+        "data/class_count": len(np.unique(all_labels)),
+        "data/embedding_dimension": all_embeddings.shape[1],
+        "embedding_norm/min": embedding_norms.min(),
+        "embedding_norm/mean": embedding_norms.mean(),
+        "embedding_norm/std": embedding_norms.std(),
+        "embedding_norm/max": embedding_norms.max(),
+    }
+    try:
+        diagnostics["data/batch_count"] = len(eval_loader)
+    except TypeError:
+        pass
+    diagnostics["timing/analysis_seconds"] = time.perf_counter() - diagnostics_started
+    diagnostics["timing/total_seconds"] = time.perf_counter() - total_started
+    return (*result, diagnostics)
 
 
 def class_names_for_labels(dataset, labels):
