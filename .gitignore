@@ -2,5 +2,6 @@ data
 __pycache__
 .spyproject
 .idea
+.extractor_scripts
 old_logs
 SETTING LIMIT ON PROCESS

@@ -1,17 +1,19 @@
 {
-  "save_dir": "cars_first",
+  "save_dir": "all_tpe_cars",
   "dataset": "Cars196",
-  "length_before_new_iter": 100000,
+  "length_before_new_iter": 6041,
   "dataset_protocol": "official",
-  "val_mode": "match_train",
-  "cv_k": 1,
-  "final_test_after_hpo": false,
+  "val_mode": "all",
+  "cv_k": 4,
+
+  "final_test_after_hpo": true,
   "cv_mode": "stratified_group_kfold",
   "mode": "supervised",
   "patience": 20,
-  "epochs": 400,
-  "use_cache": true,
+  "feat_dim": 768,
+  "epochs": 600,
   "backbone_tuning": "frozen",
+  "use_cache": true,
   "ssl_config": "configs/ssl_faiss_knn.json",
   "hparam_config": "configs/supervised/classification/cars_first_task.json",
   "label_budget_grid": [
@@ -24,7 +26,6 @@
     "class_subset_k_shot"
   ],
   "loss_miner_grid": [
-    "ArcFaceLoss:no_miner", "ProxyAnchorLoss:no_miner"
-
+"ArcFaceLoss:no_miner"
   ]
 }

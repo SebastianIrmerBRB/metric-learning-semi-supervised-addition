@@ -1,0 +1,51 @@
+{
+  "enabled": true,
+  "n_trials": 60,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "cifar",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "tpe",
+  "sampler_params": {
+    "multivariate": true,
+    "group": true
+  },
+  "tpe_startup_trials": 20,
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+   "lr": {
+      "type": "float",
+      "low": 1e-4,
+      "high": 2,
+      "log": true
+    },
+    "classifier_lr": {
+      "type": "float",
+      "low": 1e-2,
+      "high": 1,
+      "log": true
+    },
+    "loss.ArcFaceLoss.scale": {
+      "type": "float",
+      "low": 40,
+      "high": 250.0,
+      "log": true
+    },
+    "loss.ArcFaceLoss.margin": {
+      "type": "float",
+      "low": 15,
+      "high": 30.0,
+      "log": false
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+       "16:8", "32:8", "64:8", "128:8", "256:8", "512:16"
+      ]
+    }
+  }
+}

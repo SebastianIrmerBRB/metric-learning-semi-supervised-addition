@@ -97,6 +97,101 @@ class _BatchTimer:
             self.totals[name] += (self.start() if end is None else end) - start
 
 
+class GradientContributionNorms(NamedTuple):
+    supervised: float
+    regularizer: float
+
+
+def measure_gradient_component_norms(
+    supervised_loss,
+    regularization_loss,
+    parameters,
+    *,
+    supervised_weight,
+    regularizer_weight,
+):
+    """Measure weighted model-gradient component norms without accumulating them.
+
+    Each component is summarized and released before computing the next one, so
+    interval logging needs at most one additional model-sized gradient tuple.
+    ``autograd.grad`` leaves ``parameter.grad`` untouched, and retaining the
+    graph lets the caller run the ordinary combined ``loss.backward()``
+    afterwards.
+    """
+
+    parameters = tuple(parameter for parameter in parameters if parameter.requires_grad)
+    if not parameters:
+        return GradientContributionNorms(0.0, 0.0)
+
+    def component_norm(loss, weight):
+        weight = float(weight)
+        if loss is None or weight == 0.0 or not loss.requires_grad:
+            return 0.0
+        weighted_loss = weight * loss
+        gradients = torch.autograd.grad(
+            weighted_loss,
+            parameters,
+            allow_unused=True,
+            retain_graph=True,
+        )
+        squared_norm = torch.zeros(
+            (),
+            dtype=torch.float32,
+            device=parameters[0].device,
+        )
+        for gradient in gradients:
+            if gradient is None:
+                continue
+            gradient = gradient.detach()
+            if gradient.is_sparse:
+                gradient = gradient.coalesce().values()
+            squared_norm.add_(gradient.float().square().sum())
+        return max(float(squared_norm.item()), 0.0) ** 0.5
+
+    # Do not keep both model-sized component gradient tuples alive together.
+    supervised_norm = component_norm(supervised_loss, supervised_weight)
+    regularizer_norm = component_norm(regularization_loss, regularizer_weight)
+    return GradientContributionNorms(supervised_norm, regularizer_norm)
+
+
+def make_gradient_contribution_diagnostics(component_norms, combined_norm):
+    """Build scalar diagnostics after the real combined backward pass."""
+
+    supervised_norm = float(component_norms.supervised)
+    regularizer_norm = float(component_norms.regularizer)
+    combined_norm = 0.0 if combined_norm is None else float(combined_norm)
+    supervised_squared = supervised_norm * supervised_norm
+    regularizer_squared = regularizer_norm * regularizer_norm
+    dot_product = (
+        combined_norm * combined_norm
+        - supervised_squared
+        - regularizer_squared
+    ) / 2.0
+    component_norm_sum = supervised_norm + regularizer_norm
+    norm_product = supervised_norm * regularizer_norm
+    cosine_similarity = (
+        max(-1.0, min(1.0, dot_product / norm_product))
+        if norm_product > 0.0
+        else 0.0
+    )
+    diagnostics = {
+        "train/gradient_contribution/supervised_norm": supervised_norm,
+        "train/gradient_contribution/regularizer_norm": regularizer_norm,
+        "train/gradient_contribution/combined_norm": combined_norm,
+        "train/gradient_contribution/regularizer_fraction": (
+            regularizer_norm / component_norm_sum
+            if component_norm_sum > 0.0
+            else 0.0
+        ),
+        "train/gradient_contribution/cosine_similarity": cosine_similarity,
+    }
+    if supervised_norm > 0.0:
+        diagnostics[
+            "train/gradient_contribution/regularizer_to_supervised_ratio"
+        ] = regularizer_norm / supervised_norm
+    return diagnostics
+
+
 def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
     """Concatenate labeled and regularizer inputs without changing either stream."""
 
@@ -115,6 +210,7 @@ def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
 
 def should_precompute_frozen_features(args, ssl_config):
     regularized_ssl = is_cacheable_regularized_ssl(ssl_config)
+    loss_driven_ssl = ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS
     # Every registered pseudo-label method consumes the common deterministic
     # embedding-extraction path. Materializing the raw frozen-backbone matrix is
     # therefore method-agnostic: Iscen, mixed propagation, sklearn, and FAISS
@@ -126,7 +222,7 @@ def should_precompute_frozen_features(args, ssl_config):
         and args.backbone_tuning == BACKBONE_TUNING_FROZEN
         and (
             (supervised and not ssl_config.enabled)
-            or (not supervised and (regularized_ssl or pseudo_label_ssl))
+            or (not supervised and (loss_driven_ssl or regularized_ssl or pseudo_label_ssl))
         )
     )
 
@@ -818,6 +914,15 @@ class _EpochTrainer:
         self.batch_timing_enabled = bool(getattr(args, "debug_batch_timing", False))
         self.batch_timing_interval = int(getattr(args, "debug_batch_timing_interval", 5))
         self.batch_diagnostics_enabled = bool(getattr(args, "log_batch_diagnostics", False))
+        self.gradient_contribution_log_interval = int(
+            getattr(args, "ssl_gradient_contribution_log_interval", 0) or 0
+        )
+        if self.gradient_contribution_log_interval > 0 and regularizer is not None:
+            logger.info(
+                "SSL gradient contribution logging enabled: "
+                f"regularizer={regularizer.name}, "
+                f"active_batch_interval={self.gradient_contribution_log_interval}"
+            )
         self._lr_scheduler_uses_batch_steps = (
             getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
             == LR_SCHEDULER_COSINE_WARM_RESTARTS
@@ -844,6 +949,7 @@ class _EpochTrainer:
         self.teacher_model = None
         self.regularizer_state = None
         self.global_step = 0
+        self.regularization_step = 0
         self.progress_bar = None
 
     def _resolve_phase(self, epoch):
@@ -1018,6 +1124,13 @@ class _EpochTrainer:
             diagnostics.update(self.regularizer.batch_diagnostics())
         return diagnostics
 
+    def _should_log_gradient_contributions(self, phase):
+        return (
+            self.gradient_contribution_log_interval > 0
+            and phase.regularization_active
+            and self.regularization_step % self.gradient_contribution_log_interval == 0
+        )
+
     def _active_optimizers(self, phase):
         active_optimizers = [self.model_optimizer]
         if phase.objective.is_classification:
@@ -1132,11 +1245,28 @@ class _EpochTrainer:
                 loss_value = loss.detach().item()
                 timer.stop("loss_item", started)
 
+                gradient_contribution_norms = None
+                if self._should_log_gradient_contributions(phase):
+                    started = timer.start()
+                    gradient_contribution_norms = measure_gradient_component_norms(
+                        supervised_loss,
+                        regularization_loss,
+                        self.model.parameters(),
+                        supervised_weight=self.regularizer.supervised_weight,
+                        regularizer_weight=self.regularizer.regularizer_weight,
+                    )
+                    timer.stop("gradient_contribution_diagnostics", started)
+
                 started = timer.start()
                 loss.backward()
                 timer.stop("backward", started)
 
-                started = timer.start() if self.batch_diagnostics_enabled else None
+                started = (
+                    timer.start()
+                    if self.batch_diagnostics_enabled
+                    or gradient_contribution_norms is not None
+                    else None
+                )
                 miner_diagnostics = utils.summarize_miner_outputs(miner_outputs)
                 batch_diagnostics = self._make_batch_diagnostics(
                     phase,
@@ -1145,6 +1275,28 @@ class _EpochTrainer:
                     regularization_loss,
                     miner_diagnostics,
                 )
+                gradient_contribution_diagnostics = None
+                if gradient_contribution_norms is not None:
+                    combined_gradient_norm = (
+                        None
+                        if batch_diagnostics is None
+                        else batch_diagnostics.get("train/gradient_norm/model")
+                    )
+                    if combined_gradient_norm is None:
+                        combined_gradient_norm = utils.gradient_l2_norm(
+                            self.model.parameters()
+                        )
+                    gradient_contribution_diagnostics = (
+                        make_gradient_contribution_diagnostics(
+                            gradient_contribution_norms,
+                            combined_gradient_norm,
+                        )
+                    )
+                if gradient_contribution_diagnostics:
+                    batch_diagnostics = {
+                        **(batch_diagnostics or {}),
+                        **gradient_contribution_diagnostics,
+                    }
                 timer.stop("diagnostics", started)
 
                 started = timer.start()
@@ -1186,6 +1338,8 @@ class _EpochTrainer:
                 zero_loss_batches += int(loss_value == 0.0)
                 for name, value in miner_diagnostics.items():
                     epoch_miner_totals[name] += value
+                if phase.regularization_active:
+                    self.regularization_step += 1
                 self.global_step += 1
                 self.progress_bar.set_description(f"loss = {loss_value:.5f}", refresh=False)
 
@@ -1559,14 +1713,15 @@ def run_training(
         if not final_full_train:
             # Epoch -1 measures the pretrained/off-the-shelf embedding before
             # task-specific updates. It is also a valid initial checkpoint.
-            valid_precision, valid_map, valid_per_class, valid_diagnostics = utils.evaluate(
+            valid_precision, valid_map, valid_diagnostics = utils.evaluate(
                 model,
                 valid_loader,
                 "valid",
                 device=args.device,
-                return_per_class=True,
+                return_per_class=False,
                 return_diagnostics=True,
             )
+            valid_per_class = None
             metrics_logger.log_eval(
                 "valid",
                 valid_precision,
@@ -1593,13 +1748,14 @@ def run_training(
             logger.info(f"Training final full-development model for exactly {args.epochs} epochs")
 
         if evaluate_test and final_full_train:
-            epoch0_test_precision, epoch0_test_map, epoch0_test_per_class = utils.evaluate(
+            epoch0_test_precision, epoch0_test_map = utils.evaluate(
                 model,
                 test_loader,
                 "test epoch 0 - no optimization",
                 device=args.device,
-                return_per_class=True,
+                return_per_class=False,
             )
+            epoch0_test_per_class = None
             metrics_logger.log_eval(
                 "epoch0_test",
                 epoch0_test_precision,
@@ -1727,14 +1883,15 @@ def run_training(
 
             # Validation runs after every epoch and supplies both early-stopping
             # decisions and intermediate values for Optuna pruning.
-            cur_precision, cur_map, cur_per_class, cur_diagnostics = utils.evaluate(
+            cur_precision, cur_map, cur_diagnostics = utils.evaluate(
                 model,
                 valid_loader,
                 f"valid - epoch {num_epoch:>2}",
                 device=args.device,
-                return_per_class=True,
+                return_per_class=False,
                 return_diagnostics=True,
             )
+            cur_per_class = None
             metrics_logger.log_eval(
                 "valid",
                 cur_precision,
@@ -1793,13 +1950,14 @@ def run_training(
                 "test",
                 device=args.device,
             )
-            test_precision, test_map, test_per_class = utils.evaluate_embeddings(
+            test_precision, test_map = utils.evaluate_embeddings(
                 test_embeddings,
                 test_labels,
                 name="test",
-                return_per_class=True,
+                return_per_class=False,
                 dataset=dataset_bundle.test_dataset,
             )
+            test_per_class = None
             metrics_logger.log_eval(
                 "test",
                 test_precision,
@@ -2159,8 +2317,6 @@ def validate_run_args(args, ssl_config):
             raise ValueError("STMLLoss requires miner='no_miner' because it does not consume labels")
         if args.batch_size < 2:
             raise ValueError("STMLLoss requires batch_size >= 2")
-        if args.use_cache:
-            raise ValueError("STMLLoss requires stochastic multi-view augmentation and cannot use backbone caching")
         if args.stml_g_dim is not None and args.stml_g_dim <= 0:
             raise ValueError("stml_g_dim must be positive when set")
         try:
@@ -2195,6 +2351,8 @@ def validate_run_args(args, ssl_config):
         raise ValueError("frozen_feature_train_views must be positive")
     if getattr(args, "debug_batch_timing_interval", 5) <= 0:
         raise ValueError("debug_batch_timing_interval must be positive")
+    if (getattr(args, "ssl_gradient_contribution_log_interval", 0) or 0) < 0:
+        raise ValueError("ssl_gradient_contribution_log_interval must be non-negative")
     if args.length_before_new_iter is not None and args.length_before_new_iter < args.batch_size:
         raise ValueError("length_before_new_iter must be at least batch_size when set")
     if args.lr <= 0:

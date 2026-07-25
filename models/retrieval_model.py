@@ -198,18 +198,20 @@ class DinoWrapper(nn.Module):
         return self.dinov2(images)
 
     def project_features(self, features):
-        features = self.fc(features)
-        if not self.stml_enabled or self.stml_normalize_student:
-            features = F.normalize(features, p=2.0, dim=1)
+        """Project features for the ordinary supervised/evaluation path."""
 
-        return features
+        features = self.fc(features)
+        return F.normalize(features, p=2.0, dim=1)
 
     def project_stml_features(self, features):
         """Return the STML background head g and retrieval head f."""
 
         if not self.stml_enabled:
             raise RuntimeError("STML heads are not enabled for this model")
-        return self.embedding_g(features), self.project_features(features)
+        retrieval_features = self.fc(features)
+        if self.stml_normalize_student:
+            retrieval_features = F.normalize(retrieval_features, p=2.0, dim=1)
+        return self.embedding_g(features), retrieval_features
 
     def project_stml_teacher_features(self, features):
         """Return only the teacher background head g used by STML."""
@@ -245,6 +247,8 @@ class DinoWrapper(nn.Module):
     def forward_stml_cached(self, images, device):
         """Return both STML heads, optionally from cached backbone features."""
 
+        if torch.is_tensor(images) and images.ndim == 2:
+            return self.project_stml_features(images.to(device, non_blocking=True))
         if not self.use_cache:
             return self.forward_stml(images.to(device, non_blocking=True))
         features = self._load_or_compute_cached_backbone_features(images, device)
@@ -253,6 +257,8 @@ class DinoWrapper(nn.Module):
     def forward_stml_teacher_cached(self, images, device):
         """Return teacher g, optionally from cached backbone features."""
 
+        if torch.is_tensor(images) and images.ndim == 2:
+            return self.project_stml_teacher_features(images.to(device, non_blocking=True))
         if not self.use_cache:
             return self.forward_stml_teacher(images.to(device, non_blocking=True))
         features = self._load_or_compute_cached_backbone_features(images, device)

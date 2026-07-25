@@ -341,6 +341,18 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
+    "--ssl_gradient_contribution_log_interval",
+    "--ssl-gradient-contribution-log-interval",
+    type=parse_non_negative_int,
+    default=0,
+    metavar="BATCHES",
+    help=(
+        "measure the weighted supervised and SSL-regularizer gradient contributions "
+        "on the first active regularization batch and every N active batches thereafter; "
+        "0 disables this opt-in diagnostic"
+    ),
+)
+parser.add_argument(
     "--frozen_feature_batch_size",
     type=int,
     default=None,

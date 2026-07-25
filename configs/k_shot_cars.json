@@ -3,7 +3,7 @@
   "n_trials": 50,
   "timeout": null,
   "direction": "maximize",
-  "metric": "best_valid_mean_average_precision_at_r",
+  "metric": "best_valid_precision_at_1",
   "study_name": "k_shot_search",
   "study_dir": null,
   "storage": null,

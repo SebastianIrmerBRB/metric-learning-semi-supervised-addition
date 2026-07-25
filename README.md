@@ -38,6 +38,7 @@ Sind nicht unbedingt in richtiger Reihenfolge erledigt (Skript erledigt einige d
 - Sampler epoch length: [docs/length_before_new_iter.md](docs/length_before_new_iter.md)
 - Cross-validation and validation modes: [docs/cross_validation.md](docs/cross_validation.md)
 - Top-level experiment config: [docs/experiment_config.md](docs/experiment_config.md)
+- Parallel independent runs across GPUs: [docs/parallel_runs.md](docs/parallel_runs.md)
 - Long-tailed CIFAR generation: [docs/cifar_long_tail.md](docs/cifar_long_tail.md)
 - Semi-supervised FixMatch training: [docs/semi_supervised_fixmatch.md](docs/semi_supervised_fixmatch.md)
 - Semi-supervised sklearn graph baselines: [docs/semi_supervised_sklearn.md](docs/semi_supervised_sklearn.md)

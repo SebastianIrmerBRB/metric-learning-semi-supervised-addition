@@ -1,57 +1,34 @@
 {
-  "enabled": true,
-  "n_trials": 60,
-  "timeout": null,
-  "direction": "maximize",
-  "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "faiss_label_spreading_search",
-  "study_dir": null,
-  "storage": null,
-  "load_if_exists": true,
-  "sampler": "random",
-  "sampler_params": {},
-  "pruner": "none",
-  "pruner_params": {},
-  "spaces": {
-    "lr": {
-      "type": "float",
-      "low": 1e-7,
-      "high": 1e-5,
-      "log": true
-    },
-    "classifier_lr": {
-      "type": "float",
-      "low": 1e-4,
-      "high": 1e+2,
-      "log": true
-    },
-    "ssl_config.method_params.n_neighbors": {
-      "type": "categorical",
-      "choices": [3, 5, 10, 20, 50]
-    },
-    "ssl_config.method_params.gamma": {
-      "type": "float",
-      "low": 0.25,
-      "high": 16,
-      "log": true
-    },
-    "ssl_config.method_params.alpha": {
-      "type": "float",
-      "low": 0.05,
-      "high": 0.99,
-      "log": false
-    },
-    "ssl_config.confidence_threshold": {
-      "type": "float",
-      "low": 0.0,
-      "high": 0.9,
-      "log": false
-    },
-    "batch_sampler": {
-      "type": "categorical",
-      "choices": [
-        "16:4"
-      ]
-    }
-  }
+  "save_dir": "cars_faiss_label_spreading",
+  "dataset": "Cars196",
+  "length_before_new_iter": 6041,
+  "dataset_protocol": "official",
+  "val_mode": "match_train",
+  "cv_k": 4,
+  "final_test_after_hpo": true,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "ssl",
+  "patience": 20,
+  "epochs": 600,
+  "backbone_tuning": "frozen",
+  "use_cache": true,
+  "feat_dim": 768,
+  "ssl_config": "configs/ssl_label_spreading.json",
+  "hparam_config": "configs/ssl/cars_faiss_label_spreading.json",
+  "label_budget_grid": [
+    1
+  ],
+  "k_shot_grid": [
+    16
+  ],
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner",
+    "MultiSimilarityLoss:MultiSimilarityMiner",
+    "CircleLoss:no_miner",
+    "ArcFaceLoss:no_miner",
+    "ProxyAnchorLoss:no_miner"
+  ]
 }

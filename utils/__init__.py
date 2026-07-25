@@ -19,19 +19,16 @@ import random
 import sys
 import time
 import traceback
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import pytorch_metric_learning.datasets as datasets
 import pytorch_metric_learning.samplers as samplers
 import torch
 import torchvision.transforms as tfm
 import torchvision.transforms.v2 as v2
 from loguru import logger
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
-from sklearn.model_selection import GroupKFold, KFold, StratifiedGroupKFold, StratifiedKFold
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 

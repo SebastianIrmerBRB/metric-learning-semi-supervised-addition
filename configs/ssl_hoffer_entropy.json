@@ -7,6 +7,7 @@
     "supervised_weight": 1.0,
     "regularizer_weight": 0.5,
     "regularizer_params": {
+      "normalize_embeddings": true,
       "distance_scale": 1.0,
       "reference_sets": 1
     }

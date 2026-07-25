@@ -1,15 +1,17 @@
 {
-  "method": "sklearn_label_spreading",
-  "update_mode": "once",
+  "method": "iscen_label_spreading",
+  "update_mode": "every_epoch",
   "warmup_epochs": 0,
   "confidence_threshold": 0.8,
   "max_unlabeled_samples": null,
   "embedding_batch_size": 32,
-  "embedding_num_workers": 8,
+  "embedding_num_workers": 0,
   "method_params": {
-    "kernel": "knn",
     "n_neighbors": 10,
+    "gamma": 1.0,
     "alpha": 0.2,
-    "max_iter": 30
+    "cg_rtol": 1e-05,
+    "cg_max_iter": 2000,
+    "linear_solver": "cg"
   }
 }
