@@ -215,6 +215,7 @@ old_logs/<save_dir>/<study_name>/optuna_study.db
 
 With `load_if_exists: true`, rerunning the same command with the same `--save_dir` and `study_name` loads the existing study.
 Trial history is restored from the database and the sampler RNG/state is restored from `sampler.pkl`.
+For TPE studies, `sampler_before_tpe.pkl` is also written once, immediately after the configured number of complete/pruned random startup trials. It is not overwritten by later TPE trials, so it preserves the sampler state at the random-to-TPE boundary.
 
 For `n_jobs > 1`, model training still runs in Optuna's worker threads, but parameter suggestion is serialized through one shared sampler. Optuna's per-thread sampler reseeding is suppressed, and `sampler.pkl` is atomically refreshed immediately after each trial's complete parameter set has been written to Optuna storage. This makes an interrupted parallel run continue from the saved sampler state instead of starting a newly reseeded sequence.
 
@@ -226,6 +227,40 @@ If a process stops during an epoch, the next run resets any unfinished Optuna `R
 Those trials are rerun with the same trial number and sampled parameters before new trials are suggested.
 Per-trial training logs written before the interruption remain on disk, but the model training state is not checkpoint-resumed.
 After reload, history-dependent samplers such as TPE combine the restored sampler state with the completed and pruned trials in the database, then incorporate rerun trials once they finish.
+
+### Rewinding or extending TPE startup
+
+Stop every worker using the study before changing its history. The trial-removal utility can find the original TPE boundary from `sampler_before_tpe.pkl`; failed trials are ignored when locating it, while complete and pruned trials count. Exact rewind/extension is supported for checkpoints created with `n_jobs: 1`; the utility refuses parallel-study checkpoints because they may include in-flight RNG advances beyond the visible trial boundary.
+
+Preview an exact rewind to the original TPE boundary:
+
+```powershell
+python scripts/remove_optuna_trials.py `
+  --study-dir logs/path/to/study `
+  --rewind-to-tpe-start
+```
+
+Add `--yes` to remove every later trial and restore the boundary checkpoint as `sampler.pkl`.
+
+To retain the original random trials but extend random startup to 60:
+
+```powershell
+python scripts/remove_optuna_trials.py `
+  --study-dir logs/path/to/study `
+  --extend-tpe-startup-to 60 `
+  --yes
+```
+
+This command:
+
+- keeps the study prefix through the original completed/pruned startup boundary;
+- removes every later database trial and `trial_XXXX` directory;
+- backs up the database, summaries, rolling sampler, and transition sampler unless `--no-backup` is passed;
+- preserves the old transition sampler as `sampler_before_tpe_<old-count>.pkl`;
+- atomically writes a `sampler.pkl` whose random RNG continues from the old boundary with the new threshold; and
+- removes the old `sampler_before_tpe.pkl` name so the runner can create a new checkpoint at trial 60.
+
+The utility does not edit the source experiment/HPO configuration. Set `tpe_startup_trials` to the reported target before resuming; the runner rejects a loaded TPE sampler whose stored startup threshold disagrees with the current configuration. Because `n_trials` is the total complete/pruned budget, it must be greater than the startup target to run any model-based TPE trials; for 60 random plus 60 TPE trials, use `n_trials: 120`.
 
 ## Output Layout
 
@@ -245,6 +280,7 @@ Study-level files:
 
 - `optuna_study.db`: SQLite storage for trial history and resume.
 - `sampler.pkl`: atomic checkpoint of the Optuna sampler and its RNG state.
+- `sampler_before_tpe.pkl`: one-time TPE checkpoint after random startup and before the first model-based suggestion (TPE studies only).
 - `study_config.json`: base CLI args, hyperparameter config, resolved study name, and resolved storage URL.
 - `trials.csv`: flat table of trial number, state, objective value, params, and scalar result attributes.
 - `trials.jsonl`: one JSON object per trial, including params, user attrs, resolved args, resolved SSL config, timestamps, and duration.

@@ -1,10 +1,79 @@
 """Project-local metric-learning losses."""
 
+import math
+
 import torch
 import torch.nn.functional as F
+from pytorch_metric_learning.losses import ArcFaceLoss as UpstreamArcFaceLoss
 from pytorch_metric_learning.losses import BaseMetricLossFunction
 from pytorch_metric_learning.reducers import DivisorReducer
 from pytorch_metric_learning.utils import common_functions as c_f
+
+
+class NumericallyStableArcFaceLoss(UpstreamArcFaceLoss):
+    """Run ArcFace's angular calculation in FP32 and avoid ``acos`` endpoints.
+
+    The upstream loss clamps target cosines to the closed interval ``[-1, 1]``
+    before calling ``acos``. Under BF16 autocast, well-aligned vectors commonly
+    round to exactly ``1``. The forward loss is finite there, but the derivative
+    of ``acos`` is not, so one optimizer step can turn the projection head into
+    NaNs. Keeping the loss in FP32 greatly reduces endpoint rounding, and the
+    open-interval clamp handles genuinely exact endpoints.
+    """
+
+    def __init__(
+        self,
+        num_classes,
+        embedding_size,
+        margin=28.6,
+        scale=64,
+        acos_epsilon=None,
+        **kwargs,
+    ):
+        super().__init__(
+            num_classes=num_classes,
+            embedding_size=embedding_size,
+            margin=margin,
+            scale=scale,
+            **kwargs,
+        )
+        if acos_epsilon is None:
+            acos_epsilon = torch.finfo(torch.float32).eps
+        if not math.isfinite(float(acos_epsilon)) or not 0 < float(acos_epsilon) < 1:
+            raise ValueError("acos_epsilon must be finite and in (0, 1)")
+        self.acos_epsilon = float(acos_epsilon)
+        self.add_to_recordable_attributes(name="acos_epsilon", is_stat=False)
+
+    def forward(
+        self,
+        embeddings,
+        labels=None,
+        indices_tuple=None,
+        ref_emb=None,
+        ref_labels=None,
+    ):
+        # A nested disabled context overrides the training loop's BF16 autocast.
+        # Casting alone is insufficient because autocast would downcast the
+        # cosine-similarity matmul again.
+        with torch.autocast(device_type=embeddings.device.type, enabled=False):
+            return super().forward(
+                embeddings.float(),
+                labels=labels,
+                indices_tuple=indices_tuple,
+                ref_emb=None if ref_emb is None else ref_emb.float(),
+                ref_labels=ref_labels,
+            )
+
+    def get_angles(self, cosine_of_target_classes):
+        safe_cosine = cosine_of_target_classes.clamp(
+            min=-1.0 + self.acos_epsilon,
+            max=1.0 - self.acos_epsilon,
+        )
+        return super().get_angles(safe_cosine)
+
+    def get_logits(self, embeddings):
+        with torch.autocast(device_type=embeddings.device.type, enabled=False):
+            return super().get_logits(embeddings.float())
 
 
 class STMLLoss(torch.nn.Module):

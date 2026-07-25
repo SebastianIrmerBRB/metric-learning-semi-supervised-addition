@@ -1,67 +1,31 @@
 {
-  "enabled": true,
-  "n_trials": 30,
-  "timeout": null,
-  "direction": "maximize",
-  "metric": "best_valid_mean_average_precision_at_r",
-  "study_name": "lrml_search",
-  "study_dir": null,
-  "storage": null,
-  "load_if_exists": true,
-  "sampler": "random",
-  "sampler_params": {},
-  "pruner": "none",
-  "pruner_params": {},
-  "spaces": {
-    "lr": {
-      "type": "float",
-      "low": 1e-7,
-      "high": 1e-5,
-      "log": true
-    },
-    "classifier_lr": {
-      "type": "float",
-      "low": 1e-4,
-      "high": 1e+2,
-      "log": true
-    },
-    "ssl_config.method_params.supervised_weight": {
-      "type": "float",
-      "low": 0.1,
-      "high": 2.0,
-      "log": true
-    },
-    "ssl_config.method_params.regularizer_weight": {
-      "type": "float",
-      "low": 0.001,
-      "high": 10,
-      "log": true
-    },
-    "ssl_config.method_params.regularizer_params.n_neighbors": {
-      "type": "categorical",
-      "choices": [3, 6, 10, 15, 25, 50]
-    },
-    "ssl_config.method_params.regularizer_params.graph_batch_size": {
-      "type": "categorical",
-      "choices": [16, 32, 64]
-    },
-    "ssl_config.method_params.regularizer_params.normalized_laplacian": {
-      "type": "categorical",
-      "choices": [true]
-    },
-    "ssl_config.method_params.regularizer_params.graph_on": {
-      "type": "categorical",
-      "choices": ["all", "unlabeled"]
-    },
-    "batch_sampler": {
-      "type": "categorical",
-      "choices": [
-        "16:4",
-        "32:4",
-        "64:4",
-        "128:4",
-        "256:4"
-      ]
-    }
-  }
+  "save_dir": "cars_lrml_test_lower_lr",
+  "dataset": "Cars196",
+  "length_before_new_iter": 6041,
+  "dataset_protocol": "official",
+  "val_mode": "match_train",
+  "cv_k": 4,
+  "final_test_after_hpo": true,
+  "cv_mode": "stratified_group_kfold",
+  "mode": "ssl",
+  "patience": 20,
+  "feat_dim": 768,
+  "epochs": 600,
+  "backbone_tuning": "frozen",
+  "use_cache": true,
+  "ssl_config": "configs/ssl_regularized_lrml.json",
+  "hparam_config": "configs/ssl/cars_lrml.json",
+  "label_budget_grid": [
+    1
+  ],
+  "k_shot_grid": [
+    16
+  ],
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner", "MultiSimilarityLoss:MultiSimilarityMiner", "CircleLoss:no_miner", "ArcFaceLoss:no_miner", "ProxyAnchorLoss:no_miner"
+
+  ]
 }

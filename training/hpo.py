@@ -60,6 +60,7 @@ from .types import (
 
 
 SAMPLER_STATE_FILENAME = "sampler.pkl"
+TPE_TRANSITION_SAMPLER_STATE_FILENAME = "sampler_before_tpe.pkl"
 _SAMPLER_STATE_LOCK = threading.Lock()
 
 
@@ -398,18 +399,8 @@ def run_hparam_search(args, config):
     study_dir, relative_study_dir = make_study_dir(args.save_dir, study_name, config.study_dir)
     storage = resolve_optuna_storage(config.storage, study_dir)
     sampler_state_path = study_dir / SAMPLER_STATE_FILENAME
+    tpe_transition_sampler_state_path = study_dir / TPE_TRANSITION_SAMPLER_STATE_FILENAME
     resolved_tpe_startup_trials = resolve_tpe_startup_trials(args, config)
-    write_json(
-        study_dir / "study_config.json",
-        {
-            "base_args": namespace_to_dict(args),
-            "hparam_config": config.to_dict(),
-            "resolved_tpe_startup_trials": resolved_tpe_startup_trials,
-            "resolved_study_name": study_name,
-            "resolved_storage": storage,
-            "sampler_state_path": str(sampler_state_path),
-        },
-    )
 
     # The sampler proposes values; the pruner can stop weak trials based on
     # intermediate reports from epochs or CV folds.
@@ -419,6 +410,54 @@ def run_hparam_search(args, config):
         get_hparam_seed(args),
         sampler_state_path,
         tpe_startup_trials=resolved_tpe_startup_trials,
+    )
+    configured_tpe_startup_trials = (
+        resolved_tpe_startup_trials
+        if resolved_tpe_startup_trials is not None
+        else config.sampler_params.get("n_startup_trials")
+    )
+    effective_tpe_startup_trials = (
+        get_effective_tpe_startup_trials(
+            sampler,
+            fallback=(
+                configured_tpe_startup_trials
+                if configured_tpe_startup_trials is not None
+                else 10
+            ),
+        )
+        if config.sampler == "tpe"
+        else None
+    )
+    if config.sampler == "tpe" and configured_tpe_startup_trials is None:
+        configured_tpe_startup_trials = effective_tpe_startup_trials
+    if (
+        sampler_state_loaded
+        and config.sampler == "tpe"
+        and effective_tpe_startup_trials != configured_tpe_startup_trials
+    ):
+        raise ValueError(
+            f"Optuna sampler state at {sampler_state_path} uses "
+            f"n_startup_trials={effective_tpe_startup_trials}, but the current "
+            f"configuration requests {configured_tpe_startup_trials}. Restore the "
+            "matching sampler/configuration or migrate the study with "
+            "scripts/remove_optuna_trials.py --extend-tpe-startup-to N."
+        )
+    write_json(
+        study_dir / "study_config.json",
+        {
+            "base_args": namespace_to_dict(args),
+            "hparam_config": config.to_dict(),
+            "resolved_tpe_startup_trials": resolved_tpe_startup_trials,
+            "effective_tpe_startup_trials": effective_tpe_startup_trials,
+            "resolved_study_name": study_name,
+            "resolved_storage": storage,
+            "sampler_state_path": str(sampler_state_path),
+            "tpe_transition_sampler_state_path": (
+                str(tpe_transition_sampler_state_path)
+                if config.sampler == "tpe"
+                else None
+            ),
+        },
     )
     sampler = make_parallel_optuna_sampler(sampler, config.n_jobs)
     pruner = make_optuna_pruner(optuna, config)
@@ -443,6 +482,29 @@ def run_hparam_search(args, config):
     if replayed_trials:
         save_optuna_sampler(study.sampler, sampler_state_path)
     last_completed_sampler = clone_optuna_sampler(study.sampler)
+    initial_budget_trials = count_hpo_budget_trials(optuna, study)
+    tpe_transition_checkpoint_enabled = config.sampler == "tpe"
+    if (
+        tpe_transition_checkpoint_enabled
+        and not tpe_transition_sampler_state_path.exists()
+        and initial_budget_trials > effective_tpe_startup_trials
+    ):
+        # The exact boundary state cannot be reconstructed retrospectively from
+        # a study that already advanced into TPE before this artifact existed.
+        logger.warning(
+            f"Did not create {tpe_transition_sampler_state_path}: the study already has "
+            f"{initial_budget_trials} completed/pruned trials, past the TPE startup boundary "
+            f"of {effective_tpe_startup_trials}. The checkpoint will be created for new studies."
+        )
+        tpe_transition_checkpoint_enabled = False
+    elif tpe_transition_checkpoint_enabled:
+        maybe_save_tpe_transition_sampler(
+            optuna,
+            study,
+            last_completed_sampler,
+            tpe_transition_sampler_state_path,
+            effective_tpe_startup_trials,
+        )
     trials_csv = study_dir / "trials.csv"
     trials_jsonl = study_dir / "trials.jsonl"
     retry_failed_trials_mode = should_retry_failed_hpo_trials(args, config)
@@ -460,6 +522,17 @@ def run_hparam_search(args, config):
     def objective(trial):
         # Resolve trial suggestions into a fresh argparse namespace and SSL
         # config so trials cannot mutate one another's settings.
+        if tpe_transition_checkpoint_enabled:
+            # If a parallel worker starts the first model-based trial before
+            # the preceding callback runs, capture the boundary before any TPE
+            # suggestion advances the sampler.
+            maybe_save_tpe_transition_sampler(
+                optuna,
+                study,
+                study.sampler,
+                tpe_transition_sampler_state_path,
+                effective_tpe_startup_trials,
+            )
         trial_args, ssl_config, suggested_params = run_with_sampler_checkpoint(
             study.sampler,
             sampler_state_path,
@@ -535,6 +608,22 @@ def run_hparam_search(args, config):
                 # after other trials have sampled. The suggestion checkpoint
                 # already includes it; persist sampler after_trial state too.
                 save_optuna_sampler(study.sampler, sampler_state_path)
+            if (
+                tpe_transition_checkpoint_enabled
+                and trial_counts_toward_hpo_budget(optuna, trial)
+            ):
+                transition_sampler = (
+                    last_completed_sampler
+                    if config.n_jobs == 1
+                    else study.sampler
+                )
+                maybe_save_tpe_transition_sampler(
+                    optuna,
+                    study,
+                    transition_sampler,
+                    tpe_transition_sampler_state_path,
+                    effective_tpe_startup_trials,
+                )
             cleanup_after_trial(terminate_children=config.n_jobs == 1)
             # Refresh summaries after each finished trial so interrupted studies
             # still leave readable progress outside the Optuna database.
@@ -747,6 +836,21 @@ def save_optuna_sampler(sampler, path):
         else:
             _write_optuna_sampler_state(sampler, path)
 
+def save_optuna_sampler_if_missing(sampler, path):
+    """Atomically save a sampler without replacing an existing checkpoint."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _SAMPLER_STATE_LOCK:
+        if path.exists():
+            return False
+        if isinstance(sampler, ParallelOptunaSampler):
+            with sampler.state_lock:
+                _write_optuna_sampler_state(sampler.wrapped_sampler, path)
+        else:
+            _write_optuna_sampler_state(sampler, path)
+    return True
+
 def _write_optuna_sampler_state(sampler, path):
     """Write a sampler while the caller holds the sampler-file lock."""
 
@@ -833,6 +937,39 @@ def get_fixed_param_names(trial):
 def count_hpo_budget_trials(optuna, study):
     return sum(trial_counts_toward_hpo_budget(optuna, trial) for trial in study.trials)
 
+def maybe_save_tpe_transition_sampler(
+    optuna,
+    study,
+    sampler,
+    path,
+    startup_trials,
+):
+    """Save the one-time sampler state between random startup and TPE."""
+
+    path = Path(path)
+    if path.exists():
+        return False
+    budget_trials = count_hpo_budget_trials(optuna, study)
+    if budget_trials < startup_trials:
+        return False
+    if not save_optuna_sampler_if_missing(sampler, path):
+        return False
+
+    if budget_trials == startup_trials:
+        logger.info(
+            f"Saved TPE transition sampler state to {path} after "
+            f"{startup_trials} completed/pruned random startup trial(s)."
+        )
+    else:
+        # Parallel workers can finish close together, so a callback may first
+        # observe the study just after the exact count was crossed.
+        logger.warning(
+            f"Saved the first available TPE transition sampler state to {path} after "
+            f"{budget_trials} completed/pruned trials; the configured startup boundary "
+            f"was {startup_trials}."
+        )
+    return True
+
 def trial_counts_toward_hpo_budget(optuna, trial):
     return trial.state in {
         optuna.trial.TrialState.COMPLETE,
@@ -905,6 +1042,26 @@ def resolve_tpe_startup_trials(args, config):
     if config.sampler != "tpe":
         raise ValueError("tpe_startup_trials only applies when sampler is 'tpe'")
     return int(value)
+
+def get_effective_tpe_startup_trials(sampler, fallback=None):
+    """Read the startup count actually carried by an instantiated TPESampler."""
+
+    if isinstance(sampler, ParallelOptunaSampler):
+        sampler = sampler.wrapped_sampler
+    startup_trials = getattr(sampler, "_n_startup_trials", None)
+    if startup_trials is None:
+        # Lightweight test doubles may not expose Optuna's private attribute.
+        # The fallback follows TPESampler's public constructor inputs/default.
+        startup_trials = fallback
+    if (
+        isinstance(startup_trials, bool)
+        or not isinstance(startup_trials, (int, np.integer))
+        or startup_trials < 0
+    ):
+        raise RuntimeError(
+            "Could not determine the effective n_startup_trials from Optuna's TPESampler"
+        )
+    return int(startup_trials)
 
 def make_optuna_sampler(optuna, config, seed, tpe_startup_trials=None):
     sampler_params = dict(config.sampler_params)

@@ -1,18 +1,18 @@
 {
-  "save_dir": "cifar100",
+  "save_dir": "cifar100_all",
   "dataset": "CIFAR100",
-  "dataset_protocol": "cifar100_fine_class_disjoint",
-  "val_mode": "split_after_apportion",
+  "length_before_new_iter": 11400,
+  "dataset_protocol": "cifar100_unseen_classes",
+  "val_mode": "all",
   "cv_k": 4,
   "cv_mode": "stratified_kfold",
   "mode": "supervised",
-  "length_before_new_iter": 10000,
   "ssl_config": "configs/ssl_faiss_knn.json",
-  "hparam_config": "configs/supervised/contrastive/nt_config_cifar10_k_shot_400_and_above.json",
+  "hparam_config": "configs/supervised/triplet/nt_config_cifar100_k_shot_40_and_above.json",
   "label_budget_grid": [
     1
   ],
-  "k_shot_grid": [4, 8, 16, 25, 50, 100, 250, 400],
+  "k_shot_grid": [8, 16, 25, 50, 100, 200, 300],
   "ssl_label_sampling_modes": [
     "class_subset_k_shot"
   ],

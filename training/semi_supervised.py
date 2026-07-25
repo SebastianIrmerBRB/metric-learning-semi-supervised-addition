@@ -75,6 +75,7 @@ from .ssl.data import (
 )
 from .ssl.embeddings import (
     extract_embeddings,
+    make_feature_dataset,
     make_embedding_loader,
 )
 from .ssl.graph_diagnostics import (
@@ -780,6 +781,7 @@ class STMLRegularizer(BaseTrainingRegularizer):
     """Use the existing STML objective as an unlabeled regularization term."""
 
     name = "stml"
+    supports_frozen_feature_precompute = True
     provides_trainable_projection_without_feat_dim = True
 
     def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
@@ -812,17 +814,13 @@ class STMLRegularizer(BaseTrainingRegularizer):
                 "STML regularization requires batch_size to be divisible by "
                 "method_params.regularizer_params.num_neighbors"
             )
-        if args.use_cache:
-            raise ValueError(
-                "STML regularization requires stochastic multi-view augmentation "
-                "and cannot use backbone caching"
-            )
         if args.stml_g_dim is not None and args.stml_g_dim <= 0:
             raise ValueError("stml_g_dim must be positive when set")
 
     def build_dataset(self, train_dataset, split, use_cache=False):
         if len(split.unlabeled_positions) < 2:
             raise ValueError("STML regularization requires at least two unlabeled samples")
+        self.use_cache = bool(use_cache)
         self.dataset = UnlabeledSubset(
             train_dataset,
             split.unlabeled_positions,
@@ -909,7 +907,10 @@ class STMLRegularizer(BaseTrainingRegularizer):
         logger.info("Initialized STML EMA teacher from the supervised student")
         return teacher_model.to(device)
 
-    def compute_loss(self, student_model, teacher_model, batch, device, timings=None):
+    def compute_loss(self, student_model, state, batch, device, timings=None):
+        teacher_model = state
+        if teacher_model is None:
+            raise RuntimeError("STML regularization requires an initialized EMA teacher")
         images, _, instance_ids = batch
         if not isinstance(images, (list, tuple)) or len(images) != self.num_views:
             raise ValueError(f"STML batches must contain {self.num_views} augmented views per sample")
@@ -921,7 +922,10 @@ class STMLRegularizer(BaseTrainingRegularizer):
         return self.criterion(student_f, student_g, teacher_g, instance_ids)
 
     @torch.no_grad()
-    def after_optimizer_step(self, student_model, teacher_model):
+    def after_optimizer_step(self, student_model, state):
+        teacher_model = state
+        if teacher_model is None:
+            raise RuntimeError("STML regularization requires an initialized EMA teacher")
         teacher_parameters = dict(teacher_model.named_parameters())
         for name, student_parameter in student_model.named_parameters():
             if name.startswith("fc."):

@@ -1,0 +1,45 @@
+{
+  "enabled": true,
+  "n_trials": 60,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "cars",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "tpe",
+  "sampler_params": {
+    "multivariate": true,
+    "group": true
+  },
+  "tpe_startup_trials": 20,
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+    "lr": {
+      "type": "float",
+      "low": 3e-4,
+      "high": 2e-2,
+      "log": true
+    },
+    "classifier_lr": {
+      "type": "float",
+      "low": 3e-3,
+      "high": 2,
+      "log": true
+    },
+     "loss.ProxyAnchorLoss.margin": {
+      "type": "float",
+      "low": 0.01,
+      "high": 1.0,
+      "log": false
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+       "16:4", "32:4", "64:4", "128:4", "256:4", "512:8"
+      ]
+    }
+  }
+}

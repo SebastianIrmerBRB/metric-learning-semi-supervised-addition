@@ -1,0 +1,75 @@
+{
+  "enabled": true,
+  "n_trials": 60,
+  "timeout": null,
+  "direction": "maximize",
+  "metric": "best_valid_mean_average_precision_at_r",
+  "study_name": "cifar",
+  "study_dir": null,
+  "storage": null,
+  "load_if_exists": true,
+  "sampler": "tpe",
+  "sampler_params": {
+    "multivariate": true,
+    "group": true
+  },
+  "tpe_startup_trials": 20,
+  "pruner": "none",
+  "pruner_params": {},
+  "spaces": {
+   "lr": {
+      "type": "float",
+      "low": 5e-6,
+      "high": 1e-4,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "type": "float",
+      "low": 2,
+      "high": 25,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "type": "float",
+      "low": 40,
+      "high": 160,
+      "log": true
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "type": "float",
+      "low": 0.4,
+      "high": 0.9,
+      "log": false
+    },
+    "loss.CircleLoss.m": {
+      "type": "float",
+      "low": 0.1,
+      "high": 0.9,
+      "log": false
+    },
+    "loss.CircleLoss.gamma": {
+      "type": "float",
+      "low": 50,
+      "high": 260.0,
+      "log": true
+    },
+    "loss.NTXentLoss.temperature": {
+      "type": "float",
+      "low": 0.0001,
+      "high": 0.5,
+      "log": true
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+     "type": "float",
+      "low": 0.1,
+      "high": 0.8,
+      "log": false
+    },
+    "batch_sampler": {
+      "type": "categorical",
+      "choices": [
+       "16:8", "32:8", "64:8", "128:8", "256:8", "512:16"
+      ]
+    }
+  }
+}
