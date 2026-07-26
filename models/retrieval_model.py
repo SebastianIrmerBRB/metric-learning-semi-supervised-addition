@@ -1,12 +1,16 @@
 import hashlib
 import os
+import threading
 import time
 import uuid
 import warnings
+import weakref
+from contextlib import contextmanager
 from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,7 +19,7 @@ import torchvision.transforms as tfm
 DINOV2_REPO = "facebookresearch/dinov2:main"
 DINOV2_HUB_MAX_ATTEMPTS = 4
 DINOV2_HUB_RETRY_DELAY_SECONDS = 5
-BACKBONE_CACHE_VERSION = 2
+BACKBONE_CACHE_VERSION = 3
 
 DINOV2_ARCHS = {
     "s": 384,
@@ -26,6 +30,209 @@ DINOV2_ARCHS = {
 BACKBONE_TUNING_FULL = "full"
 BACKBONE_TUNING_FROZEN = "frozen"
 BACKBONE_TUNING_LAST_BLOCKS_PREFIX = "last_"
+
+
+@contextmanager
+def _exclusive_cache_file_lock(path):
+    """Serialize mmap creation/commits across local processes."""
+
+    lock_path = Path(f"{path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as lock_file:
+        if os.name == "nt":
+            import msvcrt
+
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+class _IndexedFeatureMatrix:
+    """One float32 mmap whose rows are addressed by stable dataset indices."""
+
+    def __init__(self, path, num_rows, feature_dim):
+        self.path = Path(path)
+        self.num_rows = int(num_rows)
+        self.feature_dim = int(feature_dim)
+        self._lock = threading.Lock()
+        self._inflight = {}
+        self._matrix = self._open_or_create()
+        self._tensor = torch.from_numpy(self._matrix)
+
+    def _open_or_create(self):
+        expected_shape = (self.num_rows, self.feature_dim)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with _exclusive_cache_file_lock(self.path):
+            if self.path.exists():
+                try:
+                    matrix = np.load(self.path, mmap_mode="r+")
+                    if matrix.dtype == np.float32 and matrix.shape == expected_shape:
+                        return matrix
+                except (OSError, ValueError):
+                    pass
+                self.path.unlink(missing_ok=True)
+
+            temp_path = self.path.with_name(
+                f"{self.path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+            )
+            try:
+                matrix = np.lib.format.open_memmap(
+                    temp_path,
+                    mode="w+",
+                    dtype=np.float32,
+                    shape=expected_shape,
+                )
+                matrix[:] = np.nan
+                matrix.flush()
+                del matrix
+                os.replace(temp_path, self.path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            return np.load(self.path, mmap_mode="r+")
+
+    def _valid_mask(self, rows):
+        if len(rows) == 0:
+            return np.ones(0, dtype=bool)
+        return np.isfinite(self._matrix[rows, 0])
+
+    def _release_claims(self, rows):
+        with self._lock:
+            for row in rows:
+                event = self._inflight.pop(int(row), None)
+                if event is not None:
+                    event.set()
+
+    def materialize(self, rows, compute_missing):
+        """Fill missing unique rows once and return cache-access diagnostics."""
+
+        rows = np.asarray(rows, dtype=np.int64)
+        if rows.ndim != 1:
+            raise ValueError("cache indices must be one-dimensional")
+        if np.any((rows < 0) | (rows >= self.num_rows)):
+            raise IndexError("cache index is outside the configured matrix")
+
+        first_local_position = {}
+        for local_position, row in enumerate(rows.tolist()):
+            first_local_position.setdefault(int(row), int(local_position))
+        unique_rows = np.fromiter(first_local_position, dtype=np.int64)
+        computed_rows = set()
+        written_rows = set()
+        waited_rows = set()
+
+        while True:
+            with self._lock:
+                with _exclusive_cache_file_lock(self.path):
+                    valid = self._valid_mask(unique_rows)
+                missing_rows = unique_rows[~valid]
+                if len(missing_rows) == 0:
+                    break
+
+                owned_rows = []
+                pending_events = []
+                for row in missing_rows.tolist():
+                    row = int(row)
+                    event = self._inflight.get(row)
+                    if event is None:
+                        event = threading.Event()
+                        self._inflight[row] = event
+                        owned_rows.append(row)
+                    else:
+                        waited_rows.add(row)
+                        pending_events.append(event)
+
+            if owned_rows:
+                local_positions = np.asarray(
+                    [first_local_position[row] for row in owned_rows],
+                    dtype=np.int64,
+                )
+                try:
+                    features = torch.as_tensor(
+                        compute_missing(local_positions),
+                        dtype=torch.float32,
+                    ).detach().cpu().contiguous()
+                    expected_shape = (len(owned_rows), self.feature_dim)
+                    if tuple(features.shape) != expected_shape:
+                        raise ValueError(
+                            "computed cached feature shape does not match the indexed matrix: "
+                            f"expected {expected_shape}, got {tuple(features.shape)}"
+                        )
+                    if not torch.isfinite(features).all():
+                        raise ValueError("refusing to persist non-finite backbone features")
+                    feature_array = features.numpy()
+                    computed_rows.update(owned_rows)
+
+                    with self._lock:
+                        with _exclusive_cache_file_lock(self.path):
+                            owned_array = np.asarray(owned_rows, dtype=np.int64)
+                            still_missing = ~self._valid_mask(owned_array)
+                            rows_to_write = owned_array[still_missing]
+                            if len(rows_to_write):
+                                values_to_write = feature_array[still_missing]
+                                # Column zero is the validity marker. Write it
+                                # last so another process never observes a
+                                # partially committed row as complete.
+                                if self.feature_dim > 1:
+                                    self._matrix[rows_to_write, 1:] = values_to_write[:, 1:]
+                                    self._matrix.flush()
+                                self._matrix[rows_to_write, 0] = values_to_write[:, 0]
+                                self._matrix.flush()
+                                written_rows.update(int(row) for row in rows_to_write)
+                except BaseException:
+                    self._release_claims(owned_rows)
+                    raise
+                self._release_claims(owned_rows)
+
+            for event in set(pending_events):
+                event.wait()
+
+        with self._lock:
+            with _exclusive_cache_file_lock(self.path):
+                if not self._valid_mask(unique_rows).all():
+                    raise RuntimeError("indexed backbone cache contains unresolved rows")
+
+        return {
+            "computed_rows": computed_rows,
+            "written_rows": written_rows,
+            "waited_rows": waited_rows,
+        }
+
+    @property
+    def tensor(self):
+        return self._tensor
+
+
+_INDEXED_FEATURE_MATRICES = weakref.WeakValueDictionary()
+_INDEXED_FEATURE_MATRICES_LOCK = threading.Lock()
+
+
+def _get_indexed_feature_matrix(cache_dir, cache_key, num_rows, feature_dim):
+    namespace = hashlib.sha256(str(cache_key).encode("utf-8")).hexdigest()
+    path = Path(cache_dir) / f"{namespace}.features.npy"
+    registry_key = str(path.resolve())
+    with _INDEXED_FEATURE_MATRICES_LOCK:
+        matrix = _INDEXED_FEATURE_MATRICES.get(registry_key)
+        if matrix is None:
+            matrix = _IndexedFeatureMatrix(path, num_rows, feature_dim)
+            _INDEXED_FEATURE_MATRICES[registry_key] = matrix
+        elif (matrix.num_rows, matrix.feature_dim) != (int(num_rows), int(feature_dim)):
+            raise ValueError("indexed backbone cache key was reused with a different matrix shape")
+        return matrix
 
 
 def normalize_backbone_tuning(value):
@@ -126,7 +333,7 @@ class DinoWrapper(nn.Module):
         else:
             self.stml_g_dim = None
         self.cache_dir = None
-        self._memory_feature_cache = {}
+        self._cache_stats_lock = threading.Lock()
         self._cache_stats = {
             "enabled": self.use_cache,
             "fully_cached_batches": 0,
@@ -136,6 +343,8 @@ class DinoWrapper(nn.Module):
             "disk_hit_samples": 0,
             "miss_samples": 0,
             "written_samples": 0,
+            "waited_samples": 0,
+            "uncached_samples": 0,
         }
         self._configure_backbone_tuning()
         if self.backbone_tuning == BACKBONE_TUNING_FROZEN:
@@ -229,232 +438,208 @@ class DinoWrapper(nn.Module):
     def forward_stml_teacher(self, images):
         return self.project_stml_teacher_features(self.forward_backbone(images))
 
-    def forward_cached(self, images, device):
-        """Project frozen DINO embeddings, loading or creating per-sample cache entries."""
+    def forward_cached(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
+        """Project frozen DINO embeddings through the indexed mmap cache."""
 
         if not self.use_cache:
             return self(images.to(device, non_blocking=True))
-        features = self._load_or_compute_cached_backbone_features(images, device)
+        features = self._load_or_compute_cached_backbone_features(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
         return self.project_features(features)
 
-    def forward_backbone_cached(self, images, device):
+    def forward_backbone_cached(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
         """Return raw frozen DINO features, optionally using the persistent cache."""
 
         if not self.use_cache:
             return self.forward_backbone(images.to(device, non_blocking=True))
-        return self._load_or_compute_cached_backbone_features(images, device)
+        return self._load_or_compute_cached_backbone_features(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
 
-    def forward_stml_cached(self, images, device):
+    def forward_stml_cached(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
         """Return both STML heads, optionally from cached backbone features."""
 
         if torch.is_tensor(images) and images.ndim == 2:
             return self.project_stml_features(images.to(device, non_blocking=True))
         if not self.use_cache:
             return self.forward_stml(images.to(device, non_blocking=True))
-        features = self._load_or_compute_cached_backbone_features(images, device)
+        features = self._load_or_compute_cached_backbone_features(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
         return self.project_stml_features(features)
 
-    def forward_stml_teacher_cached(self, images, device):
+    def forward_stml_teacher_cached(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
         """Return teacher g, optionally from cached backbone features."""
 
         if torch.is_tensor(images) and images.ndim == 2:
             return self.project_stml_teacher_features(images.to(device, non_blocking=True))
         if not self.use_cache:
             return self.forward_stml_teacher(images.to(device, non_blocking=True))
-        features = self._load_or_compute_cached_backbone_features(images, device)
+        features = self._load_or_compute_cached_backbone_features(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
         return self.project_stml_teacher_features(features)
 
-    def forward_eval(self, images, device):
+    def forward_eval(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
         """Compatibility alias used by existing evaluation callers."""
 
-        return self.forward_cached(images, device)
+        return self.forward_cached(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
 
     def cache_stats(self):
-        total_batches = self._cache_stats["fully_cached_batches"] + self._cache_stats["batches_with_misses"]
-        total_samples = self._cache_stats["hit_samples"] + self._cache_stats["miss_samples"]
+        with self._cache_stats_lock:
+            stats = dict(self._cache_stats)
+        total_batches = stats["fully_cached_batches"] + stats["batches_with_misses"]
+        total_samples = stats["hit_samples"] + stats["miss_samples"]
         return {
-            **self._cache_stats,
+            **stats,
             "fully_cached_batch_rate": (
-                0.0 if total_batches == 0 else self._cache_stats["fully_cached_batches"] / total_batches
+                0.0 if total_batches == 0 else stats["fully_cached_batches"] / total_batches
             ),
-            "sample_hit_rate": 0.0 if total_samples == 0 else self._cache_stats["hit_samples"] / total_samples,
+            "sample_hit_rate": 0.0 if total_samples == 0 else stats["hit_samples"] / total_samples,
             "cache_dir": None if self.cache_dir is None else str(self.cache_dir),
             "backbone": f"dinov2_vit{self.dino_size}14",
             "cache_version": BACKBONE_CACHE_VERSION,
+            "cache_format": "indexed_float32_mmap",
         }
 
-    def _load_or_compute_cached_backbone_features(self, images, device):
-        total_start = time.perf_counter()
+    def _record_cache_access(self, requested_rows, access):
+        computed_rows = access["computed_rows"]
+        requested_unique = set(int(row) for row in np.asarray(requested_rows).tolist())
+        misses = len(computed_rows)
+        hits = max(0, len(requested_unique) - misses)
+        with self._cache_stats_lock:
+            if misses:
+                self._cache_stats["batches_with_misses"] += 1
+            else:
+                self._cache_stats["fully_cached_batches"] += 1
+            self._cache_stats["hit_samples"] += hits
+            self._cache_stats["disk_hit_samples"] += hits
+            self._cache_stats["miss_samples"] += misses
+            self._cache_stats["written_samples"] += len(access["written_rows"])
+            self._cache_stats["waited_samples"] += len(access["waited_rows"])
 
+    def materialize_cached_backbone_features(
+        self,
+        *,
+        cache_key,
+        cache_indices,
+        cache_size,
+        compute_missing,
+    ):
+        """Ensure indexed rows exist and expose the shared mmap tensor."""
+
+        if not self.use_cache or self.cache_dir is None:
+            raise RuntimeError("indexed backbone materialization requires use_cache=True")
+        cache_indices = np.asarray(cache_indices, dtype=np.int64)
+        matrix = _get_indexed_feature_matrix(
+            self.cache_dir,
+            cache_key,
+            cache_size,
+            DINOV2_ARCHS[self.dino_size],
+        )
+        access = matrix.materialize(cache_indices, compute_missing)
+        self._record_cache_access(cache_indices, access)
+        return matrix.tensor, torch.as_tensor(cache_indices, dtype=torch.long)
+
+    def _load_or_compute_cached_backbone_features(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
         device = torch.device(device)
+        if cache_key is None or cache_indices is None or cache_size is None:
+            # A tensor alone has no stable sample identity. Compute normally
+            # instead of hashing every pixel or silently reusing the wrong row.
+            with self._cache_stats_lock:
+                self._cache_stats["uncached_samples"] += len(images)
+            return self.forward_backbone(images.to(device, non_blocking=True))
 
-        def sync():
-            if device.type == "cuda":
-                torch.cuda.synchronize(device)
+        cache_indices = np.asarray(cache_indices, dtype=np.int64)
+        if len(cache_indices) != len(images):
+            raise ValueError("cache_indices must contain one row per input image")
 
-        # CPU transfer
-        start = time.perf_counter()
-        cpu_images = images.detach().cpu().contiguous()
-        cpu_transfer_time = time.perf_counter() - start
-
-        # Cache-key calculation
-        start = time.perf_counter()
-        cache_keys = [self._cache_key(image) for image in cpu_images]
-        cache_paths = [self.cache_dir / f"{cache_key}.pt" for cache_key in cache_keys]
-        key_time = time.perf_counter() - start
-
-        cached_features = [None] * len(cpu_images)
-        missing_indices = []
-
-        memory_hits = 0
-        disk_hits = 0
-        disk_load_time = 0.0
-
-        # Cache lookup
-        lookup_start = time.perf_counter()
-
-        for index, (cache_key, cache_path) in enumerate(zip(cache_keys, cache_paths)):
-            if cache_key in self._memory_feature_cache:
-                cached_features[index] = self._memory_feature_cache[cache_key]
-                self._cache_stats["hit_samples"] += 1
-                self._cache_stats["memory_hit_samples"] += 1
-                memory_hits += 1
-                continue
-
-            if not cache_path.exists():
-                missing_indices.append(index)
-                continue
-
-            disk_start = time.perf_counter()
-
-            try:
-                features = torch.load(
-                    cache_path,
-                    map_location="cpu",
-                    weights_only=True,
-                )
-
-                if (
-                        features.ndim != 1
-                        or len(features) != DINOV2_ARCHS[self.dino_size]
-                ):
-                    raise ValueError(
-                        "cached feature shape does not match DINO backbone output"
-                    )
-
-                cached_features[index] = features
-                self._memory_feature_cache[cache_key] = features
-                self._cache_stats["hit_samples"] += 1
-                self._cache_stats["disk_hit_samples"] += 1
-                disk_hits += 1
-
-            except (OSError, RuntimeError, TypeError, ValueError):
-                missing_indices.append(index)
-
-            finally:
-                disk_load_time += time.perf_counter() - disk_start
-
-        lookup_time = time.perf_counter() - lookup_start
-
-        transfer_to_device_time = 0.0
-        backbone_time = 0.0
-        transfer_to_cpu_time = 0.0
-        cache_write_time = 0.0
-
-        if missing_indices:
-            self._cache_stats["batches_with_misses"] += 1
-            self._cache_stats["miss_samples"] += len(missing_indices)
-
-            # Missing images: CPU -> device
-            sync()
-            start = time.perf_counter()
-
-            missing_images = cpu_images[missing_indices].to(
+        def compute_missing(local_positions):
+            positions = torch.as_tensor(local_positions, dtype=torch.long, device=images.device)
+            missing_images = images.index_select(0, positions).to(
                 device,
                 non_blocking=True,
             )
+            return self.forward_backbone(missing_images).detach().float().cpu()
 
-            sync()
-            transfer_to_device_time = time.perf_counter() - start
-
-            # Backbone forward
-            sync()
-            start = time.perf_counter()
-
-            missing_features = self.forward_backbone(missing_images).detach()
-
-            sync()
-            backbone_time = time.perf_counter() - start
-
-            # Features: device -> CPU
-            start = time.perf_counter()
-
-            missing_features = missing_features.cpu()
-
-            sync()
-            transfer_to_cpu_time = time.perf_counter() - start
-
-            # Cache writes
-            start = time.perf_counter()
-
-            for index, feature in zip(missing_indices, missing_features):
-                feature = feature.clone()
-
-                cached_features[index] = feature
-                self._memory_feature_cache[cache_keys[index]] = feature
-
-                cache_path = cache_paths[index]
-                temp_path = cache_path.with_suffix(
-                    f".{os.getpid()}.{uuid.uuid4().hex}.tmp"
-                )
-
-                torch.save(feature, temp_path)
-                os.replace(temp_path, cache_path)
-
-                self._cache_stats["written_samples"] += 1
-
-            cache_write_time = time.perf_counter() - start
-
-        else:
-            self._cache_stats["fully_cached_batches"] += 1
-
-        # Stack and transfer result
-        sync()
-        start = time.perf_counter()
-
-        result = torch.stack(cached_features).to(
+        feature_matrix, matrix_rows = self.materialize_cached_backbone_features(
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+            compute_missing=compute_missing,
+        )
+        return feature_matrix.index_select(0, matrix_rows).to(
             device,
             non_blocking=True,
         )
-
-        sync()
-        output_time = time.perf_counter() - start
-        total_time = time.perf_counter() - total_start
-
-        print(
-            "[DINO cache timing] "
-            f"batch={len(cpu_images)} "
-            f"memory_hits={memory_hits} "
-            f"disk_hits={disk_hits} "
-            f"misses={len(missing_indices)} | "
-            f"cpu_copy={cpu_transfer_time * 1000:.2f}ms "
-            f"keys={key_time * 1000:.2f}ms "
-            f"lookup={lookup_time * 1000:.2f}ms "
-            f"disk_load={disk_load_time * 1000:.2f}ms "
-            f"h2d={transfer_to_device_time * 1000:.2f}ms "
-            f"backbone={backbone_time * 1000:.2f}ms "
-            f"d2h={transfer_to_cpu_time * 1000:.2f}ms "
-            f"writes={cache_write_time * 1000:.2f}ms "
-            f"output={output_time * 1000:.2f}ms "
-            f"total={total_time * 1000:.2f}ms"
-        )
-
-        return result
-
-    def _cache_key(self, image):
-        digest = hashlib.sha256()
-        digest.update(f"v{BACKBONE_CACHE_VERSION}:dinov2_vit{self.dino_size}14".encode("ascii"))
-        digest.update(str(image.dtype).encode("ascii"))
-        digest.update(str(tuple(image.shape)).encode("ascii"))
-        digest.update(image.numpy().tobytes())
-        return digest.hexdigest()

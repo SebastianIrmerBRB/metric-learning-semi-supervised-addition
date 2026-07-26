@@ -4,7 +4,7 @@ import copy
 import csv
 import gc
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from dataclasses import replace
 from datetime import datetime
 from numbers import Integral, Real
@@ -36,7 +36,11 @@ from .cli import (
     LR_SCHEDULERS,
     normalize_backbone_tuning_args,
 )
-from .frozen_feature_cache import make_frozen_feature_cache_key
+from .frozen_feature_cache import (
+    FrozenFeatureDatasetCache,
+    make_frozen_feature_cache_key,
+    make_frozen_feature_index_spec,
+)
 from .io import namespace_to_dict, result_to_dict, write_json
 from .types import (
     ALL_LOSSES,
@@ -53,6 +57,7 @@ BATCH_EASY_HARD_MINER_STRATEGIES = {"all", "easy", "hard", "semihard"}
 BATCH_EASY_HARD_DEFAULT_POS_STRATEGY = "easy"
 BATCH_EASY_HARD_DEFAULT_NEG_STRATEGY = "semihard"
 BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
+FROZEN_BACKBONE_STATE_PREFIX = "dinov2."
 
 
 class TrainingLossComponents(NamedTuple):
@@ -258,7 +263,28 @@ def _precompute_backbone_features(
     num_views=1,
     frozen_feature_cache=None,
 ):
+    index_spec = None
+    if (
+        bool(getattr(model, "use_cache", False))
+        and hasattr(model, "materialize_cached_backbone_features")
+    ):
+        index_spec = make_frozen_feature_index_spec(
+            args,
+            model,
+            dataset,
+            require_feature_transform=require_feature_transform,
+            use_feature_transform=use_feature_transform,
+            num_views=num_views,
+        )
+
     def compute():
+        cache_kwargs = {}
+        if index_spec is not None:
+            cache_kwargs = {
+                "cache_key": index_spec.key,
+                "cache_indices": index_spec.row_indices,
+                "cache_size": index_spec.capacity,
+            }
         return utils.precompute_backbone_feature_dataset(
             model=model,
             dataset=dataset,
@@ -272,6 +298,7 @@ def _precompute_backbone_features(
             require_feature_transform=require_feature_transform,
             use_feature_transform=use_feature_transform,
             num_views=num_views,
+            **cache_kwargs,
         )
 
     if frozen_feature_cache is None:
@@ -361,6 +388,10 @@ def _make_eval_loader(
         )
     return utils.make_eval_loader(
         dataset,
+        batch_size=utils.frozen_feature_eval_batch_size(
+            dataset,
+            args.device,
+        ),
         seed=args.seed,
         num_workers=args.num_workers,
         start_method=args.dataloader_start_method,
@@ -421,6 +452,14 @@ def run_experiment(
 
     args = resolve_loss_driven_supervised_args(args)
     args, ssl_config = resolve_platform_dataloader_workers(args, ssl_config)
+    if (
+        frozen_feature_cache is None
+        and bool(getattr(args, "use_cache", False))
+        and args.backbone_tuning == BACKBONE_TUNING_FROZEN
+    ):
+        # One coordinator spans every fold in a normal run as well as every
+        # trial when HPO supplies its own longer-lived instance.
+        frozen_feature_cache = FrozenFeatureDatasetCache()
     if args.cv_k > 1:
         # The Optuna trial is reported only after folds complete; individual
         # folds do not independently prune the same trial.
@@ -494,6 +533,77 @@ def get_selection_metric_value(selection_metric, precision_at_1, mean_average_pr
     if selection_metric == SELECTION_METRIC_MAP_AT_R:
         return mean_average_precision_at_r
     raise ValueError(f"Unknown selection metric: {selection_metric}")
+
+
+def capture_non_backbone_model_state(model):
+    """Clone all model state except the frozen DINO backbone into CPU memory."""
+
+    full_state = model.state_dict()
+    snapshot = OrderedDict()
+    for name, value in full_state.items():
+        if name.startswith(FROZEN_BACKBONE_STATE_PREFIX):
+            continue
+        if torch.is_tensor(value):
+            snapshot[name] = value.detach().to(device="cpu", copy=True)
+        else:
+            snapshot[name] = copy.deepcopy(value)
+
+    # Preserve per-module serialization versions for custom trainable heads.
+    metadata = getattr(full_state, "_metadata", None)
+    if metadata is not None:
+        snapshot._metadata = {
+            name: copy.deepcopy(value)
+            for name, value in metadata.items()
+            if name != "dinov2" and not name.startswith(FROZEN_BACKBONE_STATE_PREFIX)
+        }
+    return snapshot
+
+
+def restore_non_backbone_model_state(model, state):
+    """Restore a partial state while requiring every omitted key to be DINO state."""
+
+    incompatible = model.load_state_dict(state, strict=False)
+    missing_non_backbone = [
+        name
+        for name in incompatible.missing_keys
+        if not name.startswith(FROZEN_BACKBONE_STATE_PREFIX)
+    ]
+    if missing_non_backbone or incompatible.unexpected_keys:
+        raise RuntimeError(
+            "Invalid non-backbone checkpoint: "
+            f"missing non-backbone keys={missing_non_backbone}, "
+            f"unexpected keys={incompatible.unexpected_keys}"
+        )
+
+
+class _BestModelCheckpoint:
+    """Store either the full model on disk or only non-backbone state in memory."""
+
+    def __init__(self, model, path, *, non_backbone_in_memory):
+        self.model = model
+        self.path = Path(path)
+        self.non_backbone_in_memory = bool(non_backbone_in_memory)
+        self._state = None
+
+    def save(self):
+        if self.non_backbone_in_memory:
+            self._state = capture_non_backbone_model_state(self.model)
+        else:
+            torch.save(self.model.state_dict(), self.path)
+
+    def restore(self):
+        if self.non_backbone_in_memory:
+            if self._state is None:
+                raise RuntimeError("Cannot restore an in-memory checkpoint before saving it")
+            restore_non_backbone_model_state(self.model, self._state)
+            self._state = None
+        else:
+            self.model.load_state_dict(torch.load(self.path, weights_only=True))
+
+    def cleanup(self):
+        self._state = None
+        if not self.non_backbone_in_memory:
+            self.path.unlink(missing_ok=True)
 
 
 def uses_ssl_warmup_objective(ssl_config):
@@ -857,7 +967,7 @@ def _prepare_datasets(
         if precompute_frozen_features:
             logger.info(
                 "Frozen feature precompute enabled: training uses deterministic transforms and "
-                "one in-memory backbone feature tensor per active dataset"
+                "a source-indexed memory-mapped backbone feature matrix"
             )
         else:
             logger.info("Cache mode enabled: training uses deterministic transforms and cached DINO embeddings")
@@ -880,6 +990,45 @@ def _prepare_datasets(
     else:
         dataset_bundle = restrict_supervised_label_mapper(args, dataset_bundle, ssl_split)
     return dataset_bundle, ssl_split
+
+
+def override_length_before_new_iter_from_fold(args, train_dataset, ssl_split):
+    """Use the complete labeled + unlabeled fold pool as the sampler budget."""
+
+    configured_length = getattr(
+        args,
+        "configured_length_before_new_iter",
+        getattr(args, "length_before_new_iter", None),
+    )
+    if ssl_split is None:
+        num_labeled = len(train_dataset)
+        num_unlabeled = 0
+    else:
+        labeled_positions = np.asarray(ssl_split.labeled_positions, dtype=np.int64)
+        unlabeled_positions = np.asarray(ssl_split.unlabeled_positions, dtype=np.int64)
+        combined_positions = np.concatenate((labeled_positions, unlabeled_positions))
+        if np.any((combined_positions < 0) | (combined_positions >= len(train_dataset))):
+            raise ValueError("The labeled/unlabeled fold split contains an out-of-range position")
+        if len(np.unique(combined_positions)) != len(combined_positions):
+            raise ValueError("The labeled/unlabeled fold split must not contain overlapping positions")
+        num_labeled = len(labeled_positions)
+        num_unlabeled = len(unlabeled_positions)
+
+    fold_training_length = int(num_labeled + num_unlabeled)
+    if fold_training_length <= 0:
+        raise ValueError("The labeled + unlabeled fold training pool must not be empty")
+
+    args.configured_length_before_new_iter = configured_length
+    args.length_before_new_iter = fold_training_length
+    args.length_before_new_iter_source = "fold_labeled_plus_unlabeled"
+    args.length_before_new_iter_num_labeled = int(num_labeled)
+    args.length_before_new_iter_num_unlabeled = int(num_unlabeled)
+    logger.info(
+        "Resolved length_before_new_iter from the complete fold training pool: "
+        f"{fold_training_length} = {num_labeled} labeled + {num_unlabeled} unlabeled "
+        f"(configured value {configured_length!r} was overridden)"
+    )
+    return fold_training_length
 
 
 class _EpochTrainer:
@@ -1412,6 +1561,15 @@ def run_training(
     # Record the resolved dataclass, including defaults and HPO overrides, on
     # the namespace that will later be serialized into run_config.json.
     args.ssl_config_resolved = ssl_config.to_dict()
+    # Keep the legacy configured value only for auditing. No training component
+    # may consume it before the complete fold pool has been constructed below.
+    if not hasattr(args, "configured_length_before_new_iter"):
+        args.configured_length_before_new_iter = getattr(
+            args,
+            "length_before_new_iter",
+            None,
+        )
+    args.length_before_new_iter = None
     final_full_train = bool(getattr(args, "final_full_train", False))
     if final_full_train and cv_fold is not None:
         raise ValueError("A final full-development fit must train one model, not an individual CV fold")
@@ -1490,6 +1648,11 @@ def run_training(
         augmented_frozen_feature_precompute=augmented_frozen_feature_precompute,
         frozen_feature_train_views=frozen_feature_train_views,
     )
+    override_length_before_new_iter_from_fold(
+        args,
+        dataset_bundle.train_dataset,
+        ssl_split,
+    )
     if regularizer is not None:
         # Some methods add trainable training-only heads whose class and bank
         # sizes are known only after the actual train split has been built.
@@ -1504,12 +1667,20 @@ def run_training(
     args.model_trainable_parameters = sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
+    frozen_head_only_checkpoint = bool(
+        getattr(args, "frozen_head_only_checkpoint", False)
+    )
     logger.info(
         "Model parameters: "
         f"{args.model_trainable_parameters:,} trainable / {args.model_total_parameters:,} total. "
         f"Backbone tuning: {args.backbone_tuning}. Cache: {model_use_cache}. "
         f"Frozen feature precompute: {precompute_frozen_features}."
     )
+    if frozen_head_only_checkpoint and not final_full_train:
+        logger.info(
+            "Best-model checkpoint: non-backbone state in CPU memory "
+            "(frozen DINO backbone omitted)"
+        )
     write_run_config(args, ssl_config)
     # Persist both subset-relative positions and source-dataset indices before
     # training so the exact experiment split is recoverable.
@@ -1692,6 +1863,11 @@ def run_training(
     # The checkpoint is temporary: it is used to restore the selected epoch and
     # removed after final evaluation because the run currently returns metrics.
     best_model_path = args.log_dir / "best_model.pth"
+    best_model_checkpoint = _BestModelCheckpoint(
+        model,
+        best_model_path,
+        non_backbone_in_memory=frozen_head_only_checkpoint,
+    )
     final_train_loss = None
     test_precision = None
     test_map = None
@@ -1739,7 +1915,7 @@ def run_training(
             best_map = valid_map
             best_selection_value = get_selection_metric_value(args.selection_metric, valid_precision, valid_map)
             epochs_no_improve = 0
-            torch.save(model.state_dict(), best_model_path)
+            best_model_checkpoint.save()
             logger.info(
                 f"Model selection metric: {args.selection_metric}. "
                 f"Initial selected value: {best_selection_value:.6f}"
@@ -1932,7 +2108,7 @@ def run_training(
                 best_selection_value = cur_selection_value
                 selected_epoch = num_epoch
                 epochs_no_improve = 0
-                torch.save(model.state_dict(), best_model_path)
+                best_model_checkpoint.save()
             elif is_after_warmup:
                 # Equal or worse selected metric consumes one patience unit.
                 epochs_no_improve += 1
@@ -1942,7 +2118,7 @@ def run_training(
         if not final_full_train:
             # Evaluate/report only the checkpoint selected on validation, never
             # the last epoch's potentially overfit model.
-            model.load_state_dict(torch.load(best_model_path, weights_only=True))
+            best_model_checkpoint.restore()
         if evaluate_test:
             test_embeddings, test_labels = utils.extract_eval_embeddings(
                 model,
@@ -1956,6 +2132,7 @@ def run_training(
                 name="test",
                 return_per_class=False,
                 dataset=dataset_bundle.test_dataset,
+                device=args.device,
             )
             test_per_class = None
             metrics_logger.log_eval(
@@ -2048,7 +2225,7 @@ def run_training(
             cache_stats = model.cache_stats()
             write_json(args.log_dir / "backbone_cache_stats.json", cache_stats)
             logger.info(f"Backbone cache stats: {cache_stats}")
-        best_model_path.unlink(missing_ok=True)
+        best_model_checkpoint.cleanup()
 
     return TrainingResult(
         log_dir=args.log_dir,
@@ -2353,8 +2530,6 @@ def validate_run_args(args, ssl_config):
         raise ValueError("debug_batch_timing_interval must be positive")
     if (getattr(args, "ssl_gradient_contribution_log_interval", 0) or 0) < 0:
         raise ValueError("ssl_gradient_contribution_log_interval must be non-negative")
-    if args.length_before_new_iter is not None and args.length_before_new_iter < args.batch_size:
-        raise ValueError("length_before_new_iter must be at least batch_size when set")
     if args.lr <= 0:
         raise ValueError("lr must be positive")
     if args.classifier_lr <= 0:
@@ -2407,6 +2582,13 @@ def validate_run_args(args, ssl_config):
     )
     if args.backbone_tuning == BACKBONE_TUNING_FROZEN and args.feat_dim is None and not regularizer_provides_projection:
         raise ValueError("backbone_tuning='frozen' requires feat_dim so a trainable projection head remains")
+    if (
+        getattr(args, "frozen_head_only_checkpoint", False)
+        and args.backbone_tuning != BACKBONE_TUNING_FROZEN
+    ):
+        raise ValueError(
+            "frozen_head_only_checkpoint requires backbone_tuning='frozen'"
+        )
     if args.use_cache and args.backbone_tuning != BACKBONE_TUNING_FROZEN:
         raise ValueError(
             "use_cache requires backbone_tuning='frozen' because tuned backbone features are not stable"

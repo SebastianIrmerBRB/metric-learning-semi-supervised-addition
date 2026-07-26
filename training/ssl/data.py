@@ -440,7 +440,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         if debug_max_batches is not None and debug_max_batches < 0:
             raise ValueError("debug_max_batches must be non-negative or None")
 
-        self.debug = False
+        self.debug = bool(debug)
         self.debug_max_batches = debug_max_batches
         self.debug_fn = debug_fn
 
@@ -485,6 +485,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         selected_weights,
         unique_nodes,
         edge_indices,
+        restarted_edge_pass,
     ):
         reconstructed_pairs = [
             (
@@ -510,6 +511,14 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         lines = [
             "",
             f"[GraphEdgeBatchSampler] batch={batch_number}",
+            (
+                "  batch sizing: "
+                f"available_edges={self.num_edges}, "
+                f"requested_edges={self.edges_per_batch}, "
+                f"selected_edges={len(expected_pairs)}, "
+                f"short_batch={len(expected_pairs) < self.edges_per_batch}"
+            ),
+            f"  restarted edge pass: {restarted_edge_pass}",
             f"  selected edge IDs:  {selected_edge_ids}",
             f"  global node pairs:  {expected_pairs}",
             f"  edge weights:       {selected_weights}",
@@ -536,12 +545,14 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         target_batches = len(self)
 
         while yielded < target_batches:
+            restarted_edge_pass = False
             if start >= self.num_edges:
                 edge_order = torch.randperm(
                     self.num_edges,
                     generator=self.generator,
                 )
                 start = 0
+                restarted_edge_pass = True
 
             selected = edge_order[
                 start : start + self.edges_per_batch
@@ -584,6 +595,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
                     selected_weights=self.edge_weights[selected].tolist(),
                     unique_nodes=unique_nodes,
                     edge_indices=edge_indices,
+                    restarted_edge_pass=restarted_edge_pass,
                 )
 
             yield [

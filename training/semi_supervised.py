@@ -82,6 +82,7 @@ from .ssl.graph_diagnostics import (
     dataset_labels_for_positions,
     make_graph_diagnostics_request,
     maybe_save_graph_diagnostics,
+    maybe_update_graph_propagation_diagnostics,
     project_graph_embeddings_2d as project_graph_embeddings_2d,
     save_graph_diagnostics as save_graph_diagnostics,
 )
@@ -192,13 +193,9 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         g(theta) = (1/2) * sum_ij W_ij * || f(x_i) - f(x_j) ||^2 = tr(Z^T L Z),
 
     with W a binary symmetric kNN graph and L = D - W (optionally the symmetric-
-    normalized Laplacian used in the paper's experiments). The similar/dissimilar
+    normalized Laplacian). The similar/dissimilar
     loss terms of the original objective are supplied by the configured supervised
     loss; this class only adds the unlabeled Laplacian term.
-
-    The log-det constraint and the SDP / matrix-inversion solvers are specific to
-    the closed-form linear metric and have no SGD analogue; collapse is instead
-    avoided by the supervised loss and L2-normalized embeddings.
 
     ``GraphEdgeBatchSampler`` samples the symmetric graph's upper-triangle edges
     uniformly. Each step evaluates only those selected pairs and rescales their
@@ -387,6 +384,16 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 positions=self.graph_positions,
                 labels=dataset_labels_for_positions(train_dataset, self.graph_positions),
                 known_mask=self.graph_known_mask,
+                graph_metadata={
+                    "graph_kind": "binary_knn_union",
+                    "requested_n_neighbors": self.n_neighbors,
+                    "search_n_neighbors": (
+                        min(self.n_neighbors, max(len(embeddings) - 1, 0))
+                        if neighbor_indices is None
+                        else int(neighbor_indices.shape[1])
+                    ),
+                    "neighbor_indices": neighbor_indices,
+                },
             )
             self.neighbor_indices = neighbor_indices
             self.adjacency = adjacency
@@ -637,7 +644,7 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
             embeddings_seconds = time.perf_counter() - embeddings_start
 
             graph_start = time.perf_counter()
-            _, adjacency, degrees, positive_pair_count = build_slrml_graph(
+            neighbor_indices, adjacency, degrees, positive_pair_count = build_slrml_graph(
                 embeddings=embeddings,
                 n_neighbors=self.n_neighbors,
                 labels=self.graph_labels,
@@ -658,6 +665,22 @@ class SLRMLRegularizer(BaseTrainingRegularizer):
                 positions=self.graph_positions,
                 labels=dataset_labels_for_positions(train_dataset, self.graph_positions),
                 known_mask=self.graph_known_mask,
+                graph_metadata={
+                    "graph_kind": (
+                        "weighted_knn_union_plus_supervised"
+                        if self.include_supervised_graph
+                        else "weighted_knn_union"
+                    ),
+                    "requested_n_neighbors": self.n_neighbors,
+                    "search_n_neighbors": (
+                        min(self.n_neighbors, max(len(embeddings) - 1, 0))
+                        if neighbor_indices is None
+                        else int(neighbor_indices.shape[1])
+                    ),
+                    "neighbor_indices": neighbor_indices,
+                    "include_supervised_graph": self.include_supervised_graph,
+                    "supervised_positive_pair_count": positive_pair_count,
+                },
             )
             self.adjacency = adjacency
             self.degrees = degrees
@@ -948,6 +971,11 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
 
         p(y=+1 | z_i, z_j) = sigmoid((eta - ||z_i - z_j||^2) / temperature).
 
+    When labeled-unlabeled pairs are enabled, the UU and LU batch means estimate
+    their corresponding population means. They are combined with exact population
+    pair proportions ``choose(n_u, 2)`` and ``n_l * n_u`` rather than with the
+    incidental numbers of pairs in each mini-batch.
+
     """
 
     name = "seraph_entropy"
@@ -960,8 +988,7 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         "eta": 1.0,
         "unlabeled_ratio": 1.0,
         "unlabeled_batch_size": None,
-        "include_labeled_unlabeled": False,
-        "entropy_band": None,
+        "include_labeled_unlabeled": True,
     }
     ETA_MODES = {"batch", "fixed"}
 
@@ -993,13 +1020,9 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
             raise ValueError("seraph_entropy unlabeled_batch_size must be at least 2")
         self.include_labeled_unlabeled = bool(merged["include_labeled_unlabeled"])
-        entropy_band = merged["entropy_band"]
-        self.entropy_band = None if entropy_band is None else float(entropy_band)
-        if self.entropy_band is not None and (
-            not math.isfinite(self.entropy_band) or self.entropy_band <= 0
-        ):
-            raise ValueError("seraph_entropy entropy_band must be finite and positive when set")
         self.dataset = None
+        self.population_labeled_count = None
+        self.population_unlabeled_count = None
         self._regularizer_loader = None
         self._regularizer_loader_cache_key = None
         self._last_diagnostics = {}
@@ -1024,9 +1047,16 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             )
 
     def build_dataset(self, train_dataset, split, use_cache=False):
+        labeled_positions = np.asarray(split.labeled_positions, dtype=np.int64)
         unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
         if len(unlabeled_positions) < 2:
             raise ValueError("seraph_entropy regularization requires at least two unlabeled samples")
+        if self.include_labeled_unlabeled and len(labeled_positions) == 0:
+            raise ValueError(
+                "seraph_entropy labeled-unlabeled comparisons require labeled samples"
+            )
+        self.population_labeled_count = int(len(labeled_positions))
+        self.population_unlabeled_count = int(len(unlabeled_positions))
         regularizer_dataset = self.make_regularizer_source_dataset(
             train_dataset, use_cache=use_cache
         )
@@ -1061,6 +1091,8 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
         if unlabeled_batch_size < 2:
             raise ValueError("seraph_entropy needs at least two unlabeled samples per batch")
+        population_pair_counts = self._population_pair_counts()
+        block_weights = self._loss_block_weights()
 
         num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
         cache_key = (
@@ -1090,7 +1122,11 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 f"unlabeled_batch_size={unlabeled_batch_size}, "
                 f"unlabeled_pool={len(self.dataset)}, "
                 f"joint_forward_batch_size={int(batch_size) + unlabeled_batch_size}, "
-                f"include_labeled_unlabeled={self.include_labeled_unlabeled}"
+                f"include_labeled_unlabeled={self.include_labeled_unlabeled}, "
+                f"population_uu_pairs={population_pair_counts['uu']}, "
+                f"population_lu_pairs={population_pair_counts['lu']}, "
+                f"uu_weight={block_weights['uu']:.6f}, "
+                f"lu_weight={block_weights['lu']:.6f}"
             )
         return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
 
@@ -1174,18 +1210,43 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             }
         return eta
 
-    def _select_pairs(self, squared_distances, eta):
-        if self.entropy_band is None or len(squared_distances) == 0:
-            return squared_distances
-        selection = (squared_distances.detach().float() - eta.detach()).abs() <= self.entropy_band
-        return squared_distances[selection]
-
     @staticmethod
     def _pair_label_entropy_from_logits(logits):
         """Numerically stable entropy with gradients through logits."""
         probabilities = torch.sigmoid(logits)
         entropy = F.softplus(logits) - probabilities * logits
         return entropy, probabilities
+
+    def _population_pair_counts(self):
+        if (
+            self.population_labeled_count is None
+            or self.population_unlabeled_count is None
+        ):
+            return None
+        unlabeled_count = self.population_unlabeled_count
+        labeled_count = self.population_labeled_count
+        return {
+            "uu": unlabeled_count * (unlabeled_count - 1) // 2,
+            "lu": labeled_count * unlabeled_count,
+        }
+
+    def _loss_block_weights(self):
+        if not self.include_labeled_unlabeled:
+            return {"uu": 1.0, "lu": 0.0}
+
+        population_pair_counts = self._population_pair_counts()
+        if population_pair_counts is None:
+            raise RuntimeError(
+                "SERAPH must build its dataset before weighting labeled-unlabeled "
+                "comparisons by population pair counts"
+            )
+        total_pair_count = sum(population_pair_counts.values())
+        if total_pair_count <= 0:
+            raise RuntimeError("SERAPH population contains no UU or LU pairs")
+        return {
+            kind: float(pair_count) / float(total_pair_count)
+            for kind, pair_count in population_pair_counts.items()
+        }
 
     def set_comparison_diagnostics_enabled(self, enabled):
         """Capture exact SERAPH endpoint and pair values for interactive debugging.
@@ -1243,13 +1304,6 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             )
         ]
 
-    def _comparison_selection_mask(self, squared_distances, eta):
-        if self.entropy_band is None:
-            return torch.ones_like(squared_distances, dtype=torch.bool)
-        return (
-            squared_distances.detach().float() - eta.detach().float()
-        ).abs() <= self.entropy_band
-
     def _capture_comparison_diagnostics(
         self,
         *,
@@ -1262,6 +1316,8 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         unlabeled_positions,
         uu_distances,
         lu_distances,
+        block_weights,
+        population_pair_counts,
     ):
         """Snapshot the exact comparisons without retaining an autograd graph."""
 
@@ -1367,8 +1423,6 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
 
         block_values = []
         for kind, left_role, right_role, pair_indices, distances in pair_blocks:
-            selection = self._comparison_selection_mask(distances, eta)
-            selected_count = int(selection.sum().item())
             logits = (eta.detach().float() - distances.detach().float()) / self.temperature
             entropies, probabilities = self._pair_label_entropy_from_logits(logits)
             block_values.append(
@@ -1378,56 +1432,51 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                     "right_role": right_role,
                     "pair_indices": pair_indices.detach(),
                     "distances": distances.detach().float(),
-                    "selection": selection.detach(),
                     "logits": logits.detach(),
                     "probabilities": probabilities.detach(),
                     "entropies": entropies.detach(),
-                    "selected_count": selected_count,
                 }
             )
 
-        total_selected_count = sum(block["selected_count"] for block in block_values)
         loss_pairs = []
         loss_blocks = []
         for block in block_values:
-            selected_count = block["selected_count"]
-            block_weight = (
-                float(selected_count) / float(total_selected_count)
-                if selected_count > 0 and total_selected_count > 0
-                else 0.0
-            )
-            mean_selected_entropy = (
-                float(block["entropies"][block["selection"]].mean().cpu())
-                if selected_count > 0
+            batch_pair_count = len(block["distances"])
+            block_weight = block_weights[block["kind"]]
+            mean_entropy = (
+                float(block["entropies"].mean().cpu())
+                if batch_pair_count > 0
                 else None
             )
             loss_blocks.append(
                 {
                     "kind": block["kind"],
-                    "candidate_count": int(len(block["distances"])),
-                    "selected_count": selected_count,
-                    "mean_selected_entropy": mean_selected_entropy,
+                    "batch_pair_count": batch_pair_count,
+                    "population_pair_count": (
+                        None
+                        if population_pair_counts is None
+                        else population_pair_counts[block["kind"]]
+                    ),
+                    "mean_entropy": mean_entropy,
                     "block_weight": block_weight,
                 }
             )
 
             pair_indices = block["pair_indices"].cpu().T.tolist()
             distances = block["distances"].cpu().tolist()
-            selection = block["selection"].cpu().tolist()
             logits = block["logits"].cpu().tolist()
             probabilities = block["probabilities"].cpu().tolist()
             entropies = block["entropies"].cpu().tolist()
-            for (left, right), distance, selected, logit, probability, entropy in zip(
+            for (left, right), distance, logit, probability, entropy in zip(
                 pair_indices,
                 distances,
-                selection,
                 logits,
                 probabilities,
                 entropies,
             ):
                 contribution = (
-                    float(entropy) / float(total_selected_count)
-                    if selected and total_selected_count > 0
+                    block_weight * float(entropy) / float(batch_pair_count)
+                    if batch_pair_count > 0
                     else 0.0
                 )
                 loss_pairs.append(
@@ -1441,7 +1490,6 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                         "logit": float(logit),
                         "same_probability": float(probability),
                         "entropy": float(entropy),
-                        "selected": bool(selected),
                         "loss_contribution": contribution,
                     }
                 )
@@ -1449,7 +1497,10 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         self._last_comparison_diagnostics = {
             "eta": float(eta.detach().float().cpu()),
             "temperature": self.temperature,
-            "entropy_band": self.entropy_band,
+            "population": {
+                "labeled_sample_count": self.population_labeled_count,
+                "unlabeled_sample_count": self.population_unlabeled_count,
+            },
             "eta_summary": eta_summary,
             "samples": {
                 "labeled": labeled_samples,
@@ -1468,37 +1519,33 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         eta,
         uu_distances,
         lu_distances,
-        selected_uu_distances,
-        selected_lu_distances,
+        block_weights,
+        population_pair_counts,
     ):
-        """Measure collapse on all candidate pairs, before optional banding."""
+        """Measure collapse across all pairs used by the entropy objective."""
 
-        candidate_blocks = [
-            block for block in (uu_distances, lu_distances) if block.numel() > 0
-        ]
+        pair_blocks = {"uu": uu_distances, "lu": lu_distances}
         with torch.no_grad():
-            if candidate_blocks:
-                diagnostic_distances = torch.cat(candidate_blocks).detach().float()
-                diagnostic_probabilities = torch.sigmoid(
-                    (eta.detach().float() - diagnostic_distances) / self.temperature
+            mean_same_probability = eta.detach().new_zeros(())
+            confident_similar_fraction = eta.detach().new_zeros(())
+            confident_dissimilar_fraction = eta.detach().new_zeros(())
+            for kind, distances in pair_blocks.items():
+                block_weight = block_weights[kind]
+                if block_weight == 0.0 or distances.numel() == 0:
+                    continue
+                probabilities = torch.sigmoid(
+                    (eta.detach().float() - distances.detach().float())
+                    / self.temperature
                 )
-                mean_same_probability = diagnostic_probabilities.mean()
-                confident_similar_fraction = (
-                    diagnostic_probabilities >= 0.9
-                ).float().mean()
-                confident_dissimilar_fraction = (
-                    diagnostic_probabilities <= 0.1
-                ).float().mean()
-            else:
-                mean_same_probability = eta.detach().new_zeros(())
-                confident_similar_fraction = eta.detach().new_zeros(())
-                confident_dissimilar_fraction = eta.detach().new_zeros(())
+                mean_same_probability += block_weight * probabilities.mean()
+                confident_similar_fraction += (
+                    block_weight * (probabilities >= 0.9).float().mean()
+                )
+                confident_dissimilar_fraction += (
+                    block_weight * (probabilities <= 0.1).float().mean()
+                )
 
-        total_pair_count = int(uu_distances.numel() + lu_distances.numel())
-        selected_pair_count = int(
-            selected_uu_distances.numel() + selected_lu_distances.numel()
-        )
-        return {
+        diagnostics = {
             # Keep tensors detached on-device here. batch_diagnostics batches
             # their host transfer into one synchronization only when logging is enabled.
             "train/seraph_eta": eta.detach(),
@@ -1507,15 +1554,21 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
             "train/seraph_confident_dissimilar_fraction": confident_dissimilar_fraction,
             "train/seraph_uu_pair_count": float(uu_distances.numel()),
             "train/seraph_lu_pair_count": float(lu_distances.numel()),
-            "train/seraph_selected_uu_pair_count": float(selected_uu_distances.numel()),
-            "train/seraph_selected_lu_pair_count": float(selected_lu_distances.numel()),
-            "train/seraph_selected_pair_count": float(selected_pair_count),
-            "train/seraph_pair_selection_fraction": (
-                float(selected_pair_count) / float(total_pair_count)
-                if total_pair_count > 0
-                else 0.0
-            ),
+            "train/seraph_uu_block_weight": block_weights["uu"],
+            "train/seraph_lu_block_weight": block_weights["lu"],
         }
+        if population_pair_counts is not None:
+            diagnostics.update(
+                {
+                    "train/seraph_uu_population_pair_count": float(
+                        population_pair_counts["uu"]
+                    ),
+                    "train/seraph_lu_population_pair_count": float(
+                        population_pair_counts["lu"]
+                    ),
+                }
+            )
+        return diagnostics
 
     def compute_loss(
         self,
@@ -1530,6 +1583,7 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         supervised_positions=None,
     ):
         self._last_comparison_diagnostics = {}
+        self._last_diagnostics = {}
         if regularizer_embeddings is None:
             if batch is None:
                 raise ValueError("seraph_entropy requires a regularizer batch or embeddings")
@@ -1569,24 +1623,34 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
         else:
             eta = self._batch_eta(labeled, supervised_labels)
 
-        all_uu_distances = self._upper_triangle_squared_distances(unlabeled)
-        selected_uu_distances = self._select_pairs(all_uu_distances, eta)
-        all_lu_distances = unlabeled.new_empty((0,))
-        selected_lu_distances = unlabeled.new_empty((0,))
+        uu_distances = self._upper_triangle_squared_distances(unlabeled)
+        lu_distances = unlabeled.new_empty((0,))
         if self.include_labeled_unlabeled:
-            all_lu_distances = self._cross_squared_distances(labeled, unlabeled)
-            selected_lu_distances = self._select_pairs(all_lu_distances, eta)
+            lu_distances = self._cross_squared_distances(labeled, unlabeled)
+        block_weights = self._loss_block_weights()
+        population_pair_counts = self._population_pair_counts()
+
+        if len(uu_distances) == 0:
+            if self.include_labeled_unlabeled:
+                raise ValueError(
+                    "seraph_entropy needs at least two unlabeled embeddings when "
+                    "labeled-unlabeled comparisons are enabled"
+                )
+            _record_timing(timings, "seraph_entropy", t0, device)
+            return regularizer_embeddings.sum() * 0.0
+        if self.include_labeled_unlabeled and len(lu_distances) == 0:
+            raise ValueError(
+                "seraph_entropy needs labeled embeddings for labeled-unlabeled comparisons"
+            )
+
         if self.collect_batch_diagnostics:
             self._last_diagnostics = self._pair_diagnostics(
                 eta=eta,
-                uu_distances=all_uu_distances,
-                lu_distances=all_lu_distances,
-                selected_uu_distances=selected_uu_distances,
-                selected_lu_distances=selected_lu_distances,
+                uu_distances=uu_distances,
+                lu_distances=lu_distances,
+                block_weights=block_weights,
+                population_pair_counts=population_pair_counts,
             )
-        else:
-            self._last_diagnostics = {}
-
         if self.collect_comparison_diagnostics:
             unlabeled_positions = None
             if isinstance(batch, (tuple, list)) and len(batch) >= 3:
@@ -1599,24 +1663,21 @@ class SeraphEntropyRegularizer(BaseTrainingRegularizer):
                 supervised_positions=supervised_positions,
                 unlabeled_embeddings=unlabeled,
                 unlabeled_positions=unlabeled_positions,
-                uu_distances=all_uu_distances,
-                lu_distances=all_lu_distances,
+                uu_distances=uu_distances,
+                lu_distances=lu_distances,
+                block_weights=block_weights,
+                population_pair_counts=population_pair_counts,
             )
 
-        pair_blocks = [selected_uu_distances]
+        uu_logits = (eta - uu_distances.float()) / self.temperature
+        uu_entropy, _ = self._pair_label_entropy_from_logits(uu_logits)
+        loss = block_weights["uu"] * uu_entropy.mean()
         if self.include_labeled_unlabeled:
-            pair_blocks.append(selected_lu_distances)
-        nonempty_pair_blocks = [block for block in pair_blocks if len(block) > 0]
-        if not nonempty_pair_blocks:
-            _record_timing(timings, "seraph_entropy", t0, device)
-            return regularizer_embeddings.sum() * 0.0
-
-        # Pool first so every selected UU or LU pair receives identical weight.
-        selected_distances = torch.cat(nonempty_pair_blocks)
-        logits = (eta - selected_distances.float()) / self.temperature
-        entropy, _ = self._pair_label_entropy_from_logits(logits)
-        loss = entropy.mean()
-        sum_loss = entropy.sum()
+            # Estimate each population block by its own batch mean before applying
+            # the dataset-level pair proportion.
+            lu_logits = (eta - lu_distances.float()) / self.temperature
+            lu_entropy, _ = self._pair_label_entropy_from_logits(lu_logits)
+            loss = loss + block_weights["lu"] * lu_entropy.mean()
         _record_timing(timings, "seraph_entropy", t0, device)
         return loss
 
@@ -2127,6 +2188,20 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
                 positions=ssl_positions,
                 labels=labels[ssl_positions],
                 known_mask=np.arange(len(ssl_positions)) < num_labeled,
+                graph_metadata={
+                    "graph_kind": "unlabeled_to_labeled_positive_cosine_knn",
+                    "requested_n_neighbors": n_neighbors,
+                    "search_n_neighbors": k,
+                    "neighbor_indices": neighbor_indices,
+                    "neighbor_similarities": similarities,
+                    "query_indices": (
+                        np.arange(
+                            len(split.unlabeled_positions),
+                            dtype=np.int64,
+                        )
+                        + num_labeled
+                    ),
+                },
             )
 
         # Advanced indexing turns neighbor row offsets into a label matrix with
@@ -2141,6 +2216,51 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
             # distance-derived score.
             pseudo_labels, vote_counts = majority_vote(neighbor_labels)
             confidences = (vote_counts / k).astype(np.float32)
+        if request is not None:
+            num_classes = int(labels.max()) + 1
+            diagnostic_scores = np.zeros(
+                (len(ssl_positions), num_classes),
+                dtype=np.float64,
+            )
+            labeled_rows = np.arange(num_labeled, dtype=np.int64)
+            diagnostic_scores[
+                labeled_rows,
+                labeled_targets,
+            ] = 1.0
+            unlabeled_scores = diagnostic_scores[num_labeled:]
+            np.add.at(
+                unlabeled_scores,
+                (
+                    np.repeat(
+                        np.arange(len(unlabeled_scores), dtype=np.int64),
+                        k,
+                    ),
+                    neighbor_labels.reshape(-1),
+                ),
+                1.0 / float(k),
+            )
+            diagnostic_confidences = np.ones(
+                len(ssl_positions),
+                dtype=np.float64,
+            )
+            diagnostic_confidences[num_labeled:] = confidences
+            maybe_update_graph_propagation_diagnostics(
+                request=request,
+                scores=diagnostic_scores,
+                confidences=diagnostic_confidences,
+                labels=labels[ssl_positions],
+                known_mask=np.arange(len(ssl_positions)) < num_labeled,
+                method=self.name,
+                confidence_threshold=config.confidence_threshold,
+                extra={
+                    "vote_neighbor_count": k,
+                    "confidence_kind": (
+                        "cosine_similarity"
+                        if k == 1
+                        else "winning_vote_fraction"
+                    ),
+                },
+            )
         logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(confidences)}")
 
         return PseudoLabelResult(
@@ -2233,6 +2353,7 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
                 "positions": ssl_positions,
                 "labels": labels[ssl_positions],
                 "known_mask": targets != UNLABELED_TARGET,
+                "confidence_threshold": config.confidence_threshold,
             },
             **params,
         )
@@ -2333,6 +2454,7 @@ class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
                 "positions": ssl_positions,
                 "labels": labels[ssl_positions],
                 "known_mask": targets != UNLABELED_TARGET,
+                "confidence_threshold": config.confidence_threshold,
             },
             **params,
         )
@@ -2437,6 +2559,7 @@ class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
                 "positions": ssl_positions,
                 "labels": labels[ssl_positions],
                 "known_mask": targets != UNLABELED_TARGET,
+                "confidence_threshold": config.confidence_threshold,
             },
             **params,
         )

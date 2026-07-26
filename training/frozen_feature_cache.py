@@ -1,15 +1,17 @@
-"""In-process reuse of materialized frozen-backbone feature datasets."""
+"""Coordinate source-indexed mmap and in-process frozen-feature dataset views."""
 
 import hashlib
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
 from loguru import logger
+from torch.utils.data import Subset
 
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 _SOURCE_ARG_NAMES = (
     "dataset",
     "dataset_protocol",
@@ -173,6 +175,26 @@ def _feature_batch_size(args):
     return int(args.batch_size if configured is None else configured)
 
 
+def _model_cache_identity(model):
+    explicit_identity = getattr(model, "frozen_feature_cache_identity", None)
+    if callable(explicit_identity):
+        explicit_identity = explicit_identity()
+    if explicit_identity is not None:
+        return explicit_identity
+
+    dino_size = getattr(model, "dino_size", None)
+    if dino_size is None:
+        # Unknown model weights cannot be assumed equivalent across trials.
+        return None
+    return (
+        type(model).__module__,
+        type(model).__qualname__,
+        f"dinov2_vit{dino_size}14",
+        getattr(model, "backbone_tuning", None),
+        str(getattr(model, "cache_dir", None)),
+    )
+
+
 def make_frozen_feature_cache_key(
     args,
     model,
@@ -184,21 +206,9 @@ def make_frozen_feature_cache_key(
 ):
     """Return a stable key for raw frozen-backbone features, when supported."""
 
-    explicit_identity = getattr(model, "frozen_feature_cache_identity", None)
-    if callable(explicit_identity):
-        explicit_identity = explicit_identity()
+    explicit_identity = _model_cache_identity(model)
     if explicit_identity is None:
-        dino_size = getattr(model, "dino_size", None)
-        if dino_size is None:
-            # Unknown model weights cannot be assumed equivalent across trials.
-            return None
-        explicit_identity = (
-            type(model).__module__,
-            type(model).__qualname__,
-            f"dinov2_vit{dino_size}14",
-            getattr(model, "backbone_tuning", None),
-            str(getattr(model, "cache_dir", None)),
-        )
+        return None
 
     digest = hashlib.sha256()
     _update_digest(digest, ("frozen_feature_cache_version", _CACHE_VERSION))
@@ -246,8 +256,125 @@ def make_frozen_feature_cache_key(
     return digest.hexdigest()
 
 
+@dataclass(frozen=True)
+class FrozenFeatureIndexSpec:
+    """Persistent matrix namespace and row mapping for one dataset view."""
+
+    key: str
+    row_indices: np.ndarray
+    capacity: int
+
+
+def _unwrap_indexed_dataset(dataset):
+    """Map a selection view to stable row indices in its root dataset."""
+
+    rows = np.arange(len(dataset), dtype=np.int64)
+    current = dataset
+    seen = set()
+    while True:
+        object_id = id(current)
+        if object_id in seen:
+            return None
+        seen.add(object_id)
+
+        child = getattr(current, "dataset", None)
+        if child is None or child is current:
+            return current, rows
+
+        if isinstance(current, Subset):
+            selector = np.asarray(current.indices, dtype=np.int64)
+        else:
+            positions = getattr(current, "positions", None)
+            if positions is not None and len(positions) == len(current):
+                selector = np.asarray(positions, dtype=np.int64)
+            else:
+                # An unknown wrapper may alter pixels even when it preserves
+                # length. Fall back to an exact view-local matrix rather than
+                # aliasing its rows with the child dataset.
+                return None
+
+        if selector.ndim != 1 or len(selector) != len(current):
+            return None
+        if np.any((rows < 0) | (rows >= len(selector))):
+            return None
+        rows = selector[rows]
+        current = child
+
+
+def make_frozen_feature_index_spec(
+    args,
+    model,
+    dataset,
+    *,
+    require_feature_transform,
+    use_feature_transform,
+    num_views,
+):
+    """Build a source-indexed mmap key without reading or hashing image pixels."""
+
+    model_identity = _model_cache_identity(model)
+    if model_identity is None:
+        return None
+
+    num_views = int(num_views)
+    deterministic = bool(use_feature_transform) and num_views == 1
+    unwrapped = _unwrap_indexed_dataset(dataset) if deterministic else None
+    if unwrapped is None:
+        # Stochastic views depend on extraction order. Keep them in an exact
+        # dataset-local matrix rather than sharing rows across different views.
+        exact_key = make_frozen_feature_cache_key(
+            args,
+            model,
+            dataset,
+            require_feature_transform=require_feature_transform,
+            use_feature_transform=use_feature_transform,
+            num_views=num_views,
+        )
+        if exact_key is None:
+            return None
+        row_count = len(dataset) * num_views
+        return FrozenFeatureIndexSpec(
+            key=f"exact:{exact_key}",
+            row_indices=np.arange(row_count, dtype=np.int64),
+            capacity=row_count,
+        )
+
+    source_dataset, source_rows = unwrapped
+    input_transform = _find_input_transform(
+        dataset,
+        use_feature_transform=use_feature_transform,
+    )
+    if input_transform is None:
+        input_transform = _find_input_transform(
+            dataset,
+            use_feature_transform=False,
+        )
+
+    digest = hashlib.sha256()
+    _update_digest(digest, ("indexed_frozen_feature_cache_version", _CACHE_VERSION))
+    _update_digest(digest, ("backbone", model_identity))
+    _update_digest(
+        digest,
+        (
+            "precompute_options",
+            bool(use_feature_transform),
+            num_views,
+        ),
+    )
+    _update_digest(digest, ("input_transform", repr(input_transform)))
+    _update_dataset_digest(digest, source_dataset, seen={})
+    return FrozenFeatureIndexSpec(
+        key=f"source:{digest.hexdigest()}",
+        row_indices=source_rows,
+        capacity=len(source_dataset),
+    )
+
+
 def _precomputed_dataset_nbytes(dataset):
     total = 0
+    storage_nbytes = getattr(dataset, "storage_nbytes", None)
+    if callable(storage_nbytes):
+        return int(storage_nbytes())
     for attr_name in ("features", "sample_weights"):
         value = getattr(dataset, attr_name, None)
         if torch.is_tensor(value):

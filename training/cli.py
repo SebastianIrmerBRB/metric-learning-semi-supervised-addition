@@ -115,8 +115,8 @@ parser.add_argument(
     type=int,
     default=None,
     help=(
-        "number of examples sampled by MPerClassSampler per epoch. "
-        "None derives the length from the active training dataset."
+        "legacy fixed sampler length retained for config compatibility. "
+        "Training overrides it with the current fold's labeled + unlabeled pool size."
     ),
 )
 parser.add_argument("--dataset", type=utils.normalize_dataset_name, default="Cars196", choices=DATASETS, help="dataset")
@@ -170,8 +170,19 @@ parser.add_argument(
     dest="use_cache",
     action="store_true",
     help=(
-        "use deterministic frozen-backbone features; supervised frozen runs precompute one in-memory "
-        "feature tensor per active dataset, while other supported modes use the persistent backbone cache"
+        "use deterministic frozen-backbone features backed by one source-indexed "
+        "memory-mapped matrix per dataset/backbone"
+    ),
+)
+parser.add_argument(
+    "--frozen-head-only-checkpoint",
+    "--frozen_head_only_checkpoint",
+    dest="frozen_head_only_checkpoint",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help=(
+        "with backbone_tuning=frozen, keep the selected non-backbone model state in CPU memory "
+        "instead of writing the full DINO model to a temporary checkpoint"
     ),
 )
 parser.add_argument("--loss", type=str, default="MultiSimilarityLoss", choices=ALL_LOSSES, help="loss")

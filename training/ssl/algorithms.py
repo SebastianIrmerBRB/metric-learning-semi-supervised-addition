@@ -10,10 +10,15 @@ from scipy import sparse
 from scipy.sparse import linalg as sparse_linalg
 
 from .config import UNLABELED_TARGET
-from .graph_diagnostics import maybe_save_graph_diagnostics
+from .graph_diagnostics import (
+    maybe_save_graph_diagnostics,
+    maybe_update_graph_propagation_diagnostics,
+    numeric_diagnostic_summary,
+)
 
 
 FAISS_GPU_MAX_K = 2048
+SOLVER_DIAGNOSTICS_MAX_RIGHT_HAND_SIDES = 500
 
 
 def _log_debug_timing(operation, started_at, **details):
@@ -52,6 +57,208 @@ def _dependency(overrides, name, default):
     if overrides is None:
         return default
     return overrides.get(name, default)
+
+
+def _make_affinity_with_graph_diagnostics(
+    *,
+    features,
+    n_neighbors,
+    gamma,
+    graph_diagnostics,
+    dependencies,
+):
+    """Build an affinity and retain kNN construction details when enabled."""
+
+    request = (
+        None
+        if graph_diagnostics is None
+        else graph_diagnostics.get("request")
+    )
+    builder = _dependency(
+        dependencies,
+        "make_mixed_label_affinity",
+        make_mixed_label_affinity,
+    )
+    if request is None:
+        return (
+            builder(
+                features,
+                n_neighbors=n_neighbors,
+                gamma=gamma,
+            ),
+            None,
+            None,
+        )
+
+    result = builder(
+        features,
+        n_neighbors=n_neighbors,
+        gamma=gamma,
+        return_diagnostics=True,
+    )
+    if isinstance(result, tuple) and len(result) == 2:
+        affinity, construction_metadata = result
+    else:
+        # Keep diagnostics compatible with a custom/facade affinity builder
+        # that still implements the pre-diagnostics return contract.
+        affinity = result
+        construction_metadata = {
+            "graph_kind": "positive_part_cosine_knn",
+            "requested_n_neighbors": int(n_neighbors),
+            "search_n_neighbors": min(
+                int(n_neighbors),
+                max(len(features) - 1, 0),
+            ),
+            "gamma": float(gamma),
+        }
+    _dependency(
+        dependencies,
+        "maybe_save_graph_diagnostics",
+        maybe_save_graph_diagnostics,
+    )(
+        request=request,
+        embeddings=features,
+        adjacency=affinity,
+        positions=graph_diagnostics.get("positions"),
+        labels=graph_diagnostics.get("labels"),
+        known_mask=graph_diagnostics.get("known_mask"),
+        graph_metadata=construction_metadata,
+    )
+    return affinity, construction_metadata, request
+
+
+def _record_graph_propagation_diagnostics(
+    *,
+    request,
+    graph_diagnostics,
+    scores,
+    confidences,
+    method,
+    dependencies,
+    initial_scores=None,
+    dissimilarity=None,
+    solver_diagnostics=None,
+    extra=None,
+):
+    if request is None:
+        return
+    _dependency(
+        dependencies,
+        "maybe_update_graph_propagation_diagnostics",
+        maybe_update_graph_propagation_diagnostics,
+    )(
+        request=request,
+        scores=scores,
+        confidences=confidences,
+        labels=graph_diagnostics.get("labels"),
+        known_mask=graph_diagnostics.get("known_mask"),
+        method=method,
+        confidence_threshold=graph_diagnostics.get("confidence_threshold"),
+        initial_scores=initial_scores,
+        dissimilarity=dissimilarity,
+        solver_diagnostics=solver_diagnostics,
+        extra=extra,
+    )
+
+
+def _initialize_solver_diagnostics(
+    diagnostics,
+    *,
+    matrix,
+    right_hand_side,
+    name,
+    linear_solver,
+    rtol,
+    max_iter,
+    warm_start,
+    allow_nonconvergence,
+):
+    if diagnostics is None:
+        return
+    diagnostics.clear()
+    diagonal = matrix.diagonal().astype(np.float64, copy=False)
+    asymmetry = (matrix - matrix.T).tocsr()
+    diagnostics.update(
+        {
+            "status": "running",
+            "name": name,
+            "backend": str(linear_solver),
+            "matrix_shape": [int(value) for value in matrix.shape],
+            "matrix_nnz": int(matrix.nnz),
+            "matrix_memory_bytes": int(
+                matrix.data.nbytes
+                + matrix.indices.nbytes
+                + matrix.indptr.nbytes
+            ),
+            "matrix_diagonal": numeric_diagnostic_summary(diagonal),
+            "matrix_max_absolute_asymmetry": (
+                0.0
+                if asymmetry.nnz == 0
+                else float(np.max(np.abs(asymmetry.data)))
+            ),
+            "right_hand_side_count": int(right_hand_side.shape[1]),
+            "zero_right_hand_side_count": int(
+                np.sum(~np.any(right_hand_side != 0.0, axis=0))
+            ),
+            "right_hand_side_l2_norm": numeric_diagnostic_summary(
+                np.linalg.norm(right_hand_side, axis=0)
+            ),
+            "rtol": float(rtol),
+            "max_iter": int(max_iter),
+            "warm_start": warm_start is not None,
+            "allow_nonconvergence": bool(allow_nonconvergence),
+        }
+    )
+
+
+def _finish_solver_diagnostics(
+    diagnostics,
+    *,
+    matrix,
+    right_hand_side,
+    solution,
+    started_at,
+):
+    if diagnostics is None:
+        return
+    solution = np.asarray(solution, dtype=np.float64)
+    residual = np.asarray(
+        matrix @ solution - right_hand_side,
+        dtype=np.float64,
+    )
+    absolute_residual = np.linalg.norm(residual, axis=0)
+    rhs_norm = np.linalg.norm(right_hand_side, axis=0)
+    relative_residual = np.divide(
+        absolute_residual,
+        rhs_norm,
+        out=np.where(
+            absolute_residual == 0.0,
+            0.0,
+            np.nan,
+        ),
+        where=rhs_norm > 0.0,
+    )
+    diagnostics.update(
+        {
+            "status": "computed",
+            "elapsed_seconds": float(time.perf_counter() - started_at),
+            "solution_finite": bool(np.all(np.isfinite(solution))),
+            "solution_l2_norm": numeric_diagnostic_summary(
+                np.linalg.norm(solution, axis=0)
+            ),
+            "absolute_residual_l2": numeric_diagnostic_summary(
+                absolute_residual
+            ),
+            "relative_residual_l2": numeric_diagnostic_summary(
+                relative_residual
+            ),
+            "max_absolute_residual_entry": (
+                0.0
+                if residual.size == 0
+                else float(np.max(np.abs(residual)))
+            ),
+        }
+    )
 
 
 @_debug_timed
@@ -208,24 +415,13 @@ def faiss_label_spreading(
     if np.any((targets[labeled] < 0) | (targets[labeled] >= num_classes)):
         raise ValueError("labeled targets must be in [0, num_classes)")
 
-    affinity = _dependency(
-        _dependencies,
-        "make_mixed_label_affinity",
-        make_mixed_label_affinity,
-    )(features, n_neighbors=n_neighbors, gamma=gamma)
-    if graph_diagnostics is not None:
-        _dependency(
-            _dependencies,
-            "maybe_save_graph_diagnostics",
-            maybe_save_graph_diagnostics,
-        )(
-            request=graph_diagnostics.get("request"),
-            embeddings=features,
-            adjacency=affinity,
-            positions=graph_diagnostics.get("positions"),
-            labels=graph_diagnostics.get("labels"),
-            known_mask=graph_diagnostics.get("known_mask"),
-        )
+    affinity, _, diagnostic_request = _make_affinity_with_graph_diagnostics(
+        features=features,
+        n_neighbors=n_neighbors,
+        gamma=gamma,
+        graph_diagnostics=graph_diagnostics,
+        dependencies=_dependencies,
+    )
 
     system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
@@ -249,6 +445,10 @@ def faiss_label_spreading(
         classes=num_classes,
         matrix_nnz=system.nnz,
     )
+    solver_diagnostics = {} if diagnostic_request is not None else None
+    solve_kwargs = {}
+    if solver_diagnostics is not None:
+        solve_kwargs["diagnostics"] = solver_diagnostics
     scores = _dependency(
         _dependencies,
         "solve_sparse_label_system",
@@ -260,6 +460,7 @@ def faiss_label_spreading(
         max_iter=int(cg_max_iter),
         name="faiss label spreading",
         linear_solver=str(linear_solver),
+        **solve_kwargs,
     )
     probabilities = _dependency(
         _dependencies,
@@ -267,6 +468,19 @@ def faiss_label_spreading(
         normalize_label_spreading_rows,
     )(scores)
     confidences = probabilities.max(axis=1)
+    _record_graph_propagation_diagnostics(
+        request=diagnostic_request,
+        graph_diagnostics=graph_diagnostics,
+        scores=probabilities,
+        confidences=confidences,
+        method="faiss_label_spreading",
+        dependencies=_dependencies,
+        solver_diagnostics=solver_diagnostics,
+        extra={
+            "alpha": alpha,
+            "normalized_affinity_nnz": int(normalized_affinity.nnz),
+        },
+    )
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
@@ -324,24 +538,13 @@ def iscen_label_spreading(
     if np.any((targets[labeled] < 0) | (targets[labeled] >= int(num_classes))):
         raise ValueError("labeled targets must be in [0, num_classes)")
 
-    affinity = _dependency(
-        _dependencies,
-        "make_mixed_label_affinity",
-        make_mixed_label_affinity,
-    )(features, n_neighbors=int(n_neighbors), gamma=float(gamma))
-    if graph_diagnostics is not None:
-        _dependency(
-            _dependencies,
-            "maybe_save_graph_diagnostics",
-            maybe_save_graph_diagnostics,
-        )(
-            request=graph_diagnostics.get("request"),
-            embeddings=features,
-            adjacency=affinity,
-            positions=graph_diagnostics.get("positions"),
-            labels=graph_diagnostics.get("labels"),
-            known_mask=graph_diagnostics.get("known_mask"),
-        )
+    affinity, _, diagnostic_request = _make_affinity_with_graph_diagnostics(
+        features=features,
+        n_neighbors=int(n_neighbors),
+        gamma=float(gamma),
+        graph_diagnostics=graph_diagnostics,
+        dependencies=_dependencies,
+    )
 
     # A disconnected component without a labeled node has no source term in
     # any class-specific linear system. Its exact propagated score is therefore
@@ -405,6 +608,10 @@ def iscen_label_spreading(
         matrix_nnz=system.nnz,
     )
 
+    solver_diagnostics = {} if diagnostic_request is not None else None
+    solve_kwargs = {}
+    if solver_diagnostics is not None:
+        solve_kwargs["diagnostics"] = solver_diagnostics
     scores = _dependency(
         _dependencies,
         "solve_sparse_label_system",
@@ -419,6 +626,7 @@ def iscen_label_spreading(
         # The public LP-DeepSSL implementation uses SciPy's final iterate when
         # its reference limit of 20 CG iterations is reached.
         allow_nonconvergence=linear_solver == "cg",
+        **solve_kwargs,
     )
 
     # A finite truncated CG solve can contain negative numerical overshoot.
@@ -463,6 +671,23 @@ def iscen_label_spreading(
         # zero rather than reproducing the reference implementation's 0 / 0.
         confidences = np.zeros_like(confidences)
     confidences[labeled] = 1.0
+    _record_graph_propagation_diagnostics(
+        request=diagnostic_request,
+        graph_diagnostics=graph_diagnostics,
+        scores=probabilities,
+        confidences=confidences,
+        method="iscen_label_spreading",
+        dependencies=_dependencies,
+        solver_diagnostics=solver_diagnostics,
+        extra={
+            "alpha": float(alpha),
+            "component_count": int(component_count),
+            "seed_reachable_node_count": int(seed_reachable.sum()),
+            "seedless_unlabeled_node_count": seedless_count,
+            "active_zero_mass_node_count": int(len(zero_mass_active_indices)),
+            "normalized_affinity_nnz": int(normalized_affinity.nnz),
+        },
+    )
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
@@ -499,24 +724,13 @@ def mixed_label_propagation(
     if np.any((targets[labeled] < 0) | (targets[labeled] >= num_classes)):
         raise ValueError("labeled targets must be in [0, num_classes)")
 
-    affinity = _dependency(
-        _dependencies,
-        "make_mixed_label_affinity",
-        make_mixed_label_affinity,
-    )(features, n_neighbors=n_neighbors, gamma=gamma)
-    if graph_diagnostics is not None:
-        _dependency(
-            _dependencies,
-            "maybe_save_graph_diagnostics",
-            maybe_save_graph_diagnostics,
-        )(
-            request=graph_diagnostics.get("request"),
-            embeddings=features,
-            adjacency=affinity,
-            positions=graph_diagnostics.get("positions"),
-            labels=graph_diagnostics.get("labels"),
-            known_mask=graph_diagnostics.get("known_mask"),
-        )
+    affinity, _, diagnostic_request = _make_affinity_with_graph_diagnostics(
+        features=features,
+        n_neighbors=n_neighbors,
+        gamma=gamma,
+        graph_diagnostics=graph_diagnostics,
+        dependencies=_dependencies,
+    )
     initial_system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
     laplacian = sparse.diags(degrees) - affinity
@@ -547,6 +761,12 @@ def mixed_label_propagation(
         if linear_solver == "cholmod"
         else {}
     )
+    initial_solver_diagnostics = (
+        {} if diagnostic_request is not None else None
+    )
+    initial_solve_kwargs = dict(cholmod_solve_kwargs)
+    if initial_solver_diagnostics is not None:
+        initial_solve_kwargs["diagnostics"] = initial_solver_diagnostics
     initial_labels = solve_system(
         initial_system,
         right_hand_side,
@@ -554,7 +774,7 @@ def mixed_label_propagation(
         max_iter=int(cg_max_iter),
         name="initial label propagation",
         linear_solver=linear_solver,
-        **cholmod_solve_kwargs,
+        **initial_solve_kwargs,
     )
 
     dissimilarity = _dependency(
@@ -585,6 +805,12 @@ def mixed_label_propagation(
         classes=num_classes,
         matrix_nnz=mixed_system.nnz,
     )
+    mixed_solver_diagnostics = (
+        {} if diagnostic_request is not None else None
+    )
+    mixed_solve_kwargs = dict(cholmod_solve_kwargs)
+    if mixed_solver_diagnostics is not None:
+        mixed_solve_kwargs["diagnostics"] = mixed_solver_diagnostics
     mixed_labels = solve_system(
         mixed_system,
         right_hand_side,
@@ -596,7 +822,7 @@ def mixed_label_propagation(
         # by the signless-Laplacian term, so CG typically converges in a
         # handful of iterations from here.
         warm_start=initial_labels,
-        **cholmod_solve_kwargs,
+        **mixed_solve_kwargs,
     )
     normalized_scores = _dependency(
         _dependencies,
@@ -611,6 +837,27 @@ def mixed_label_propagation(
         "entropy_confidence",
         entropy_confidence,
     )(normalized_scores)
+    _record_graph_propagation_diagnostics(
+        request=diagnostic_request,
+        graph_diagnostics=graph_diagnostics,
+        scores=normalized_scores,
+        confidences=confidences,
+        method="mixed_label_propagation",
+        dependencies=_dependencies,
+        initial_scores=initial_labels,
+        dissimilarity=dissimilarity,
+        solver_diagnostics={
+            "initial_label_propagation": initial_solver_diagnostics,
+            "mixed_label_propagation": mixed_solver_diagnostics,
+        },
+        extra={
+            "temperature": float(temperature),
+            "beta": float(beta),
+            "mu": float(mu),
+            "initial_system_nnz": int(initial_system.nnz),
+            "mixed_system_nnz": int(mixed_system.nnz),
+        },
+    )
     return normalized_scores.astype(np.float32), confidences.astype(np.float32)
 
 
@@ -911,13 +1158,24 @@ def induced_subgraph_edges(adjacency, node_ids):
 
 
 @_debug_timed
-def make_mixed_label_affinity(features, n_neighbors, gamma):
-    """Build equation (15)'s sparse symmetric cosine-affinity graph (vectorized)."""
+def make_mixed_label_affinity(
+    features,
+    n_neighbors,
+    gamma,
+    return_diagnostics=False,
+):
+    """Build equation (15)'s sparse symmetric cosine-affinity graph.
+
+    When requested, return the retained directed kNN candidates as compact
+    construction metadata. This lets graph diagnostics report how many of the
+    requested neighbors survived positive-part clipping before symmetrization.
+    """
 
     faiss = require_faiss("mixed label propagation")
     normalized = np.ascontiguousarray(features, dtype=np.float32).copy()
     faiss.normalize_L2(normalized)
     k = min(int(n_neighbors), len(normalized) - 1)
+    search_started_at = time.perf_counter()
     similarities, neighbors = faiss_flat_ip_search(
         database=normalized,
         queries=normalized,
@@ -925,29 +1183,56 @@ def make_mixed_label_affinity(features, n_neighbors, gamma):
         purpose="mixed label propagation",
         faiss_module=faiss,
     )
+    search_seconds = time.perf_counter() - search_started_at
 
+    construction_started_at = time.perf_counter()
     num_samples, retrieved = neighbors.shape
     query_indices = np.repeat(np.arange(num_samples, dtype=np.int64), retrieved)
     neighbor_indices = neighbors.ravel().astype(np.int64)
-    # Power in float64 to match the original loop, which converted each float32
-    # similarity to a Python float before ** gamma.
-    values = np.clip(similarities.ravel().astype(np.float64), 0.0, None) ** float(gamma)
-
     # Drop self matches, then keep only the first k survivors per row --
     # identical to the loop's `continue` on self and `break` at kept == k.
     keep = neighbor_indices != query_indices
     survivor_rank = keep.reshape(num_samples, retrieved).cumsum(axis=1).ravel()
     keep &= survivor_rank <= k
+    selected_neighbors = neighbor_indices[keep].reshape(num_samples, k)
+    selected_similarities = similarities.ravel()[keep].reshape(
+        num_samples,
+        k,
+    ).astype(np.float64, copy=False)
+    # Power in float64 to match the original loop, which converted each float32
+    # similarity to a Python float before ** gamma.
+    selected_values = (
+        np.clip(selected_similarities, 0.0, None) ** float(gamma)
+    )
+    selected_queries = np.repeat(
+        np.arange(num_samples, dtype=np.int64),
+        k,
+    )
 
     directed = sparse.coo_matrix(
-        (values[keep], (neighbor_indices[keep], query_indices[keep])),
+        (
+            selected_values.ravel(),
+            (selected_neighbors.ravel(), selected_queries),
+        ),
         shape=(num_samples, num_samples),
         dtype=np.float64,
     ).tocsr()
     affinity = (directed + directed.T).tocsr()
     affinity.setdiag(0)
     affinity.eliminate_zeros()
-    return affinity
+    construction_seconds = time.perf_counter() - construction_started_at
+    if not return_diagnostics:
+        return affinity
+    return affinity, {
+        "graph_kind": "positive_part_cosine_knn",
+        "requested_n_neighbors": int(n_neighbors),
+        "search_n_neighbors": int(k),
+        "gamma": float(gamma),
+        "neighbor_indices": selected_neighbors,
+        "neighbor_similarities": selected_similarities,
+        "search_seconds": float(search_seconds),
+        "construction_seconds": float(construction_seconds),
+    }
 
 
 @_debug_timed
@@ -1015,6 +1300,7 @@ def solve_sparse_label_system(
         warm_start=None,
         allow_nonconvergence=False,
         cholmod_factor_cache=None,
+        diagnostics=None,
 ):
     """Solve a sparse SPD system with SciPy CG or CHOLMOD.
 
@@ -1023,6 +1309,7 @@ def solve_sparse_label_system(
     the matrix once and solves all columns together.
     """
 
+    solve_started_at = time.perf_counter()
     matrix = matrix.tocsr().astype(np.float64, copy=False)
     right_hand_side = np.asarray(right_hand_side, dtype=np.float64)
 
@@ -1068,20 +1355,49 @@ def solve_sparse_label_system(
                 f"expected {right_hand_side.shape}"
             )
 
+    _initialize_solver_diagnostics(
+        diagnostics,
+        matrix=matrix,
+        right_hand_side=right_hand_side,
+        name=name,
+        linear_solver=linear_solver,
+        rtol=rtol,
+        max_iter=max_iter,
+        warm_start=warm_start,
+        allow_nonconvergence=allow_nonconvergence,
+    )
+
     def restore_shape(solution):
         return solution[:, 0] if single_rhs else solution
 
     if linear_solver == "cholmod":
+        cholmod_diagnostics = {} if diagnostics is not None else None
+        cholmod_kwargs = {}
+        if cholmod_diagnostics is not None:
+            cholmod_kwargs["diagnostics"] = cholmod_diagnostics
         solution = solve_sparse_label_system_cholmod(
             matrix,
             right_hand_side,
             name=name,
             factor_cache=cholmod_factor_cache,
+            **cholmod_kwargs,
         )
-        return restore_shape(np.asarray(solution))
+        solution = np.asarray(solution)
+        if diagnostics is not None:
+            diagnostics["cholmod"] = cholmod_diagnostics
+        _finish_solver_diagnostics(
+            diagnostics,
+            matrix=matrix,
+            right_hand_side=right_hand_side,
+            solution=solution,
+            started_at=solve_started_at,
+        )
+        return restore_shape(solution)
 
     solutions = np.zeros_like(right_hand_side)
     unconverged = []
+    iteration_counts = np.zeros(right_hand_side.shape[1], dtype=np.int64)
+    solver_info = np.zeros(right_hand_side.shape[1], dtype=np.int64)
     cg_started_at = time.perf_counter()
 
     for class_index in range(right_hand_side.shape[1]):
@@ -1099,6 +1415,12 @@ def solve_sparse_label_system(
             else warm_start[:, class_index]
         )
 
+        cg_kwargs = {}
+        if diagnostics is not None:
+            def count_iteration(_iterate, index=class_index):
+                iteration_counts[index] += 1
+
+            cg_kwargs["callback"] = count_iteration
         solution, info = sparse_linalg.cg(
             matrix,
             rhs,
@@ -1106,9 +1428,11 @@ def solve_sparse_label_system(
             rtol=float(rtol),
             atol=0.0,
             maxiter=int(max_iter),
+            **cg_kwargs,
         )
 
         solutions[:, class_index] = solution
+        solver_info[class_index] = int(info)
 
         if info < 0:
             raise RuntimeError(
@@ -1128,6 +1452,46 @@ def solve_sparse_label_system(
         warm_start=warm_start is not None,
         unconverged=len(unconverged),
     )
+
+    if diagnostics is not None:
+        reported_rhs_count = min(
+            right_hand_side.shape[1],
+            SOLVER_DIAGNOSTICS_MAX_RIGHT_HAND_SIDES,
+        )
+        diagnostics["cg"] = {
+            "iterations_per_right_hand_side": iteration_counts[
+                :reported_rhs_count
+            ].tolist(),
+            "iterations": numeric_diagnostic_summary(iteration_counts),
+            "scipy_info_per_right_hand_side": solver_info[
+                :reported_rhs_count
+            ].tolist(),
+            "right_hand_side_details_truncated": (
+                right_hand_side.shape[1]
+                > SOLVER_DIAGNOSTICS_MAX_RIGHT_HAND_SIDES
+            ),
+            "converged_right_hand_side_count": int(
+                np.sum(solver_info == 0)
+            ),
+            "unconverged_right_hand_side_count": int(len(unconverged)),
+            "unconverged_right_hand_side_indices": [
+                int(index) for index in unconverged[:100]
+            ],
+            "unconverged_indices_truncated": len(unconverged) > 100,
+        }
+    _finish_solver_diagnostics(
+        diagnostics,
+        matrix=matrix,
+        right_hand_side=right_hand_side,
+        solution=solutions,
+        started_at=solve_started_at,
+    )
+    if diagnostics is not None and unconverged:
+        diagnostics["status"] = (
+            "computed_truncated"
+            if allow_nonconvergence
+            else "failed_nonconvergence"
+        )
 
     if unconverged:
         message = (
@@ -1149,6 +1513,7 @@ def solve_sparse_label_system_cholmod(
     name,
     cholmod_module=None,
     factor_cache=None,
+    diagnostics=None,
 ):
     """Factor once with CHOLMOD and solve all class columns together.
 
@@ -1221,6 +1586,8 @@ def solve_sparse_label_system_cholmod(
         factor_cache["factor"] = factor
         factor_cache["pattern_matrix"] = pattern_matrix
 
+    factor_seconds = time.perf_counter() - factor_started_at
+
     _log_debug_timing(
         "cholmod.factorization",
         factor_started_at,
@@ -1238,6 +1605,7 @@ def solve_sparse_label_system_cholmod(
     else:
         solution = factor(right_hand_side)
         solve_api = "factor.__call__"
+    solve_seconds = time.perf_counter() - solve_started_at
     _log_debug_timing(
         "cholmod.solve",
         solve_started_at,
@@ -1248,6 +1616,18 @@ def solve_sparse_label_system_cholmod(
             1 if right_hand_side.ndim == 1 else right_hand_side.shape[1]
         ),
     )
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(
+            {
+                "status": "computed",
+                "factorization_api": factorization_api,
+                "solve_api": solve_api,
+                "symbolic_analysis_reused": bool(symbolic_reused),
+                "factorization_seconds": float(factor_seconds),
+                "solve_seconds": float(solve_seconds),
+            }
+        )
     return solution
 
 

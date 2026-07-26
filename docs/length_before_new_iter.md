@@ -39,39 +39,49 @@ For Cars196 this produced 78 labeled samples because the split keeps at least on
 
 ## Current Behavior
 
-`utils.make_train_loader()` derives `length_before_new_iter` from the actual training dataset size when
-`--length_before_new_iter` is omitted:
+Each fold now overrides `length_before_new_iter` with the size of its complete
+training pool:
 
 ```python
-length_before_new_iter = max(
-    batch_size,
-    ceil(len(train_dataset) / batch_size) * batch_size,
-)
+length_before_new_iter = num_labeled + num_unlabeled
 ```
 
-This preserves full batches while making epoch length proportional to the selected training set.
+This happens after the fold and label-budget splits are built. Therefore a 20%
+labeled run uses the same epoch sampling budget as a 100% labeled run on the
+same fold; the smaller labeled support is sampled repeatedly as needed. The
+configured JSON/CLI value is retained in `configured_length_before_new_iter`
+for auditing, but it does not control training.
 
-For `batch_size=16`:
+For grouped cross-validation, the exact value depends on `cv_k`, the
+individual fold, and the sizes of the complete class groups assigned to that
+fold:
 
 ```text
-78 samples   -> 80 sampled examples/epoch   -> 5 batches/epoch
-6446 samples -> 6448 sampled examples/epoch -> 403 batches/epoch
+cv_k=4 group_kfold: approximately 75% is training
+cv_k=5 group_kfold: approximately 80% is training
 ```
 
-Set `--length_before_new_iter` or the experiment-config key `length_before_new_iter` to use a fixed
-sampling budget instead. Experiment configs set this explicitly when a fixed sampling budget is desired.
-`MPerClassSampler` rounds an explicit value down to a complete batch, so the effective length can be
-slightly smaller when `length_before_new_iter` is not divisible by `batch_size`.
+Whole class groups are never divided merely to make the sample counts equal,
+so folds can have different exact lengths. Changing the labeled fraction only
+changes how each training fold is divided between labeled and unlabeled
+samples. Changing `cv_k` changes the total training-fold length and therefore
+changes `length_before_new_iter`.
+
+`MPerClassSampler` emits only complete batches, so the effective sampled length
+can be slightly smaller when the resolved fold size is not divisible by
+`batch_size`.
 
 ## Log Check
 
 Training logs now include a train-loader summary:
 
 ```text
-Train loader: 78 samples, 78 labels, 80 sampled examples/epoch, 5 batches/epoch
+Resolved length_before_new_iter from the complete fold training pool:
+6040 = 1208 labeled + 4832 unlabeled (configured value 6041 was overridden)
 ```
 
-Use this line to verify that the sampler length matches the intended labeled or pseudo-labeled training set size.
+Use this line to verify the labeled/unlabeled counts and resolved fold length.
+The following train-loader summary reports the batch-aligned sampled length.
 
 ## Constraints
 
