@@ -17,6 +17,7 @@ import multiprocessing as mp
 import os
 import random
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime
@@ -29,6 +30,7 @@ import torchvision.transforms as tfm
 import torchvision.transforms.v2 as v2
 from loguru import logger
 from pytorch_metric_learning.utils.accuracy_calculator import AccuracyCalculator
+from pytorch_metric_learning.utils.inference import return_results
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
@@ -134,6 +136,9 @@ except ImportError as exc:
     TENSORBOARD_IMPORT_ERROR = exc
 
 DATALOADER_START_METHODS = ("spawn", "forkserver", "fork", "default")
+CUDA_RETRIEVAL_MIN_SAMPLES = 5_000
+FROZEN_CUDA_EVAL_BATCH_SIZE = 4_096
+FAISS_GPU_MAX_K = 2_048
 
 
 def load_dataset_protocol_sources(*args, **kwargs):
@@ -1238,7 +1243,7 @@ def make_sampler_epoch_length(dataset_size, batch_size, length_before_new_iter=N
     return max(batch_size, int(np.ceil(dataset_size / batch_size) * batch_size))
 
 
-def make_eval_loader(dataset, batch_size=32, seed=0, num_workers=8, start_method="spawn", pin_memory=False):
+def make_eval_loader(dataset, batch_size=1024, seed=0, num_workers=8, start_method="spawn", pin_memory=False):
     # Evaluation traverses every item exactly once in dataset order.
     num_workers = dataloader_num_workers_for_dataset(dataset, num_workers)
     return DataLoader(
@@ -1265,13 +1270,31 @@ class PrecomputedBackboneFeatureDataset(Dataset):
         dense_labels=None,
         sample_weights=None,
         source_dataset=None,
+        feature_indices=None,
     ):
         features = torch.as_tensor(features, dtype=torch.float32).cpu()
-        if features.ndim not in {2, 3}:
-            raise ValueError("precomputed backbone features must be a 2D or 3D tensor")
-        if len(features) != len(labels):
-            raise ValueError("features and labels must have the same length")
-        self.features = features.contiguous()
+        if feature_indices is None:
+            if features.ndim not in {2, 3}:
+                raise ValueError("precomputed backbone features must be a 2D or 3D tensor")
+            if len(features) != len(labels):
+                raise ValueError("features and labels must have the same length")
+            self._feature_matrix = features.contiguous()
+            self.feature_indices = None
+        else:
+            if features.ndim != 2:
+                raise ValueError("indexed precomputed features require a 2D backing matrix")
+            feature_indices = torch.as_tensor(feature_indices, dtype=torch.long).cpu()
+            if feature_indices.ndim not in {1, 2}:
+                raise ValueError("feature_indices must be a 1D or 2D tensor")
+            if len(feature_indices) != len(labels):
+                raise ValueError("feature_indices and labels must have the same length")
+            if feature_indices.numel() and (
+                int(feature_indices.min()) < 0
+                or int(feature_indices.max()) >= len(features)
+            ):
+                raise IndexError("feature_indices contains a row outside the backing matrix")
+            self._feature_matrix = features
+            self.feature_indices = feature_indices.contiguous()
         self.orig_labels = [int(label) for label in labels]
         if dense_labels is None:
             dense_labels = self.orig_labels
@@ -1291,17 +1314,44 @@ class PrecomputedBackboneFeatureDataset(Dataset):
                 if hasattr(source_dataset, attr_name):
                     setattr(self, attr_name, getattr(source_dataset, attr_name))
 
+    @property
+    def features(self):
+        """Expose aligned features while keeping indexed training access lazy."""
+
+        if self.feature_indices is None:
+            return self._feature_matrix
+        return self._feature_matrix[self.feature_indices]
+
     def __len__(self):
-        return len(self.features)
+        return len(self.orig_labels)
 
     def __getitem__(self, index):
-        features = self.features[index]
-        if features.ndim == 2:
-            view_index = int(torch.randint(features.shape[0], ()).item())
-            features = features[view_index]
+        if self.feature_indices is None:
+            features = self._feature_matrix[index]
+            if features.ndim == 2:
+                view_index = int(torch.randint(features.shape[0], ()).item())
+                features = features[view_index]
+        else:
+            matrix_rows = self.feature_indices[index]
+            if matrix_rows.ndim == 0:
+                features = self._feature_matrix[matrix_rows]
+            else:
+                view_index = int(torch.randint(len(matrix_rows), ()).item())
+                features = self._feature_matrix[matrix_rows[view_index]]
         if self.sample_weights is None:
             return features, self.orig_labels[index]
         return features, self.orig_labels[index], self.sample_weights[index]
+
+    def storage_nbytes(self):
+        if self.feature_indices is None:
+            total = self._feature_matrix.numel() * self._feature_matrix.element_size()
+        else:
+            # The float matrix is persistent shared mmap storage, not an
+            # allocation owned by this dataset view.
+            total = self.feature_indices.numel() * self.feature_indices.element_size()
+        if self.sample_weights is not None:
+            total += self.sample_weights.numel() * self.sample_weights.element_size()
+        return int(total)
 
 
 class RepeatedAugmentedViewDataset(Dataset):
@@ -1399,6 +1449,133 @@ def forward_model_inputs(model, inputs, device, use_cache=False):
     return model(inputs.to(device, non_blocking=True))
 
 
+def _take_dataset_values(values, indices):
+    indices = np.asarray(indices, dtype=np.int64)
+    if torch.is_tensor(values):
+        return values.index_select(0, torch.as_tensor(indices, dtype=torch.long))
+    if isinstance(values, np.ndarray):
+        return values[indices]
+    return [values[int(index)] for index in indices]
+
+
+def _resolve_aligned_dataset_attribute(dataset, names, seen=None):
+    """Resolve metadata through Subset/selection wrappers without loading images."""
+
+    if seen is None:
+        seen = set()
+    object_id = id(dataset)
+    if object_id in seen:
+        return None
+    seen.add(object_id)
+
+    for name in names:
+        value = getattr(dataset, name, None)
+        if value is None:
+            continue
+        try:
+            if len(value) == len(dataset):
+                return value
+        except TypeError:
+            continue
+
+    child = getattr(dataset, "dataset", None)
+    if child is None or child is dataset:
+        return None
+    child_values = _resolve_aligned_dataset_attribute(child, names, seen)
+    if child_values is None:
+        return None
+    if isinstance(dataset, Subset):
+        return _take_dataset_values(child_values, dataset.indices)
+    positions = getattr(dataset, "positions", None)
+    if positions is not None and len(positions) == len(dataset):
+        return _take_dataset_values(child_values, positions)
+    return None
+
+
+def _precomputed_dataset_metadata(dataset):
+    labels = _resolve_aligned_dataset_attribute(
+        dataset,
+        ("orig_labels", "labels", "targets"),
+    )
+    if labels is None:
+        # This fallback keeps custom Dataset implementations compatible. Normal
+        # repository datasets expose aligned label arrays and never take this
+        # image-decoding path on mmap hits.
+        logger.warning(
+            "Dataset exposes no aligned label metadata; reading items to build "
+            "the precomputed feature labels"
+        )
+        labels = []
+        weights = []
+        has_weights = None
+        for index in range(len(dataset)):
+            item = dataset[index]
+            labels.append(item[1])
+            item_has_weights = len(item) >= 3
+            if has_weights is None:
+                has_weights = item_has_weights
+            elif has_weights != item_has_weights:
+                raise ValueError("dataset items inconsistently expose sample weights")
+            if item_has_weights:
+                weights.append(item[2])
+        sample_weights = (
+            torch.as_tensor(weights, dtype=torch.float32)
+            if has_weights
+            else None
+        )
+    else:
+        sample_weights = _resolve_aligned_dataset_attribute(
+            dataset,
+            ("sample_weights", "confidences"),
+        )
+
+    dense_labels = getattr(dataset, "labels", None)
+    if dense_labels is not None and len(dense_labels) != len(dataset):
+        dense_labels = None
+    return labels, dense_labels, sample_weights
+
+
+def _compute_backbone_feature_rows(
+    model,
+    dataset,
+    local_positions,
+    *,
+    device,
+    batch_size,
+    seed,
+    num_workers,
+    start_method,
+    pin_memory,
+):
+    """Decode and forward only the rows claimed missing by the mmap."""
+
+    local_positions = np.asarray(local_positions, dtype=np.int64)
+    missing_dataset = Subset(dataset, local_positions.tolist())
+    loader = DataLoader(
+        missing_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        **make_dataloader_kwargs(
+            num_workers,
+            seed,
+            start_method,
+            persistent_workers=False,
+            pin_memory=pin_memory,
+        ),
+    )
+    features = []
+    try:
+        for batch in loader:
+            images = batch[0]
+            output = model.forward_backbone(images.to(device, non_blocking=True))
+            features.append(output.detach().float().cpu())
+    finally:
+        shutdown_dataloader_workers(loader)
+    if not features:
+        raise RuntimeError("indexed feature cache requested an empty missing-row computation")
+    return torch.cat(features, dim=0)
+
+
 def precompute_backbone_feature_dataset(
     model,
     dataset,
@@ -1412,6 +1589,9 @@ def precompute_backbone_feature_dataset(
     require_feature_transform=False,
     use_feature_transform=True,
     num_views=1,
+    cache_key=None,
+    cache_indices=None,
+    cache_size=None,
 ):
     """Extract frozen raw backbone features once and keep dataset labels aligned."""
 
@@ -1433,6 +1613,57 @@ def precompute_backbone_feature_dataset(
     loader_dataset = feature_dataset
     if num_views > 1:
         loader_dataset = RepeatedAugmentedViewDataset(feature_dataset, num_views)
+
+    materialize_cached = getattr(model, "materialize_cached_backbone_features", None)
+    indexed_cache_enabled = (
+        materialize_cached is not None
+        and cache_key is not None
+        and cache_indices is not None
+        and cache_size is not None
+    )
+    if indexed_cache_enabled:
+        cache_indices = np.asarray(cache_indices, dtype=np.int64)
+        if len(cache_indices) != len(loader_dataset):
+            raise ValueError("cache_indices must align with every precompute input row")
+
+        labels, dense_labels, sample_weights = _precomputed_dataset_metadata(
+            feature_dataset
+        )
+        was_training = model.training
+        model.eval()
+        try:
+            with torch.no_grad():
+                feature_matrix, feature_indices = materialize_cached(
+                    cache_key=cache_key,
+                    cache_indices=cache_indices,
+                    cache_size=cache_size,
+                    compute_missing=lambda local_positions: _compute_backbone_feature_rows(
+                        model,
+                        loader_dataset,
+                        local_positions,
+                        device=device,
+                        batch_size=batch_size,
+                        seed=seed,
+                        num_workers=num_workers,
+                        start_method=start_method,
+                        pin_memory=pin_memory,
+                    ),
+                )
+        finally:
+            if was_training:
+                model.train()
+
+        if num_views > 1:
+            feature_indices = feature_indices.reshape(source_length, num_views)
+        return PrecomputedBackboneFeatureDataset(
+            features=feature_matrix,
+            feature_indices=feature_indices,
+            labels=labels,
+            dense_labels=dense_labels,
+            sample_weights=sample_weights,
+            source_dataset=dataset,
+        )
+
     loader = DataLoader(
         loader_dataset,
         batch_size=batch_size,
@@ -1544,12 +1775,161 @@ def setup_datasets(
     return train_loader, valid_loader, test_loader, dataset_bundle.train_labels_mapper
 
 
-def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
-    """Embed a dataset once, returning NumPy embeddings and labels."""
+def _selected_faiss_gpu(device):
+    """Return ``(faiss, gpu_id)`` when the requested CUDA device supports FAISS."""
+
+    device = torch.device(normalize_device_name(device))
+    if device.type != "cuda" or not torch.cuda.is_available():
+        return None
+    try:
+        import faiss
+    except (ImportError, OSError):
+        return None
+    required_gpu_api = ("get_num_gpus", "StandardGpuResources", "index_cpu_to_gpu")
+    if not all(hasattr(faiss, name) for name in required_gpu_api):
+        return None
+    try:
+        gpu_count = int(faiss.get_num_gpus())
+        gpu_id = int(torch.cuda.current_device()) if device.index is None else int(device.index)
+    except Exception as exc:
+        logger.debug(f"FAISS GPU discovery failed during retrieval setup: {exc}")
+        return None
+    if not 0 <= gpu_id < gpu_count:
+        return None
+    return faiss, gpu_id
+
+
+def frozen_feature_cuda_evaluation_enabled(dataset, device):
+    """Whether a large frozen-feature evaluation should remain on CUDA."""
+
+    if dataset is None or torch.device(normalize_device_name(device)).type != "cuda":
+        return False
+    try:
+        sample_count = len(dataset)
+    except TypeError:
+        return False
+    return (
+        sample_count > CUDA_RETRIEVAL_MIN_SAMPLES
+        and dataset_has_precomputed_backbone_features(dataset)
+        and _selected_faiss_gpu(device) is not None
+    )
+
+
+def frozen_feature_eval_batch_size(dataset, device, default_batch_size=32):
+    """Use large projection batches only for large cached frozen-feature sets."""
+
+    device = torch.device(normalize_device_name(device))
+    if (
+        dataset is not None
+        and device.type == "cuda"
+        and len(dataset) > CUDA_RETRIEVAL_MIN_SAMPLES
+        and dataset_has_precomputed_backbone_features(dataset)
+    ):
+        return min(FROZEN_CUDA_EVAL_BATCH_SIZE, len(dataset))
+    return int(default_batch_size)
+
+
+class _ReusableSingleGpuFaissKNN:
+    """Rebuild index contents while retaining one GPU resource/index object."""
+
+    def __init__(self, faiss_module, gpu_id):
+        self.faiss = faiss_module
+        self.gpu_id = int(gpu_id)
+        self.resources = self.faiss.StandardGpuResources()
+        self.index = None
+        self.dimension = None
+        self._lock = threading.Lock()
+
+    def _reset_index(self, dimension):
+        dimension = int(dimension)
+        if self.index is None or self.dimension != dimension:
+            cpu_index = self.faiss.IndexFlatL2(dimension)
+            self.index = self.faiss.index_cpu_to_gpu(
+                self.resources,
+                self.gpu_id,
+                cpu_index,
+            )
+            self.dimension = dimension
+        else:
+            self.index.reset()
+
+    def __call__(
+        self,
+        query,
+        k,
+        reference=None,
+        ref_includes_query=False,
+    ):
+        reference = query if reference is None else reference
+        search_k = int(k) + int(ref_includes_query)
+        if search_k > FAISS_GPU_MAX_K:
+            raise RuntimeError(
+                f"FAISS GPU retrieval supports at most k={FAISS_GPU_MAX_K}; "
+                f"requested {search_k}"
+            )
+        query = query.contiguous()
+        reference = reference.contiguous()
+        with self._lock:
+            self._reset_index(reference.shape[1])
+            # The trainable projection head can change after every optimizer
+            # step, so replace the index contents for every evaluation.
+            self.index.add(reference)
+            distances, indices = self.index.search(query, search_k)
+        if not torch.is_tensor(distances):
+            distances = torch.as_tensor(distances, device=query.device)
+            indices = torch.as_tensor(indices, device=query.device)
+        return return_results(distances, indices, ref_includes_query)
+
+
+_REUSABLE_FAISS_KNN = {}
+_REUSABLE_FAISS_KNN_LOCK = threading.Lock()
+
+
+def _get_reusable_faiss_knn(faiss_module, gpu_id):
+    cache_key = (id(faiss_module), int(gpu_id))
+    with _REUSABLE_FAISS_KNN_LOCK:
+        knn = _REUSABLE_FAISS_KNN.get(cache_key)
+        if knn is None:
+            knn = _ReusableSingleGpuFaissKNN(faiss_module, gpu_id)
+            _REUSABLE_FAISS_KNN[cache_key] = knn
+        return knn
+
+
+def _cuda_retrieval_backend(embeddings, device):
+    if (
+        not torch.is_tensor(embeddings)
+        or embeddings.device.type != "cuda"
+        or len(embeddings) <= CUDA_RETRIEVAL_MIN_SAMPLES
+    ):
+        return None
+    return _selected_faiss_gpu(device)
+
+
+def extract_eval_embeddings(
+    model,
+    eval_loader,
+    name="test set",
+    device="cuda",
+    keep_on_device=None,
+):
+    """Embed a dataset once, optionally retaining embeddings on their device."""
 
     # eval() disables training-only behavior such as dropout and updates to
     # normalization statistics.
     model = model.eval()
+    if keep_on_device is None:
+        keep_on_device = frozen_feature_cuda_evaluation_enabled(
+            getattr(eval_loader, "dataset", None),
+            device,
+        )
+    output_device = torch.device(normalize_device_name(device))
+    if keep_on_device:
+        dataset = getattr(eval_loader, "dataset", None)
+        sample_count = "all" if dataset is None else f"{len(dataset)}"
+        logger.info(
+            f"{name}: retaining {sample_count} projected embeddings "
+            f"on {output_device} for device-resident retrieval"
+        )
     all_embeddings = []
     all_labels = []
     # Extract embeddings and labels
@@ -1558,8 +1938,6 @@ def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
         with torch.no_grad():
             progress = tqdm(eval_loader, desc=name)
             for images, labels in progress:
-                # Keep only CPU NumPy embeddings after each batch to free accelerator
-                # memory before processing the next batch.
                 forward_cached = getattr(model, "forward_cached", None)
                 embeddings = forward_model_inputs(
                     model,
@@ -1567,33 +1945,76 @@ def extract_eval_embeddings(model, eval_loader, name="test set", device="cuda"):
                     device,
                     use_cache=forward_cached is not None,
                 )
-                all_embeddings.append(embeddings.cpu().numpy().astype(np.float32))
-                all_labels.append(labels.cpu().numpy())
+                if keep_on_device:
+                    all_embeddings.append(
+                        embeddings.detach().to(
+                            output_device,
+                            dtype=torch.float32,
+                            non_blocking=True,
+                        )
+                    )
+                    all_labels.append(
+                        labels.detach().to(output_device, non_blocking=True)
+                    )
+                else:
+                    # Small evaluations retain the memory-conservative legacy
+                    # path and release accelerator outputs after every batch.
+                    all_embeddings.append(
+                        embeddings.detach().cpu().numpy().astype(np.float32)
+                    )
+                    all_labels.append(labels.detach().cpu().numpy())
     except BaseException:
         shutdown_dataloader_workers(eval_loader)
         raise
     finally:
         if progress is not None:
             progress.close()
-    # Concatenate all embeddings and labels
-    all_embeddings = np.concatenate(all_embeddings)
-    all_labels = np.concatenate(all_labels)
+    if keep_on_device:
+        all_embeddings = torch.cat(all_embeddings)
+        all_labels = torch.cat(all_labels)
+    else:
+        all_embeddings = np.concatenate(all_embeddings)
+        all_labels = np.concatenate(all_labels)
     validate_finite_embeddings(all_embeddings, name)
     return all_embeddings, all_labels
 
 
 def validate_finite_embeddings(all_embeddings, name="test set"):
-    if not np.isfinite(all_embeddings).all():
+    if torch.is_tensor(all_embeddings):
+        finite = torch.isfinite(all_embeddings)
+        if bool(finite.all()):
+            return
+        total_values = int(all_embeddings.numel())
+        nonfinite_values = int(total_values - finite.sum().item())
+        nan_values = int(torch.isnan(all_embeddings).sum().item())
+        inf_values = int(torch.isinf(all_embeddings).sum().item())
+    else:
+        finite = np.isfinite(all_embeddings)
+        if finite.all():
+            return
         total_values = int(all_embeddings.size)
-        nonfinite_values = int(total_values - np.isfinite(all_embeddings).sum())
+        nonfinite_values = int(total_values - finite.sum())
         nan_values = int(np.isnan(all_embeddings).sum())
         inf_values = int(np.isinf(all_embeddings).sum())
-        raise NonFiniteEmbeddingError(
-            f"{name} produced non-finite embeddings before retrieval metric calculation: "
-            f"{nonfinite_values}/{total_values} values are non-finite "
-            f"({nan_values} NaN, {inf_values} +/-Inf). "
-            "This usually indicates that the model diverged for the current hyperparameters."
-        )
+    raise NonFiniteEmbeddingError(
+        f"{name} produced non-finite embeddings before retrieval metric calculation: "
+        f"{nonfinite_values}/{total_values} values are non-finite "
+        f"({nan_values} NaN, {inf_values} +/-Inf). "
+        "This usually indicates that the model diverged for the current hyperparameters."
+    )
+
+
+def _as_numpy(values, dtype=None):
+    if torch.is_tensor(values):
+        values = values.detach().cpu().numpy()
+    return np.asarray(values, dtype=dtype)
+
+
+def _take_evaluation_rows(values, indices):
+    if torch.is_tensor(values):
+        indices = torch.as_tensor(indices, dtype=torch.long, device=values.device)
+        return values.index_select(0, indices)
+    return values[indices]
 
 
 def get_query_gallery_indices(dataset, num_embeddings):
@@ -1622,8 +2043,15 @@ def get_query_gallery_indices(dataset, num_embeddings):
 def make_evaluation_embedding_sets(all_embeddings, all_labels, dataset=None):
     """Build query/reference arrays for same-source or query-gallery retrieval."""
 
-    all_embeddings = np.asarray(all_embeddings, dtype=np.float32)
-    all_labels = np.asarray(all_labels).reshape(-1)
+    if torch.is_tensor(all_embeddings):
+        all_embeddings = all_embeddings.to(dtype=torch.float32)
+        all_labels = torch.as_tensor(
+            all_labels,
+            device=all_embeddings.device,
+        ).reshape(-1)
+    else:
+        all_embeddings = np.asarray(all_embeddings, dtype=np.float32)
+        all_labels = np.asarray(all_labels).reshape(-1)
     if len(all_embeddings) != len(all_labels):
         raise ValueError("embeddings and labels must have the same length")
 
@@ -1641,21 +2069,27 @@ def make_evaluation_embedding_sets(all_embeddings, all_labels, dataset=None):
     query_indices, gallery_indices = query_gallery_indices
     return {
         "mode": QUERY_GALLERY_EVALUATION,
-        "query_embeddings": all_embeddings[query_indices],
-        "query_labels": all_labels[query_indices],
-        "reference_embeddings": all_embeddings[gallery_indices],
-        "reference_labels": all_labels[gallery_indices],
+        "query_embeddings": _take_evaluation_rows(all_embeddings, query_indices),
+        "query_labels": _take_evaluation_rows(all_labels, query_indices),
+        "reference_embeddings": _take_evaluation_rows(all_embeddings, gallery_indices),
+        "reference_labels": _take_evaluation_rows(all_labels, gallery_indices),
         "ref_includes_query": False,
     }
 
 
-def evaluate_embeddings(all_embeddings, all_labels, name="test set", return_per_class=False, dataset=None):
+def evaluate_embeddings(
+    all_embeddings,
+    all_labels,
+    name="test set",
+    return_per_class=False,
+    dataset=None,
+    device="cpu",
+):
     """Compute retrieval Precision@1 and MAP@R from precomputed embeddings."""
 
     # AccuracyCalculator expects one matrix/vector spanning the full evaluation
     # dataset rather than a list of batches.
-    all_embeddings = np.asarray(all_embeddings, dtype=np.float32)
-    all_labels = np.asarray(all_labels).reshape(-1)
+    device = torch.device(normalize_device_name(device))
     validate_finite_embeddings(all_embeddings, name)
     evaluation_sets = make_evaluation_embedding_sets(all_embeddings, all_labels, dataset=dataset)
     query_embeddings = evaluation_sets["query_embeddings"]
@@ -1663,21 +2097,51 @@ def evaluate_embeddings(all_embeddings, all_labels, name="test set", return_per_
     reference_embeddings = evaluation_sets["reference_embeddings"]
     reference_labels = evaluation_sets["reference_labels"]
     ref_includes_query = evaluation_sets["ref_includes_query"]
-    # Retrieval metrics compare each embedding with the rest of this evaluation
-    # set; no classifier head is used.
-    accuracy_calculator = AccuracyCalculator(
-        include=("precision_at_1", "mean_average_precision_at_r"),
-        return_per_class=return_per_class,
-        k="max_bin_count",
-        device=torch.device("cpu"),
-    )
-    accuracy = accuracy_calculator.get_accuracy(
-        query_embeddings,
-        query_labels,
-        reference=reference_embeddings,
-        reference_labels=reference_labels,
-        ref_includes_query=ref_includes_query,
-    )
+    calculator_kwargs = {
+        "include": ("precision_at_1", "mean_average_precision_at_r"),
+        "return_per_class": return_per_class,
+        "k": "max_bin_count",
+    }
+    cuda_backend = _cuda_retrieval_backend(all_embeddings, device)
+    if cuda_backend is None:
+        calculator_kwargs["device"] = torch.device("cpu")
+    else:
+        faiss_module, gpu_id = cuda_backend
+        calculator_kwargs["device"] = device
+        calculator_kwargs["knn_func"] = _get_reusable_faiss_knn(
+            faiss_module,
+            gpu_id,
+        )
+        logger.debug(
+            f"{name}: using single-GPU FAISS retrieval on cuda:{gpu_id} "
+            f"for {len(all_embeddings)} embeddings"
+        )
+
+    def calculate_accuracy():
+        accuracy_calculator = AccuracyCalculator(**calculator_kwargs)
+        return accuracy_calculator.get_accuracy(
+            query_embeddings,
+            query_labels,
+            reference=reference_embeddings,
+            reference_labels=reference_labels,
+            ref_includes_query=ref_includes_query,
+        )
+
+    try:
+        accuracy = calculate_accuracy()
+    except (AttributeError, RuntimeError) as exc:
+        if cuda_backend is None:
+            raise
+        logger.warning(
+            f"{name}: CUDA FAISS retrieval failed ({exc}); retrying on CPU"
+        )
+        calculator_kwargs = {
+            "include": ("precision_at_1", "mean_average_precision_at_r"),
+            "return_per_class": return_per_class,
+            "k": "max_bin_count",
+            "device": torch.device("cpu"),
+        }
+        accuracy = calculate_accuracy()
     if return_per_class:
         per_class_metrics = make_per_class_retrieval_metrics(
             query_labels,
@@ -1727,23 +2191,37 @@ def evaluate(
         name=name,
         return_per_class=return_per_class,
         dataset=getattr(eval_loader, "dataset", None),
+        device=device,
     )
     retrieval_seconds = time.perf_counter() - retrieval_started
     if not return_diagnostics:
         return result
 
     diagnostics_started = time.perf_counter()
-    embedding_norms = np.linalg.norm(all_embeddings, axis=1)
+    if torch.is_tensor(all_embeddings):
+        embedding_norms = torch.linalg.vector_norm(all_embeddings, dim=1)
+        class_count = int(torch.unique(all_labels).numel())
+        norm_min = float(embedding_norms.min().item())
+        norm_mean = float(embedding_norms.mean().item())
+        norm_std = float(embedding_norms.std(unbiased=False).item())
+        norm_max = float(embedding_norms.max().item())
+    else:
+        embedding_norms = np.linalg.norm(all_embeddings, axis=1)
+        class_count = len(np.unique(all_labels))
+        norm_min = float(embedding_norms.min())
+        norm_mean = float(embedding_norms.mean())
+        norm_std = float(embedding_norms.std())
+        norm_max = float(embedding_norms.max())
     diagnostics = {
         "timing/embedding_extraction_seconds": embedding_seconds,
         "timing/retrieval_metrics_seconds": retrieval_seconds,
         "data/sample_count": len(all_labels),
-        "data/class_count": len(np.unique(all_labels)),
+        "data/class_count": class_count,
         "data/embedding_dimension": all_embeddings.shape[1],
-        "embedding_norm/min": embedding_norms.min(),
-        "embedding_norm/mean": embedding_norms.mean(),
-        "embedding_norm/std": embedding_norms.std(),
-        "embedding_norm/max": embedding_norms.max(),
+        "embedding_norm/min": norm_min,
+        "embedding_norm/mean": norm_mean,
+        "embedding_norm/std": norm_std,
+        "embedding_norm/max": norm_max,
     }
     try:
         diagnostics["data/batch_count"] = len(eval_loader)
@@ -1875,8 +2353,8 @@ def dataset_classes(dataset):
 
 
 def _embedding_visualization_inputs(embeddings, labels, method_name):
-    embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
-    labels = np.asarray(labels).reshape(-1)
+    embeddings = np.ascontiguousarray(_as_numpy(embeddings), dtype=np.float32)
+    labels = _as_numpy(labels).reshape(-1)
     if embeddings.ndim != 2:
         raise ValueError(f"{method_name} visualization requires an embedding matrix")
     if len(embeddings) != len(labels):
@@ -2125,14 +2603,14 @@ def write_tsne_visualization(
 def make_per_class_retrieval_metrics(labels, accuracy, reference_labels=None, ref_includes_query=True):
     """Map AccuracyCalculator's sorted per-class values back to class labels."""
 
-    labels = np.asarray(labels).reshape(-1)
+    labels = _as_numpy(labels).reshape(-1)
     unique_labels, counts = np.unique(labels, return_counts=True)
     if ref_includes_query:
         # Same-source retrieval excludes singleton classes because they have no
         # relevant reference after the query itself is removed.
         eligible = [(label, int(count)) for label, count in zip(unique_labels, counts) if count > 1]
     else:
-        reference_labels = np.asarray(reference_labels).reshape(-1)
+        reference_labels = _as_numpy(reference_labels).reshape(-1)
         reference_label_set = set(reference_labels.tolist())
         eligible = [
             (label, int(count))

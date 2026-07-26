@@ -97,7 +97,7 @@ class PseudoLabelResult:
 
 @dataclass(frozen=True)
 class GraphDiagnosticsRequest:
-    """Output settings for one graph visualization."""
+    """Output settings for one graph-diagnostics artifact bundle."""
 
     output_dir: Path
     slug: str
@@ -107,6 +107,8 @@ class GraphDiagnosticsRequest:
     max_labels: int
     seed: int
     layout: str = "pacmap"
+    series_slug: str | None = None
+    epoch: int | None = None
 
 
 def should_rebuild_on_epoch(update_mode, interval_epochs, epoch, last_rebuild_epoch):

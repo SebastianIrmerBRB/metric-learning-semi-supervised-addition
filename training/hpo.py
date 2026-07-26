@@ -515,8 +515,8 @@ def run_hparam_search(args, config):
     ):
         frozen_feature_cache = FrozenFeatureDatasetCache()
         logger.info(
-            "Enabled one in-memory frozen-feature cache shared by all trials "
-            "and cross-validation folds in this HPO study"
+            "Enabled one source-indexed mmap frozen-feature cache shared by all "
+            "trials and cross-validation folds in this HPO study"
         )
 
     def objective(trial):
