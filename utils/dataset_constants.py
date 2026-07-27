@@ -4,16 +4,31 @@
 CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD = "superclass_balanced_group_kfold"
 
 
+CV_MODE_SUPERCLASS_GROUP_KFOLD = "superclass_group_kfold"
+
+
 CV_MODES = (
     "kfold",
     "group_kfold",
     "stratified_kfold",
     "stratified_group_kfold",
+    CV_MODE_SUPERCLASS_GROUP_KFOLD,
     CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
 )
 
 
-GROUPED_CV_MODES = ("group_kfold", "stratified_group_kfold", CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD)
+GROUPED_CV_MODES = (
+    "group_kfold",
+    "stratified_group_kfold",
+    CV_MODE_SUPERCLASS_GROUP_KFOLD,
+    CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
+)
+
+
+SUPERCLASS_AWARE_CV_MODES = (
+    CV_MODE_SUPERCLASS_GROUP_KFOLD,
+    CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
+)
 
 
 DATASET_PROTOCOL_OFFICIAL = "official"
@@ -34,6 +49,9 @@ DATASET_PROTOCOL_CIFAR100_FINE_CLASS_DISJOINT = "cifar100_fine_class_disjoint"
 DATASET_PROTOCOL_CIFAR100_SUPERCLASS_DISJOINT = "cifar100_superclass_disjoint"
 
 
+DATASET_PROTOCOL_CIFAR100_FC100 = "cifar100_fc100"
+
+
 DATASET_PROTOCOLS = (
     DATASET_PROTOCOL_OFFICIAL,
     DATASET_PROTOCOL_CIFAR_BALANCED_FRACTION,
@@ -41,6 +59,7 @@ DATASET_PROTOCOLS = (
     DATASET_PROTOCOL_CIFAR100_UNSEEN_CLASSES,
     DATASET_PROTOCOL_CIFAR100_FINE_CLASS_DISJOINT,
     DATASET_PROTOCOL_CIFAR100_SUPERCLASS_DISJOINT,
+    DATASET_PROTOCOL_CIFAR100_FC100,
 )
 
 
@@ -145,6 +164,53 @@ CIFAR100_SUPERCLASS_DISJOINT_TEST_CLASSES = tuple(
 )
 
 
+# FC100 split from the TADAM supplementary material.  The validation
+# superclasses join the training superclasses in the development pool so they
+# can either reproduce the canonical holdout or participate in cross-validation.
+CIFAR100_FC100_TRAIN_SUPERCLASSES = (1, 2, 3, 4, 5, 6, 9, 10, 15, 17, 18, 19)
+
+
+CIFAR100_FC100_VALIDATION_SUPERCLASSES = (8, 11, 13, 16)
+
+
+CIFAR100_FC100_TEST_SUPERCLASSES = (0, 7, 12, 14)
+
+
+CIFAR100_FC100_DEVELOPMENT_SUPERCLASSES = tuple(
+    sorted(CIFAR100_FC100_TRAIN_SUPERCLASSES + CIFAR100_FC100_VALIDATION_SUPERCLASSES)
+)
+
+
+def _cifar100_fine_classes_for_superclasses(superclasses):
+    return tuple(
+        sorted(
+            fine_class
+            for superclass_index in superclasses
+            for fine_class in CIFAR100_SUPERCLASS_FINE_CLASSES[superclass_index]
+        )
+    )
+
+
+CIFAR100_FC100_TRAIN_CLASSES = _cifar100_fine_classes_for_superclasses(
+    CIFAR100_FC100_TRAIN_SUPERCLASSES
+)
+
+
+CIFAR100_FC100_VALIDATION_CLASSES = _cifar100_fine_classes_for_superclasses(
+    CIFAR100_FC100_VALIDATION_SUPERCLASSES
+)
+
+
+CIFAR100_FC100_TEST_CLASSES = _cifar100_fine_classes_for_superclasses(
+    CIFAR100_FC100_TEST_SUPERCLASSES
+)
+
+
+CIFAR100_FC100_DEVELOPMENT_CLASSES = tuple(
+    sorted(CIFAR100_FC100_TRAIN_CLASSES + CIFAR100_FC100_VALIDATION_CLASSES)
+)
+
+
 CIFAR_UNSEEN_CLASS_PROTOCOLS = {
     DATASET_PROTOCOL_CIFAR10_UNSEEN_CLASSES: {
         "dataset_name": "CIFAR10",
@@ -175,6 +241,19 @@ CIFAR_UNSEEN_CLASS_PROTOCOLS = {
         "split_basis": "superclass",
         "development_superclasses": CIFAR100_SUPERCLASS_DISJOINT_DEVELOPMENT_SUPERCLASSES,
         "held_out_test_superclasses": CIFAR100_SUPERCLASS_DISJOINT_TEST_SUPERCLASSES,
+        "superclass_disjoint_test": True,
+    },
+    DATASET_PROTOCOL_CIFAR100_FC100: {
+        "dataset_name": "CIFAR100",
+        "development_classes": CIFAR100_FC100_DEVELOPMENT_CLASSES,
+        "held_out_test_classes": CIFAR100_FC100_TEST_CLASSES,
+        "split_basis": "fc100_superclass",
+        "development_superclasses": CIFAR100_FC100_DEVELOPMENT_SUPERCLASSES,
+        "held_out_test_superclasses": CIFAR100_FC100_TEST_SUPERCLASSES,
+        "canonical_train_classes": CIFAR100_FC100_TRAIN_CLASSES,
+        "canonical_validation_classes": CIFAR100_FC100_VALIDATION_CLASSES,
+        "canonical_train_superclasses": CIFAR100_FC100_TRAIN_SUPERCLASSES,
+        "canonical_validation_superclasses": CIFAR100_FC100_VALIDATION_SUPERCLASSES,
         "superclass_disjoint_test": True,
     },
 }

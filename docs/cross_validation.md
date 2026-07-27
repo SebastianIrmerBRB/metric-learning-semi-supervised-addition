@@ -40,6 +40,24 @@ or post-apportion validation is subsequently created from that pool.
 
 ## CIFAR-100 Class-Disjoint Protocols
 
+Use `cifar100_fc100` for the exact TADAM FC100 superclass split. Its fixed
+final test contains superclasses `0, 7, 12, 14`; the other 16 superclasses form
+the development pool. With cross-validation disabled, the paper's canonical
+12-superclass train and four-superclass validation split is used by `val_mode=all`
+and `val_mode=match_train`. With four-fold
+cross-validation, complete-superclass grouping is required:
+
+```powershell
+python main.py --dataset CIFAR100 `
+  --dataset_protocol cifar100_fc100 `
+  --cv_k 4 `
+  --cv_mode superclass_group_kfold
+```
+
+Each fold then trains on 12 superclasses and validates on four, while the FC100
+test superclasses never enter training, validation, SSL pseudo-labeling, or
+cross-validation.
+
 Use `cifar100_fine_class_disjoint` for a fixed 60/40 fine-class split that
 places related classes from every superclass on both sides. Use
 `cifar100_superclass_disjoint` for a harder fixed 10/10 superclass split with
@@ -111,6 +129,7 @@ The available modes map directly to sklearn splitters:
 - `group_kfold`: `sklearn.model_selection.GroupKFold`
 - `stratified_kfold`: `sklearn.model_selection.StratifiedKFold`
 - `stratified_group_kfold`: `sklearn.model_selection.StratifiedGroupKFold`
+- `superclass_group_kfold`: CIFAR-100 `GroupKFold` whose groups are complete superclasses; use this for FC100-compatible folds
 - `superclass_balanced_group_kfold`: CIFAR-100 grouped fold builder that holds out complete fine classes while ensuring every training fold keeps at least one fine class from each represented superclass
 
 For grouped modes, this project uses the dataset class label as the group.
@@ -162,6 +181,9 @@ Grouped modes require:
 ```text
 cv_k <= number of classes
 ```
+
+`superclass_group_kfold` instead requires `cv_k <= number of represented
+superclasses`.
 
 Stratified sample-level mode requires:
 

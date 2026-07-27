@@ -37,6 +37,14 @@ from tqdm import tqdm
 from . import local_datasets
 from .dataset_constants import (
     CIFAR100_DEVELOPMENT_CLASSES,
+    CIFAR100_FC100_DEVELOPMENT_CLASSES,
+    CIFAR100_FC100_DEVELOPMENT_SUPERCLASSES,
+    CIFAR100_FC100_TEST_CLASSES,
+    CIFAR100_FC100_TEST_SUPERCLASSES,
+    CIFAR100_FC100_TRAIN_CLASSES,
+    CIFAR100_FC100_TRAIN_SUPERCLASSES,
+    CIFAR100_FC100_VALIDATION_CLASSES,
+    CIFAR100_FC100_VALIDATION_SUPERCLASSES,
     CIFAR100_FINE_CLASS_DISJOINT_DEVELOPMENT_CLASSES,
     CIFAR100_FINE_CLASS_DISJOINT_TEST_CLASSES,
     CIFAR100_FINE_CLASS_TO_SUPERCLASS,
@@ -54,7 +62,9 @@ from .dataset_constants import (
     CIFAR_UNSEEN_CLASS_PROTOCOLS,
     CV_MODES,
     CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
+    CV_MODE_SUPERCLASS_GROUP_KFOLD,
     DATASET_PROTOCOLS,
+    DATASET_PROTOCOL_CIFAR100_FC100,
     DATASET_PROTOCOL_CIFAR100_FINE_CLASS_DISJOINT,
     DATASET_PROTOCOL_CIFAR100_SUPERCLASS_DISJOINT,
     DATASET_PROTOCOL_CIFAR100_UNSEEN_CLASSES,
@@ -65,6 +75,7 @@ from .dataset_constants import (
     POST_APPORTION_VAL_RATIO,
     QUERY_GALLERY_EVALUATION,
     SAME_SOURCE_EVALUATION,
+    SUPERCLASS_AWARE_CV_MODES,
     VAL_MODES,
     VAL_MODE_ALL,
     VAL_MODE_MATCH_TRAIN,
@@ -103,12 +114,14 @@ from .dataset_splits import (
     count_labels_at_positions,
     make_holdout_split_info,
     make_superclass_balanced_group_folds,
+    make_superclass_group_folds,
     make_train_valid_subsets,
     remap_positions,
     select_balanced_subset_indices,
     set_nested_transform,
     split_cifar_balanced_by_fraction,
     split_dataset_by_classes,
+    split_dataset_by_fixed_classes,
     split_dataset_by_classes_superclass_balanced,
     split_dataset_cross_validation,
     split_positions_class_disjoint_by_label,
@@ -721,6 +734,16 @@ def setup_dataset_bundle(
     dataset_name = normalize_dataset_name(dataset_name)
     if data_split_seed is None:
         data_split_seed = seed
+    if (
+        dataset_protocol == DATASET_PROTOCOL_CIFAR100_FC100
+        and cv_k > 1
+        and cv_mode != CV_MODE_SUPERCLASS_GROUP_KFOLD
+    ):
+        raise ValueError(
+            "dataset_protocol='cifar100_fc100' requires "
+            "cv_mode='superclass_group_kfold' when cv_k > 1 so complete "
+            "superclasses remain disjoint"
+        )
     # Training uses stochastic augmentation. Validation, test, and SSL feature
     # extraction use the deterministic test_transform below.
     # unchanged from initial setup
@@ -812,7 +835,14 @@ def setup_dataset_bundle(
     else:
         # The default metric-learning holdout splits by class, testing whether
         # embeddings generalize to validation classes unseen during training.
-        if dataset_name == "CIFAR100" and cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
+        if dataset_protocol == DATASET_PROTOCOL_CIFAR100_FC100:
+            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_fixed_classes(
+                train_val_dataset,
+                train_classes=CIFAR100_FC100_TRAIN_CLASSES,
+                valid_classes=CIFAR100_FC100_VALIDATION_CLASSES,
+            )
+            split_label = "canonical FC100 holdout"
+        elif dataset_name == "CIFAR100" and cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
             train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes_superclass_balanced(
                 train_val_dataset,
                 seed=data_split_seed,
@@ -832,6 +862,8 @@ def setup_dataset_bundle(
         )
         if split_label == "superclass-balanced holdout":
             split_info["holdout_strategy"] = "superclass_balanced_by_cifar100_superclass"
+        elif split_label == "canonical FC100 holdout":
+            split_info["holdout_strategy"] = "canonical_fc100_train_validation_superclasses"
     split_info["dataset_protocol"] = protocol_info
     # Training keeps augmented images for optimization but exposes a separate
     # deterministic transform for pseudo-label feature extraction.

@@ -30,6 +30,7 @@ def normalize_dataset_name(dataset_name):
         "DeepFashionInShopRetrieval": "DeepFashionInShop",
         "InShop": "DeepFashionInShop",
         "InShopRetrieval": "DeepFashionInShop",
+        "INaturalist2018": "iNat",
     }
     return aliases.get(dataset_name, dataset_name)
 
@@ -44,6 +45,10 @@ def get_dataset_class(dataset_name):
         return local_datasets.CIFAR100
     if dataset_name == "DeepFashionInShop":
         return local_datasets.DeepFashionInShop
+    if dataset_name == "iNat":
+        return local_datasets.INaturalist2018
+    if dataset_name == "StanfordDogs":
+        return local_datasets.StanfordDogs
 
     return getattr(datasets, dataset_name)
 
@@ -67,6 +72,10 @@ def is_dataset_ready(dataset_name, data_root):
         return all((cifar_root / filename).exists() for filename in ("train", "test", "meta"))
     if dataset_name == "DeepFashionInShop":
         return local_datasets.DeepFashionInShop.find_metadata_file(data_root) is not None
+    if dataset_name == "iNat":
+        return local_datasets.INaturalist2018.is_ready(data_root)
+    if dataset_name == "StanfordDogs":
+        return local_datasets.StanfordDogs.is_ready(data_root)
 
     return data_root.exists()
 
@@ -122,6 +131,14 @@ def load_dataset_protocol_sources(
             "source": "official_train_test_splits",
             "cifar_long_tail": imbalance_info,
         }
+        if getattr(train_val_dataset, "class_disjoint_split", False):
+            assert_disjoint_dataset_classes(
+                train_val_dataset,
+                test_dataset,
+                "development",
+                "test",
+            )
+            protocol_info.update(getattr(train_val_dataset, "class_split_info", {}))
         query_indices = getattr(test_dataset, "query_indices", None)
         gallery_indices = getattr(test_dataset, "gallery_indices", None)
         if query_indices is not None and gallery_indices is not None:
@@ -194,6 +211,10 @@ def load_dataset_protocol_sources(
             "split_basis",
             "development_superclasses",
             "held_out_test_superclasses",
+            "canonical_train_classes",
+            "canonical_validation_classes",
+            "canonical_train_superclasses",
+            "canonical_validation_superclasses",
             "superclass_disjoint_test",
         }
     }

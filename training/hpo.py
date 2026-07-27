@@ -1703,10 +1703,10 @@ def make_post_apportion_training_label_sets(args, labels, labeled_positions, ori
     labels = np.asarray(labels, dtype=np.int64)
     labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
     split_seed = get_support_seed(args) if support_seed is None else int(support_seed)
-    if args.cv_mode == utils.CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
+    if args.cv_mode in utils.SUPERCLASS_AWARE_CV_MODES:
         if original_labels is None:
             raise ValueError(
-                f"{utils.CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD} requires original CIFAR-100 "
+                f"{args.cv_mode} requires original CIFAR-100 "
                 "fine labels for post-apportion CV"
             )
         superclass_labels = utils.cifar100_superclass_labels_for_fine_labels(original_labels)
