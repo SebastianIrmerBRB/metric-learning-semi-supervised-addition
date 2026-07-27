@@ -2567,6 +2567,8 @@ def validate_run_args(args, ssl_config):
         raise ValueError("A final full-development fit requires cv_k=1")
     if args.cv_mode not in utils.CV_MODES:
         raise ValueError(f"cv_mode must be one of {utils.CV_MODES}: {args.cv_mode}")
+    if args.cv_mode in utils.SUPERCLASS_AWARE_CV_MODES and args.dataset != "CIFAR100":
+        raise ValueError(f"cv_mode={args.cv_mode!r} is only supported for CIFAR100")
     if args.val_mode not in utils.VAL_MODES:
         raise ValueError(f"val_mode must be one of {utils.VAL_MODES}: {args.val_mode}")
     if args.selection_metric not in SELECTION_METRICS:

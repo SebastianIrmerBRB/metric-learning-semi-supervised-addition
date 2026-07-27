@@ -88,6 +88,7 @@ from .ssl.graph_diagnostics import (
 )
 from .ssl.interfaces import BaseSemiSupervisedMethod, BaseTrainingRegularizer
 from .ssl.simmatch_v2 import SimMatchV2Regularizer
+from .ssl.slade import SladeRegularizer
 from .ssl.pseudo_labels import (
     PseudoLabelDiagnosticsTracker,
     filter_pseudo_labels,
@@ -2635,6 +2636,7 @@ REGULARIZER_REGISTRY = {
     "seraph_entropy": SeraphEntropyRegularizer,
     "hoffer_entropy": HofferEntropyRegularizer,
     "simmatch_v2": SimMatchV2Regularizer,
+    "slade": SladeRegularizer,
 }
 
 
@@ -2663,6 +2665,13 @@ METHOD_REGISTRY = {
     "simmatch_v2": RegularizedSemiSupervisedMethod(
         name="simmatch_v2",
         default_regularizer="simmatch_v2",
+    ),
+    # SLADE's student stage is the same composition: the configured pair-based
+    # ranking loss on labeled data plus the unlabeled ranking and feature-basis
+    # terms of Eq 9.
+    "slade": RegularizedSemiSupervisedMethod(
+        name="slade",
+        default_regularizer="slade",
     ),
 }
 

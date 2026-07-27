@@ -150,7 +150,8 @@ parser.add_argument(
     help=(
         "dataset split protocol. CIFAR custom protocols combine the official splits; "
         "cifar_balanced_fraction creates sample-disjoint balanced train/test subsets, while unseen-class "
-        "protocols reserve fine classes or complete CIFAR-100 superclasses for final testing"
+        "protocols reserve fine classes or complete CIFAR-100 superclasses for final testing; "
+        "cifar100_fc100 reproduces the TADAM FC100 superclass split"
     ),
 )
 parser.add_argument("--dino_size", type=str, default="b", choices=["s", "b", "l", "g"], help="which Dino to use")
@@ -299,7 +300,10 @@ parser.add_argument(
     type=str,
     choices=utils.CV_MODES,
     default="kfold",
-    help="cross-validation splitter to use when cv_k > 1",
+    help=(
+        "cross-validation splitter to use when cv_k > 1. "
+        "Use superclass_group_kfold with cifar100_fc100 to hold out complete superclasses"
+    ),
 )
 parser.add_argument(
     "--val_mode",

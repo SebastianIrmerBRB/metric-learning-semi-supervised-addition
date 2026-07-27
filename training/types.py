@@ -6,7 +6,7 @@ from typing import Any
 
 from pytorch_metric_learning import losses
 
-DATASETS = ["Cars196", "CUB", "DeepFashionInShop", "CIFAR100"]
+DATASETS = ["Cars196", "CUB", "DeepFashionInShop", "CIFAR100", "iNat", "StanfordDogs"]
 
 ALL_LOSSES = [
     "AngularLoss",

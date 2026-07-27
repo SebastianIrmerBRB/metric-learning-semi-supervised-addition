@@ -62,6 +62,57 @@ Use the package paths directly, for example `from training import semi_supervise
 
 Add new behavior to the focused module for its responsibility, and keep cross-module re-exports intentional and limited.
 
+## Download iNaturalist 2018 at DINO resolution
+
+`--dataset iNat` uses a local wrapper around
+`pytorch_metric_learning.datasets.INaturalist2018`. It streams the official
+train/validation image archive, resizes one image at a time, and stores only
+224x224 JPEGs under `data/iNat/train_val2018`. The 120 GB source archive and
+full-resolution extracted images are never written to disk.
+
+Download it separately before an experiment with:
+
+```powershell
+python scripts/download_inaturalist2018_224.py
+```
+
+Starting an experiment with `--dataset iNat` also starts the same download
+automatically when the completion marker is absent. An interrupted run can be
+started again; already completed 224x224 images are reused. Because the official
+image release is one gzip archive, a retry must stream the archive again, and
+the initial network transfer is still approximately 120 GB. Only persistent and
+peak disk use are reduced.
+
+The downloader retains the official metric-learning train/test split and accepts
+`INaturalist2018` as an alias for `iNat`. Downloading the dataset means accepting
+the terms published with the official iNaturalist 2018 release.
+
+## Stanford Dogs class-disjoint protocol
+
+`--dataset StanfordDogs` uses the
+[Stanford Dogs](http://vision.stanford.edu/aditya86/ImageNetDogs/) images at
+224x224 resolution. The standalone download is:
+
+```powershell
+python scripts/download_stanford_dogs_224.py
+```
+
+An experiment also downloads the data automatically when needed. The official
+image archive is streamed and each image is atomically resized, so the original
+archive and full-resolution extracted images are not retained.
+
+The [dataset paper](https://people.csail.mit.edu/khosla/papers/fgvc2011.pdf)
+uses an image-level split containing all 120 breeds on both sides. For
+class-disjoint metric-learning evaluation, this project instead pools the
+20,580 images and uses a fixed hash-ranked partition:
+
+- development: 72 complete breeds (60%);
+- final test: 48 different complete breeds (40%).
+
+The normal project holdout or cross-validation then operates only inside the 72
+development breeds. The exact breed lists and partition version are saved in
+the dataset completion marker and each run's dataset-protocol metadata.
+
 ## Third-Party Attribution
 
 Long-tailed CIFAR generation is adapted from

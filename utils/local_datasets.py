@@ -1,11 +1,21 @@
+import hashlib
+import json
 import os
+import shutil
 import statistics
+import tarfile
+import urllib.request
 import zipfile
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
+from PIL import Image
+from pytorch_metric_learning.datasets.inaturalist2018 import (
+    INaturalist2018 as _INaturalist2018,
+)
 from pytorch_metric_learning.datasets.sop import StanfordOnlineProducts as _StanfordOnlineProducts
 from pytorch_metric_learning.utils.common_functions import _urlretrieve
+from tqdm import tqdm
 from torchvision.datasets import CIFAR10 as _CIFAR10
 from torchvision.datasets import CIFAR100 as _CIFAR100
 from torchvision.datasets.folder import IMG_EXTENSIONS, default_loader
@@ -34,6 +44,643 @@ class CIFAR10(_CIFARSplitMixin, _CIFAR10):
 
 class CIFAR100(_CIFARSplitMixin, _CIFAR100):
     pass
+
+
+class _DownloadProgressReader:
+    """Update a byte progress bar as a streaming archive is read."""
+
+    def __init__(self, response, progress):
+        self.response = response
+        self.progress = progress
+
+    def read(self, size=-1):
+        data = self.response.read(size)
+        self.progress.update(len(data))
+        return data
+
+
+class _DinoSizedImageDownloadMixin:
+    """Shared atomic 224 x 224 JPEG download helpers."""
+
+    TARGET_IMAGE_SIZE = (224, 224)
+    JPEG_QUALITY = 90
+    USER_AGENT = "metric-learning-dino-image-downloader/1.0"
+
+    @classmethod
+    def _is_target_sized_image(cls, path):
+        if not path.is_file():
+            return False
+        try:
+            with Image.open(path) as image:
+                return image.size == cls.TARGET_IMAGE_SIZE
+        except (OSError, ValueError):
+            return False
+
+    @classmethod
+    def _resize_image_to_destination(cls, source, destination):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cls._temporary_path(destination)
+        temporary.unlink(missing_ok=True)
+        try:
+            with Image.open(source) as image:
+                image.draft("RGB", cls.TARGET_IMAGE_SIZE)
+                rgb_image = image.convert("RGB")
+                try:
+                    resized = rgb_image.resize(
+                        cls.TARGET_IMAGE_SIZE,
+                        resample=Image.Resampling.BILINEAR,
+                    )
+                finally:
+                    rgb_image.close()
+                try:
+                    resized.save(
+                        temporary,
+                        format="JPEG",
+                        quality=cls.JPEG_QUALITY,
+                        subsampling=2,
+                    )
+                finally:
+                    resized.close()
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @classmethod
+    def _open_url(cls, url):
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": cls.USER_AGENT},
+        )
+        return urllib.request.urlopen(request)
+
+    @staticmethod
+    def _byte_progress(response, description):
+        content_length = response.headers.get("Content-Length")
+        total = int(content_length) if content_length is not None else None
+        return tqdm(
+            total=total,
+            desc=description,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            disable=None,
+        )
+
+    def _download_url_to_path(self, url, destination, description):
+        with self._open_url(url) as response:
+            with self._byte_progress(response, description) as progress:
+                with destination.open("wb") as output:
+                    while chunk := response.read(1024 * 1024):
+                        output.write(chunk)
+                        progress.update(len(chunk))
+
+    @classmethod
+    def _write_bytes_atomic(cls, destination, content):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cls._temporary_path(destination)
+        temporary.unlink(missing_ok=True)
+        try:
+            with temporary.open("wb") as output:
+                output.write(content)
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @classmethod
+    def _write_json_atomic(cls, destination, payload):
+        serialized = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+        cls._write_bytes_atomic(destination, serialized)
+
+    @staticmethod
+    def _temporary_path(destination):
+        return destination.with_name(f".{destination.name}.{os.getpid()}.part")
+
+
+class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
+    """iNaturalist 2018 with a disk-efficient DINO-sized downloader.
+
+    The upstream dataset is distributed as one 120 GB gzip-compressed tar
+    archive. This loader never writes that archive or its full-resolution
+    members to disk: it streams each JPEG, resizes it to 224 x 224 in memory,
+    and atomically writes only the resized JPEG at the path expected by
+    ``pytorch_metric_learning.datasets.INaturalist2018``.
+    """
+
+    IMAGE_DIRECTORY = "train_val2018"
+    COMPLETE_MARKER = ".inaturalist2018_224_complete.json"
+    TRAIN_ANNOTATION = "train2018.json"
+    VAL_ANNOTATION = "val2018.json"
+    SPLIT_DIRECTORY = "Inat_dataset_splits"
+    TRAIN_SPLIT = "Inaturalist_train_set1.txt"
+    TEST_SPLIT = "Inaturalist_test_set1.txt"
+
+    def __init__(
+        self,
+        root,
+        split="train+test",
+        transform=None,
+        target_transform=None,
+        download=False,
+    ):
+        root = Path(root)
+        if download and not self.is_ready(root):
+            root.mkdir(parents=True, exist_ok=True)
+            self.root = str(root)
+            self.download_and_remove()
+            download = False
+
+        super().__init__(
+            root=str(root),
+            split=split,
+            transform=transform,
+            target_transform=target_transform,
+            download=download,
+        )
+
+    @classmethod
+    def is_ready(cls, root):
+        """Return whether a completed 224 x 224 dataset is present."""
+
+        root = Path(root)
+        marker_path = root / cls.COMPLETE_MARKER
+        required_paths = (
+            root / cls.TRAIN_ANNOTATION,
+            root / cls.VAL_ANNOTATION,
+            root / cls.SPLIT_DIRECTORY / cls.TRAIN_SPLIT,
+            root / cls.SPLIT_DIRECTORY / cls.TEST_SPLIT,
+            root / cls.IMAGE_DIRECTORY,
+            marker_path,
+        )
+        if not all(path.exists() for path in required_paths):
+            return False
+
+        try:
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+            image_size = tuple(int(value) for value in marker["image_size"])
+            image_count = int(marker["image_count"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+            return False
+        return image_size == cls.TARGET_IMAGE_SIZE and image_count > 0
+
+    @classmethod
+    def download_224(cls, root):
+        """Download the dataset without constructing and parsing a split."""
+
+        root = Path(root)
+        if cls.is_ready(root):
+            return root
+        root.mkdir(parents=True, exist_ok=True)
+        downloader = cls.__new__(cls)
+        downloader.root = str(root)
+        downloader.download_and_remove()
+        return root
+
+    def download_and_remove(self):
+        """Stream the official archive and retain only 224 x 224 images."""
+
+        root = Path(self.root)
+        root.mkdir(parents=True, exist_ok=True)
+        self._ensure_annotation(self.TRAIN_ANN_URL, self.TRAIN_ANNOTATION)
+        self._ensure_annotation(self.VAL_ANN_URL, self.VAL_ANNOTATION)
+        self._ensure_split_files()
+
+        expected_image_count = self._count_split_images()
+        if expected_image_count <= 0:
+            raise RuntimeError("The iNaturalist metric-learning split files contain no images")
+
+        stats = self._stream_and_resize_images(expected_image_count)
+        marker = {
+            "dataset": "INaturalist2018",
+            "image_size": list(self.TARGET_IMAGE_SIZE),
+            "image_count": int(stats["archive_images"]),
+            "jpeg_quality": int(self.JPEG_QUALITY),
+            "written_images": int(stats["written_images"]),
+            "reused_images": int(stats["reused_images"]),
+            "source_archive": self.IMG_DOWNLOAD_URL,
+            "storage_layout": f"{self.IMAGE_DIRECTORY}/<supercategory>/<category>/<image>.jpg",
+        }
+        self._write_json_atomic(root / self.COMPLETE_MARKER, marker)
+
+    def _ensure_annotation(self, url, filename):
+        destination = Path(self.root) / filename
+        if destination.is_file():
+            return
+
+        temporary = self._temporary_path(destination)
+        temporary.unlink(missing_ok=True)
+        found = False
+        try:
+            with self._open_url(url) as response:
+                with self._byte_progress(response, f"Downloading {filename}") as progress:
+                    reader = _DownloadProgressReader(response, progress)
+                    with tarfile.open(fileobj=reader, mode="r|gz") as archive:
+                        for member in archive:
+                            if not member.isfile() or PurePosixPath(member.name).name != filename:
+                                continue
+                            source = archive.extractfile(member)
+                            if source is None:
+                                raise RuntimeError(f"Could not read {filename} from {url}")
+                            destination.parent.mkdir(parents=True, exist_ok=True)
+                            with source, temporary.open("wb") as output:
+                                shutil.copyfileobj(source, output, length=1024 * 1024)
+                            found = True
+                            break
+            if not found:
+                raise RuntimeError(f"{url} did not contain the expected file {filename}")
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _ensure_split_files(self):
+        split_directory = Path(self.root) / self.SPLIT_DIRECTORY
+        train_destination = split_directory / self.TRAIN_SPLIT
+        test_destination = split_directory / self.TEST_SPLIT
+        if train_destination.is_file() and test_destination.is_file():
+            return
+
+        split_directory.mkdir(parents=True, exist_ok=True)
+        archive_path = Path(self.root) / ".Inat_dataset_splits.zip.part"
+        archive_path.unlink(missing_ok=True)
+        try:
+            self._download_url_to_path(
+                self.SPLITS_URL,
+                archive_path,
+                description="Downloading iNaturalist metric-learning splits",
+            )
+            with zipfile.ZipFile(archive_path, "r") as archive:
+                for filename, destination in (
+                    (self.TRAIN_SPLIT, train_destination),
+                    (self.TEST_SPLIT, test_destination),
+                ):
+                    member_name = self._find_zip_member(archive, filename)
+                    self._write_bytes_atomic(destination, archive.read(member_name))
+        finally:
+            archive_path.unlink(missing_ok=True)
+
+    def _count_split_images(self):
+        image_count = 0
+        for filename in (self.TRAIN_SPLIT, self.TEST_SPLIT):
+            split_path = Path(self.root) / self.SPLIT_DIRECTORY / filename
+            with split_path.open("r", encoding="utf-8") as split_file:
+                for line_number, line in enumerate(split_file, start=1):
+                    image_name = line.strip()
+                    if not image_name:
+                        continue
+                    relative_path = self._validated_image_path(image_name)
+                    if relative_path.suffix.lower() not in {".jpg", ".jpeg"}:
+                        raise ValueError(
+                            f"Unsupported image extension in {split_path}:{line_number}: "
+                            f"{relative_path.suffix!r}"
+                        )
+                    image_count += 1
+        return image_count
+
+    def _stream_and_resize_images(self, expected_image_count):
+        archive_images = 0
+        written_images = 0
+        reused_images = 0
+        with self._open_url(self.IMG_DOWNLOAD_URL) as response:
+            with self._byte_progress(
+                response,
+                "Streaming official iNaturalist image archive",
+            ) as byte_progress:
+                reader = _DownloadProgressReader(response, byte_progress)
+                with tqdm(
+                    total=expected_image_count,
+                    desc="Saving 224x224 iNaturalist images",
+                    unit="image",
+                    disable=None,
+                ) as image_progress:
+                    with tarfile.open(fileobj=reader, mode="r|gz") as archive:
+                        for member in archive:
+                            relative_path = self._image_member_path(member)
+                            if relative_path is None:
+                                continue
+                            archive_images += 1
+                            destination = Path(self.root) / relative_path
+                            if self._is_target_sized_image(destination):
+                                reused_images += 1
+                            else:
+                                source = archive.extractfile(member)
+                                if source is None:
+                                    raise RuntimeError(
+                                        f"Could not read image {member.name!r} from the archive"
+                                    )
+                                with source:
+                                    self._resize_image_to_destination(source, destination)
+                                written_images += 1
+                            image_progress.update(1)
+
+        if archive_images != expected_image_count:
+            raise RuntimeError(
+                "The iNaturalist image archive did not match the metric-learning split files: "
+                f"expected {expected_image_count} images, found {archive_images}. "
+                "The completion marker was not written; rerun the downloader to retry."
+            )
+        return {
+            "archive_images": archive_images,
+            "written_images": written_images,
+            "reused_images": reused_images,
+        }
+
+    @classmethod
+    def _image_member_path(cls, member):
+        if not member.isfile():
+            return None
+        path = PurePosixPath(member.name.replace("\\", "/"))
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"Unsafe path in iNaturalist image archive: {member.name!r}")
+        if not path.parts or path.parts[0] != cls.IMAGE_DIRECTORY:
+            return None
+        if path.suffix.lower() not in {".jpg", ".jpeg"}:
+            return None
+        return Path(*path.parts)
+
+    @classmethod
+    def _validated_image_path(cls, image_name):
+        path = PurePosixPath(str(image_name).replace("\\", "/"))
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or not path.parts
+            or path.parts[0] != cls.IMAGE_DIRECTORY
+        ):
+            raise ValueError(f"Unsafe path in iNaturalist split file: {image_name!r}")
+        return Path(*path.parts)
+
+    @staticmethod
+    def _find_zip_member(archive, filename):
+        matches = [
+            member_name
+            for member_name in archive.namelist()
+            if PurePosixPath(member_name).name == filename
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"Expected exactly one {filename!r} in the split archive, found {len(matches)}"
+            )
+        member_path = PurePosixPath(matches[0])
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise ValueError(f"Unsafe path in iNaturalist split archive: {matches[0]!r}")
+        return matches[0]
+
+
+class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
+    """Stanford Dogs with a fixed 60/40 class-disjoint split.
+
+    The official image-level train/test lists contain every breed on both
+    sides. For metric learning this wrapper pools all 20,580 images and assigns
+    complete breeds to either the 60% development split (72 breeds) or the 40%
+    final-test split (48 breeds). The hash-ranked partition is fixed across
+    machines and is recorded in the download marker and run metadata.
+    """
+
+    IMAGES_URL = "http://vision.stanford.edu/aditya86/ImageNetDogs/images.tar"
+    IMAGE_DIRECTORY = "Images"
+    COMPLETE_MARKER = ".stanford_dogs_224_complete.json"
+    EXPECTED_IMAGE_COUNT = 20580
+    EXPECTED_CLASS_COUNT = 120
+    DEVELOPMENT_CLASS_FRACTION = 0.60
+    TEST_CLASS_FRACTION = 0.40
+    CLASS_SPLIT_VERSION = "sha256_60_40_v1"
+    AVAILABLE_SPLITS = ("train", "test", "train+test")
+
+    def __init__(
+        self,
+        root,
+        split="train+test",
+        transform=None,
+        target_transform=None,
+        download=False,
+    ):
+        self.root = Path(root)
+        if download and not self.is_ready(self.root):
+            self.download_224(self.root)
+        if not self.is_ready(self.root):
+            raise ValueError(
+                "Stanford Dogs 224x224 data was not found. Initialize the dataset "
+                "with download=True or run scripts/download_stanford_dogs_224.py."
+            )
+        if split not in self.AVAILABLE_SPLITS:
+            raise ValueError(f"split must be one of {self.AVAILABLE_SPLITS}, got {split!r}")
+
+        self.split = split
+        self.transform = transform
+        self.target_transform = target_transform
+        image_root = self.root / self.IMAGE_DIRECTORY
+        class_directories = sorted(path for path in image_root.iterdir() if path.is_dir())
+        class_names = [path.name for path in class_directories]
+        if len(class_names) != self.EXPECTED_CLASS_COUNT:
+            raise ValueError(
+                f"Stanford Dogs must contain {self.EXPECTED_CLASS_COUNT} breed directories, "
+                f"found {len(class_names)} under {image_root}"
+            )
+
+        development_names, test_names = self.partition_class_names(class_names)
+        development_set = set(development_names)
+        test_set = set(test_names)
+        if split == "train":
+            selected_names = development_set
+        elif split == "test":
+            selected_names = test_set
+        else:
+            selected_names = set(class_names)
+
+        self.classes = class_names
+        self.class_to_label = {class_name: index for index, class_name in enumerate(class_names)}
+        self.class_names = {
+            self.class_to_label[class_name]: self._breed_display_name(class_name)
+            for class_name in class_names
+        }
+        self.development_class_names = list(development_names)
+        self.test_class_names = list(test_names)
+        self.development_class_labels = [
+            self.class_to_label[class_name] for class_name in development_names
+        ]
+        self.test_class_labels = [self.class_to_label[class_name] for class_name in test_names]
+
+        records = []
+        for class_directory in class_directories:
+            if class_directory.name not in selected_names:
+                continue
+            label = self.class_to_label[class_directory.name]
+            records.extend(
+                (image_path, label)
+                for image_path in sorted(class_directory.iterdir())
+                if image_path.is_file() and image_path.suffix.lower() in {".jpg", ".jpeg"}
+            )
+        if not records:
+            raise ValueError(f"Stanford Dogs split {split!r} contains no images")
+
+        self.paths = [str(image_path) for image_path, _ in records]
+        self.labels = [int(label) for _, label in records]
+        self.orig_labels = list(self.labels)
+        self.class_disjoint_split = True
+        self.class_split_info = {
+            "source": "fixed_class_disjoint_60_40",
+            "class_disjoint_test": True,
+            "class_split_version": self.CLASS_SPLIT_VERSION,
+            "development_class_fraction": self.DEVELOPMENT_CLASS_FRACTION,
+            "test_class_fraction": self.TEST_CLASS_FRACTION,
+            "development_class_count": len(development_names),
+            "test_class_count": len(test_names),
+            "development_classes": list(development_names),
+            "held_out_test_classes": list(test_names),
+            "official_image_level_split_used": False,
+        }
+
+    @classmethod
+    def is_ready(cls, root):
+        root = Path(root)
+        marker_path = root / cls.COMPLETE_MARKER
+        if not (root / cls.IMAGE_DIRECTORY).is_dir() or not marker_path.is_file():
+            return False
+        try:
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+            image_size = tuple(int(value) for value in marker["image_size"])
+            image_count = int(marker["image_count"])
+            class_count = int(marker["class_count"])
+            split_version = str(marker["class_split_version"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+            return False
+        return (
+            image_size == cls.TARGET_IMAGE_SIZE
+            and image_count == cls.EXPECTED_IMAGE_COUNT
+            and class_count == cls.EXPECTED_CLASS_COUNT
+            and split_version == cls.CLASS_SPLIT_VERSION
+        )
+
+    @classmethod
+    def download_224(cls, root):
+        root = Path(root)
+        if cls.is_ready(root):
+            return root
+        root.mkdir(parents=True, exist_ok=True)
+        downloader = cls.__new__(cls)
+        downloader.root = root
+        downloader._stream_and_resize_archive()
+        return root
+
+    def _stream_and_resize_archive(self):
+        archive_images = 0
+        written_images = 0
+        reused_images = 0
+        with self._open_url(self.IMAGES_URL) as response:
+            with self._byte_progress(
+                response,
+                "Streaming official Stanford Dogs image archive",
+            ) as byte_progress:
+                reader = _DownloadProgressReader(response, byte_progress)
+                with tqdm(
+                    total=self.EXPECTED_IMAGE_COUNT,
+                    desc="Saving 224x224 Stanford Dogs images",
+                    unit="image",
+                    disable=None,
+                ) as image_progress:
+                    with tarfile.open(fileobj=reader, mode="r|") as archive:
+                        for member in archive:
+                            relative_path = self._image_member_path(member)
+                            if relative_path is None:
+                                continue
+                            archive_images += 1
+                            destination = self.root / relative_path
+                            if self._is_target_sized_image(destination):
+                                reused_images += 1
+                            else:
+                                source = archive.extractfile(member)
+                                if source is None:
+                                    raise RuntimeError(
+                                        f"Could not read image {member.name!r} from the archive"
+                                    )
+                                with source:
+                                    self._resize_image_to_destination(source, destination)
+                                written_images += 1
+                            image_progress.update(1)
+
+        if archive_images != self.EXPECTED_IMAGE_COUNT:
+            raise RuntimeError(
+                "The Stanford Dogs archive was incomplete: "
+                f"expected {self.EXPECTED_IMAGE_COUNT} images, found {archive_images}. "
+                "The completion marker was not written; rerun the downloader to retry."
+            )
+
+        class_names = sorted(
+            path.name
+            for path in (self.root / self.IMAGE_DIRECTORY).iterdir()
+            if path.is_dir()
+        )
+        if len(class_names) != self.EXPECTED_CLASS_COUNT:
+            raise RuntimeError(
+                "The Stanford Dogs archive had an unexpected breed count: "
+                f"expected {self.EXPECTED_CLASS_COUNT}, found {len(class_names)}"
+            )
+        development_names, test_names = self.partition_class_names(class_names)
+        marker = {
+            "dataset": "StanfordDogs",
+            "image_size": list(self.TARGET_IMAGE_SIZE),
+            "image_count": archive_images,
+            "class_count": len(class_names),
+            "jpeg_quality": self.JPEG_QUALITY,
+            "written_images": written_images,
+            "reused_images": reused_images,
+            "source_archive": self.IMAGES_URL,
+            "class_split_version": self.CLASS_SPLIT_VERSION,
+            "development_class_fraction": self.DEVELOPMENT_CLASS_FRACTION,
+            "test_class_fraction": self.TEST_CLASS_FRACTION,
+            "development_classes": list(development_names),
+            "held_out_test_classes": list(test_names),
+        }
+        self._write_json_atomic(self.root / self.COMPLETE_MARKER, marker)
+
+    @classmethod
+    def partition_class_names(cls, class_names):
+        class_names = sorted(str(class_name) for class_name in class_names)
+        if len(class_names) != len(set(class_names)):
+            raise ValueError("Stanford Dogs class names must be unique")
+        ranked_names = sorted(
+            class_names,
+            key=lambda class_name: hashlib.sha256(
+                f"{cls.CLASS_SPLIT_VERSION}:{class_name}".encode("utf-8")
+            ).digest(),
+        )
+        development_count = int(round(len(ranked_names) * cls.DEVELOPMENT_CLASS_FRACTION))
+        development_names = tuple(sorted(ranked_names[:development_count]))
+        test_names = tuple(sorted(ranked_names[development_count:]))
+        if set(development_names) & set(test_names):
+            raise RuntimeError("Stanford Dogs class partition is not disjoint")
+        return development_names, test_names
+
+    @classmethod
+    def _image_member_path(cls, member):
+        if not member.isfile():
+            return None
+        path = PurePosixPath(member.name.replace("\\", "/"))
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(f"Unsafe path in Stanford Dogs image archive: {member.name!r}")
+        if not path.parts or path.parts[0] != cls.IMAGE_DIRECTORY:
+            return None
+        if path.suffix.lower() not in {".jpg", ".jpeg"}:
+            return None
+        return Path(*path.parts)
+
+    @staticmethod
+    def _breed_display_name(class_directory_name):
+        _, separator, breed_name = class_directory_name.partition("-")
+        if not separator:
+            return class_directory_name.replace("_", " ")
+        return breed_name.replace("_", " ")
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, index):
+        image = default_loader(self.paths[index])
+        label = self.labels[index]
+        if self.transform is not None:
+            image = self.transform(image)
+        if self.target_transform is not None:
+            label = self.target_transform(label)
+        return image, label
 
 
 class RecursiveUnlabeledImageDataset(Dataset):
