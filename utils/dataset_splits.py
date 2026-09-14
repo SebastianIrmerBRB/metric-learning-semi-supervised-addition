@@ -15,6 +15,7 @@ from .dataset_constants import (
     CV_MODES,
     GROUPED_CV_MODES,
     POST_APPORTION_VAL_RATIO,
+    QUERY_GALLERY_EVALUATION,
     SUPERCLASS_AWARE_CV_MODES,
     VAL_MODE_ALL,
     VAL_MODE_MATCH_TRAIN,
@@ -199,6 +200,68 @@ def split_dataset_by_classes_superclass_balanced(train_val_dataset, split_ratio=
         seed=seed,
     )
     return make_train_valid_subsets(train_val_dataset, train_indices, val_indices)
+
+
+def derive_query_gallery_indices(labels, gallery_fraction, seed):
+    """Split each class of one evaluation split into gallery and query rows.
+
+    Datasets that define a query/gallery protocol define it only for their test
+    split, so a validation fold that wants the same retrieval setup has to
+    derive one. Every class contributes at least one gallery row and at least
+    one query row; a class holding a single row cannot do both and becomes
+    gallery-only, where it still acts as a distractor but is never asked to
+    retrieve itself.
+    """
+
+    gallery_fraction = float(gallery_fraction)
+    if not 0 < gallery_fraction < 1:
+        raise ValueError(f"gallery_fraction must be in (0, 1), got {gallery_fraction}")
+    labels = np.asarray(labels, dtype=np.int64).reshape(-1)
+    if len(labels) == 0:
+        raise ValueError("a derived query/gallery split needs at least one sample")
+
+    # One generator for the whole split, consumed in sorted class order, so the
+    # partition depends only on the seed and the labels rather than on the
+    # dictionary/iteration order of the classes.
+    rng = np.random.default_rng(seed)
+    query_parts = []
+    gallery_parts = []
+    gallery_only_classes = 0
+    for label in np.unique(labels):
+        positions = np.flatnonzero(labels == label)
+        if len(positions) < 2:
+            gallery_only_classes += 1
+            gallery_parts.append(positions)
+            continue
+        positions = rng.permutation(positions)
+        gallery_size = int(round(gallery_fraction * len(positions)))
+        # Clamp rather than round-to-zero: both sides must stay non-empty or the
+        # class drops out of the evaluation entirely.
+        gallery_size = min(max(gallery_size, 1), len(positions) - 1)
+        gallery_parts.append(positions[:gallery_size])
+        query_parts.append(positions[gallery_size:])
+
+    if not query_parts:
+        raise ValueError(
+            "a derived query/gallery split needs at least one class with two or "
+            "more samples; every class in this split holds exactly one"
+        )
+    # Sorted so the partition reads as positions into the split rather than as
+    # the shuffled order the classes were drawn in.
+    query_indices = np.sort(np.concatenate(query_parts)).astype(np.int64)
+    gallery_indices = np.sort(np.concatenate(gallery_parts)).astype(np.int64)
+    info = {
+        "mode": QUERY_GALLERY_EVALUATION,
+        "source": "derived_per_class_split",
+        "gallery_fraction": gallery_fraction,
+        "seed": int(seed),
+        "num_queries": int(len(query_indices)),
+        "num_gallery": int(len(gallery_indices)),
+        "num_query_classes": int(len(np.unique(labels[query_indices]))),
+        "num_gallery_classes": int(len(np.unique(labels[gallery_indices]))),
+        "gallery_only_classes": int(gallery_only_classes),
+    }
+    return query_indices, gallery_indices, info
 
 
 def apply_validation_mode(dataset_bundle, val_mode, target_train_size, target_train_num_classes, seed):
@@ -873,7 +936,7 @@ def make_superclass_balanced_group_folds(labels, superclass_labels, cv_k, seed=0
     return folds
 
 
-def make_superclass_group_folds(labels, superclass_labels, cv_k):
+def make_superclass_group_folds(labels, superclass_labels, cv_k, seed=0):
     """Create GroupKFold splits whose groups are complete superclasses."""
 
     labels = np.asarray(labels, dtype=np.int64)
@@ -885,7 +948,9 @@ def make_superclass_group_folds(labels, superclass_labels, cv_k):
     build_class_groups_by_superclass(labels, superclass_labels)
     validate_group_cv(superclass_labels, cv_k)
     indices = np.arange(len(labels), dtype=np.int64)
-    splitter = GroupKFold(n_splits=cv_k)
+    # Shuffling rotates which superclasses are held out per seed; the canonical
+    # FC100 holdout is built from fixed class constants and is unaffected.
+    splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
     return list(splitter.split(indices, labels, groups=superclass_labels))
 
 
@@ -927,9 +992,11 @@ def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, 
         splitter = KFold(n_splits=cv_k, shuffle=True, random_state=seed)
         folds = splitter.split(local_indices)
     elif cv_mode == "group_kfold":
-        # Every class appears in exactly one validation fold.
+        # Every class appears in exactly one validation fold. Shuffling makes the
+        # class-to-fold assignment depend on the seed; without it the split is
+        # identical for every seed.
         validate_group_cv(selected_labels, cv_k)
-        splitter = GroupKFold(n_splits=cv_k)
+        splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
         folds = splitter.split(local_indices, selected_labels, groups=groups)
     elif cv_mode == "stratified_kfold":
         # Preserve class proportions, while allowing each class on both sides.
@@ -951,6 +1018,7 @@ def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, 
             labels=selected_labels,
             superclass_labels=selected_superclass_labels,
             cv_k=cv_k,
+            seed=seed,
         )
     elif cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
         if selected_superclass_labels is None:
@@ -1249,7 +1317,7 @@ def split_dataset_cross_validation(train_val_dataset, cv_k, cv_fold, cv_mode, se
         folds = splitter.split(indices)
     elif cv_mode == "group_kfold":
         validate_group_cv(labels, cv_k)
-        splitter = GroupKFold(n_splits=cv_k)
+        splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
         folds = splitter.split(indices, labels, groups=groups)
     elif cv_mode == "stratified_kfold":
         validate_stratified_cv(labels, cv_k)
@@ -1265,6 +1333,7 @@ def split_dataset_cross_validation(train_val_dataset, cv_k, cv_fold, cv_mode, se
             labels=labels,
             superclass_labels=superclass_labels,
             cv_k=cv_k,
+            seed=seed,
         )
     elif cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
         validate_group_cv(labels, cv_k)

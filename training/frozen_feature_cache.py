@@ -2,6 +2,7 @@
 
 import hashlib
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,11 @@ _SOURCE_ARG_NAMES = (
     "external_unlabeled_filter",
     "compcars_min_model_images",
     "compcars_strict_paper_counts",
+    "compcars_paper_threshold_calibration",
 )
+# Split-affecting arguments that only join the key once they are set, so adding
+# one of them does not invalidate every cache written before it existed.
+_OPTIONAL_SOURCE_ARG_NAMES = ("holdout_val_ratio", "ablation_config", "ablation_variant")
 _DATASET_SIGNATURE_ATTRS = (
     "indices",
     "positions",
@@ -217,6 +222,13 @@ def make_frozen_feature_cache_key(
         digest,
         tuple((name, getattr(args, name, None)) for name in _SOURCE_ARG_NAMES),
     )
+    optional_source_args = tuple(
+        (name, getattr(args, name, None))
+        for name in _OPTIONAL_SOURCE_ARG_NAMES
+        if getattr(args, name, None) is not None
+    )
+    if optional_source_args:
+        _update_digest(digest, optional_source_args)
     _update_digest(
         digest,
         (
@@ -383,22 +395,59 @@ def _precomputed_dataset_nbytes(dataset):
 
 
 class FrozenFeatureDatasetCache:
-    """Thread-safe CPU feature cache shared by all trials in one HPO study."""
+    """Thread-safe CPU feature cache shared by all trials in one HPO study.
 
-    def __init__(self):
-        self._datasets = {}
+    A study that varies seed, fold, label budget, or any other key component
+    materializes a separate resident view per combination, so an unbounded cache
+    grows for the lifetime of the process. ``max_bytes`` caps the total and
+    evicts least-recently-used entries; ``None`` keeps every entry, which is the
+    historical behavior.
+    """
+
+    def __init__(self, max_bytes=None):
+        if max_bytes is not None and int(max_bytes) <= 0:
+            raise ValueError("max_bytes must be positive when set")
+        self._datasets = OrderedDict()
+        self._entry_bytes = {}
         self._inflight = {}
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
         self._waits = 0
+        self._evictions = 0
         self._bytes = 0
+        self._max_bytes = None if max_bytes is None else int(max_bytes)
+
+    def _evict_to_budget(self, protected_key):
+        """Drop least-recently-used entries until the cache fits its budget.
+
+        The entry just stored is protected so a view larger than the whole
+        budget is still returned to its caller rather than evicted immediately.
+        """
+
+        if self._max_bytes is None:
+            return
+        for key in list(self._datasets):
+            if self._bytes <= self._max_bytes:
+                return
+            if key == protected_key:
+                continue
+            self._datasets.pop(key)
+            evicted_bytes = self._entry_bytes.pop(key, 0)
+            self._bytes -= evicted_bytes
+            self._evictions += 1
+            logger.info(
+                f"Evicted in-memory frozen features (key={key[:12]}, "
+                f"{evicted_bytes / 1e9:.2f} GB) to stay within the "
+                f"{self._max_bytes / 1e9:.2f} GB cache budget"
+            )
 
     def get_or_compute(self, key, compute, desc):
         while True:
             with self._lock:
                 cached = self._datasets.get(key)
                 if cached is not None:
+                    self._datasets.move_to_end(key)
                     self._hits += 1
                     logger.info(
                         f"Reusing in-memory frozen features for {desc}: "
@@ -432,7 +481,9 @@ class FrozenFeatureDatasetCache:
 
         with self._lock:
             self._datasets[key] = dataset
-            self._bytes += _precomputed_dataset_nbytes(dataset)
+            self._entry_bytes[key] = _precomputed_dataset_nbytes(dataset)
+            self._bytes += self._entry_bytes[key]
+            self._evict_to_budget(protected_key=key)
             self._inflight.pop(key, None)
             event.set()
         logger.info(
@@ -448,5 +499,7 @@ class FrozenFeatureDatasetCache:
                 "hits": self._hits,
                 "misses": self._misses,
                 "waits": self._waits,
+                "evictions": self._evictions,
                 "bytes": self._bytes,
+                "max_bytes": self._max_bytes,
             }

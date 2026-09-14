@@ -25,6 +25,15 @@ GRAPH_DIAGNOSTICS_MAX_SPECTRAL_NODES = 5_000
 GRAPH_DIAGNOSTICS_MAX_SPECTRAL_NNZ = 500_000
 GRAPH_DIAGNOSTICS_MAX_CORRECT_ANCHOR_CLASSES = 200
 GRAPH_DIAGNOSTICS_MAX_CORRECT_ANCHOR_WORK = 200_000_000
+GRAPH_DIAGNOSTICS_MAX_CLASS_FOCUS_EDGE_ROWS = 20_000
+# The class-scoped plot keeps most of its node budget for the selected classes
+# themselves and spends the rest on the out-of-selection nodes they attach to.
+GRAPH_DIAGNOSTICS_CLASS_FOCUS_NODE_SHARE = 0.7
+# Edge colors for the class-scoped plot: the edges the Laplacian term should be
+# pulling on, the ones fusing two selected classes, and the ones leaving.
+GRAPH_EDGE_SAME_CLASS_COLOR = "#2f7d4f"
+GRAPH_EDGE_BETWEEN_CLASSES_COLOR = "#c1442e"
+GRAPH_EDGE_LEAVING_COLOR = "#a9aeb6"
 
 # Diagnostics are generated in one process during normal epoch-by-epoch graph
 # rebuilding. Keeping only the immediately preceding compact graph state makes
@@ -59,6 +68,14 @@ def make_graph_diagnostics_request(config, log_dir, name, epoch=None, title=None
         layout=str(config.graph_diagnostics_layout),
         series_slug=series_slug,
         epoch=None if epoch is None else int(epoch),
+        class_focus=str(config.graph_diagnostics_class_focus),
+        class_count=int(config.graph_diagnostics_class_count),
+        classes=(
+            None
+            if config.graph_diagnostics_classes is None
+            else tuple(int(label) for label in config.graph_diagnostics_classes)
+        ),
+        class_context=bool(config.graph_diagnostics_class_context),
     )
 
 
@@ -162,14 +179,32 @@ def save_graph_diagnostics(
     )
 
     rng = np.random.default_rng(request.seed)
-    node_indices = choose_graph_diagnostic_nodes(
-        adjacency=adjacency,
-        max_nodes=request.max_nodes,
-        rng=rng,
-    )
+    focus_classes = analysis["focus_classes"]
+    focus_mask = None
+    if len(focus_classes):
+        node_indices, focus_mask = choose_class_focus_nodes(
+            adjacency=adjacency,
+            labels=labels,
+            focus=focus_classes,
+            max_nodes=request.max_nodes,
+            include_context=bool(request.class_context),
+            rng=rng,
+        )
+    else:
+        node_indices = choose_graph_diagnostic_nodes(
+            adjacency=adjacency,
+            max_nodes=request.max_nodes,
+            rng=rng,
+        )
     sampled_adjacency = adjacency[node_indices][:, node_indices]
+    drawn_adjacency = sampled_adjacency
+    if focus_mask is not None:
+        # Context nodes are drawn because the selected classes attach to them.
+        # The edges *between* two context nodes say nothing about the selection
+        # and would bury the ones that do.
+        drawn_adjacency = _restrict_to_incident_edges(sampled_adjacency, focus_mask)
     edge_rows, edge_cols, edge_weights, full_edge_count = sample_graph_diagnostic_edges(
-        adjacency=sampled_adjacency,
+        adjacency=drawn_adjacency,
         max_edges=request.max_edges,
         rng=rng,
     )
@@ -182,20 +217,46 @@ def save_graph_diagnostics(
             seed=request.seed,
         )
         fig, ax = plt.subplots(figsize=(9, 7))
-        for row, col, weight in zip(edge_rows, edge_cols, edge_weights):
-            alpha = 0.12 + 0.35 * min(abs(float(weight)), 1.0)
+        edge_styles = _graph_edge_styles(
+            edge_rows=edge_rows,
+            edge_cols=edge_cols,
+            labels=None if labels is None else labels[node_indices],
+            focus_mask=focus_mask,
+        )
+        for index, (row, col, weight) in enumerate(
+            zip(edge_rows, edge_cols, edge_weights)
+        ):
+            color, width, base_alpha, edge_zorder = edge_styles[index]
+            alpha = base_alpha + 0.35 * min(abs(float(weight)), 1.0)
             ax.plot(
                 [coords[row, 0], coords[col, 0]],
                 [coords[row, 1], coords[col, 1]],
-                color="#8a8f98",
-                linewidth=0.45,
-                alpha=alpha,
-                zorder=1,
+                color=color,
+                linewidth=width,
+                alpha=min(alpha, 1.0),
+                zorder=edge_zorder,
             )
+        if focus_mask is not None:
+            for color, width, style_label in (
+                (GRAPH_EDGE_SAME_CLASS_COLOR, 0.9, "edge within a selected class"),
+                (
+                    GRAPH_EDGE_BETWEEN_CLASSES_COLOR,
+                    0.9,
+                    "edge between selected classes",
+                ),
+                (GRAPH_EDGE_LEAVING_COLOR, 0.5, "edge leaving the selection"),
+            ):
+                ax.plot([], [], color=color, linewidth=width, label=style_label)
 
         sampled_labels = None if labels is None else labels[node_indices]
         sampled_known = None if known_mask is None else known_mask[node_indices]
-        scatter_graph_nodes(ax, coords, sampled_labels, sampled_known)
+        scatter_graph_nodes(
+            ax,
+            coords,
+            sampled_labels,
+            sampled_known,
+            focus_mask=focus_mask,
+        )
         if len(node_indices) <= request.max_labels:
             label_offsets = (
                 (4, 4),
@@ -221,6 +282,19 @@ def save_graph_diagnostics(
         graph_summary = analysis["summary"]["graph"]
         degree_summary = analysis["summary"]["degree"]["unweighted"]
         connectivity = analysis["summary"]["connectivity"]
+        class_focus_line = ""
+        if len(focus_classes):
+            focus_summary = analysis["summary"]["class_focus"]
+            shown_classes = ", ".join(str(int(label)) for label in focus_classes[:8])
+            if len(focus_classes) > 8:
+                shown_classes += f", +{len(focus_classes) - 8} more"
+            class_focus_line = (
+                f"\nclasses {shown_classes} "
+                f"({request.class_focus}): "
+                f"{focus_summary['same_class_edge_count']} same-class, "
+                f"{focus_summary['between_selected_classes_edge_count']} between selected, "
+                f"{focus_summary['edge_count_to_classes_outside_selection']} leaving edges"
+            )
         ax.set_title(
             f"{request.title}\n"
             f"showing {len(node_indices)}/{num_nodes} samples and "
@@ -228,11 +302,17 @@ def save_graph_diagnostics(
             f"full graph: mean degree={degree_summary.get('mean', 0.0):.2f}, "
             f"components={connectivity['component_count']}, "
             f"isolated={connectivity['isolated_node_count']}"
+            f"{class_focus_line}",
+            fontsize=10,
         )
         ax.set_xlabel(f"{projection_name} 1")
         ax.set_ylabel(f"{projection_name} 2")
         ax.tick_params(labelsize=8)
-        ax.legend(loc="best")
+        ax.legend(
+            loc="best",
+            fontsize=7 if focus_mask is not None else 9,
+            ncol=2 if focus_mask is not None else 1,
+        )
         fig.tight_layout()
         fig.savefig(artifact_paths["graph_png"], dpi=160)
         plt.close(fig)
@@ -267,6 +347,11 @@ def save_graph_diagnostics(
             artifact_paths["class_pair_edges_csv"],
             analysis["class_pair_rows"],
         )
+    if analysis["class_focus_rows"]:
+        write_dict_rows_csv(
+            artifact_paths["class_focus_edges_csv"],
+            analysis["class_focus_rows"],
+        )
 
     created_artifacts = {
         "summary_json": artifact_paths["summary_json"].name,
@@ -288,10 +373,29 @@ def save_graph_diagnostics(
         created_artifacts["class_pair_edges_csv"] = artifact_paths[
             "class_pair_edges_csv"
         ].name
+    if analysis["class_focus_rows"]:
+        created_artifacts["class_focus_edges_csv"] = artifact_paths[
+            "class_focus_edges_csv"
+        ].name
     analysis["summary"]["artifacts"] = created_artifacts
     analysis["summary"]["visualization"] = {
         "statistics_scope": "full_graph",
-        "graph_png_scope": "sampled_induced_subgraph",
+        "graph_png_scope": (
+            "class_focus_induced_subgraph"
+            if focus_mask is not None
+            else "sampled_induced_subgraph"
+        ),
+        "class_focus_node_count": (
+            None if focus_mask is None else int(focus_mask.sum())
+        ),
+        "class_focus_context_node_count": (
+            None if focus_mask is None else int((~focus_mask).sum())
+        ),
+        "drawn_edge_scope": (
+            "edges_incident_to_the_selected_classes"
+            if focus_mask is not None
+            else "all_edges_among_sampled_nodes"
+        ),
         "sampled_node_count": int(len(node_indices)),
         "sampled_edge_count": int(len(edge_rows)),
         "available_sampled_induced_edge_count": int(full_edge_count),
@@ -341,6 +445,8 @@ def graph_diagnostic_artifact_paths(request):
         / f"{request.slug}_similarity_by_rank.csv",
         "class_pair_edges_csv": request.output_dir
         / f"{request.slug}_class_pair_edges.csv",
+        "class_focus_edges_csv": request.output_dir
+        / f"{request.slug}_class_focus_edges.csv",
     }
 
 
@@ -1134,6 +1240,447 @@ def _temporal_graph_diagnostics(
     return temporal
 
 
+def select_focus_classes(request, labels, per_class_rows, rng):
+    """Choose the classes the class-scoped view reports on.
+
+    Selection runs on the true labels of every graph node, unlabeled ones
+    included, which is the whole point of the view: the run withheld those
+    labels from the model, so they are available here to score what the graph
+    did with the samples the model had to place on its own.
+    """
+
+    present, counts = np.unique(labels[labels >= 0], return_counts=True)
+    # A single-node class has no internal structure to report on and would
+    # otherwise dominate a purity ranking with a degenerate 0.0.
+    eligible = present[counts >= 2]
+    if len(eligible) == 0:
+        return np.array([], dtype=np.int64), {
+            "status": "unavailable",
+            "reason": "no_class_has_at_least_two_graph_nodes",
+        }
+
+    count = int(request.class_count)
+    mode = str(request.class_focus)
+    if mode == "explicit":
+        requested = np.asarray(
+            () if request.classes is None else request.classes,
+            dtype=np.int64,
+        )
+        chosen = requested[np.isin(requested, eligible)]
+        missing = requested[~np.isin(requested, eligible)]
+        if len(missing):
+            logger.warning(
+                "graph_diagnostics_classes lists classes that are absent from this "
+                "graph or have fewer than two nodes in it, skipping them: "
+                f"{missing[:10].tolist()}"
+            )
+        if len(chosen) == 0:
+            return np.array([], dtype=np.int64), {
+                "status": "unavailable",
+                "reason": "no_requested_class_is_present_in_this_graph",
+                "requested_classes": requested.tolist(),
+            }
+        return chosen.astype(np.int64), None
+    if mode == "largest":
+        eligible_counts = counts[counts >= 2]
+        order = np.argsort(-eligible_counts, kind="stable")
+        return eligible[order[:count]].astype(np.int64), None
+    if mode == "random":
+        size = min(count, len(eligible))
+        return np.sort(
+            rng.choice(eligible, size=size, replace=False)
+        ).astype(np.int64), None
+    if mode == "lowest_purity":
+        # ``per_class_rows`` is already sorted worst-purity first.
+        eligible_labels = set(eligible.tolist())
+        ranked = [
+            int(row["label"])
+            for row in per_class_rows
+            if int(row["label"]) in eligible_labels
+        ]
+        if not ranked:
+            return np.array([], dtype=np.int64), {
+                "status": "unavailable",
+                "reason": "per_class_edge_quality_unavailable",
+            }
+        return np.asarray(ranked[:count], dtype=np.int64), None
+    return np.array([], dtype=np.int64), {
+        "status": "unavailable",
+        "reason": f"unknown_class_focus_mode_{mode}",
+    }
+
+
+def _class_focus_diagnostics(
+    request,
+    adjacency,
+    upper,
+    labels,
+    known_mask,
+    component_ids,
+    correct_anchor_distances,
+    per_class_rows,
+    rng,
+):
+    """Report how the selected classes' nodes ended up connected.
+
+    Every count here is full-graph scoped. The plot's node budget bounds only
+    what gets drawn; the numbers below describe every node of every selected
+    class.
+    """
+
+    if str(request.class_focus) == "off":
+        return {"status": "disabled"}, np.array([], dtype=np.int64)
+    if labels is None:
+        return {
+            "status": "unavailable",
+            "reason": "labels_missing",
+        }, np.array([], dtype=np.int64)
+
+    focus, unavailable = select_focus_classes(request, labels, per_class_rows, rng)
+    if unavailable is not None:
+        unavailable["selection_mode"] = str(request.class_focus)
+        return unavailable, np.array([], dtype=np.int64)
+
+    num_nodes = adjacency.shape[0]
+    focus_size = len(focus)
+    outside_code = focus_size
+    unknown_code = focus_size + 1
+    lookup = np.full(int(labels.max()) + 2, outside_code, dtype=np.int64)
+    lookup[focus] = np.arange(focus_size, dtype=np.int64)
+    code = lookup[np.maximum(labels, 0)]
+    code[labels < 0] = unknown_code
+
+    # One pass over the upper triangle classifies every edge of the graph into
+    # the (class, class) cell it belongs to, so no per-class edge scan is needed.
+    pair_counts = np.zeros((focus_size + 2, focus_size + 2), dtype=np.int64)
+    pair_weights = np.zeros((focus_size + 2, focus_size + 2), dtype=np.float64)
+    np.add.at(pair_counts, (code[upper.row], code[upper.col]), 1)
+    np.add.at(pair_weights, (code[upper.row], code[upper.col]), upper.data)
+    diagonal_counts = np.diag(pair_counts).copy()
+    diagonal_weights = np.diag(pair_weights).copy()
+    pair_counts = pair_counts + pair_counts.T
+    pair_weights = pair_weights + pair_weights.T
+    np.fill_diagonal(pair_counts, diagonal_counts)
+    np.fill_diagonal(pair_weights, diagonal_weights)
+
+    binary = adjacency.copy()
+    binary.data[:] = 1.0
+    member_masks = np.stack(
+        [(labels == int(label)) for label in focus],
+        axis=1,
+    ).astype(np.float64)
+    labeled_member_masks = (
+        member_masks
+        if known_mask is None
+        else member_masks * known_mask.astype(np.float64)[:, None]
+    )
+    # (N, F): how many labeled anchors of each focus class each node touches.
+    anchor_reach = np.asarray(binary @ labeled_member_masks, dtype=np.float64)
+
+    class_rows = []
+    for index, label in enumerate(focus):
+        members = np.flatnonzero(labels == int(label))
+        member_count = int(len(members))
+        internal_count = int(pair_counts[index, index])
+        to_focus_count = int(pair_counts[index, :focus_size].sum() - internal_count)
+        to_outside_count = int(pair_counts[index, outside_code])
+        to_unknown_count = int(pair_counts[index, unknown_code])
+        incident_count = (
+            internal_count + to_focus_count + to_outside_count + to_unknown_count
+        )
+        internal_weight = float(pair_weights[index, index])
+        to_focus_weight = float(
+            pair_weights[index, :focus_size].sum() - internal_weight
+        )
+        to_outside_weight = float(pair_weights[index, outside_code])
+        to_unknown_weight = float(pair_weights[index, unknown_code])
+        incident_weight = (
+            internal_weight + to_focus_weight + to_outside_weight + to_unknown_weight
+        )
+
+        # Connectivity of the class taken on its own: does it form one blob, or
+        # did the graph shatter it into pieces that can never exchange signal?
+        internal_adjacency = adjacency[members][:, members]
+        internal_components, internal_component_ids = sparse.csgraph.connected_components(
+            internal_adjacency,
+            directed=False,
+            return_labels=True,
+        )
+        internal_component_sizes = np.bincount(
+            internal_component_ids,
+            minlength=internal_components,
+        )
+        internal_degree = np.diff(internal_adjacency.indptr).astype(np.float64)
+        total_degree = np.diff(adjacency.indptr).astype(np.float64)[members]
+
+        labeled_members = (
+            None if known_mask is None else known_mask[members]
+        )
+        unlabeled_members = (
+            None if labeled_members is None else ~labeled_members
+        )
+        unlabeled_member_count = (
+            None if unlabeled_members is None else int(unlabeled_members.sum())
+        )
+        attached_unlabeled = (
+            None
+            if unlabeled_members is None
+            else int((anchor_reach[members, index][unlabeled_members] > 0).sum())
+        )
+
+        anchor_distances = (
+            None
+            if correct_anchor_distances is None
+            else correct_anchor_distances[members]
+        )
+        row = {
+            "label": int(label),
+            "node_count": member_count,
+            "labeled_node_count": (
+                None if labeled_members is None else int(labeled_members.sum())
+            ),
+            "unlabeled_node_count": unlabeled_member_count,
+            "same_class_edge_count": internal_count,
+            "edge_count_to_other_focus_classes": to_focus_count,
+            "edge_count_to_classes_outside_selection": to_outside_count,
+            "edge_count_to_unlabeled_class_nodes": to_unknown_count,
+            "incident_edge_count": incident_count,
+            "edge_purity": _safe_ratio(internal_count, incident_count),
+            "same_class_edge_weight": internal_weight,
+            "edge_weight_to_other_focus_classes": to_focus_weight,
+            "edge_weight_to_classes_outside_selection": to_outside_weight,
+            "incident_edge_weight": incident_weight,
+            "weighted_edge_purity": _safe_ratio(internal_weight, incident_weight),
+            "mean_same_class_degree": float(internal_degree.mean()),
+            "mean_total_degree": float(total_degree.mean()),
+            "isolated_within_class_node_count": int((internal_degree == 0).sum()),
+            "same_class_component_count": int(internal_components),
+            "largest_same_class_component_size": int(
+                internal_component_sizes.max() if internal_components else 0
+            ),
+            "largest_same_class_component_fraction": _safe_ratio(
+                int(internal_component_sizes.max()) if internal_components else 0,
+                member_count,
+            ),
+            "spans_full_graph_component_count": int(
+                len(np.unique(component_ids[members]))
+            ),
+            "unlabeled_nodes_touching_a_same_class_labeled_node": attached_unlabeled,
+            "unlabeled_nodes_touching_a_same_class_labeled_node_fraction": (
+                None
+                if attached_unlabeled is None
+                else _safe_ratio(attached_unlabeled, unlabeled_member_count)
+            ),
+            "distance_to_same_class_labeled_node": (
+                None
+                if anchor_distances is None
+                else numeric_diagnostic_summary(
+                    anchor_distances[np.isfinite(anchor_distances)]
+                )
+            ),
+            "unreachable_from_same_class_labeled_node_count": (
+                None
+                if anchor_distances is None
+                else int(np.isinf(anchor_distances).sum())
+            ),
+        }
+        class_rows.append(row)
+
+    # The between-class block of the same matrix, reported only where the two
+    # selected classes actually touch.
+    pair_rows = []
+    for left in range(focus_size):
+        for right in range(left + 1, focus_size):
+            edge_count = int(pair_counts[left, right])
+            if edge_count == 0:
+                continue
+            pair_rows.append(
+                {
+                    "class_a": int(focus[left]),
+                    "class_b": int(focus[right]),
+                    "edge_count": edge_count,
+                    "total_weight": float(pair_weights[left, right]),
+                    "share_of_class_a_incident_edges": _safe_ratio(
+                        edge_count,
+                        int(pair_counts[left].sum()),
+                    ),
+                }
+            )
+    pair_rows.sort(key=lambda row: (row["edge_count"], row["total_weight"]), reverse=True)
+
+    member_mask = np.isin(labels, focus)
+    focus_nodes = np.flatnonzero(member_mask)
+    summary = {
+        "status": "computed",
+        "uses_oracle_labels": True,
+        "scope": "full_graph",
+        "selection_mode": str(request.class_focus),
+        "requested_class_count": int(request.class_count),
+        "classes": [int(label) for label in focus],
+        "node_count": int(len(focus_nodes)),
+        "labeled_node_count": (
+            None if known_mask is None else int(known_mask[focus_nodes].sum())
+        ),
+        "unlabeled_node_count": (
+            None if known_mask is None else int((~known_mask[focus_nodes]).sum())
+        ),
+        "same_class_edge_count": int(
+            np.trace(pair_counts[:focus_size, :focus_size])
+        ),
+        "between_selected_classes_edge_count": int(
+            (
+                pair_counts[:focus_size, :focus_size].sum()
+                - np.trace(pair_counts[:focus_size, :focus_size])
+            )
+            // 2
+        ),
+        "edge_count_to_classes_outside_selection": int(
+            pair_counts[:focus_size, outside_code].sum()
+        ),
+        "edge_count_to_unlabeled_class_nodes": int(
+            pair_counts[:focus_size, unknown_code].sum()
+        ),
+        "per_class": class_rows,
+        "selected_class_pairs": pair_rows,
+    }
+    return summary, focus
+
+
+def _class_focus_edge_rows(adjacency, upper, labels, known_mask, positions, focus):
+    """Every edge incident to a selected class, labeled by what it connects."""
+
+    if len(focus) == 0:
+        return []
+    member_mask = np.isin(labels, focus)
+    incident = member_mask[upper.row] | member_mask[upper.col]
+    edge_indices = np.flatnonzero(incident)
+    truncated = len(edge_indices) > GRAPH_DIAGNOSTICS_MAX_CLASS_FOCUS_EDGE_ROWS
+    if truncated:
+        edge_indices = edge_indices[:GRAPH_DIAGNOSTICS_MAX_CLASS_FOCUS_EDGE_ROWS]
+    rows = []
+    for edge_index in edge_indices:
+        left = int(upper.row[edge_index])
+        right = int(upper.col[edge_index])
+        left_label = int(labels[left])
+        right_label = int(labels[right])
+        left_in = bool(member_mask[left])
+        right_in = bool(member_mask[right])
+        if left_label == right_label:
+            edge_kind = "same_class"
+        elif left_in and right_in:
+            edge_kind = "between_selected_classes"
+        else:
+            edge_kind = "to_class_outside_selection"
+        rows.append(
+            {
+                "edge_kind": edge_kind,
+                "source_position": int(positions[left]),
+                "target_position": int(positions[right]),
+                "source_label": left_label,
+                "target_label": right_label,
+                "source_in_selection": left_in,
+                "target_in_selection": right_in,
+                "source_kind": graph_node_kind(known_mask, left),
+                "target_kind": graph_node_kind(known_mask, right),
+                "weight": float(upper.data[edge_index]),
+                "source_graph_node": left,
+                "target_graph_node": right,
+            }
+        )
+    rows.sort(key=lambda row: (row["edge_kind"], row["source_label"], row["target_label"]))
+    return rows
+
+
+def _restrict_to_incident_edges(adjacency, keep_mask):
+    """Drop the edges joining two nodes that are both outside ``keep_mask``."""
+
+    coo = sparse.triu(adjacency, k=1).tocoo()
+    incident = keep_mask[coo.row] | keep_mask[coo.col]
+    rows = np.concatenate([coo.row[incident], coo.col[incident]])
+    cols = np.concatenate([coo.col[incident], coo.row[incident]])
+    data = np.concatenate([coo.data[incident], coo.data[incident]])
+    return sparse.csr_matrix(
+        (data, (rows, cols)),
+        shape=adjacency.shape,
+    )
+
+
+def _graph_edge_styles(edge_rows, edge_cols, labels, focus_mask):
+    """Style every drawn edge by what it connects.
+
+    Outside the class-scoped view every edge is drawn alike, because there is no
+    selection to be inside or outside of.
+    """
+
+    default = ("#8a8f98", 0.45, 0.12, 1)
+    if focus_mask is None or labels is None:
+        return [default] * len(edge_rows)
+
+    styles = []
+    for row, col in zip(edge_rows, edge_cols):
+        left = int(row)
+        right = int(col)
+        if focus_mask[left] and focus_mask[right]:
+            if labels[left] == labels[right]:
+                styles.append((GRAPH_EDGE_SAME_CLASS_COLOR, 0.9, 0.30, 2))
+            else:
+                styles.append((GRAPH_EDGE_BETWEEN_CLASSES_COLOR, 0.9, 0.35, 2))
+        else:
+            styles.append((GRAPH_EDGE_LEAVING_COLOR, 0.5, 0.10, 1))
+    return styles
+
+
+def choose_class_focus_nodes(adjacency, labels, focus, max_nodes, include_context, rng):
+    """Pick the nodes the class-scoped plot draws.
+
+    Labeled members come first because they are the anchors the class is
+    supposed to be organized around, then unlabeled members, then -- when
+    context is on -- the out-of-selection nodes those members attach to most,
+    since an induced subgraph would hide the leaked edges entirely.
+    """
+
+    member_mask = np.isin(labels, focus)
+    focus_nodes = np.flatnonzero(member_mask)
+    focus_budget = (
+        max_nodes
+        if not include_context
+        else max(1, int(round(GRAPH_DIAGNOSTICS_CLASS_FOCUS_NODE_SHARE * max_nodes)))
+    )
+    if len(focus_nodes) > focus_budget:
+        per_class = max(1, focus_budget // max(len(focus), 1))
+        kept = []
+        for label in focus:
+            members = np.flatnonzero(labels == int(label))
+            if len(members) <= per_class:
+                kept.append(members)
+                continue
+            kept.append(rng.choice(members, size=per_class, replace=False))
+        focus_nodes = np.unique(np.concatenate(kept)) if kept else focus_nodes
+        if len(focus_nodes) > focus_budget:
+            focus_nodes = np.sort(
+                rng.choice(focus_nodes, size=focus_budget, replace=False)
+            )
+
+    context_nodes = np.array([], dtype=np.int64)
+    remaining = int(max_nodes) - len(focus_nodes)
+    if include_context and remaining > 0 and len(focus_nodes):
+        neighbors = adjacency[focus_nodes].indices
+        if len(neighbors):
+            outside = neighbors[~member_mask[neighbors]]
+            if len(outside):
+                candidates, edge_counts = np.unique(outside, return_counts=True)
+                # The out-of-selection nodes with the most edges into the
+                # selection are the ones a fused class is fusing with.
+                order = np.argsort(-edge_counts, kind="stable")
+                context_nodes = np.sort(candidates[order[:remaining]])
+
+    node_indices = np.sort(
+        np.unique(np.concatenate([focus_nodes, context_nodes])).astype(np.int64)
+    )
+    focus_mask = member_mask[node_indices]
+    return node_indices, focus_mask
+
+
 def analyze_graph_diagnostics(
     request,
     adjacency,
@@ -1402,6 +1949,34 @@ def analyze_graph_diagnostics(
         },
     }
 
+    class_focus, focus_classes = _class_focus_diagnostics(
+        request=request,
+        adjacency=adjacency,
+        upper=upper,
+        labels=labels,
+        known_mask=known_mask,
+        component_ids=component_ids,
+        correct_anchor_distances=(
+            None
+            if correct_anchor_status.get("status") != "computed"
+            else correct_anchor_distances
+        ),
+        per_class_rows=label_quality.get("per_class_edge_quality", []),
+        rng=np.random.default_rng(request.seed),
+    )
+    class_focus_rows = (
+        []
+        if labels is None
+        else _class_focus_edge_rows(
+            adjacency=adjacency,
+            upper=upper,
+            labels=labels,
+            known_mask=known_mask,
+            positions=positions,
+            focus=focus_classes,
+        )
+    )
+
     spectral = _spectral_graph_summary(adjacency, component_count)
     temporal = _temporal_graph_diagnostics(
         request=request,
@@ -1572,6 +2147,7 @@ def analyze_graph_diagnostics(
         "weights": weight_summary,
         "connectivity": connectivity,
         "label_quality": label_quality,
+        "class_focus": class_focus,
         "numerical": {
             "adjacency_shape": list(adjacency.shape),
             "adjacency_nnz": int(adjacency.nnz),
@@ -1588,6 +2164,8 @@ def analyze_graph_diagnostics(
         "node_data": node_data,
         "rank_rows": rank_rows,
         "class_pair_rows": class_pair_rows,
+        "focus_classes": focus_classes,
+        "class_focus_rows": class_focus_rows,
         "plot_data": {
             "degree": degree,
             "weighted_degree": weighted_degree,
@@ -1728,8 +2306,13 @@ def maybe_update_graph_propagation_diagnostics(
     dissimilarity=None,
     solver_diagnostics=None,
     extra=None,
+    score_class_labels=None,
 ):
-    """Append propagation results to graph artifacts without affecting training."""
+    """Append propagation results to graph artifacts without affecting training.
+
+    ``score_class_labels`` maps compact score columns back to the dataset-wide
+    class IDs displayed in artifacts.
+    """
 
     if request is None:
         return None
@@ -1738,6 +2321,7 @@ def maybe_update_graph_propagation_diagnostics(
             request=request,
             scores=scores,
             confidences=confidences,
+            score_class_labels=score_class_labels,
             labels=labels,
             known_mask=known_mask,
             method=method,
@@ -1917,29 +2501,30 @@ def _per_class_prediction_rows(
     propagated,
     evaluation_mask,
     labels,
+    score_class_labels,
 ):
     class_count = probabilities.shape[1]
     probability_mass = probabilities.sum(axis=0)
-    predicted_counts = np.bincount(
-        predicted_labels[propagated],
-        minlength=class_count,
-    )
     if class_count > GRAPH_DIAGNOSTICS_MAX_CLASS_ROWS:
-        selected_labels = np.argsort(
+        selected_columns = np.argsort(
             -probability_mass,
             kind="stable",
         )[:GRAPH_DIAGNOSTICS_MAX_CLASS_ROWS]
-        selected_labels = np.sort(selected_labels)
+        selected_columns = np.sort(selected_columns)
     else:
-        selected_labels = np.arange(class_count)
+        selected_columns = np.arange(class_count)
     rows = []
-    for label in selected_labels:
+    for column, label in zip(
+        selected_columns,
+        score_class_labels[selected_columns],
+    ):
+        column = int(column)
         label = int(label)
         predicted = propagated & (predicted_labels == label)
         row = {
             "label": label,
-            "predicted_count": int(predicted_counts[label]),
-            "probability_mass": float(probability_mass[label]),
+            "predicted_count": int(predicted.sum()),
+            "probability_mass": float(probability_mass[column]),
             "mean_prediction_confidence": (
                 None if not np.any(predicted) else float(confidences[predicted].mean())
             ),
@@ -2232,6 +2817,7 @@ def update_graph_propagation_diagnostics(
     dissimilarity=None,
     solver_diagnostics=None,
     extra=None,
+    score_class_labels=None,
 ):
     paths = graph_diagnostic_artifact_paths(request)
     if not paths["summary_json"].exists() or not paths["nodes_csv"].exists():
@@ -2249,6 +2835,24 @@ def update_graph_propagation_diagnostics(
         raise ValueError(
             "propagation scores are not aligned with graph diagnostic nodes"
         )
+    if score_class_labels is None:
+        score_class_labels = np.arange(
+            probabilities.shape[1],
+            dtype=np.int64,
+        )
+    else:
+        score_class_labels = np.asarray(score_class_labels, dtype=np.int64)
+        if (
+            score_class_labels.ndim != 1
+            or len(score_class_labels) != probabilities.shape[1]
+        ):
+            raise ValueError(
+                "score_class_labels must identify every propagation score column"
+            )
+        if np.any(score_class_labels < 0) or len(np.unique(score_class_labels)) != len(
+            score_class_labels
+        ):
+            raise ValueError("score_class_labels must be unique non-negative labels")
 
     confidences = np.asarray(confidences, dtype=np.float64).reshape(-1)
     if len(confidences) != num_nodes:
@@ -2264,7 +2868,8 @@ def update_graph_propagation_diagnostics(
     if known_mask is not None and len(known_mask) != num_nodes:
         known_mask = None
 
-    predicted_labels = np.argmax(probabilities, axis=1).astype(np.int64)
+    predicted_columns = np.argmax(probabilities, axis=1).astype(np.int64)
+    predicted_labels = score_class_labels[predicted_columns]
     predicted_labels[~propagated] = -1
     entropies = _prediction_entropy(probabilities, propagated)
     if probabilities.shape[1] <= 1:
@@ -2299,11 +2904,17 @@ def update_graph_propagation_diagnostics(
         initial_probabilities, initial_propagated, _ = (
             _normalized_diagnostic_probabilities(initial_scores)
         )
-        if len(initial_probabilities) == num_nodes:
-            initial_predictions = np.argmax(
+        if (
+            len(initial_probabilities) == num_nodes
+            and initial_probabilities.shape[1] == len(score_class_labels)
+        ):
+            initial_prediction_columns = np.argmax(
                 initial_probabilities,
                 axis=1,
             ).astype(np.int64)
+            initial_predictions = score_class_labels[
+                initial_prediction_columns
+            ]
             initial_predictions[~initial_propagated] = -1
             comparable_initial = propagated & initial_propagated
             initial_changed = comparable_initial & (
@@ -2357,22 +2968,26 @@ def update_graph_propagation_diagnostics(
         propagated=propagated,
         evaluation_mask=evaluation_mask,
         labels=labels,
+        score_class_labels=score_class_labels,
     )
 
-    prediction_counts = np.bincount(
+    nonzero_prediction_labels, prediction_counts = np.unique(
         predicted_labels[propagated],
-        minlength=probabilities.shape[1],
+        return_counts=True,
     )
-    nonzero_prediction_labels = np.flatnonzero(prediction_counts)
     prediction_count_order = nonzero_prediction_labels[
         np.argsort(
-            -prediction_counts[nonzero_prediction_labels],
+            -prediction_counts,
             kind="stable",
         )
     ]
     reported_prediction_labels = prediction_count_order[
         :GRAPH_DIAGNOSTICS_MAX_CLASS_ROWS
     ]
+    prediction_count_by_label = {
+        int(label): int(count)
+        for label, count in zip(nonzero_prediction_labels, prediction_counts)
+    }
     accepted_at_threshold = (
         None
         if confidence_threshold is None
@@ -2391,6 +3006,7 @@ def update_graph_propagation_diagnostics(
         "status": "computed",
         "method": method,
         "class_count": int(probabilities.shape[1]),
+        "class_labels": score_class_labels.tolist(),
         "node_count": int(num_nodes),
         "propagated_node_count": int(propagated.sum()),
         "unpropagated_node_count": int((~propagated).sum()),
@@ -2455,13 +3071,10 @@ def update_graph_propagation_diagnostics(
             if labels is None or not np.any(evaluation_mask)
             else float(correct[evaluation_mask].mean())
         ),
-        "predicted_class_count": int(np.count_nonzero(prediction_counts)),
+        "predicted_class_count": int(len(nonzero_prediction_labels)),
         "predicted_class_counts": {
-            str(label): int(count)
-            for label, count in zip(
-                reported_prediction_labels,
-                prediction_counts[reported_prediction_labels],
-            )
+            str(label): prediction_count_by_label[int(label)]
+            for label in reported_prediction_labels
         },
         "predicted_class_counts_truncated": (
             len(nonzero_prediction_labels)
@@ -2644,7 +3257,62 @@ def project_graph_embeddings_2d(embeddings, layout="pacmap", seed=0):
     return coords, "PCA"
 
 
-def scatter_graph_nodes(ax, coords, labels, known_mask):
+def _scatter_class_focus_nodes(ax, coords, labels, known_mask, focus_mask):
+    """Draw the selected classes in their own colors over a muted context."""
+
+    import matplotlib.pyplot as plt
+
+    context = ~focus_mask
+    if np.any(context):
+        ax.scatter(
+            coords[context, 0],
+            coords[context, 1],
+            s=14,
+            color="#c2c7ce",
+            alpha=0.55,
+            linewidths=0,
+            label="other classes",
+            zorder=2,
+        )
+
+    focus_labels = np.unique(labels[focus_mask])
+    colormap = plt.get_cmap("tab10" if len(focus_labels) <= 10 else "tab20")
+    for index, label in enumerate(focus_labels):
+        color = colormap(index % colormap.N)
+        members = focus_mask & (labels == label)
+        unlabeled = members if known_mask is None else members & (~known_mask)
+        labeled = np.zeros_like(members) if known_mask is None else members & known_mask
+        if np.any(unlabeled):
+            ax.scatter(
+                coords[unlabeled, 0],
+                coords[unlabeled, 1],
+                color=[color],
+                marker="o",
+                s=20,
+                alpha=0.62,
+                linewidths=0,
+                label=f"class {int(label)} ({int(unlabeled.sum())} unlabeled)",
+                zorder=3,
+            )
+        if np.any(labeled):
+            ax.scatter(
+                coords[labeled, 0],
+                coords[labeled, 1],
+                color=[color],
+                marker="D",
+                s=34,
+                alpha=0.95,
+                edgecolors="#111111",
+                linewidths=0.35,
+                label=f"class {int(label)} ({int(labeled.sum())} labeled)",
+                zorder=4,
+            )
+
+
+def scatter_graph_nodes(ax, coords, labels, known_mask, focus_mask=None):
+    if focus_mask is not None and labels is not None:
+        _scatter_class_focus_nodes(ax, coords, labels, known_mask, focus_mask)
+        return
     if labels is None:
         if known_mask is None:
             ax.scatter(coords[:, 0], coords[:, 1], s=18, color="#4e79a7", alpha=0.78, label="samples", zorder=3)

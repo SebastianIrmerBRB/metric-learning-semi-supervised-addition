@@ -582,7 +582,7 @@ logs/<save_dir>/experiment_grid/grid_aggregate.csv
 logs/<save_dir>/experiment_grid/grid_summary.json
 ```
 
-Every training run also writes split artifacts:
+Standalone runs and the `final`/`train_val` runs also write split artifacts:
 
 ```text
 split/labeled_positions.npy
@@ -596,6 +596,11 @@ split/test_info.json
 ```
 
 `split/split_info.json` includes the resolved `dataset_split.validation_mode`, including the original validation size and the selected validation size when `--val_mode match_train` is used.
+
+HPO trial directories, and the cross-validation fold directories below them, skip
+these files by default: a study may not tune data/split parameters, so every trial
+repeats the same arrays. Add `--save_trial_split_data` (experiment-config field
+`"save_trial_split_data": true`) to write them per trial as well.
 
 ## Recommended Workflow
 

@@ -18,6 +18,7 @@ from loguru import logger
 from torch.utils.data import DataLoader, Dataset
 
 import utils
+from losses import metric_losses
 from .data import CombinedTrainingLoader
 from .interfaces import BaseTrainingRegularizer
 
@@ -213,40 +214,49 @@ class SimMatchV2State(nn.Module):
 
     @torch.no_grad()
     def propagate(self, graph_embeddings, initial_probabilities, top_n, temperature, alpha, eps=1e-7):
-        """Propagate one weak-view label through its top-n labeled anchors."""
+        """Propagate one weak-view label through its top-n labeled anchors.
 
-        graph_embeddings = graph_embeddings.float()
-        initial_probabilities = initial_probabilities.float()
+        The casts below only survive with autocast off: matmul is cast down to
+        bfloat16 even from float32 inputs, which would put the anchor retrieval,
+        the transition matrix and the linear solve that inverts it back in eight
+        mantissa bits. This runs under ``no_grad`` on the teacher, so there is
+        nothing to gain from the lower precision and a solve to lose by it.
+        """
+
         top_n = int(top_n)
         if top_n <= 0 or top_n > len(self.l_bank):
             raise ValueError(
                 f"simmatch_v2 top_n must be in [1, {len(self.l_bank)}], got {top_n}"
             )
 
-        neighbor_indices = torch.topk(
-            graph_embeddings @ self.l_bank.T,
-            k=top_n,
-            largest=True,
-            sorted=False,
-            dim=1,
-        ).indices
-        neighbor_features = self.l_bank[neighbor_indices]
-        neighbor_labels = self.l_labels[neighbor_indices]
-        features = torch.cat([graph_embeddings.unsqueeze(1), neighbor_features], dim=1)
-        labels = torch.cat([initial_probabilities.unsqueeze(1), neighbor_labels], dim=1)
+        with torch.autocast(device_type=graph_embeddings.device.type, enabled=False):
+            graph_embeddings = graph_embeddings.float()
+            initial_probabilities = initial_probabilities.float()
 
-        node_count = top_n + 1
-        identity = torch.eye(node_count, device=features.device, dtype=features.dtype)
-        transition_logits = features @ features.transpose(1, 2) / float(temperature)
-        transition_logits = transition_logits.masked_fill(
-            identity.bool().unsqueeze(0),
-            -torch.finfo(transition_logits.dtype).max,
-        )
-        transition = F.softmax(transition_logits, dim=-1)
-        system = identity.unsqueeze(0) - float(alpha) * transition
-        propagated = (1.0 - float(alpha)) * torch.linalg.solve(system, labels)
-        pseudo_labels = propagated[:, 0].clamp_min(0.0)
-        return pseudo_labels / pseudo_labels.sum(dim=1, keepdim=True).clamp_min(float(eps))
+            neighbor_indices = torch.topk(
+                graph_embeddings @ self.l_bank.T,
+                k=top_n,
+                largest=True,
+                sorted=False,
+                dim=1,
+            ).indices
+            neighbor_features = self.l_bank[neighbor_indices]
+            neighbor_labels = self.l_labels[neighbor_indices]
+            features = torch.cat([graph_embeddings.unsqueeze(1), neighbor_features], dim=1)
+            labels = torch.cat([initial_probabilities.unsqueeze(1), neighbor_labels], dim=1)
+
+            node_count = top_n + 1
+            identity = torch.eye(node_count, device=features.device, dtype=features.dtype)
+            transition_logits = features @ features.transpose(1, 2) / float(temperature)
+            transition_logits = transition_logits.masked_fill(
+                identity.bool().unsqueeze(0),
+                -torch.finfo(transition_logits.dtype).max,
+            )
+            transition = F.softmax(transition_logits, dim=-1)
+            system = identity.unsqueeze(0) - float(alpha) * transition
+            propagated = (1.0 - float(alpha)) * torch.linalg.solve(system, labels)
+            pseudo_labels = propagated[:, 0].clamp_min(0.0)
+            return pseudo_labels / pseudo_labels.sum(dim=1, keepdim=True).clamp_min(float(eps))
 
     @torch.no_grad()
     def update_labeled_bank(self, graph_embeddings, bank_indices):
@@ -400,6 +410,12 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
                 "simmatch_v2 requires stochastic weak/strong image views and cannot use backbone caching"
             )
 
+    def private_model_module_names(self):
+        # The projection and classifier heads are the regularizer's alone;
+        # the supervised loss never reaches them, so GradNorm must not weigh
+        # them as shared.
+        return ("simmatch_v2_heads",)
+
     def configure_model(self, student_model, train_dataset, split, train_labels_mapper, device):
         if self.regularizer_weight == 0:
             return
@@ -497,18 +513,17 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
         )
         if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
             utils.shutdown_dataloaders(self._regularizer_loader)
-            self._regularizer_loader = DataLoader(
+            self._regularizer_loader = utils.make_unlabeled_stream_loader(
                 self.dataset,
                 batch_size=regularizer_batch_size,
-                shuffle=True,
+                seed=seed,
+                num_workers=worker_count,
+                start_method=start_method,
+                supervised_loader=supervised_loader,
                 drop_last=False,
-                **utils.make_dataloader_kwargs(
-                    worker_count,
-                    seed,
-                    start_method,
-                    persistent_workers=True,
-                    pin_memory=True,
-                ),
+                persistent_workers=True,
+                pin_memory=True,
+                desc="simmatch unlabeled",
             )
             self._regularizer_loader_cache_key = cache_key
             logger.info(
@@ -546,15 +561,25 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
             return labeled_embeddings.sum() * 0.0
         embeddings = torch.cat([labeled_embeddings, unlabeled_embeddings[mask]], dim=0)
         labels = torch.cat([labeled_labels, pseudo_labels[mask]], dim=0)
-        if getattr(criterion, "supports_sample_weights", False):
+        supports_sample_weights = getattr(criterion, "supports_sample_weights", False)
+        sample_weights = None
+        if supports_sample_weights:
             sample_weights = torch.cat(
                 [
                     torch.ones(len(labeled_labels), device=embeddings.device, dtype=torch.float32),
                     confidence[mask].to(device=embeddings.device, dtype=torch.float32),
                 ]
             )
+        if is_classification:
+            return metric_losses.classification_loss_float32(
+                criterion,
+                embeddings,
+                labels,
+                sample_weights=sample_weights,
+            )
+        if supports_sample_weights:
             return criterion(embeddings, labels, sample_weights=sample_weights)
-        if not is_classification and miner is not None:
+        if miner is not None:
             return criterion(embeddings, labels, miner(embeddings, labels))
         return criterion(embeddings, labels)
 
@@ -622,10 +647,11 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
                     momentum=self.da_momentum,
                     eps=self.eps,
                 )
-            teacher_relations = F.softmax(
-                teacher_graph_u @ state.u_bank.T / self.temperature,
-                dim=1,
-            )
+            with torch.autocast(device_type=torch.device(device).type, enabled=False):
+                teacher_relations = F.softmax(
+                    teacher_graph_u @ state.u_bank.T / self.temperature,
+                    dim=1,
+                )
             propagated_probabilities = state.propagate(
                 teacher_graph_u,
                 teacher_probabilities,
@@ -638,10 +664,19 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
             hard_pseudo_labels = propagated_probabilities.argmax(dim=1)
             mask = confidence.ge(self.confidence_threshold)
 
-        student_relations = F.softmax(
-            student_graph_u.float() @ state.u_bank.detach().clone().T / self.temperature,
-            dim=1,
-        )
+        # The queue matmuls stay in float32. Autocast casts matmul down even
+        # from float32 operands, so the .float() on the graph head would
+        # otherwise be undone here: the relation logits are cosines divided by a
+        # small temperature, which multiplies bfloat16's rounding by 1/T before
+        # the softmax, and class_from_edges mixes queue labels into a
+        # distribution that is read through a log.
+        with torch.autocast(device_type=torch.device(device).type, enabled=False):
+            student_relations = F.softmax(
+                student_graph_u.float() @ state.u_bank.detach().clone().T / self.temperature,
+                dim=1,
+            )
+            class_from_edges = student_relations @ state.u_labels.detach().clone()
+
         loss_x = F.cross_entropy(student_logits_x.float(), supervised_labels)
         node_node_per_sample = -(
             propagated_probabilities * F.log_softmax(student_logits_u.float(), dim=1)
@@ -650,7 +685,6 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
         loss_ee = -(
             teacher_relations * student_relations.clamp_min(self.eps).log()
         ).sum(dim=1).mean()
-        class_from_edges = student_relations @ state.u_labels.detach().clone()
         loss_ne = -(
             teacher_probabilities * class_from_edges.clamp_min(self.eps).log()
         ).sum(dim=1).mean()
@@ -663,7 +697,13 @@ class SimMatchV2Regularizer(BaseTrainingRegularizer):
             [supervised_labels, hard_pseudo_labels[mask]],
             dim=0,
         )
-        if supervised_is_classification or supervised_miner is None:
+        if supervised_is_classification:
+            loss_dml = metric_losses.classification_loss_float32(
+                supervised_criterion,
+                dml_embeddings,
+                dml_labels,
+            )
+        elif supervised_miner is None:
             loss_dml = supervised_criterion(dml_embeddings, dml_labels)
         else:
             miner_outputs = supervised_miner(dml_embeddings, dml_labels)

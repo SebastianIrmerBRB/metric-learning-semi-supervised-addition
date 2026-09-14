@@ -75,6 +75,8 @@ def filter_pseudo_labels(
     valid_mapped_labels,
     *,
     required_classes=None,
+    required_union_classes=None,
+    union_classes=(),
     rescue_confidence_floor=0.0,
     rescue_top_k=None,
 ):
@@ -82,6 +84,7 @@ def filter_pseudo_labels(
 
     The configured confidence threshold remains the normal acceptance rule. If
     it leaves fewer distinct predicted classes than an M-per-class stream needs,
+    or their union with ``union_classes`` cannot fill a global M-per-class batch,
     add the strongest rejected predictions from missing classes. Rescue uses a
     lower absolute confidence floor and takes at most ``rescue_top_k`` examples
     from each newly admitted class. This changes nothing when the global filter
@@ -109,6 +112,9 @@ def filter_pseudo_labels(
 
     global_keep = keep.copy()
     global_class_count = _count_selected_classes(mapped_labels, global_keep)
+    union_classes = set(int(label) for label in union_classes)
+    globally_kept_classes = set(int(label) for label in mapped_labels[global_keep])
+    global_union_class_count = len(union_classes | globally_kept_classes)
     rescue_applied = False
     rescued_count = 0
     rescued_class_count = 0
@@ -117,13 +123,25 @@ def filter_pseudo_labels(
         required_classes = int(required_classes)
         if required_classes <= 0:
             raise ValueError("required_classes must be positive when set")
+    if required_union_classes is not None:
+        required_union_classes = int(required_union_classes)
+        if required_union_classes <= 0:
+            raise ValueError("required_union_classes must be positive when set")
+
+    needs_class_rescue = (
+        required_classes is not None and global_class_count < required_classes
+    ) or (
+        required_union_classes is not None
+        and global_union_class_count < required_union_classes
+    )
+    if required_classes is not None or required_union_classes is not None:
         if rescue_top_k is None:
             rescue_top_k = 1
         rescue_top_k = int(rescue_top_k)
         if rescue_top_k <= 0:
             raise ValueError("rescue_top_k must be positive when class rescue is requested")
 
-        if global_class_count < required_classes:
+        if needs_class_rescue:
             rescue_applied = True
             if confidences is not None:
                 rescue_keep = _select_class_capacity_rescue(
@@ -132,6 +150,8 @@ def filter_pseudo_labels(
                     known_class=known_class,
                     globally_kept=global_keep,
                     required_classes=required_classes,
+                    required_union_classes=required_union_classes,
+                    union_classes=union_classes,
                     confidence_floor=float(rescue_confidence_floor),
                     top_k=rescue_top_k,
                 )
@@ -140,19 +160,46 @@ def filter_pseudo_labels(
                 rescued_class_count = _count_selected_classes(mapped_labels, rescue_keep)
 
             final_class_count = _count_selected_classes(mapped_labels, keep)
+            final_classes = set(int(label) for label in mapped_labels[keep])
+            final_union_class_count = len(union_classes | final_classes)
+            pseudo_requirement = (
+                "n/a" if required_classes is None else f"{global_class_count}/{required_classes}"
+            )
+            union_requirement = (
+                "n/a"
+                if required_union_classes is None
+                else f"{global_union_class_count}/{required_union_classes}"
+            )
+            final_pseudo_requirement = (
+                "n/a" if required_classes is None else f"{final_class_count}/{required_classes}"
+            )
+            final_union_requirement = (
+                "n/a"
+                if required_union_classes is None
+                else f"{final_union_class_count}/{required_union_classes}"
+            )
             logger.warning(
                 "Global pseudo-label filter retained "
-                f"{int(global_keep.sum())} samples across {global_class_count}/{required_classes} "
-                "required classes. "
+                f"{int(global_keep.sum())} samples; pseudo-class coverage is "
+                f"{pseudo_requirement} and combined true/pseudo coverage is "
+                f"{union_requirement}. "
                 f"Per-class top-{rescue_top_k} rescue added {rescued_count} samples across "
                 f"{rescued_class_count} classes at confidence floor {float(rescue_confidence_floor):.6g}; "
-                f"final coverage is {final_class_count}/{required_classes} classes."
+                f"final coverage is {final_pseudo_requirement} pseudo and "
+                f"{final_union_requirement} combined classes."
             )
-            if final_class_count < required_classes:
+            pseudo_unsatisfied = (
+                required_classes is not None and final_class_count < required_classes
+            )
+            union_unsatisfied = (
+                required_union_classes is not None
+                and final_union_class_count < required_union_classes
+            )
+            if pseudo_unsatisfied or union_unsatisfied:
                 logger.warning(
                     "Pseudo-label class rescue could not satisfy the sampler: "
-                    f"only {final_class_count} eligible predicted classes are available, "
-                    f"but {required_classes} are required."
+                    f"final pseudo coverage is {final_pseudo_requirement} and final "
+                    f"combined coverage is {final_union_requirement}."
                 )
 
     dropped = int(len(keep) - keep.sum())
@@ -189,6 +236,8 @@ def _select_class_capacity_rescue(
     known_class,
     globally_kept,
     required_classes,
+    required_union_classes,
+    union_classes,
     confidence_floor,
     top_k,
 ):
@@ -198,7 +247,16 @@ def _select_class_capacity_rescue(
         raise ValueError("rescue_confidence_floor must be in [0, 1]")
 
     accepted_classes = set(int(label) for label in mapped_labels[globally_kept])
-    classes_needed = max(0, int(required_classes) - len(accepted_classes))
+    required_classes = len(accepted_classes) if required_classes is None else int(required_classes)
+    covered_classes = accepted_classes | set(int(label) for label in union_classes)
+    required_union_classes = (
+        len(covered_classes)
+        if required_union_classes is None
+        else int(required_union_classes)
+    )
+    pseudo_classes_needed = max(0, required_classes - len(accepted_classes))
+    union_classes_needed = max(0, required_union_classes - len(covered_classes))
+    classes_needed = max(pseudo_classes_needed, union_classes_needed)
     rescue_keep = np.zeros(len(mapped_labels), dtype=bool)
     if classes_needed == 0:
         return rescue_keep
@@ -222,7 +280,16 @@ def _select_class_capacity_rescue(
     # Prefer missing classes whose best available prediction is most credible.
     # Label ID is a deterministic tie-breaker when class maxima are equal.
     candidate_groups.sort(key=lambda item: (-item[0], item[1]))
-    for _, _, selected in candidate_groups[:classes_needed]:
+    novel_groups = [group for group in candidate_groups if group[1] not in covered_classes]
+    selected_groups = novel_groups[:union_classes_needed]
+    selected_labels = {group[1] for group in selected_groups}
+    for group in candidate_groups:
+        if len(selected_groups) >= classes_needed:
+            break
+        if group[1] not in selected_labels:
+            selected_groups.append(group)
+            selected_labels.add(group[1])
+    for _, _, selected in selected_groups:
         rescue_keep[selected] = True
     return rescue_keep
 

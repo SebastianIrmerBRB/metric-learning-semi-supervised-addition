@@ -1,4 +1,4 @@
-"""Executable wrapper for the independent-run GPU scheduler."""
+"""Executable wrapper for the independent-run CPU/GPU scheduler."""
 
 from training.run_scheduler import main
 

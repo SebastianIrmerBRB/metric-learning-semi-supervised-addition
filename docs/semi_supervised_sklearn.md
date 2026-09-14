@@ -35,6 +35,12 @@ FAISS CPU k-nearest-neighbor pseudo-labeling:
 python main.py --seed 0 --ssl_config configs/ssl_faiss_knn.json
 ```
 
+Algorithm 1 cumulative squared-Euclidean 1-NN self-training:
+
+```powershell
+python main.py --seed 0 --ssl_config configs/ssl_self_training_knn.json
+```
+
 Omitting `--ssl_config` disables SSL and keeps the supervised baseline.
 
 ## Seed Behavior
@@ -146,9 +152,32 @@ Label sampling modes:
 
 Available methods:
 
-- `faiss_knn`
+- `faiss_majority_vote_knn`
+- `self_training_knn`
 - `sklearn_label_spreading`
 - `sklearn_label_propagation`
+
+`self_training_knn` maps each pseudo-label refresh to one meta-iteration
+of Algorithm 1 in [Sahito et al.](https://arxiv.org/abs/2109.00794). It uses
+exact FAISS squared-Euclidean 1-NN, permanently promotes the selected examples,
+uses them as labeled references on later refreshes, and removes them from the
+remaining candidate pool. `warmup_epochs` controls the labeled-only training
+before the first promotion, while `update_interval_epochs` controls how many
+training epochs occur between promotions.
+
+Its method parameters are:
+
+- `selection_fraction`: fraction of the current remaining pool used to form the
+  integer selection budget;
+- `selection_strategy`: `per_predicted_class` follows the authors' stratified
+  [reference implementation](https://github.com/attaullah/Self-training/blob/master/train_utils.py),
+  while `global` follows the literal global distance sort in the paper's
+  pseudocode;
+- `max_meta_iterations`: maximum number of promotion rounds.
+
+The method ranks candidates by raw squared Euclidean distance. It exposes
+`1 / (1 + distance)` as the common `[0, 1]` confidence, so an optional
+`confidence_threshold` is applied before a candidate becomes persistent state.
 
 ## Data Flow
 

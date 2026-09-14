@@ -1,13 +1,16 @@
-"""GPU-aware scheduling for independent experiment/HPO processes.
+"""Device-aware scheduling for independent experiment/HPO processes.
 
 This module deliberately sits above :mod:`main`.  Every scheduled item is a
 complete experiment run (and therefore at most one Optuna study), while trials
 inside that process keep their normal sequential ``n_jobs=1`` execution.
 
-The scheduler has no PyTorch import.  It discovers physical GPUs with
-``nvidia-smi`` and starts each child with exactly one GPU UUID in
-``CUDA_VISIBLE_DEVICES``.  Inside the child that physical GPU is consequently
-available as logical ``cuda:0``.
+The scheduler has no PyTorch import. In CUDA-training mode, when CPU runs
+request a dedicated ``ssl_gpus`` pool, or when CPU runs configure ``gpus`` for
+continuous SSL acceleration plus large-batch training, it discovers physical
+GPUs with ``nvidia-smi`` and starts each child with exactly one GPU UUID in
+``CUDA_VISIBLE_DEVICES``. Inside the child that physical GPU is consequently
+available as logical ``cuda:0``. Pure CPU mode skips NVIDIA discovery and uses
+the host-wide run limit for admission.
 """
 
 from __future__ import annotations
@@ -22,17 +25,60 @@ import signal
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence, TextIO
+
+from . import ablation, cpu_threads, device_thresholds
+# Importable here because the SSL config module itself stays free of PyTorch.
+from .ssl.config import LABEL_SAMPLING_MODES
 
 
 MANIFEST_VERSION = 1
 DEFAULT_GPU_MEMORY_MIB = 2048
 DEFAULT_RESERVE_GPU_MEMORY_MIB = 1024
 DEFAULT_POLL_INTERVAL_SECONDS = 2.0
+GPU_BATCH_SIZE_THRESHOLD = device_thresholds.DEFAULT_GPU_BATCH_SIZE_THRESHOLD
 _RUN_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+# Mirrored from training.cli, which cannot be imported here because it reaches
+# PyTorch. tests/test_run_scheduler.py asserts the two copies stay in sync.
+STUDY_DIR_MODE_FINAL_TRAIN = "final_train"
+STUDY_DIR_MODE_TRAIN_VAL = "train_val"
+STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL = "cross_seed_train_val"
+STUDY_DIR_MODES = (
+    STUDY_DIR_MODE_FINAL_TRAIN,
+    STUDY_DIR_MODE_TRAIN_VAL,
+    STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
+)
+DEFAULT_STUDY_DIR_MODE = STUDY_DIR_MODE_TRAIN_VAL
+COMPARISON_SEED_TARGETS = (
+    "seed",
+    "data_split_seed",
+    "support_seed",
+    "hparam_seed",
+)
+# hparam_seed alone leaves a fixed-parameter validation replay unchanged.
+CROSS_SEED_VALIDATION_TARGETS = ("seed", "data_split_seed", "support_seed")
+# The one sampling mode whose label budget has a per-class k in addition to the
+# fraction of classes, so only it can vary over a k-shot grid.
+LABEL_SAMPLING_MODE_CLASS_SUBSET_K_SHOT = "class_subset_k_shot"
+FINAL_TEST_VISUALIZATION_NONE = "none"
+FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, "pacmap", "tsne")
+# Mirrors training.cli: keep the file, delete it once the concatenated fold
+# evaluation has read it, or never write one.
+FOLD_TEST_EMBEDDING_STORAGES = ("file", "temporary", "memory")
+# Mirrors utils.AVAILABLE_MEASUREMENTS, in CLI spelling.
+MEASUREMENTS = (
+    "precision_at_1",
+    "mean_average_precision_at_r",
+    "NMI",
+    "r_precision",
+    "AMI",
+    "mean_reciprocal_rank",
+    "mean_average_precision",
+)
 
 
 class RunSchedulerError(RuntimeError):
@@ -73,12 +119,107 @@ class GpuSnapshot:
 
 
 @dataclass(frozen=True)
+class StudyReplaySpec:
+    """Trial selection, seeds, and final-fit mode for a study-directory replay.
+
+    ``None`` means "not configured here", so a run-level block overrides the
+    manifest-wide block field by field and everything left unset keeps the
+    ``main.py`` default.
+    """
+
+    study_dir_mode: str | None = None
+    final_test_top_n: int | None = None
+    final_test_trial_numbers: tuple[int, ...] | None = None
+    comparison_seeds: tuple[int, ...] | None = None
+    comparison_seed_targets: tuple[str, ...] | None = None
+    final_test_visualization: tuple[str, ...] | None = None
+    # Where the replayed folds keep the test embeddings the concatenated fold
+    # evaluation needs: on disk, on disk until it has read them, or in memory.
+    fold_test_embedding_storage: str | None = None
+    # The reported D_test table. Both the per-fold and the concatenated
+    # evaluation happen while the final run still holds the embeddings, so this
+    # is the only place the full table can be asked for.
+    report_test_metrics: bool | None = None
+    test_recall_at_k: tuple[int, ...] | None = None
+    test_measurements: tuple[str, ...] | None = None
+    # Label-budget dimensions replay the same trials under other data
+    # conditions. Each combination becomes its own selection group with its own
+    # winner and final fit, exactly as in an experiment-config grid.
+    ssl_label_sampling_modes: tuple[str, ...] | None = None
+    label_budget_grid: tuple[float, ...] | None = None
+    k_shot_grid: tuple[int, ...] | None = None
+
+    @property
+    def is_configured(self) -> bool:
+        return any(getattr(self, item.name) is not None for item in fields(self))
+
+    @property
+    def resolved_study_dir_mode(self) -> str:
+        return self.study_dir_mode or DEFAULT_STUDY_DIR_MODE
+
+    def to_arguments(self) -> list[str]:
+        """Return the ``main.py`` options for these replay settings."""
+
+        arguments: list[str] = []
+        if self.study_dir_mode is not None:
+            arguments.extend(["--study_dir_mode", self.study_dir_mode])
+        if self.final_test_top_n is not None:
+            arguments.extend(["--final_test_top_n", str(self.final_test_top_n)])
+        if self.final_test_trial_numbers is not None:
+            arguments.append("--final_test_trial_numbers")
+            arguments.extend(str(number) for number in self.final_test_trial_numbers)
+        if self.comparison_seeds is not None:
+            arguments.append("--comparison_seeds")
+            arguments.extend(str(seed) for seed in self.comparison_seeds)
+        if self.comparison_seed_targets is not None:
+            arguments.append("--comparison_seed_targets")
+            arguments.extend(self.comparison_seed_targets)
+        if self.final_test_visualization is not None:
+            arguments.append("--final_test_visualization")
+            arguments.extend(self.final_test_visualization)
+        if self.fold_test_embedding_storage is not None:
+            arguments.extend(
+                ["--fold_test_embedding_storage", self.fold_test_embedding_storage]
+            )
+        if self.report_test_metrics is not None:
+            arguments.append(
+                "--report_test_metrics"
+                if self.report_test_metrics
+                else "--no-report_test_metrics"
+            )
+        if self.test_recall_at_k is not None:
+            # An empty ladder is a deliberate "no Recall@K on test", so the
+            # option is still passed with no values.
+            arguments.append("--test_recall_at_k")
+            arguments.extend(str(k) for k in self.test_recall_at_k)
+        if self.test_measurements is not None:
+            arguments.append("--test_measurements")
+            arguments.extend(self.test_measurements)
+        if self.ssl_label_sampling_modes is not None:
+            arguments.append("--ssl_label_sampling_modes")
+            arguments.extend(self.ssl_label_sampling_modes)
+        if self.label_budget_grid is not None:
+            arguments.append("--label_budget_grid")
+            arguments.extend(str(budget) for budget in self.label_budget_grid)
+        if self.k_shot_grid is not None:
+            arguments.append("--k_shot_grid")
+            arguments.extend(str(k_shot) for k_shot in self.k_shot_grid)
+        return arguments
+
+
+@dataclass(frozen=True)
 class RunSpec:
     """One complete child process to schedule."""
 
     name: str
     experiment_config: str | None = None
     hparam_config: str | None = None
+    study_dir: str | None = None
+    study_replay: StudyReplaySpec = StudyReplaySpec()
+    # Set on the manifest's run; every child expanded from it also names the
+    # one variant it executes.
+    ablation_config: str | None = None
+    ablation_variant: str | None = None
     save_dir: str | None = None
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
@@ -109,6 +250,12 @@ class SchedulerConfig:
     scheduler_log_dir: Path
     save_dir_root: str | None
     runs: tuple[RunSpec, ...]
+    device: str = "cuda"
+    ssl_gpu_selectors: tuple[str, ...] | None = None
+    gpu_batch_size_thresholds: tuple[
+        device_thresholds.GpuBatchSizeThresholdRule, ...
+    ] = ()
+    study_replay: StudyReplaySpec = StudyReplaySpec()
 
 
 @dataclass
@@ -117,7 +264,7 @@ class ActiveRun:
 
     spec: RunSpec
     process: subprocess.Popen
-    gpu: GpuSnapshot
+    gpu: GpuSnapshot | None
     command: list[str]
     log_path: Path
     log_file: TextIO
@@ -151,7 +298,10 @@ _TOP_LEVEL_KEYS = {
     "working_dir",
     "python",
     "entrypoint",
+    "device",
     "gpus",
+    "ssl_gpus",
+    "gpu_batch_size_thresholds",
     "max_concurrent_per_gpu",
     "max_total_runs",
     "default_gpu_memory_mib",
@@ -162,12 +312,16 @@ _TOP_LEVEL_KEYS = {
     "allow_parallel_trials",
     "scheduler_log_dir",
     "save_dir_root",
+    "study_replay",
     "runs",
 }
 _RUN_KEYS = {
     "name",
     "experiment_config",
     "hparam_config",
+    "study_dir",
+    "study_replay",
+    "ablation_config",
     "save_dir",
     "args",
     "env",
@@ -177,10 +331,48 @@ _RUN_KEYS = {
     "priority",
     "enabled",
 }
+_STUDY_REPLAY_KEYS = {item.name for item in fields(StudyReplaySpec)}
+# A run that sets ablation_config gets these from the launcher, one variant per child.
+_ABLATION_OWNED_OPTIONS = {
+    "--ablation_config",
+    "--ablation-config",
+    "--ablation_variant",
+    "--ablation-variant",
+}
 _SCHEDULER_OWNED_OPTIONS = {
     "--device",
+    "--ssl-device",
+    "--ssl_device",
     "--experiment-config",
     "--experiment_config",
+}
+# Only study-replay runs reserve these; ordinary HPO runs may still pass them.
+_STUDY_REPLAY_OWNED_OPTIONS = {
+    "--final_test_study_dir",
+    "--final-test-study-dir",
+    "--study_dir_mode",
+    "--study-dir-mode",
+    "--final_test_study_dir_mode",
+    "--final-test-study-dir-mode",
+    "--final_test_top_n",
+    "--final_test_trial_numbers",
+    "--comparison_seeds",
+    "--comparison_seed_targets",
+    "--comparison-seed-targets",
+    "--final_test_visualization",
+    "--final-test-visualization",
+    "--fold_test_embedding_storage",
+    "--fold-test-embedding-storage",
+    "--report_test_metrics",
+    "--no-report_test_metrics",
+    "--report-test-metrics",
+    "--test_recall_at_k",
+    "--test-recall-at-k",
+    "--test_measurements",
+    "--test-measurements",
+    "--ssl_label_sampling_modes",
+    "--label_budget_grid",
+    "--k_shot_grid",
 }
 
 
@@ -194,6 +386,12 @@ def _require_bool(value: Any, source: str) -> bool:
     if not isinstance(value, bool):
         raise ManifestError(f"{source} must be true or false")
     return value
+
+
+def _device(value: Any, source: str) -> str:
+    if not isinstance(value, str) or value.lower() not in {"cpu", "cuda"}:
+        raise ManifestError(f"{source} must be 'cpu' or 'cuda'")
+    return value.lower()
 
 
 def _positive_int(value: Any, source: str) -> int:
@@ -239,6 +437,195 @@ def _string_list(value: Any, source: str) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _unique_int_list(value: Any, source: str, *, allow_negative: bool = True) -> tuple[int, ...]:
+    if not isinstance(value, list):
+        raise ManifestError(f"{source} must be a JSON array")
+    if not value:
+        raise ManifestError(f"{source} must contain at least one integer")
+    result = []
+    for index, item in enumerate(value):
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise ManifestError(f"{source}[{index}] must be an integer")
+        if not allow_negative and item < 0:
+            raise ManifestError(f"{source}[{index}] must be a non-negative integer")
+        result.append(item)
+    duplicates = sorted({item for item in result if result.count(item) > 1})
+    if duplicates:
+        raise ManifestError(f"{source} must not repeat values; duplicates: {duplicates}")
+    return tuple(result)
+
+
+def _label_budget_list(value: Any, source: str) -> tuple[float, ...]:
+    """Load labeled-fraction grid values, which are always in (0, 1]."""
+
+    if not isinstance(value, list):
+        raise ManifestError(f"{source} must be a JSON array")
+    if not value:
+        raise ManifestError(f"{source} must contain at least one label budget")
+    result = []
+    for index, item in enumerate(value):
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or not 0 < item <= 1:
+            raise ManifestError(f"{source}[{index}] must be a number in (0, 1]")
+        result.append(float(item))
+    duplicates = sorted({item for item in result if result.count(item) > 1})
+    if duplicates:
+        raise ManifestError(f"{source} must not repeat values; duplicates: {duplicates}")
+    return tuple(result)
+
+
+def _k_shot_list(value: Any, source: str) -> tuple[int, ...]:
+    """Load k-shot grid values, which count labeled examples per class."""
+
+    k_shots = _unique_int_list(value, source, allow_negative=False)
+    non_positive = [k_shot for k_shot in k_shots if k_shot <= 0]
+    if non_positive:
+        raise ManifestError(f"{source} must contain positive integers; got {non_positive}")
+    return k_shots
+
+
+def _recall_at_k_list(value: Any, source: str) -> tuple[int, ...]:
+    """Load a Recall@K ladder, which may be empty to report no ladder at all."""
+
+    if value == []:
+        return ()
+    ladder = _unique_int_list(value, source, allow_negative=False)
+    non_positive = [k for k in ladder if k <= 0]
+    if non_positive:
+        raise ManifestError(f"{source} must contain positive integers; got {non_positive}")
+    return ladder
+
+
+def _choice(value: Any, source: str, choices: Sequence[str]) -> str:
+    if not isinstance(value, str) or value not in choices:
+        raise ManifestError(f"{source} must be one of {list(choices)}")
+    return value
+
+
+def _choice_list(value: Any, source: str, choices: Sequence[str]) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ManifestError(f"{source} must be a JSON array")
+    if not value:
+        raise ManifestError(f"{source} must contain at least one of {list(choices)}")
+    result = [
+        _choice(item, f"{source}[{index}]", choices) for index, item in enumerate(value)
+    ]
+    duplicates = sorted({item for item in result if result.count(item) > 1})
+    if duplicates:
+        raise ManifestError(f"{source} must not repeat values; duplicates: {duplicates}")
+    return tuple(result)
+
+
+def _final_test_visualization_list(value: Any, source: str) -> tuple[str, ...]:
+    """Load one or more final-test visualizations, one mode still being a bare string."""
+
+    if isinstance(value, str):
+        return (_choice(value, source, FINAL_TEST_VISUALIZATION_MODES),)
+    modes = _choice_list(value, source, FINAL_TEST_VISUALIZATION_MODES)
+    if FINAL_TEST_VISUALIZATION_NONE in modes and len(modes) > 1:
+        raise ManifestError(
+            f"{source} combines {FINAL_TEST_VISUALIZATION_NONE!r} with a visualization; "
+            "request one or the other"
+        )
+    return modes
+
+
+def _load_study_replay(raw: Any, source: str) -> StudyReplaySpec:
+    """Load one ``study_replay`` block; unset fields stay ``None`` for merging."""
+
+    values = _require_mapping(raw, source)
+    unknown = sorted(set(values) - _STUDY_REPLAY_KEYS)
+    if unknown:
+        raise ManifestError(
+            f"Unknown keys in {source}: {unknown}; known keys: {sorted(_STUDY_REPLAY_KEYS)}"
+        )
+
+    def parse(name: str, loader) -> Any:
+        value = values.get(name)
+        return None if value is None else loader(value, f"{source}.{name}")
+
+    spec = StudyReplaySpec(
+        study_dir_mode=parse(
+            "study_dir_mode",
+            lambda value, item: _choice(value, item, STUDY_DIR_MODES),
+        ),
+        final_test_top_n=parse("final_test_top_n", _positive_int),
+        final_test_trial_numbers=parse(
+            "final_test_trial_numbers",
+            lambda value, item: _unique_int_list(value, item, allow_negative=False),
+        ),
+        comparison_seeds=parse("comparison_seeds", _unique_int_list),
+        comparison_seed_targets=parse(
+            "comparison_seed_targets",
+            lambda value, item: _choice_list(value, item, COMPARISON_SEED_TARGETS),
+        ),
+        final_test_visualization=parse(
+            "final_test_visualization",
+            _final_test_visualization_list,
+        ),
+        fold_test_embedding_storage=parse(
+            "fold_test_embedding_storage",
+            lambda value, item: _choice(value, item, FOLD_TEST_EMBEDDING_STORAGES),
+        ),
+        report_test_metrics=parse("report_test_metrics", _require_bool),
+        test_recall_at_k=parse("test_recall_at_k", _recall_at_k_list),
+        test_measurements=parse(
+            "test_measurements",
+            lambda value, item: _choice_list(value, item, MEASUREMENTS),
+        ),
+        ssl_label_sampling_modes=parse(
+            "ssl_label_sampling_modes",
+            lambda value, item: _choice_list(value, item, sorted(LABEL_SAMPLING_MODES)),
+        ),
+        label_budget_grid=parse("label_budget_grid", _label_budget_list),
+        k_shot_grid=parse("k_shot_grid", _k_shot_list),
+    )
+    if spec.final_test_top_n is not None and spec.final_test_trial_numbers is not None:
+        raise ManifestError(
+            f"{source} sets both final_test_top_n and final_test_trial_numbers; "
+            "choose the best N trials or explicit trial numbers"
+        )
+    return spec
+
+
+def merge_study_replay(
+    defaults: StudyReplaySpec,
+    overrides: StudyReplaySpec,
+) -> StudyReplaySpec:
+    """Overlay a run's replay block on the manifest-wide block."""
+
+    selection_names = ("final_test_top_n", "final_test_trial_numbers")
+    # Trial selection is one decision: an explicit run-level choice replaces the
+    # manifest-wide one instead of colliding with it.
+    overrides_selection = any(
+        getattr(overrides, name) is not None for name in selection_names
+    )
+    merged = {}
+    for item in fields(StudyReplaySpec):
+        override_value = getattr(overrides, item.name)
+        if item.name in selection_names and overrides_selection:
+            merged[item.name] = override_value
+            continue
+        merged[item.name] = (
+            override_value if override_value is not None else getattr(defaults, item.name)
+        )
+    return StudyReplaySpec(**merged)
+
+
+def _gpu_batch_size_threshold_rules(
+    value: Any,
+    source: str,
+) -> tuple[device_thresholds.GpuBatchSizeThresholdRule, ...]:
+    values = _string_list(value, source)
+    rules = []
+    for index, item in enumerate(values):
+        try:
+            rule = device_thresholds.parse_gpu_batch_size_threshold_rule(item)
+        except ValueError as exc:
+            raise ManifestError(f"Invalid {source}[{index}]: {exc}") from exc
+        rules.append(rule)
+    return tuple(rules)
+
+
 def _environment(value: Any, source: str) -> dict[str, str]:
     mapping = _require_mapping(value, source)
     result = {}
@@ -249,20 +636,69 @@ def _environment(value: Any, source: str) -> dict[str, str]:
             raise ManifestError(f"{source}.{name} must be a scalar value")
         if name in {"CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER"}:
             raise ManifestError(
-                f"{source}.{name} is owned by the GPU scheduler and cannot be overridden"
+                f"{source}.{name} is owned by the run scheduler and cannot be overridden"
             )
         result[name] = str(item)
     return result
 
 
-def _validate_extra_args(args: tuple[str, ...], run_name: str) -> None:
+def _validate_extra_args(
+    args: tuple[str, ...],
+    run_name: str,
+    *,
+    replays_study: bool,
+    ablates: bool = False,
+) -> None:
     for token in args:
         option = token.split("=", 1)[0]
+        if ablates and option in _ABLATION_OWNED_OPTIONS:
+            raise ManifestError(
+                f"run {run_name!r} cannot set {option} in args; its ablation_config field "
+                "already names the config, and the launcher selects one variant per child"
+            )
         if option in _SCHEDULER_OWNED_OPTIONS:
             raise ManifestError(
                 f"run {run_name!r} cannot set {option} in args; use the manifest's "
-                "experiment_config field and let the scheduler assign --device"
+                "experiment_config field and let the scheduler assign training/SSL devices"
             )
+        if replays_study and option in _STUDY_REPLAY_OWNED_OPTIONS:
+            raise ManifestError(
+                f"run {run_name!r} cannot set {option} in args; configure it in the "
+                "manifest's study_dir/study_replay fields"
+            )
+
+
+def expand_ablation_runs(runs: Sequence[RunSpec], working_dir: Path) -> tuple[RunSpec, ...]:
+    """Replace every run that names an ablation config with one run per variant.
+
+    Children are named ``<run>_<variant>`` and, when the run pins its own
+    ``save_dir``, write to ``<save_dir>/<variant>``, so variants never share
+    outputs. The config is parsed here as well as in the child so a malformed
+    ablation fails the manifest before anything launches. Disabled runs are
+    never launched and are left unexpanded.
+    """
+
+    expanded: list[RunSpec] = []
+    for run in runs:
+        if run.ablation_config is None or not run.enabled:
+            expanded.append(run)
+            continue
+        path = _workspace_path(run.ablation_config, working_dir).resolve()
+        try:
+            config = ablation.load_ablation_config(path)
+        except (OSError, ValueError) as exc:
+            raise ManifestError(f"Invalid ablation_config for run {run.name!r}: {exc}") from exc
+        for variant in config["variants"]:
+            expanded.append(
+                replace(
+                    run,
+                    name=f"{run.name}_{variant}",
+                    ablation_config=str(path),
+                    ablation_variant=variant,
+                    save_dir=None if run.save_dir is None else str(Path(run.save_dir) / variant),
+                )
+            )
+    return tuple(expanded)
 
 
 def _load_run_spec(
@@ -285,8 +721,33 @@ def _load_run_spec(
             f"{source}.name must match {_RUN_NAME_PATTERN.pattern!r}; got {name!r}"
         )
 
+    study_dir = _optional_string(values.get("study_dir"), f"{source}.study_dir")
+    study_replay = _load_study_replay(
+        values.get("study_replay", {}),
+        f"{source}.study_replay",
+    )
+    if study_dir is None and study_replay.is_configured:
+        raise ManifestError(
+            f"{source}.study_replay requires {source}.study_dir; replay settings only "
+            "apply to a run that replays an existing HPO study directory"
+        )
+    if study_dir is not None and values.get("hparam_config") is not None:
+        raise ManifestError(
+            f"{source} sets both study_dir and hparam_config. A study-directory replay "
+            "reuses the search configuration saved in study_config.json and never "
+            "schedules new trials; remove hparam_config"
+        )
+
+    ablation_config = _optional_string(
+        values.get("ablation_config"), f"{source}.ablation_config"
+    )
     args = _string_list(values.get("args", []), f"{source}.args")
-    _validate_extra_args(args, name)
+    _validate_extra_args(
+        args,
+        name,
+        replays_study=study_dir is not None,
+        ablates=ablation_config is not None,
+    )
     gpu = values.get("gpu")
     if gpu is not None:
         if isinstance(gpu, bool) or not isinstance(gpu, (str, int)):
@@ -305,6 +766,9 @@ def _load_run_spec(
         hparam_config=_optional_string(
             values.get("hparam_config"), f"{source}.hparam_config"
         ),
+        study_dir=study_dir,
+        study_replay=study_replay,
+        ablation_config=ablation_config,
         save_dir=_optional_string(values.get("save_dir"), f"{source}.save_dir"),
         args=args,
         env=_environment(values.get("env", {}), f"{source}.env"),
@@ -365,6 +829,7 @@ def load_scheduler_config(path: str | Path) -> SchedulerConfig:
         )
         for index, item in enumerate(raw_runs)
     )
+    runs = expand_ablation_runs(runs, working_dir)
     enabled_names = [run.name for run in runs if run.enabled]
     duplicates = sorted({name for name in enabled_names if enabled_names.count(name) > 1})
     if duplicates:
@@ -376,6 +841,17 @@ def load_scheduler_config(path: str | Path) -> SchedulerConfig:
     gpu_selectors = None if raw_gpus is None else _string_list(raw_gpus, "gpus")
     if gpu_selectors == ():
         raise ManifestError("gpus must contain at least one index or UUID when provided")
+
+    raw_ssl_gpus = values.get("ssl_gpus")
+    ssl_gpu_selectors = (
+        None
+        if raw_ssl_gpus is None
+        else _string_list(raw_ssl_gpus, "ssl_gpus")
+    )
+    if ssl_gpu_selectors == ():
+        raise ManifestError(
+            "ssl_gpus must contain at least one index or UUID when provided"
+        )
 
     max_total_runs = values.get("max_total_runs")
     if max_total_runs is not None:
@@ -395,6 +871,7 @@ def load_scheduler_config(path: str | Path) -> SchedulerConfig:
         working_dir=working_dir,
         python=_optional_string(values.get("python", sys.executable), "python"),
         entrypoint=_optional_string(values.get("entrypoint", "main.py"), "entrypoint"),
+        device=_device(values.get("device", "cuda"), "device"),
         gpu_selectors=gpu_selectors,
         max_concurrent_per_gpu=_positive_int(
             values.get("max_concurrent_per_gpu", 1),
@@ -422,8 +899,19 @@ def load_scheduler_config(path: str | Path) -> SchedulerConfig:
         scheduler_log_dir=scheduler_log_dir.resolve(),
         save_dir_root=_optional_string(values.get("save_dir_root"), "save_dir_root"),
         runs=runs,
+        ssl_gpu_selectors=ssl_gpu_selectors,
+        gpu_batch_size_thresholds=_gpu_batch_size_threshold_rules(
+            values.get("gpu_batch_size_thresholds", []),
+            "gpu_batch_size_thresholds",
+        ),
+        study_replay=_load_study_replay(
+            values.get("study_replay", {}),
+            "study_replay",
+        ),
     )
+    _validate_device_pools(config)
     validate_run_files_and_hpo(config)
+    validate_study_replay_runs(config)
     return config
 
 
@@ -476,6 +964,93 @@ def _resolved_hparam_config_path(
     return _workspace_path(value, working_dir).resolve()
 
 
+def _study_dir_candidates(value: str, working_dir: Path) -> tuple[Path, ...]:
+    """Return the paths ``main.py`` searches for a study directory, in order."""
+
+    path = Path(value)
+    if path.is_absolute():
+        return (path,)
+    return (working_dir / path, working_dir / "logs" / path)
+
+
+def resolve_study_dir(value: str, working_dir: Path) -> Path:
+    """Return the existing study directory, mirroring main.py's logs/ fallback."""
+
+    candidates = _study_dir_candidates(value, working_dir)
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate.resolve()
+    return candidates[0].resolve()
+
+
+def effective_study_replay(run: RunSpec, config: SchedulerConfig) -> StudyReplaySpec:
+    """Return one run's replay settings after the manifest-wide defaults."""
+
+    return merge_study_replay(config.study_replay, run.study_replay)
+
+
+def validate_study_replay_runs(config: SchedulerConfig) -> None:
+    """Fail early for unusable study directories and replay-setting combinations."""
+
+    replay_runs = [run for run in config.runs if run.enabled and run.study_dir is not None]
+    if config.study_replay.is_configured and not replay_runs:
+        raise ManifestError(
+            "study_replay is configured, but no enabled run sets study_dir. Give each "
+            "run the HPO study directory it replays, or remove study_replay"
+        )
+
+    for run in replay_runs:
+        study_dir = resolve_study_dir(run.study_dir, config.working_dir)
+        if not study_dir.is_dir():
+            searched = [
+                str(candidate)
+                for candidate in _study_dir_candidates(run.study_dir, config.working_dir)
+            ]
+            raise ManifestError(
+                f"study_dir for run {run.name!r} does not exist; searched: {searched}"
+            )
+        study_config_path = study_dir / "study_config.json"
+        if not study_config_path.is_file():
+            raise ManifestError(
+                f"study_dir for run {run.name!r} is not an HPO study directory: "
+                f"{study_config_path} is missing"
+            )
+        _validate_study_replay(
+            effective_study_replay(run, config),
+            f"run {run.name!r}",
+        )
+
+
+def _validate_study_replay(spec: StudyReplaySpec, source: str) -> None:
+    if (
+        spec.k_shot_grid is not None
+        and spec.ssl_label_sampling_modes is not None
+        and LABEL_SAMPLING_MODE_CLASS_SUBSET_K_SHOT not in spec.ssl_label_sampling_modes
+    ):
+        raise ManifestError(
+            f"{source} sets k_shot_grid with "
+            f"ssl_label_sampling_modes={list(spec.ssl_label_sampling_modes)}; a k-shot "
+            f"grid needs {LABEL_SAMPLING_MODE_CLASS_SUBSET_K_SHOT!r}. Leave "
+            "ssl_label_sampling_modes unset to keep the study's own sampling mode"
+        )
+    if spec.resolved_study_dir_mode != STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL:
+        return
+    seeds = spec.comparison_seeds
+    if seeds is None or len(set(seeds)) < 2:
+        raise ManifestError(
+            f"{source} uses study_dir_mode='cross_seed_train_val', which needs at least "
+            "two distinct comparison_seeds"
+        )
+    targets = spec.comparison_seed_targets or COMPARISON_SEED_TARGETS
+    if not set(targets) & set(CROSS_SEED_VALIDATION_TARGETS):
+        raise ManifestError(
+            f"{source} uses study_dir_mode='cross_seed_train_val' with "
+            f"comparison_seed_targets={list(targets)}; include at least one of "
+            f"{list(CROSS_SEED_VALIDATION_TARGETS)} because hparam_seed alone does not "
+            "change a fixed-parameter validation replay"
+        )
+
+
 def validate_run_files_and_hpo(config: SchedulerConfig) -> None:
     """Fail early for missing configs and accidental trial-level parallelism."""
 
@@ -495,6 +1070,10 @@ def validate_run_files_and_hpo(config: SchedulerConfig) -> None:
                 experiment_path,
                 f"experiment_config for run {run.name!r}",
             )
+        if run.study_dir is not None:
+            # A replay reuses the search configuration saved in the study
+            # directory and never schedules new trials.
+            continue
         hparam_path = _resolved_hparam_config_path(
             run,
             experiment_values,
@@ -683,6 +1262,8 @@ def make_gpu_loads(
 
     active_by_uuid: dict[str, list[ActiveRun]] = {gpu.uuid: [] for gpu in snapshots}
     for active in active_runs:
+        if active.gpu is None:
+            raise RunSchedulerError("A CPU run cannot be included in GPU load accounting")
         active_by_uuid.setdefault(active.gpu.uuid, []).append(active)
 
     loads = {}
@@ -761,6 +1342,84 @@ def _effective_save_dir(run: RunSpec, config: SchedulerConfig) -> str | None:
     return None
 
 
+def _uses_gpu_placement(config: SchedulerConfig) -> bool:
+    """Return whether each child needs an assigned physical GPU."""
+
+    return (
+        config.device == "cuda"
+        or config.ssl_gpu_selectors is not None
+        or _uses_batch_gpu(config)
+    )
+
+
+def _uses_batch_gpu(config: SchedulerConfig) -> bool:
+    """Return whether CPU runs may switch to their configured GPU by batch size."""
+
+    return config.device == "cpu" and config.gpu_selectors is not None
+
+
+def _child_ssl_device(config: SchedulerConfig) -> str:
+    """Return the child-visible device for out-of-batch SSL computation."""
+
+    return (
+        "cuda"
+        if (
+            config.device == "cuda"
+            or config.ssl_gpu_selectors is not None
+            or _uses_batch_gpu(config)
+        )
+        else "cpu"
+    )
+
+
+def _placement_selectors(config: SchedulerConfig) -> tuple[str, ...] | None:
+    return (
+        config.gpu_selectors
+        if config.device == "cuda" or _uses_batch_gpu(config)
+        else config.ssl_gpu_selectors
+    )
+
+
+def _placement_description(
+    config: SchedulerConfig,
+    gpu: GpuSnapshot | None,
+) -> str:
+    if gpu is None:
+        return "CPU"
+    if config.device == "cuda":
+        return f"GPU {gpu.index}"
+    if _uses_batch_gpu(config):
+        if config.gpu_batch_size_thresholds:
+            return (
+                f"CPU + SSL GPU {gpu.index} "
+                "(loss/SSL-specific training GPU thresholds; "
+                f"default effective batch size > {GPU_BATCH_SIZE_THRESHOLD})"
+            )
+        return (
+            f"CPU + SSL GPU {gpu.index} "
+            f"(training GPU for effective batch size > {GPU_BATCH_SIZE_THRESHOLD})"
+        )
+    return f"CPU + SSL GPU {gpu.index}"
+
+
+def _validate_device_pools(config: SchedulerConfig) -> None:
+    if config.device == "cuda" and config.ssl_gpu_selectors is not None:
+        raise ManifestError(
+            "ssl_gpus is for CPU-training runs. CUDA-training runs already use "
+            "their assigned gpus for SSL computation; remove ssl_gpus or set device='cpu'."
+        )
+    if (
+        config.device == "cpu"
+        and config.gpu_selectors is not None
+        and config.ssl_gpu_selectors is not None
+    ):
+        raise ManifestError(
+            "CPU runs cannot configure both gpus and ssl_gpus: gpus already uses "
+            "the assigned GPU for SSL plus batch-triggered training. Use ssl_gpus "
+            "only when GPU acceleration must be limited to SSL."
+        )
+
+
 def build_run_command(run: RunSpec, config: SchedulerConfig) -> list[str]:
     """Build a shell-free argv vector for one child."""
 
@@ -774,13 +1433,30 @@ def build_run_command(run: RunSpec, config: SchedulerConfig) -> list[str]:
     if run.hparam_config is not None:
         hparam_path = _workspace_path(run.hparam_config, config.working_dir).resolve()
         command.extend(["--hparam_config", str(hparam_path)])
+    if run.study_dir is not None:
+        study_dir = resolve_study_dir(run.study_dir, config.working_dir)
+        command.extend(["--final_test_study_dir", str(study_dir)])
+        command.extend(effective_study_replay(run, config).to_arguments())
+    if run.ablation_config is not None:
+        ablation_path = _workspace_path(run.ablation_config, config.working_dir).resolve()
+        command.extend(["--ablation_config", str(ablation_path)])
+        if run.ablation_variant is not None:
+            command.extend(["--ablation_variant", run.ablation_variant])
     save_dir = _effective_save_dir(run, config)
     if save_dir is not None:
         command.extend(["--save_dir", save_dir])
     command.extend(run.args)
-    # This overrides an indexed device in the experiment config.  Because the
-    # environment exposes one UUID, bare ``cuda`` always means logical cuda:0.
-    command.extend(["--device", "cuda"])
+    # These override experiment-config values. Batch-triggered training-device
+    # selection happens in the child after its resolved batch size is known;
+    # SSL continuously uses the assigned GPU for either GPU-pool mode.
+    command.extend(
+        [
+            "--ssl-device",
+            _child_ssl_device(config),
+            "--device",
+            config.device,
+        ]
+    )
     return command
 
 
@@ -801,16 +1477,84 @@ def _session_directory(config: SchedulerConfig) -> Path:
     return path
 
 
-def _child_environment(run: RunSpec, gpu: GpuSnapshot) -> dict[str, str]:
+def _child_environment(
+    run: RunSpec,
+    gpu: GpuSnapshot | None,
+    config: SchedulerConfig,
+) -> dict[str, str]:
     environment = os.environ.copy()
     environment.update(run.env)
     environment.setdefault("PYTHONUNBUFFERED", "1")
-    environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    environment["CUDA_VISIBLE_DEVICES"] = gpu.uuid
-    environment["RUN_SCHEDULER_PHYSICAL_GPU"] = str(gpu.index)
-    environment["RUN_SCHEDULER_GPU_UUID"] = gpu.uuid
+    # Children size their own thread pools from this. setdefault keeps an
+    # explicit export (shell or run.env) authoritative.
+    environment.setdefault(
+        cpu_threads.THREAD_BUDGET_ENV, str(_child_thread_budget(config))
+    )
+    environment["RUN_SCHEDULER_DEVICE"] = config.device
+    environment["RUN_SCHEDULER_SSL_DEVICE"] = _child_ssl_device(config)
     environment["RUN_SCHEDULER_RUN_NAME"] = run.name
+    if _uses_batch_gpu(config):
+        environment[device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLD_ENV] = str(
+            GPU_BATCH_SIZE_THRESHOLD
+        )
+        if config.gpu_batch_size_thresholds:
+            environment[
+                device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLDS_ENV
+            ] = device_thresholds.encode_gpu_batch_size_threshold_rules(
+                config.gpu_batch_size_thresholds
+            )
+        else:
+            environment.pop(
+                device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLDS_ENV,
+                None,
+            )
+    else:
+        environment.pop(
+            device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLD_ENV,
+            None,
+        )
+        environment.pop(
+            device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLDS_ENV,
+            None,
+        )
+    if not _uses_gpu_placement(config):
+        environment["CUDA_VISIBLE_DEVICES"] = "-1"
+        environment.pop("RUN_SCHEDULER_PHYSICAL_GPU", None)
+        environment.pop("RUN_SCHEDULER_GPU_UUID", None)
+        environment.pop("RUN_SCHEDULER_PHYSICAL_SSL_GPU", None)
+        environment.pop("RUN_SCHEDULER_SSL_GPU_UUID", None)
+    else:
+        if gpu is None:
+            raise RunSchedulerError("GPU-accelerated runs require an assigned GPU")
+        environment["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        environment["CUDA_VISIBLE_DEVICES"] = gpu.uuid
+        uses_training_gpu = config.device == "cuda" or _uses_batch_gpu(config)
+        uses_ssl_gpu = _child_ssl_device(config) == "cuda"
+        if uses_training_gpu:
+            environment["RUN_SCHEDULER_PHYSICAL_GPU"] = str(gpu.index)
+            environment["RUN_SCHEDULER_GPU_UUID"] = gpu.uuid
+        else:
+            environment.pop("RUN_SCHEDULER_PHYSICAL_GPU", None)
+            environment.pop("RUN_SCHEDULER_GPU_UUID", None)
+        if uses_ssl_gpu:
+            environment["RUN_SCHEDULER_PHYSICAL_SSL_GPU"] = str(gpu.index)
+            environment["RUN_SCHEDULER_SSL_GPU_UUID"] = gpu.uuid
+        else:
+            environment.pop("RUN_SCHEDULER_PHYSICAL_SSL_GPU", None)
+            environment.pop("RUN_SCHEDULER_SSL_GPU_UUID", None)
     return environment
+
+
+def _child_thread_budget(config: SchedulerConfig) -> int:
+    """Split the host's physical cores across the children admitted at once.
+
+    CPU mode admits one child at a time by default, so the common case hands the
+    whole host to that child. Raising ``max_total_runs`` divides the cores rather
+    than letting every child spawn a host-wide pool and contend with the others.
+    """
+
+    concurrency = _max_active_runs(config) or 1
+    return cpu_threads.resolve_thread_budget(concurrency=max(1, concurrency))
 
 
 def _popen_group_kwargs() -> dict[str, Any]:
@@ -821,7 +1565,7 @@ def _popen_group_kwargs() -> dict[str, Any]:
 
 def launch_run(
     run: RunSpec,
-    gpu: GpuSnapshot,
+    gpu: GpuSnapshot | None,
     config: SchedulerConfig,
     session_dir: Path,
 ) -> ActiveRun:
@@ -832,14 +1576,33 @@ def launch_run(
     log_file = log_path.open("w", encoding="utf-8", buffering=1)
     started_at = _utc_now()
     log_file.write(f"started_at={started_at}\n")
-    log_file.write(f"physical_gpu={gpu.index}\n")
-    log_file.write(f"gpu_uuid={gpu.uuid}\n")
+    log_file.write(f"device={config.device}\n")
+    log_file.write(f"ssl_device={_child_ssl_device(config)}\n")
+    if _uses_batch_gpu(config):
+        log_file.write(
+            f"device_when_effective_batch_size_gt_{GPU_BATCH_SIZE_THRESHOLD}=cuda\n"
+        )
+        if config.gpu_batch_size_thresholds:
+            log_file.write(
+                "gpu_batch_size_thresholds="
+                + device_thresholds.encode_gpu_batch_size_threshold_rules(
+                    config.gpu_batch_size_thresholds
+                )
+                + "\n"
+            )
+    if gpu is not None:
+        if config.device == "cuda" or _uses_batch_gpu(config):
+            log_file.write(f"physical_gpu={gpu.index}\n")
+            log_file.write(f"gpu_uuid={gpu.uuid}\n")
+        if _child_ssl_device(config) == "cuda":
+            log_file.write(f"physical_ssl_gpu={gpu.index}\n")
+            log_file.write(f"ssl_gpu_uuid={gpu.uuid}\n")
     log_file.write(f"command={_format_command(command)}\n\n")
     try:
         process = subprocess.Popen(
             command,
             cwd=config.working_dir,
-            env=_child_environment(run, gpu),
+            env=_child_environment(run, gpu, config),
             stdout=log_file,
             stderr=subprocess.STDOUT,
             **_popen_group_kwargs(),
@@ -959,8 +1722,22 @@ def _validate_static_capacity(
 
 
 def _print_gpu_summary(selected: Sequence[GpuSnapshot], config: SchedulerConfig) -> None:
+    if config.device == "cuda":
+        role = "training/SSL"
+    elif _uses_batch_gpu(config):
+        if config.gpu_batch_size_thresholds:
+            role = (
+                "SSL + loss/SSL-specific workload-threshold training "
+                f"(default > {GPU_BATCH_SIZE_THRESHOLD})"
+            )
+        else:
+            role = (
+                f"SSL + effective batch size > {GPU_BATCH_SIZE_THRESHOLD} training"
+            )
+    else:
+        role = "SSL"
     print(
-        f"Selected {len(selected)} GPU(s); max {config.max_concurrent_per_gpu} "
+        f"Selected {len(selected)} {role} GPU(s); max {config.max_concurrent_per_gpu} "
         "run slot(s) per GPU."
     )
     for gpu in selected:
@@ -969,6 +1746,42 @@ def _print_gpu_summary(selected: Sequence[GpuSnapshot], config: SchedulerConfig)
             f"  GPU {gpu.index}: {gpu.name}, free={gpu.free_memory_mib}/{gpu.total_memory_mib} MiB, "
             f"util={utilization}, existing_compute_processes={len(gpu.processes)}"
         )
+
+
+def _validate_cpu_runs(runs: Sequence[RunSpec], config: SchedulerConfig) -> None:
+    if config.ssl_gpu_selectors is not None or _uses_batch_gpu(config):
+        return
+    pinned = [run.name for run in runs if run.gpu is not None]
+    if pinned:
+        raise ManifestError(
+            "Per-run GPU affinity is not valid when device='cpu'; remove 'gpu' from "
+            f"these runs: {pinned}"
+        )
+
+
+def _max_active_runs(config: SchedulerConfig) -> int | None:
+    if config.max_total_runs is not None:
+        return config.max_total_runs
+    # A pure CPU process may use all host cores, so one child is the safe
+    # default. An assigned GPU pool intentionally opts into GPU-shaped
+    # concurrency; max_total_runs remains available to cap CPU/RAM pressure.
+    return 1 if not _uses_gpu_placement(config) else None
+
+
+def dry_run_cpu_schedule(config: SchedulerConfig) -> int:
+    """Print the first CPU wave without starting processes."""
+
+    pending = _sorted_pending(run for run in config.runs if run.enabled)
+    max_active_runs = _max_active_runs(config)
+    launch_count = min(len(pending), max_active_runs or len(pending))
+    for run in pending[:launch_count]:
+        print(
+            f"DRY RUN  {run.name} -> CPU; "
+            f"command: {_format_command(build_run_command(run, config))}"
+        )
+    for run in pending[launch_count:]:
+        print(f"QUEUED   {run.name} (waits for a CPU run slot from the first wave)")
+    return 0
 
 
 def dry_run_schedule(config: SchedulerConfig, selected: Sequence[GpuSnapshot]) -> int:
@@ -999,7 +1812,8 @@ def dry_run_schedule(config: SchedulerConfig, selected: Sequence[GpuSnapshot]) -
             )
             loads = make_gpu_loads(selected, simulated)
             print(
-                f"DRY RUN  {run.name} -> physical GPU {gpu.index} ({gpu.uuid}); "
+                f"DRY RUN  {run.name} -> "
+                f"{_placement_description(config, gpu)} ({gpu.uuid}); "
                 f"command: {_format_command(build_run_command(run, config))}"
             )
             pending.remove(run)
@@ -1016,17 +1830,30 @@ def dry_run_schedule(config: SchedulerConfig, selected: Sequence[GpuSnapshot]) -
 def run_scheduler(config: SchedulerConfig, *, dry_run: bool = False) -> int:
     """Run the scheduling loop and return a process-style exit code."""
 
-    all_snapshots = query_gpu_snapshots()
-    selected = select_gpus(
-        all_snapshots,
-        config.gpu_selectors,
-        os.environ.get("CUDA_VISIBLE_DEVICES"),
-    )
+    _validate_device_pools(config)
     enabled_runs = [run for run in config.runs if run.enabled]
-    _validate_static_capacity(enabled_runs, selected, config)
-    _print_gpu_summary(selected, config)
-    if dry_run:
-        return dry_run_schedule(config, selected)
+    selected: list[GpuSnapshot] = []
+    gpu_placement = _uses_gpu_placement(config)
+    if not gpu_placement:
+        _validate_cpu_runs(enabled_runs, config)
+        max_active_runs = _max_active_runs(config)
+        print(f"Selected CPU execution; max {max_active_runs} simultaneous run(s).")
+        if dry_run:
+            return dry_run_cpu_schedule(config)
+    else:
+        if config.device == "cpu":
+            _validate_cpu_runs(enabled_runs, config)
+        all_snapshots = query_gpu_snapshots()
+        selected = select_gpus(
+            all_snapshots,
+            _placement_selectors(config),
+            os.environ.get("CUDA_VISIBLE_DEVICES"),
+        )
+        _validate_static_capacity(enabled_runs, selected, config)
+        _print_gpu_summary(selected, config)
+        max_active_runs = _max_active_runs(config)
+        if dry_run:
+            return dry_run_schedule(config, selected)
 
     session_dir = _session_directory(config)
     state_path = session_dir / "state.json"
@@ -1059,7 +1886,8 @@ def run_scheduler(config: SchedulerConfig, *, dry_run: bool = False) -> int:
                 )
                 print(
                     f"{'DONE' if succeeded else 'FAILED'}  {running.spec.name} "
-                    f"on GPU {running.gpu.index} (exit {returncode}); log={running.log_path}"
+                    f"on {_placement_description(config, running.gpu)} "
+                    f"(exit {returncode}); log={running.log_path}"
                 )
                 _write_state(state_path, config, statuses)
 
@@ -1076,56 +1904,109 @@ def run_scheduler(config: SchedulerConfig, *, dry_run: bool = False) -> int:
                 _write_state(state_path, config, statuses)
 
             launched_any = False
-            if pending and (
-                config.max_total_runs is None or len(active) < config.max_total_runs
-            ):
-                selected = _refresh_selected_snapshots(selected_uuids)
-                loads = make_gpu_loads(selected, active)
-                while pending and (
-                    config.max_total_runs is None or len(active) < config.max_total_runs
-                ):
-                    placement = None
-                    for run in pending:
-                        gpu = choose_gpu(run, loads, config)
-                        if gpu is not None:
-                            placement = (run, gpu)
-                            break
-                    if placement is None:
-                        break
-                    run, gpu = placement
-                    running = launch_run(run, gpu, config, session_dir)
-                    active.append(running)
-                    pending.remove(run)
-                    statuses[run.name].update(
-                        {
-                            "status": "running",
-                            "pid": running.process.pid,
-                            "physical_gpu": gpu.index,
-                            "gpu_uuid": gpu.uuid,
-                            "started_at": running.started_at,
-                            "log": str(running.log_path),
-                            "command": running.command,
-                        }
-                    )
-                    print(
-                        f"START    {run.name} -> GPU {gpu.index}, pid={running.process.pid}, "
-                        f"log={running.log_path}"
-                    )
-                    _write_state(state_path, config, statuses)
-                    launched_any = True
+            if pending and (max_active_runs is None or len(active) < max_active_runs):
+                if not gpu_placement:
+                    while pending and len(active) < max_active_runs:
+                        run = pending.pop(0)
+                        running = launch_run(run, None, config, session_dir)
+                        active.append(running)
+                        statuses[run.name].update(
+                            {
+                                "status": "running",
+                                "pid": running.process.pid,
+                                "device": "cpu",
+                                "ssl_device": "cpu",
+                                "started_at": running.started_at,
+                                "log": str(running.log_path),
+                                "command": running.command,
+                            }
+                        )
+                        print(
+                            f"START    {run.name} -> CPU, pid={running.process.pid}, "
+                            f"log={running.log_path}"
+                        )
+                        _write_state(state_path, config, statuses)
+                        launched_any = True
+                        if config.launch_delay_seconds:
+                            time.sleep(config.launch_delay_seconds)
+                else:
+                    selected = _refresh_selected_snapshots(selected_uuids)
                     loads = make_gpu_loads(selected, active)
-                    if config.launch_delay_seconds:
-                        time.sleep(config.launch_delay_seconds)
+                    while pending and (
+                        max_active_runs is None or len(active) < max_active_runs
+                    ):
+                        placement = None
+                        for run in pending:
+                            gpu = choose_gpu(run, loads, config)
+                            if gpu is not None:
+                                placement = (run, gpu)
+                                break
+                        if placement is None:
+                            break
+                        run, gpu = placement
+                        running = launch_run(run, gpu, config, session_dir)
+                        active.append(running)
+                        pending.remove(run)
+                        statuses[run.name].update(
+                            {
+                                "status": "running",
+                                "pid": running.process.pid,
+                                "device": config.device,
+                                "ssl_device": _child_ssl_device(config),
+                                "started_at": running.started_at,
+                                "log": str(running.log_path),
+                                "command": running.command,
+                            }
+                        )
+                        if config.device == "cuda" or _uses_batch_gpu(config):
+                            statuses[run.name].update(
+                                {
+                                    "physical_gpu": gpu.index,
+                                    "gpu_uuid": gpu.uuid,
+                                }
+                            )
+                            if _uses_batch_gpu(config):
+                                statuses[run.name].update(
+                                    {
+                                        "gpu_batch_size_threshold": GPU_BATCH_SIZE_THRESHOLD,
+                                        "device_above_gpu_batch_size_threshold": "cuda",
+                                    }
+                                )
+                                if config.gpu_batch_size_thresholds:
+                                    statuses[run.name]["gpu_batch_size_thresholds"] = [
+                                        rule.to_spec()
+                                        for rule in config.gpu_batch_size_thresholds
+                                    ]
+                        if _child_ssl_device(config) == "cuda":
+                            statuses[run.name].update(
+                                {
+                                    "physical_ssl_gpu": gpu.index,
+                                    "ssl_gpu_uuid": gpu.uuid,
+                                }
+                            )
+                        print(
+                            f"START    {run.name} -> {_placement_description(config, gpu)}, "
+                            f"pid={running.process.pid}, "
+                            f"log={running.log_path}"
+                        )
+                        _write_state(state_path, config, statuses)
+                        launched_any = True
+                        loads = make_gpu_loads(selected, active)
+                        if config.launch_delay_seconds:
+                            time.sleep(config.launch_delay_seconds)
 
             if not pending and not active:
                 break
             if pending and not active and not launched_any:
                 now = time.monotonic()
                 if now - last_wait_message >= 30:
-                    print(
-                        f"WAIT     {len(pending)} run(s) queued; selected GPUs are occupied "
-                        "or lack the requested free-memory reservation."
-                    )
+                    if not gpu_placement:
+                        print(f"WAIT     {len(pending)} run(s) queued for a CPU run slot.")
+                    else:
+                        print(
+                            f"WAIT     {len(pending)} run(s) queued; selected GPUs are occupied "
+                            "or lack the requested free-memory reservation."
+                        )
                     last_wait_message = now
             time.sleep(config.poll_interval_seconds)
     except KeyboardInterrupt:
@@ -1178,15 +2059,58 @@ def run_scheduler(config: SchedulerConfig, *, dry_run: bool = False) -> int:
     return 1 if failed else 0
 
 
+def _gpu_batch_size_threshold_rule_arg(
+    value: str,
+) -> device_thresholds.GpuBatchSizeThresholdRule:
+    try:
+        return device_thresholds.parse_gpu_batch_size_threshold_rule(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Schedule independent metric-learning runs across one or more GPUs."
+        description="Schedule independent metric-learning runs on CPU or across GPUs."
     )
     parser.add_argument("--manifest", type=Path, required=True, help="run-manifest JSON path")
     parser.add_argument(
+        "--device",
+        choices=("cpu", "cuda"),
+        help="execution device; overrides the manifest (default: cuda)",
+    )
+    parser.add_argument(
         "--gpus",
         nargs="+",
-        help="physical GPU indexes or UUIDs; overrides the manifest and respects inherited CUDA_VISIBLE_DEVICES",
+        help=(
+            "physical GPU indexes or UUIDs for CUDA training/SSL, or for CPU runs "
+            "whose SSL always uses CUDA and whose training uses CUDA when effective "
+            f"batch size exceeds {GPU_BATCH_SIZE_THRESHOLD}; overrides the "
+            "manifest and respects inherited CUDA_VISIBLE_DEVICES"
+        ),
+    )
+    parser.add_argument(
+        "--ssl-gpus",
+        "--ssl_gpus",
+        nargs="+",
+        help=(
+            "physical GPU indexes or UUIDs used for SSL when --device cpu; "
+            "overrides ssl_gpus in the manifest"
+        ),
+    )
+    parser.add_argument(
+        "--gpu-batch-size-thresholds",
+        "--gpu-batch-size-threshold",
+        "--gpu_batch_size_thresholds",
+        "--gpu_batch_size_threshold",
+        nargs="+",
+        type=_gpu_batch_size_threshold_rule_arg,
+        metavar="LOSS:SSL_METHOD=N",
+        help=(
+            "loss/SSL-specific workload cutoffs for CPU runs with --gpus; "
+            "training uses CUDA when effective batch size is greater than the "
+            "selected cutoff. LRML combines supervised and graph-edge batch "
+            "sizes; for example NTXentLoss:all=0 ArcFace:lrml=128"
+        ),
     )
     parser.add_argument(
         "--max-concurrent-per-gpu",
@@ -1218,8 +2142,16 @@ def make_parser() -> argparse.ArgumentParser:
 
 def apply_cli_overrides(config: SchedulerConfig, args: argparse.Namespace) -> SchedulerConfig:
     updates: dict[str, Any] = {}
+    if getattr(args, "device", None) is not None:
+        updates["device"] = args.device
     if args.gpus is not None:
         updates["gpu_selectors"] = tuple(args.gpus)
+    if args.ssl_gpus is not None:
+        updates["ssl_gpu_selectors"] = tuple(args.ssl_gpus)
+    if args.gpu_batch_size_thresholds is not None:
+        updates["gpu_batch_size_thresholds"] = tuple(
+            args.gpu_batch_size_thresholds
+        )
     if args.max_concurrent_per_gpu is not None:
         updates["max_concurrent_per_gpu"] = _positive_int(
             args.max_concurrent_per_gpu,
@@ -1240,7 +2172,9 @@ def apply_cli_overrides(config: SchedulerConfig, args: argparse.Namespace) -> Sc
         if not log_dir.is_absolute():
             log_dir = config.working_dir / log_dir
         updates["scheduler_log_dir"] = log_dir.resolve()
-    return replace(config, **updates)
+    resolved = replace(config, **updates)
+    _validate_device_pools(resolved)
+    return resolved
 
 
 def main(argv: Sequence[str] | None = None) -> int:
