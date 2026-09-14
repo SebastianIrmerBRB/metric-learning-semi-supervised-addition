@@ -7,13 +7,71 @@ import math
 import numpy as np
 from loguru import logger
 
-from .cli import STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL, STUDY_DIR_MODE_TRAIN_VAL
+from .cli import (
+    FINAL_EPOCH_AGGREGATION_MAX,
+    FINAL_EPOCH_AGGREGATION_MEAN,
+    FINAL_EPOCH_AGGREGATION_MEDIAN,
+    FINAL_EPOCH_AGGREGATIONS,
+    FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS,
+    FINAL_FIT_MODE_EARLY_STOP_HOLDOUT,
+    FINAL_FIT_MODE_FULL_TRAIN,
+    STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
+    STUDY_DIR_MODE_TRAIN_VAL,
+)
 from .io import namespace_to_dict, result_to_dict, write_json
 
 
-def make_final_epoch_plan(study_result):
-    """Choose a fixed final training duration from the best trial's checkpoints."""
+def get_hpo_validation_retrieval_backend(study_result):
+    """Return the one validation backend a final test must inherit."""
 
+    attrs = study_result.best_user_attrs or {}
+    validation_replay_results = attrs.get("validation_replay_results") or []
+    fold_results = attrs.get("fold_results") or []
+    if validation_replay_results:
+        source_results = validation_replay_results
+    elif fold_results:
+        source_results = fold_results
+    else:
+        source_results = [attrs]
+    backends = {
+        str(result["validation_retrieval_backend"]).lower()
+        for result in source_results
+        if result.get("validation_retrieval_backend") is not None
+    }
+    if not backends and attrs.get("validation_retrieval_backend") is not None:
+        backends.add(str(attrs["validation_retrieval_backend"]).lower())
+    invalid = backends - {"cpu", "cuda"}
+    if invalid:
+        raise ValueError(
+            f"HPO validation contains invalid retrieval backends: {sorted(invalid)}"
+        )
+    if len(backends) > 1:
+        raise ValueError(
+            "HPO validation mixed CPU and CUDA retrieval; final test cannot "
+            "inherit a single comparable backend"
+        )
+    if not backends:
+        logger.warning(
+            "HPO study predates validation retrieval metadata; "
+            "defaulting final test retrieval to CPU"
+        )
+        return "cpu"
+    return next(iter(backends))
+
+
+def make_final_epoch_plan(study_result, aggregation=FINAL_EPOCH_AGGREGATION_MEAN):
+    """Choose a fixed final training duration from the best trial's checkpoints.
+
+    Every fold stopped at its own selected epoch, so one duration has to stand in
+    for all of them. ``mean`` follows the average fold, ``median`` ignores a
+    single fold that stopped far earlier or later than the rest, and ``max``
+    trains for the longest fold's duration.
+    """
+
+    if aggregation not in FINAL_EPOCH_AGGREGATIONS:
+        raise ValueError(
+            f"final epoch aggregation must be one of {FINAL_EPOCH_AGGREGATIONS}: {aggregation}"
+        )
     attrs = study_result.best_user_attrs or {}
     validation_replay_results = attrs.get("validation_replay_results") or []
     fold_results = attrs.get("fold_results") or []
@@ -39,15 +97,94 @@ def make_final_epoch_plan(study_result):
 
     training_epoch_counts = [max(0, epoch + 1) for epoch in selected_epochs]
     mean_training_epochs = float(np.mean(training_epoch_counts))
-    final_training_epochs = int(math.floor(mean_training_epochs + 0.5))
+    if aggregation == FINAL_EPOCH_AGGREGATION_MEAN:
+        aggregated_training_epochs = mean_training_epochs
+    elif aggregation == FINAL_EPOCH_AGGREGATION_MEDIAN:
+        aggregated_training_epochs = float(np.median(training_epoch_counts))
+    else:
+        aggregated_training_epochs = float(max(training_epoch_counts))
+    # max is already integral; mean and an even-length median are not, so both
+    # round half up rather than truncating a fold's worth of training away.
+    if aggregation == FINAL_EPOCH_AGGREGATION_MAX:
+        rounding = "none"
+        final_training_epochs = int(aggregated_training_epochs)
+    else:
+        rounding = "nearest_integer_half_up"
+        final_training_epochs = int(math.floor(aggregated_training_epochs + 0.5))
     return {
         "source": source,
+        "fit_mode": FINAL_FIT_MODE_FULL_TRAIN,
         "epoch_field": selected_epoch_key,
+        "aggregation": aggregation,
         "selected_epoch_indices": selected_epochs,
         "training_epoch_counts": training_epoch_counts,
         "mean_training_epochs": mean_training_epochs,
-        "rounding": "nearest_integer_half_up",
+        "aggregated_training_epochs": aggregated_training_epochs,
+        "rounding": rounding,
         "final_training_epochs": final_training_epochs,
+    }
+
+
+def make_final_cross_validation_plan(args):
+    """Describe a final evaluation that tests every fold instead of one model.
+
+    No duration is transferred and no extra model is fitted: each fold already
+    early-stopped on its own validation partition, and it is that checkpoint
+    which is tested. The reported score is the mean over folds, optionally
+    alongside one evaluation of the folds' concatenated embeddings.
+    """
+
+    return {
+        "source": "cross_validation_fold_models",
+        "fit_mode": FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS,
+        "epoch_field": None,
+        "aggregation": None,
+        "selected_epoch_indices": [],
+        "training_epoch_counts": [],
+        "mean_training_epochs": None,
+        "aggregated_training_epochs": None,
+        "rounding": "none",
+        # Every fold stops on its own, so there is no single planned duration.
+        "final_training_epochs": None,
+        "max_training_epochs": int(args.epochs),
+        "patience": int(args.patience),
+        "cv_k": int(args.cv_k),
+        "cv_mode": args.cv_mode,
+        "val_mode": args.val_mode,
+        "concatenated_fold_test": bool(getattr(args, "concatenated_fold_test", False)),
+        "selection_metric": getattr(args, "selection_metric", None),
+    }
+
+
+def make_final_early_stopping_plan(args):
+    """Describe a final fit whose duration early stopping decides on its own.
+
+    This plan carries no transferred epoch count. It records the budget the run
+    may not exceed and the validation slice it early-stops on, so the audit
+    artifact still explains where the tested checkpoint came from.
+    """
+
+    holdout_val_ratio = getattr(args, "holdout_val_ratio", None)
+    return {
+        "source": "final_early_stopping_holdout",
+        "fit_mode": FINAL_FIT_MODE_EARLY_STOP_HOLDOUT,
+        "epoch_field": None,
+        "aggregation": None,
+        "selected_epoch_indices": [],
+        "training_epoch_counts": [],
+        "mean_training_epochs": None,
+        "aggregated_training_epochs": None,
+        "rounding": "none",
+        # Early stopping picks the epoch during the run, so no count is fixed
+        # up front; the trained/selected epochs land in the result itself.
+        "final_training_epochs": None,
+        "max_training_epochs": int(args.epochs),
+        "patience": int(args.patience),
+        "val_mode": args.val_mode,
+        "holdout_val_ratio": (
+            None if holdout_val_ratio is None else float(holdout_val_ratio)
+        ),
+        "selection_metric": getattr(args, "selection_metric", None),
     }
 
 
@@ -75,11 +212,14 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
             (study_result.best_user_attrs or {}).get("best_valid_mean_average_precision_at_r")
         ),
         "epoch_source": epoch_plan["source"],
-        "epoch_field": epoch_plan["epoch_field"],
+        "final_fit_mode": epoch_plan.get("fit_mode", FINAL_FIT_MODE_FULL_TRAIN),
+        "epoch_field": optional_number(epoch_plan["epoch_field"]),
+        "epoch_aggregation": optional_number(epoch_plan.get("aggregation")),
         "selected_epoch_indices": json.dumps(epoch_plan["selected_epoch_indices"]),
         "fold_training_epoch_counts": json.dumps(epoch_plan["training_epoch_counts"]),
         "mean_training_epochs": epoch_plan["mean_training_epochs"],
-        "final_training_epochs": epoch_plan["final_training_epochs"],
+        "aggregated_training_epochs": optional_number(epoch_plan.get("aggregated_training_epochs")),
+        "final_training_epochs": realized_final_training_epochs(epoch_plan, final_result),
         "final_log_dir": str(final_result.log_dir),
         "final_metrics_csv": str(final_result.metrics_csv),
         "final_train_loss": optional_number(final_result.final_train_loss),
@@ -89,6 +229,25 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         ),
         "test_precision_at_1": optional_number(final_result.test_precision_at_1),
         "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+        # Populated only by cross_validation_folds, where the reported score is
+        # a mean over fold models rather than one model's score.
+        "test_precision_at_1_std": optional_number(
+            getattr(final_result, "test_precision_at_1_std", None)
+        ),
+        "test_mean_average_precision_at_r_std": optional_number(
+            getattr(final_result, "test_mean_average_precision_at_r_std", None)
+        ),
+        "concatenated_test_precision_at_1": optional_number(
+            getattr(final_result, "concatenated_test_precision_at_1", None)
+        ),
+        "concatenated_test_mean_average_precision_at_r": optional_number(
+            getattr(final_result, "concatenated_test_mean_average_precision_at_r", None)
+        ),
+        "concatenated_test_embedding_dim": optional_number(
+            getattr(final_result, "concatenated_test_embedding_dim", None)
+        ),
+        "validation_retrieval_backend": final_result.validation_retrieval_backend,
+        "test_retrieval_backend": final_result.test_retrieval_backend,
         "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
         "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
         "test_tsne_coordinates": optional_path(final_result.test_tsne_coordinates),
@@ -137,6 +296,7 @@ def write_hparam_train_val_evaluation_summary(study_result, train_result, role, 
         "train_val_selected_epoch": train_result.selected_epoch,
         "train_val_last_epoch": train_result.last_epoch,
         "train_val_global_step": train_result.global_step,
+        "validation_retrieval_backend": train_result.validation_retrieval_backend,
         "test_precision_at_1": optional_number(train_result.test_precision_at_1),
         "test_mean_average_precision_at_r": optional_number(train_result.test_mean_average_precision_at_r),
     }
@@ -205,7 +365,11 @@ def write_cross_seed_train_val_evaluation_summary(
                     [run["result"]["selected_epoch"] for run in candidate["validation_runs"]]
                 ),
                 "selected_for_final": selected_for_final,
-                "final_training_epochs": epoch_plan["final_training_epochs"] if selected_for_final else "",
+                "final_training_epochs": (
+                    realized_final_training_epochs(epoch_plan, final_result)
+                    if selected_for_final
+                    else ""
+                ),
                 "test_precision_at_1": optional_number(
                     final_result.test_precision_at_1 if selected_for_final else None
                 ),
@@ -513,9 +677,26 @@ def write_comparison_grid_summary(grid_dir, grid_results):
     logger.info(f"Comparison grid summary written to {grid_dir}")
 
 
+def grid_recall_at_k(grid_results):
+    """Collect every K any run in the grid reported, so all rows share columns."""
+
+    recall_at_k = set()
+    for grid_result in grid_results:
+        result = grid_result.get("result")
+        if result is None:
+            continue
+        for attr in ("best_valid_recall_at_k", "test_recall_at_k"):
+            recall_at_k.update(getattr(result, attr, None) or {})
+    return tuple(sorted(int(k) for k in recall_at_k))
+
+
 def write_single_method_grid_summary(grid_dir, grid_results):
     grid_dir.mkdir(parents=True, exist_ok=True)
-    rows = [make_single_method_grid_summary_row(result) for result in grid_results]
+    recall_at_k = grid_recall_at_k(grid_results)
+    rows = [
+        make_single_method_grid_summary_row(result, recall_at_k=recall_at_k)
+        for result in grid_results
+    ]
     summary_csv = grid_dir / "grid_summary.csv"
     with summary_csv.open("w", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
@@ -539,7 +720,21 @@ def write_single_method_grid_summary(grid_dir, grid_results):
     logger.info(f"Single-method grid summary written to {grid_dir}")
 
 
-def make_single_method_grid_summary_row(grid_result):
+def recall_at_k_columns(result, recall_at_k):
+    """One column per requested K for the validation and the test evaluation."""
+
+    best_valid = getattr(result, "best_valid_recall_at_k", None) or {}
+    test = getattr(result, "test_recall_at_k", None) or {}
+    return {
+        **{
+            f"best_valid_recall_at_{k}": optional_number(best_valid.get(k))
+            for k in recall_at_k
+        },
+        **{f"test_recall_at_{k}": optional_number(test.get(k)) for k in recall_at_k},
+    }
+
+
+def make_single_method_grid_summary_row(grid_result, recall_at_k=()):
     scenario = grid_result["scenario"]
     method = grid_result["method"]
     study = grid_result["study"]
@@ -577,6 +772,10 @@ def make_single_method_grid_summary_row(grid_result):
         "final_training_epochs": "",
         "selected_epoch": "",
         "global_step": "",
+        # Recall@K columns exist only when some run in the grid reported them,
+        # and every row carries the same set so the CSV header stays rectangular.
+        **{f"best_valid_recall_at_{k}": "" for k in recall_at_k},
+        **{f"test_recall_at_{k}": "" for k in recall_at_k},
     }
     if study is not None:
         attrs = study.best_user_attrs or {}
@@ -613,6 +812,7 @@ def make_single_method_grid_summary_row(grid_result):
                     "final_training_epochs": max(0, result.last_epoch + 1),
                     "selected_epoch": result.selected_epoch,
                     "global_step": result.global_step,
+                    **recall_at_k_columns(result, recall_at_k),
                 }
             )
     else:
@@ -636,6 +836,7 @@ def make_single_method_grid_summary_row(grid_result):
                 "final_training_epochs": max(0, result.last_epoch + 1),
                 "selected_epoch": result.selected_epoch,
                 "global_step": result.global_step,
+                **recall_at_k_columns(result, recall_at_k),
             }
         )
     return row
@@ -660,6 +861,12 @@ def make_single_method_grid_aggregate_rows(rows):
         "test_mean_average_precision_at_r",
         "final_train_loss",
         "final_training_epochs",
+        # Recall@K columns are present only when the grid reported any.
+        *(
+            name
+            for name in rows[0]
+            if name.startswith(("best_valid_recall_at_", "test_recall_at_"))
+        ),
     ]
     groups = {}
     for row in rows:
@@ -800,6 +1007,20 @@ def mean_std(values):
 
 def optional_number(value):
     return "" if value is None else value
+
+
+def realized_final_training_epochs(epoch_plan, final_result):
+    """Report the duration the final fit actually ran for.
+
+    ``full_train`` fixes that duration in advance, while ``early_stop_holdout``
+    only learns it once early stopping fires, so the run itself supplies it.
+    """
+
+    planned_epochs = epoch_plan.get("final_training_epochs")
+    if planned_epochs is not None:
+        return int(planned_epochs)
+    last_epoch = getattr(final_result, "last_epoch", None)
+    return "" if last_epoch is None else max(0, int(last_epoch) + 1)
 
 
 def optional_path(value):

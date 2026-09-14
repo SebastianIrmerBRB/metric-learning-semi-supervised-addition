@@ -11,20 +11,35 @@ import math
 import multiprocessing as mp
 import os
 
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
-os.environ.setdefault("BLIS_NUM_THREADS", "1")
+# The BLAS backends read their thread counts when their shared libraries load,
+# so the budget has to be published before the first torch-dependent import —
+# which is before argparse can run. resolve_process_budget therefore reads
+# ``--num_threads`` straight out of argv; configure_threads re-resolves it from
+# the parsed namespace below and clamps every runtime to the result.
+from training.cpu_threads import (
+    DEFAULT_THREAD_BUDGET,
+    configure_process_threads,
+    limit_native_thread_pools,
+    resolve_process_budget,
+    resolve_thread_budget,
+)
 
+_INITIAL_THREAD_BUDGET, _THREAD_CEILING = resolve_process_budget()
+configure_process_threads(_INITIAL_THREAD_BUDGET)
+
+from training import ablation
+from training import head_evaluation
 from training import hpo as _experiment_hpo
+from training import resume
 from training.cli import *  # noqa: F403
 from training.hpo import *  # noqa: F403
 from training.io import *  # noqa: F403
 from training.reporting import (
     comparison_scenario_to_dict,
+    get_hpo_validation_retrieval_backend,
     make_comparison_deltas,
+    make_final_cross_validation_plan,
+    make_final_early_stopping_plan,
     make_final_epoch_plan,
     write_cross_seed_train_val_evaluation_summary,
     write_comparison_grid_summary,
@@ -38,8 +53,48 @@ from training.reporting import (
 from training.engine import *  # noqa: F403
 from training.types import *  # noqa: F403
 
-torch.set_num_threads(1)
+torch.set_num_threads(_INITIAL_THREAD_BUDGET)
+# Inter-op (task-level) parallelism stays serial: the training step is one
+# dependency chain, so an inter-op pool only competes with the intra-op pool that
+# is doing the real work. Intra-op is where the CPU parallelism lives.
 torch.set_num_interop_threads(1)
+
+
+def configure_threads(args):
+    """Apply ``--num_threads`` once the CLI request is known.
+
+    The pre-import pass already sized the BLAS environment from the same
+    request, so this normally confirms that budget rather than changing it. It
+    still has to run: the budget is a process total, and reaching it means
+    holding *every* bundled numeric runtime to it, not just torch's intra-op
+    pool. numpy, scipy, scikit-learn and faiss each ship their own, and each one
+    left unclamped adds another full budget's worth of threads.
+    """
+
+    requested = getattr(args, "num_threads", None)
+    threads = resolve_thread_budget(DEFAULT_THREAD_BUDGET if requested is None else requested)
+    if _THREAD_CEILING is not None:
+        # The scheduler's per-child share caps what this run may claim.
+        threads = min(threads, _THREAD_CEILING)
+    if threads != torch.get_num_threads():
+        torch.set_num_threads(threads)
+    limit_native_thread_pools(threads)
+    return threads
+
+
+def configure_float32_precision():
+    """Keep every float32 kernel at full float32.
+
+    Matmul already defaults to full precision, but cuDNN allows TF32 for
+    convolutions by default. The only convolution here is DINOv2's patch
+    embedding, so this affects backbone feature extraction: with TF32 a freshly
+    built feature cache is computed at 10 mantissa bits, while a run reading an
+    existing cache is not. Turning it off keeps cache builds reproducible and
+    makes the whole pipeline one precision.
+    """
+
+    torch.backends.cudnn.allow_tf32 = False
+
 
 def make_sampler_spaces_label_budget_aware(args, config):
     """Preserve the historical patch point while delegating HPO constraints."""
@@ -58,9 +113,26 @@ def main():
     # arguments remain the highest-precedence source.
     args = parse_args_with_experiment_config()
 
+    # Applied before any run branch so every mode below shares one thread budget.
+    configure_threads(args)
+    configure_float32_precision()
+    utils.set_eval_autocast_enabled(args.eval_amp)
+    # The FAISS resource buffers are process-wide and outlive any single run, so
+    # the policy is published once here rather than per evaluation.
+    apply_low_memory_mode(args)
+
+    # Reloading saved heads trains nothing, so it precedes every mode that would.
+    if args.evaluate_saved_heads is not None:
+        head_evaluation.run_saved_head_evaluation(args)
+        return
+
     if args.final_test_study_dir is not None:
         run_final_from_study_dir_request(args)
         return
+
+    # Before any SSL config is read, so a variant that swaps the file is in
+    # place for every grid scenario and trial built below.
+    ablation.prepare_ablation(args)
 
     # A missing --hparam_config produces None.  A present but disabled config is
     # still loaded so its resolved contents can be written into run metadata.
@@ -498,9 +570,17 @@ def resolve_scenario_label_budget(label_sampling_mode, label_budget, has_label_b
     labeled_fraction = float(label_budget)
     validate_labeled_fraction(labeled_fraction, "label budget")
     if label_sampling_mode == "class_subset_k_shot":
-        # k controls examples per selected class; default to one-shot if the
-        # base config omitted it.
-        labeled_per_class = base_ssl_config.labeled_per_class or 1
+        # k controls examples per selected class, and it has to be stated. It
+        # used to fall back to one-shot, which is the budget a run is least
+        # likely to have meant and the one it cannot tell it got: the fallback
+        # fires precisely when nothing in the request mentions k, so the logs
+        # record a 1-shot study that reads like whatever k the author assumed.
+        labeled_per_class = base_ssl_config.labeled_per_class
+        if labeled_per_class is None:
+            raise ValueError(
+                "label_sampling_mode='class_subset_k_shot' needs a k per selected "
+                "class: set --k_shot_grid, or labeled_per_class in the SSL config"
+            )
     else:
         # When a fraction grid is explicitly supplied, do not let a fixed
         # per-class count override that grid dimension.
@@ -949,6 +1029,30 @@ FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES = {
     "miner",
 }
 
+FINAL_STUDY_DIR_HPO_VALIDATION_CONFIG_ARGS = {
+    "cifar_imbalance_factor",
+    "cifar_test_fraction",
+    "cifar_train_fraction",
+    "cv_k",
+    "cv_mode",
+    "data_split_seed",
+    "dataset",
+    "dataset_protocol",
+    "mode",
+    "seed",
+    "selection_metric",
+    "ssl_config",
+    "support_seed",
+    "val_mode",
+    "validation_gallery_fraction",
+    "validation_retrieval_mode",
+}
+
+FINAL_STUDY_DIR_TRAIN_VAL_MODES = {
+    STUDY_DIR_MODE_TRAIN_VAL,
+    STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
+}
+
 FINAL_STUDY_REPOSITORY_FORBIDDEN_HPARAM_KEYS = (
     COMPARISON_FORBIDDEN_HPARAM_KEYS | SAMPLER_CAPACITY_HPARAM_KEYS
 )
@@ -958,6 +1062,9 @@ def run_final_from_study_dir_request(request_args):
 
     base_args, hparam_config, study_result = load_hparam_study_for_final_test(request_args.final_test_study_dir)
     base_args = copy_final_test_request_args(request_args, base_args)
+    # The variant arrives with the request but is prepared on the study's args,
+    # so a swapped SSL config file keeps the study's own label split.
+    ablation.prepare_ablation(base_args)
     request_override_names = set(getattr(base_args, "final_study_request_overrides", []))
     if request_override_names & FINAL_STUDY_DIR_REPOSITORY_OVERRIDE_ARGS:
         validate_final_study_hparam_repository(hparam_config, study_result)
@@ -981,18 +1088,36 @@ def copy_final_test_request_args(source_args, target_args):
     """Apply current-request overrides to args loaded from a study directory."""
 
     override_names = get_final_study_request_override_names(source_args)
+    ignored_override_names = set(FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES)
+    if get_study_dir_mode(source_args) in FINAL_STUDY_DIR_TRAIN_VAL_MODES:
+        ignored_validation_overrides = override_names & FINAL_STUDY_DIR_HPO_VALIDATION_CONFIG_ARGS
+        if ignored_validation_overrides:
+            logger.info(
+                "Using the saved HPO validation configuration for study-directory replay; "
+                f"ignoring current-request overrides for {sorted(ignored_validation_overrides)}"
+            )
+        ignored_override_names.update(FINAL_STUDY_DIR_HPO_VALIDATION_CONFIG_ARGS)
+    applied_override_names = override_names - ignored_override_names
     if "loss_miner_grid" in override_names:
         logger.warning(
             "Ignoring loss_miner_grid for study-directory replay: one study directory represents one "
             "method's trials. Run the replay once for each method's own study directory."
         )
-    for name in sorted(override_names - FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES):
+    for name in sorted(applied_override_names):
         if hasattr(source_args, name):
             setattr(target_args, name, copy.deepcopy(getattr(source_args, name)))
 
-    if "seed" in override_names and "hparam_seed" not in override_names and hasattr(source_args, "hparam_seed"):
+    if "seed" in applied_override_names and "hparam_seed" not in override_names and hasattr(source_args, "hparam_seed"):
         target_args.hparam_seed = source_args.hparam_seed
-    for name in ("final_test_top_n", "final_test_trial_numbers", "final_test_visualization", "study_dir_mode"):
+    for name in (
+        "final_test_top_n",
+        "final_test_trial_numbers",
+        "final_test_visualization",
+        "study_dir_mode",
+        # Studies saved before resume existed carry no value for it, so the
+        # current request always decides whether a replay continues.
+        "resume_interrupted_runs",
+    ):
         if hasattr(source_args, name):
             setattr(target_args, name, getattr(source_args, name))
     target_args.final_test_after_hpo = True
@@ -1000,7 +1125,7 @@ def copy_final_test_request_args(source_args, target_args):
     resolve_hparam_seed(target_args)
     resolve_data_split_seed(target_args)
     resolve_support_seed(target_args)
-    target_args.final_study_request_overrides = sorted(override_names)
+    target_args.final_study_request_overrides = sorted(applied_override_names)
     return target_args
 
 def get_final_study_request_override_names(args):
@@ -1182,12 +1307,14 @@ def run_cross_seed_train_val_study_dir_grid(
             scenario_group,
         )
         final_summary_stem = f"cross_seed_train_val_{group_name}_final"
-        epoch_plan = make_final_epoch_plan(selected_study_result)
+        epoch_plan = make_final_fit_plan(final_args, selected_study_result)
         logger.info(
             "cross_seed_train_val selected trial "
             f"{best_candidate['trial']['trial_number']} for {group_name}: "
             f"mean {selection_metric}={best_candidate['mean_selection_value']:.6f} across "
-            f"{len(scenario_group)} validation seeds; final epochs={epoch_plan['final_training_epochs']}"
+            f"{len(scenario_group)} validation seeds; "
+            f"final fit={epoch_plan['fit_mode']}, "
+            f"final epochs={describe_final_training_epochs(epoch_plan)}"
         )
         final_result = run_single_final_from_hparam(
             final_args,
@@ -1354,6 +1481,41 @@ def run_study_dir_hparam_evaluation(base_args, hparam_config, study_result, role
 def get_study_dir_mode(args):
     return getattr(args, "study_dir_mode", STUDY_DIR_MODE_FINAL_TRAIN)
 
+def get_final_fit_mode(args):
+    fit_mode = getattr(args, "final_fit_mode", FINAL_FIT_MODE_FULL_TRAIN)
+    if fit_mode not in FINAL_FIT_MODES:
+        raise ValueError(f"final_fit_mode must be one of {FINAL_FIT_MODES}: {fit_mode}")
+    return fit_mode
+
+def get_final_epoch_aggregation(args):
+    aggregation = getattr(args, "final_epoch_aggregation", FINAL_EPOCH_AGGREGATION_MEAN)
+    if aggregation not in FINAL_EPOCH_AGGREGATIONS:
+        raise ValueError(
+            f"final_epoch_aggregation must be one of {FINAL_EPOCH_AGGREGATIONS}: {aggregation}"
+        )
+    return aggregation
+
+def make_final_fit_plan(base_args, study_result):
+    """Describe how the model(s) this replay tests will be fitted."""
+
+    final_fit_mode = get_final_fit_mode(base_args)
+    if final_fit_mode == FINAL_FIT_MODE_EARLY_STOP_HOLDOUT:
+        return make_final_early_stopping_plan(base_args)
+    if final_fit_mode == FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS:
+        return make_final_cross_validation_plan(base_args)
+    return make_final_epoch_plan(
+        study_result,
+        aggregation=get_final_epoch_aggregation(base_args),
+    )
+
+def describe_final_training_epochs(epoch_plan):
+    """Render a plan's duration for logs, including the not-yet-known case."""
+
+    final_training_epochs = epoch_plan["final_training_epochs"]
+    if final_training_epochs is not None:
+        return str(final_training_epochs)
+    return f"chosen by early stopping, at most {epoch_plan['max_training_epochs']}"
+
 def get_study_dir_summary_stem(args):
     if get_study_dir_mode(args) == STUDY_DIR_MODE_TRAIN_VAL:
         return "train_val_evaluation"
@@ -1397,7 +1559,7 @@ def load_hparam_study_for_final_test(study_dir):
     if not isinstance(raw_hparam_config, dict):
         raise ValueError(f"Study config must contain a hparam_config object: {study_config_path}")
 
-    base_args = make_base_args_from_study_config(raw_base_args)
+    base_args = make_base_args_from_study_config(raw_base_args, study_dir=study_dir)
     hparam_config = HParamSearchConfig(**raw_hparam_config)
     study_result = load_hparam_study_result_from_artifacts(study_dir, study_config, hparam_config)
     return base_args, hparam_config, study_result
@@ -1413,11 +1575,58 @@ def resolve_existing_hparam_study_dir(study_dir):
 
     raise FileNotFoundError(f"HPO study directory not found: {path} or {logs_path}")
 
-def make_base_args_from_study_config(raw_base_args):
+# A study records absolute-from-repo-root paths for the configs it materialized
+# under its own log tree, so moving that tree (archiving a run under old/, say)
+# leaves every recorded path dangling even though the file moved with it.
+STUDY_RELOCATION_MIN_SUFFIX_PARTS = 2
+
+
+def resolve_relocated_study_path(recorded_path, study_dir):
+    """Find a recorded study artifact after its log tree was moved.
+
+    Re-anchors the recorded path against the directory the study was actually
+    loaded from, preferring the longest trailing path segment that still
+    resolves, so a match keeps as much of the recorded location as survives the
+    move. Returns None when nothing matches, leaving the caller to fail against
+    the path the study actually recorded.
+    """
+
+    recorded = Path(recorded_path)
+    if recorded.is_file():
+        return recorded
+
+    parts = recorded.parts
+    anchors = [Path(study_dir), *Path(study_dir).parents]
+    for length in range(len(parts) - 1, STUDY_RELOCATION_MIN_SUFFIX_PARTS - 1, -1):
+        suffix = parts[-length:]
+        for anchor in anchors:
+            candidate = anchor.joinpath(*suffix)
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def make_base_args_from_study_config(raw_base_args, study_dir=None):
     args = parser.parse_args([])
     for name, value in raw_base_args.items():
         setattr(args, name, value)
     normalize_backbone_tuning_args(args)
+    if study_dir is not None and getattr(args, "ssl_config", None):
+        relocated = resolve_relocated_study_path(args.ssl_config, study_dir)
+        if relocated is not None and Path(args.ssl_config) != relocated:
+            logger.info(
+                f"Study SSL config {args.ssl_config} is missing; the study tree moved, so "
+                f"reading it from {relocated} instead"
+            )
+            args.ssl_config = str(relocated)
+    reset_pool_fractions = utils.sanitize_native_unlabeled_pool_fractions(args)
+    if reset_pool_fractions:
+        logger.info(
+            "Ignoring out-of-class unlabeled pool fractions saved by the study: "
+            f"{sorted(reset_pool_fractions)} predate the current defaults and are inert for "
+            f"dataset_protocol={getattr(args, 'dataset_protocol', None)!r}, which owns no native "
+            "unlabeled pool"
+        )
     resolve_hparam_seed(args)
     resolve_data_split_seed(args)
     resolve_support_seed(args)
@@ -1785,6 +1994,10 @@ def make_validation_selected_study_result(
         sum(result.best_valid_mean_average_precision_at_r for result in validation_results)
         / len(validation_results)
     )
+    mean_measurements = mean_optional_named_metric_mapping(
+        validation_results,
+        "best_valid_measurements",
+    )
     selection_values = [
         get_selection_metric_value(
             selection_metric,
@@ -1801,6 +2014,7 @@ def make_validation_selected_study_result(
         {
             "best_valid_precision_at_1": mean_precision,
             "best_valid_mean_average_precision_at_r": mean_map,
+            "best_valid_measurements": mean_measurements,
             "validation_selection_metric": selection_metric,
             "mean_validation_selection_value": mean_selection_value,
             "validation_replay_results": serialized_results,
@@ -1926,19 +2140,63 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
     if study_result.best_params is None:
         raise ValueError(f"No completed {role} HPO trial is available for final retraining")
 
-    epoch_plan = make_final_epoch_plan(study_result)
+    final_fit_mode = get_final_fit_mode(base_args)
+    if final_fit_mode == FINAL_FIT_MODE_EARLY_STOP_HOLDOUT:
+        return run_single_final_early_stop_from_hparam(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            summary_stem=summary_stem,
+        )
+    if final_fit_mode == FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS:
+        return run_single_final_cross_validation_from_hparam(
+            base_args,
+            hparam_config,
+            study_result,
+            role,
+            summary_stem=summary_stem,
+        )
+
+    epoch_plan = make_final_epoch_plan(
+        study_result,
+        aggregation=get_final_epoch_aggregation(base_args),
+    )
+    reused_result = load_reusable_final_result(
+        base_args,
+        study_result,
+        role,
+        epoch_plan,
+        summary_stem=summary_stem,
+    )
+    if reused_result is not None:
+        logger.info(
+            f"Reusing the completed {role} final test run for trial "
+            f"{study_result.best_trial_number} from {reused_result.log_dir}"
+        )
+        return reused_result
+
     final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
     final_args.hparam_config_resolved = hparam_config.to_dict()
     final_args.hparam_params = study_result.best_params
     final_args.hparam_final_from_study = study_result.study_name
     final_args.hparam_final_trial_number = study_result.best_trial_number
     final_args.hparam_final_epoch_plan = epoch_plan
+    final_args.validation_retrieval_backend = (
+        get_hpo_validation_retrieval_backend(study_result)
+    )
     final_args.final_full_train = True
     final_args.cv_k = 1
     final_args.epochs = epoch_plan["final_training_epochs"]
     final_args.evaluate_test = True
     final_args.skip_test_during_hpo = False
     final_args.save_dir = Path(base_args.save_dir) / "final" / role
+    logger.info(
+        f"Final {role} fit trains on the full development set for "
+        f"{epoch_plan['final_training_epochs']} epochs "
+        f"({epoch_plan.get('aggregation', FINAL_EPOCH_AGGREGATION_MEAN)} of "
+        f"{epoch_plan['training_epoch_counts']} from {epoch_plan['source']})"
+    )
 
     final_result = run_experiment(final_args, final_ssl_config)
     best_attrs = study_result.best_user_attrs or {}
@@ -1946,7 +2204,141 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
         final_result,
         best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
         best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
+        best_valid_measurements=best_attrs.get("best_valid_measurements"),
     )
+    write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
+    return final_result
+
+def run_single_final_early_stop_from_hparam(
+    base_args,
+    hparam_config,
+    study_result,
+    role,
+    summary_stem="final_evaluation",
+):
+    """Train one HPO configuration against its own validation slice and test it.
+
+    This sidesteps transferring an epoch count from validation entirely: the run
+    holds a class-disjoint validation slice out of the development set, early-
+    stops on it, restores the checkpoint that slice selected, and evaluates
+    D_test exactly once. The cost is the training data inside the slice.
+    """
+
+    final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
+    final_args.hparam_config_resolved = hparam_config.to_dict()
+    final_args.hparam_params = study_result.best_params
+    final_args.hparam_final_from_study = study_result.study_name
+    final_args.hparam_final_trial_number = study_result.best_trial_number
+    final_args.validation_retrieval_backend = (
+        get_hpo_validation_retrieval_backend(study_result)
+    )
+    # Validation stays in this fit, so it is not a full-development train. One
+    # model is trained against one holdout rather than the study's CV folds, and
+    # args.epochs stays the search budget that early stopping may cut short.
+    final_args.final_full_train = False
+    final_args.cv_k = 1
+    final_args.evaluate_test = True
+    final_args.skip_test_during_hpo = False
+    final_args.save_dir = Path(base_args.save_dir) / "final" / role
+
+    epoch_plan = make_final_early_stopping_plan(final_args)
+    final_args.hparam_final_epoch_plan = epoch_plan
+    reused_result = load_reusable_final_result(
+        base_args,
+        study_result,
+        role,
+        epoch_plan,
+        summary_stem=summary_stem,
+    )
+    if reused_result is not None:
+        logger.info(
+            f"Reusing the completed {role} early-stopped final test run for trial "
+            f"{study_result.best_trial_number} from {reused_result.log_dir}"
+        )
+        return reused_result
+
+    holdout_val_ratio = epoch_plan["holdout_val_ratio"]
+    logger.info(
+        f"Final {role} fit early-stops on its own validation holdout "
+        f"(val_mode={final_args.val_mode}, "
+        f"holdout_val_ratio={'default' if holdout_val_ratio is None else holdout_val_ratio}, "
+        f"patience={final_args.patience}, at most {final_args.epochs} epochs); "
+        "no epoch count is transferred from validation"
+    )
+
+    final_result = run_experiment(final_args, final_ssl_config)
+    write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
+    return final_result
+
+def run_single_final_cross_validation_from_hparam(
+    base_args,
+    hparam_config,
+    study_result,
+    role,
+    summary_stem="final_evaluation",
+):
+    """Test every cross-validation fold's own checkpoint instead of one final model.
+
+    This is the protocol from A Metric Learning Reality Check: the study's folds
+    are trained once more with test evaluation enabled, each fold early-stops on
+    its own validation partition, and that fold's selected checkpoint is
+    evaluated on D_test. The reported score is the mean over folds, and with
+    ``--concatenated_fold_test`` the folds' test embeddings are additionally
+    joined per sample for one combined evaluation.
+    """
+
+    final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
+    if final_args.cv_k < 2:
+        raise ValueError(
+            "final_fit_mode='cross_validation_folds' tests one model per fold and "
+            f"requires cv_k > 1, got cv_k={final_args.cv_k}"
+        )
+    final_args.hparam_config_resolved = hparam_config.to_dict()
+    final_args.hparam_params = study_result.best_params
+    final_args.hparam_final_from_study = study_result.study_name
+    final_args.hparam_final_trial_number = study_result.best_trial_number
+    final_args.validation_retrieval_backend = (
+        get_hpo_validation_retrieval_backend(study_result)
+    )
+    # The study's cv_k, cv_mode, val_mode, and split seeds are preserved so the
+    # tested models are the same ones its validation objective ranked. No
+    # separate final fit exists, so this is not a full-development train.
+    final_args.final_full_train = False
+    final_args.evaluate_test = True
+    final_args.skip_test_during_hpo = False
+    final_args.save_test_embeddings = bool(
+        getattr(final_args, "concatenated_fold_test", False)
+    )
+    final_args.save_dir = Path(base_args.save_dir) / "final" / role
+
+    epoch_plan = make_final_cross_validation_plan(final_args)
+    final_args.hparam_final_epoch_plan = epoch_plan
+    reused_result = load_reusable_final_result(
+        base_args,
+        study_result,
+        role,
+        epoch_plan,
+        summary_stem=summary_stem,
+    )
+    if reused_result is not None:
+        logger.info(
+            f"Reusing the completed {role} per-fold final test run for trial "
+            f"{study_result.best_trial_number} from {reused_result.log_dir}"
+        )
+        return reused_result
+
+    logger.info(
+        f"Final {role} evaluation tests each of the {final_args.cv_k} "
+        f"{final_args.cv_mode} folds' validation-selected checkpoints on D_test "
+        f"(patience={final_args.patience}, at most {final_args.epochs} epochs per fold"
+        f"{FOLD_TEST_EMBEDDING_LOG_CLAUSES[get_fold_test_embedding_storage(final_args)] if final_args.save_test_embeddings else ''}); "
+        "no separate final model is trained"
+    )
+    # Folds this run finished before it was interrupted are continued inside
+    # their own cv_ directory instead of being trained again.
+    resume.mark_cross_validation_resume(final_args, resume.resume_enabled(base_args))
+
+    final_result = run_experiment(final_args, final_ssl_config)
     write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
     return final_result
 
@@ -1963,20 +2355,131 @@ def run_single_train_val_from_hparam(
     if study_result.best_params is None:
         raise ValueError(f"No completed {role} HPO trial is available for train/validation replay")
 
+    reused_result = load_reusable_train_val_result(
+        base_args,
+        study_result,
+        role,
+        summary_stem=summary_stem,
+    )
+    if reused_result is not None:
+        logger.info(
+            f"Reusing the completed {role} validation replay of trial "
+            f"{study_result.best_trial_number} from {reused_result.log_dir}"
+        )
+        return reused_result
+
     train_args, train_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
     train_args.hparam_config_resolved = hparam_config.to_dict()
     train_args.hparam_params = study_result.best_params
     train_args.hparam_replay_from_study = study_result.study_name
     train_args.hparam_replay_trial_number = study_result.best_trial_number
+    train_args.validation_retrieval_backend = (
+        get_hpo_validation_retrieval_backend(study_result)
+    )
     train_args.final_full_train = False
-    train_args.cv_k = 1
+    # Preserve the study/trial's cv_k, cv_mode, val_mode, and split settings so
+    # this validation evidence is directly comparable with the HPO objective.
     train_args.evaluate_test = False
     train_args.skip_test_during_hpo = True
     train_args.save_dir = Path(base_args.save_dir) / "train_val" / role
+    # Folds this run finished before it was interrupted are continued inside
+    # their own cv_ directory instead of being trained again.
+    resume.mark_cross_validation_resume(train_args, resume.resume_enabled(base_args))
 
     train_result = run_experiment(train_args, train_ssl_config)
     write_hparam_train_val_evaluation_summary(study_result, train_result, role, summary_stem=summary_stem)
     return train_result
+
+
+def load_reusable_train_val_result(base_args, study_result, role, summary_stem):
+    """Return the validation replay a previous attempt already completed."""
+
+    if not resume.resume_enabled(base_args):
+        return None
+    result = resume.load_reusable_replay_result(
+        Path(study_result.study_dir) / f"{summary_stem}.json",
+        result_key="train_val_result",
+        expected_log_root=Path("logs") / base_args.save_dir / "train_val" / role,
+        study_result=study_result,
+        require_metrics=(
+            "best_valid_precision_at_1",
+            "best_valid_mean_average_precision_at_r",
+        ),
+    )
+    if result is not None and not result_has_requested_measurements(
+        result,
+        base_args,
+        "best_valid_measurements",
+    ):
+        return None
+    return result
+
+
+def result_has_requested_measurements(result, args, attribute):
+    """Return whether a reusable result contains every optional CLI metric."""
+
+    requested = utils.additional_measurements(getattr(args, "measurements", None))
+    recorded = getattr(result, attribute, None) or {}
+    return all(measurement in recorded for measurement in requested)
+
+
+def load_reusable_final_result(base_args, study_result, role, epoch_plan, summary_stem):
+    """Return the final test run a previous attempt already completed.
+
+    The winner, how it was fitted, and its training duration all follow from
+    validation, so a summary that names a different trial, fit mode, or epoch
+    count belongs to a different replay and is retrained rather than reused.
+    """
+
+    if not resume.resume_enabled(base_args):
+        return None
+    summary_path = Path(study_result.study_dir) / f"{summary_stem}.json"
+    final_result = resume.load_reusable_replay_result(
+        summary_path,
+        result_key="final_result",
+        expected_log_root=Path("logs") / base_args.save_dir / "final" / role,
+        study_result=study_result,
+        require_metrics=("test_precision_at_1", "test_mean_average_precision_at_r"),
+    )
+    if final_result is None:
+        return None
+    # Held to the test table this run reports, Recall@K rungs included, and
+    # judged by what the finished run measured rather than what it was asked.
+    missing = resume.missing_test_metrics(final_result, base_args)
+    if missing:
+        logger.info(
+            f"Not reusing the completed {role} final run in {final_result.log_dir}: its test "
+            f"evaluation lacks {list(missing)}, which this run reports"
+        )
+        return None
+    recorded_plan = read_json(summary_path).get("epoch_plan") or {}
+    # Summaries written before final_fit_mode existed all describe a full
+    # development fit.
+    recorded_fit_mode = recorded_plan.get("fit_mode", FINAL_FIT_MODE_FULL_TRAIN)
+    if recorded_fit_mode != epoch_plan.get("fit_mode", FINAL_FIT_MODE_FULL_TRAIN):
+        return None
+    if recorded_plan.get("final_training_epochs") != epoch_plan["final_training_epochs"]:
+        return None
+    if recorded_fit_mode == FINAL_FIT_MODE_EARLY_STOP_HOLDOUT:
+        # This fit validated on its own holdout, so it keeps its own validation
+        # metrics instead of inheriting the study's.
+        if recorded_plan.get("holdout_val_ratio") != epoch_plan["holdout_val_ratio"]:
+            return None
+        return final_result
+    if recorded_fit_mode == FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS:
+        # A different fold count, splitter, or concatenation setting describes a
+        # different set of tested models. These folds also validated themselves.
+        for field in ("cv_k", "cv_mode", "concatenated_fold_test"):
+            if recorded_plan.get(field) != epoch_plan[field]:
+                return None
+        return final_result
+    best_attrs = study_result.best_user_attrs or {}
+    return replace(
+        final_result,
+        best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
+        best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
+        best_valid_measurements=best_attrs.get("best_valid_measurements"),
+    )
 
 
 if __name__ == "__main__":

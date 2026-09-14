@@ -2,7 +2,11 @@
 
 import numpy as np
 
-from .config import SemiSupervisedSplit
+from .config import (
+    UNLABELED_CLASS_SCOPE_LABELED_CLASSES,
+    UNLABELED_CLASS_SCOPES,
+    SemiSupervisedSplit,
+)
 
 
 def make_semi_supervised_split(
@@ -12,8 +16,10 @@ def make_semi_supervised_split(
     labeled_per_class,
     max_unlabeled_samples,
     seed,
+    unlabeled_class_scope="all",
+    unlabeled_fraction=None,
 ):
-    """Select labeled positions and optionally cap the unlabeled candidate pool."""
+    """Select labeled positions and optionally narrow the unlabeled pool."""
 
     # One RNG instance drives all choices in this split, making it reproducible
     # from a single seed.
@@ -30,6 +36,21 @@ def make_semi_supervised_split(
     # Sort outputs so their order is stable and independent of dictionary/loop
     # traversal after random selection has finished.
     labeled_positions = np.asarray(sorted(labeled_positions), dtype=np.int64)
+
+    # The two narrowing steps run in this order on purpose: the scope decides
+    # which classes are eligible at all, so the fraction is a share of the pool
+    # the run is actually allowed to draw from rather than of a pool that the
+    # scope then discards part of.
+    unlabeled_by_label = restrict_unlabeled_to_scope(
+        unlabeled_by_label=unlabeled_by_label,
+        labels=labels,
+        labeled_positions=labeled_positions,
+        unlabeled_class_scope=unlabeled_class_scope,
+    )
+    unlabeled_by_label = apportion_unlabeled_fraction(
+        unlabeled_by_label=unlabeled_by_label,
+        unlabeled_fraction=unlabeled_fraction,
+    )
     unlabeled_positions = concatenate_position_groups(unlabeled_by_label.values())
 
     # Capping can make embedding extraction and graph methods tractable on
@@ -43,6 +64,91 @@ def make_semi_supervised_split(
         labeled_positions=labeled_positions,
         unlabeled_positions=np.asarray(sorted(unlabeled_positions), dtype=np.int64),
     )
+
+
+def restrict_unlabeled_to_scope(
+    unlabeled_by_label,
+    labels,
+    labeled_positions,
+    unlabeled_class_scope,
+):
+    """Drop unlabeled candidates from classes the labeled support never covers.
+
+    The class keys of ``unlabeled_by_label`` are the dataset's own labels, so the
+    eligible set is read back off the labeled positions rather than recomputed
+    from the sampling mode -- every mode then gets the same rule, including the
+    per-class modes where the two sets already coincide and this is a no-op.
+    """
+
+    if unlabeled_class_scope not in UNLABELED_CLASS_SCOPES:
+        raise ValueError(
+            f"Unknown unlabeled_class_scope: {unlabeled_class_scope}. "
+            f"Available: {sorted(UNLABELED_CLASS_SCOPES)}"
+        )
+    if unlabeled_class_scope != UNLABELED_CLASS_SCOPE_LABELED_CLASSES:
+        return unlabeled_by_label
+
+    labeled_classes = set(int(label) for label in labels[labeled_positions])
+    return {
+        int(label): class_positions
+        for label, class_positions in unlabeled_by_label.items()
+        if int(label) in labeled_classes
+    }
+
+
+def apportion_unlabeled_fraction(unlabeled_by_label, unlabeled_fraction):
+    """Keep a class-balanced, nested ``unlabeled_fraction`` of each class's pool.
+
+    Every group arrives in its class's own random permutation, so a prefix is
+    already a uniform random subset and a longer prefix contains the shorter one.
+    That is what makes successive fractions nest: raising the fraction adds
+    candidates instead of redrawing them, so two runs differ only by the images
+    the larger pool gained. Largest-remainder apportioning spends the rounding
+    on the classes with the largest fractional part, keeping the kept total equal
+    to the requested share of the pool.
+    """
+
+    if unlabeled_fraction is None:
+        return unlabeled_by_label
+    unlabeled_fraction = float(unlabeled_fraction)
+    if not 0.0 < unlabeled_fraction <= 1.0:
+        raise ValueError(f"unlabeled_fraction must be in (0, 1]: {unlabeled_fraction}")
+    if unlabeled_fraction == 1.0:
+        return unlabeled_by_label
+
+    # Sorting by class fixes the iteration order before any rounding decision,
+    # so the same pool and fraction always apportion identically regardless of
+    # how the caller's dictionary happened to be built.
+    class_order = sorted(int(label) for label in unlabeled_by_label)
+    class_sizes = np.asarray(
+        [len(unlabeled_by_label[label]) for label in class_order],
+        dtype=np.int64,
+    )
+    pool_size = int(class_sizes.sum())
+    if pool_size == 0:
+        return unlabeled_by_label
+
+    exact_quotas = class_sizes * unlabeled_fraction
+    quotas = np.floor(exact_quotas).astype(np.int64)
+    # round, not floor, so the pool tracks the requested share from both sides
+    # instead of always landing under it.
+    target_total = int(round(pool_size * unlabeled_fraction))
+    target_total = min(max(target_total, 0), pool_size)
+    leftover = target_total - int(quotas.sum())
+    if leftover > 0:
+        remainders = exact_quotas - quotas
+        # Break remainder ties by class id so the choice is reproducible.
+        ranked = sorted(
+            range(len(class_order)),
+            key=lambda index: (-remainders[index], class_order[index]),
+        )
+        for index in ranked[:leftover]:
+            quotas[index] += 1
+
+    return {
+        label: np.asarray(unlabeled_by_label[label], dtype=np.int64)[: int(quota)]
+        for label, quota in zip(class_order, quotas)
+    }
 
 
 def select_labeled_positions(labels, label_sampling_mode, labeled_fraction, labeled_per_class, rng):

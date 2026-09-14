@@ -14,6 +14,13 @@ import utils
 from .config import UNLABELED_TARGET
 
 
+def _fetch_items(dataset, indices):
+    """Let cached feature datasets gather a batch through SSL views."""
+
+    fetch = getattr(dataset, "__getitems__", None)
+    return fetch(indices) if callable(fetch) else [dataset[index] for index in indices]
+
+
 @dataclass(frozen=True)
 class GraphBatchNodeIndex:
     """Dataset index carrying one graph batch's local edge map."""
@@ -89,6 +96,17 @@ class RelabeledSubset(Dataset):
             return (*item, int(index))
         return item
 
+    def __getitems__(self, indices):
+        source_indices = [int(self.positions[index]) for index in indices]
+        images = _fetch_items(self.dataset, source_indices)
+        items = [
+            (image[0], self.orig_labels[index], self.confidences[index])
+            for image, index in zip(images, indices)
+        ]
+        if self.return_indices:
+            return [(*item, int(index)) for item, index in zip(items, indices)]
+        return items
+
 
 class UnlabeledSubset(Dataset):
     """Dataset view that intentionally hides all labels from loss-driven SSL."""
@@ -108,6 +126,15 @@ class UnlabeledSubset(Dataset):
         views = [self.dataset[position][0] for _ in range(self.num_views)]
         image_or_views = views[0] if self.num_views == 1 else views
         return image_or_views, UNLABELED_TARGET, position
+
+    def __getitems__(self, indices):
+        if self.num_views != 1:
+            return [self[index] for index in indices]
+        positions = [int(self.positions[index]) for index in indices]
+        return [
+            (item[0], UNLABELED_TARGET, position)
+            for item, position in zip(_fetch_items(self.dataset, positions), positions)
+        ]
 
 
 class LRMLGraphDataset(Dataset):
@@ -135,6 +162,20 @@ class LRMLGraphDataset(Dataset):
             return image, node_id, index.edge_indices
         image = self.dataset[int(self.positions[index])][0]
         return image, index
+
+    def __getitems__(self, indices):
+        node_ids = [
+            int(index.node_id) if isinstance(index, GraphBatchNodeIndex) else index
+            for index in indices
+        ]
+        positions = [int(self.positions[node_id]) for node_id in node_ids]
+        images = _fetch_items(self.dataset, positions)
+        return [
+            (item[0], node_id, index.edge_indices)
+            if isinstance(index, GraphBatchNodeIndex)
+            else (item[0], node_id)
+            for item, node_id, index in zip(images, node_ids, indices)
+        ]
 
 
 class LRMLEdgeDataset(Dataset):
@@ -209,7 +250,7 @@ def collate_lrml_edge_batch(batch, node_dataset):
             local_pair.append(local_index)
         local_edges.append(local_pair)
 
-    node_items = [node_dataset[node_id] for node_id in unique_node_ids]
+    node_items = _fetch_items(node_dataset, unique_node_ids)
     images = [item[0] for item in node_items]
     return (
         default_collate(images),
@@ -254,6 +295,21 @@ class HofferReferenceDataset(Dataset):
             return image, self.UNLABELED_ROLE
         image = self.dataset[int(self.labeled_positions[index - self.num_unlabeled])][0]
         return image, self.REFERENCE_ROLE
+
+    def __getitems__(self, indices):
+        positions, roles = [], []
+        for index in indices:
+            index = int(index)
+            if index < self.num_unlabeled:
+                positions.append(int(self.unlabeled_positions[index]))
+                roles.append(self.UNLABELED_ROLE)
+            else:
+                positions.append(int(self.labeled_positions[index - self.num_unlabeled]))
+                roles.append(self.REFERENCE_ROLE)
+        return [
+            (item[0], role)
+            for item, role in zip(_fetch_items(self.dataset, positions), roles)
+        ]
 
 
 class CombinedTrainingLoader:
@@ -410,6 +466,13 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
     at most ``2 * graph_batch_size`` ``GraphBatchNodeIndex`` values, with an
     explicit local edge map attached to the batch.
 
+    ``random_nodes_per_batch`` appends that many nodes drawn uniformly from the
+    whole graph after the endpoints. They belong to no sampled edge and are the
+    pool the LRML repulsion draws its ``L(x_i, x_k, 0)`` partners from, so they
+    are deliberately not deduplicated against the endpoints: that keeps the
+    endpoints at local indices ``0..num_endpoints-1``, leaves the edge map
+    valid, and keeps the draw uniform over the pool.
+
     When ``debug=True``, information about the first ``debug_max_batches``
     batches is printed each time a new iterator is created.
     """
@@ -421,6 +484,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         seed,
         num_batches=None,
         *,
+        random_nodes_per_batch=0,
         debug=False,
         debug_max_batches=1,
         debug_fn=print,
@@ -430,6 +494,10 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
 
         self.graph_batch_size = int(graph_batch_size)
         self.edges_per_batch = self.graph_batch_size
+
+        self.random_nodes_per_batch = int(random_nodes_per_batch)
+        if self.random_nodes_per_batch < 0:
+            raise ValueError("random_nodes_per_batch must be non-negative")
 
         self.num_batches = None if num_batches is None else int(num_batches)
         if self.num_batches is not None and self.num_batches <= 0:
@@ -466,6 +534,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         )
 
         self.num_edges = int(len(edge_rows))
+        self.num_nodes = int(adjacency.shape[0])
 
     def _should_debug_batch(self, batch_number):
         if not self.debug:
@@ -485,6 +554,7 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
         selected_weights,
         unique_nodes,
         edge_indices,
+        random_nodes,
         restarted_edge_pass,
     ):
         reconstructed_pairs = [
@@ -525,10 +595,12 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
             f"  unique global nodes:{unique_nodes}",
             f"  local edge map:     {list(edge_indices)}",
             f"  reconstructed pairs:{reconstructed_pairs}",
+            f"  uniform pool nodes: {random_nodes}",
             (
                 "  counts: "
                 f"{len(expected_pairs)} edges, "
-                f"{len(unique_nodes)} unique nodes"
+                f"{len(unique_nodes)} unique nodes, "
+                f"{len(random_nodes)} uniform pool nodes"
             ),
         ]
 
@@ -587,6 +659,16 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
 
             edge_indices = tuple(edge_indices)
 
+            random_nodes = (
+                torch.randint(
+                    self.num_nodes,
+                    (self.random_nodes_per_batch,),
+                    generator=self.generator,
+                ).tolist()
+                if self.random_nodes_per_batch
+                else []
+            )
+
             if self._should_debug_batch(yielded):
                 self._debug_batch(
                     batch_number=yielded,
@@ -595,10 +677,11 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
                     selected_weights=self.edge_weights[selected].tolist(),
                     unique_nodes=unique_nodes,
                     edge_indices=edge_indices,
+                    random_nodes=random_nodes,
                     restarted_edge_pass=restarted_edge_pass,
                 )
 
-            yield [
+            batch = [
                 GraphBatchNodeIndex(
                     node_id=node_id,
                     edge_indices=(
@@ -609,6 +692,12 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
                 )
                 for local_index, node_id in enumerate(unique_nodes)
             ]
+            batch.extend(
+                GraphBatchNodeIndex(node_id=int(node_id))
+                for node_id in random_nodes
+            )
+
+            yield batch
 
             yielded += 1
             start += self.edges_per_batch
@@ -674,42 +763,112 @@ class HofferReferenceBatchSampler(torch.utils.data.Sampler):
         if self.unlabeled_positions is not None and len(self.unlabeled_positions) != self.num_unlabeled:
             raise ValueError("hoffer_entropy unlabeled_positions must align with num_unlabeled")
         self.labeled_positions = None if labeled_positions is None else np.asarray(labeled_positions, dtype=np.int64)
+        # The two halves of the joint index space normally address disjoint
+        # dataset positions. ``unlabeled_source='labeled'`` deliberately points
+        # them at the same samples, and then a class reference can be the very
+        # sample being scored: its squared distance is zero -- with a frozen
+        # backbone and deterministic cached features, exactly zero -- which
+        # saturates that sample's softmax and drives its entropy to zero for a
+        # reason the objective is not about. Such samples are dropped from the
+        # batch below. The reference draw does not depend on them, so what
+        # remains is an unbiased sample of the pool, and a disjoint pool never
+        # enters the branch at all.
+        self._drop_reference_collisions = bool(
+            self.unlabeled_positions is not None
+            and self.labeled_positions is not None
+            and np.intersect1d(self.unlabeled_positions, self.labeled_positions).size > 0
+        )
+        self.dropped_reference_collisions = 0
         self.reference_classes_per_batch = self.num_classes
         self.references_per_batch = self.reference_classes_per_batch * self.references_per_class
         self.generator = utils.make_torch_generator(seed)
+        # Consecutive classes with equal support use the same randint bound.
+        # Draw that run in one CPU call, preserving class/set order and the
+        # generator stream. K-shot splits often collapse to a single run.
+        self._reference_runs = []
+        run_start = 0
+        while run_start < self.num_classes:
+            size = len(self.class_candidates[run_start])
+            run_end = run_start + 1
+            while run_end < self.num_classes and len(self.class_candidates[run_end]) == size:
+                run_end += 1
+            self._reference_runs.append(np.stack(self.class_candidates[run_start:run_end]))
+            run_start = run_end
 
     def __iter__(self):
+        self.dropped_reference_collisions = 0
         unlabeled_order = torch.randperm(self.num_unlabeled, generator=self.generator)
         for batch_number, start in enumerate(range(0, self.num_unlabeled, self.unlabeled_per_batch)):
             unlabeled_indices = unlabeled_order[start : start + self.unlabeled_per_batch].tolist()
             batch_indices = list(unlabeled_indices)
-            class_ids = list(range(self.num_classes))
-            reference_records = []
-            for class_id in class_ids:
-                candidates = self.class_candidates[class_id]
-                for draw_index in range(self.references_per_class):
-                    choice = int(torch.randint(len(candidates), (1,), generator=self.generator))
-                    reference_index = int(candidates[choice])
-                    batch_indices.append(reference_index)
-                    reference_records.append(
-                        self._make_reference_debug_record(reference_index, class_id, draw_index)
-                    )
-            unlabeled_positions = self._debug_unlabeled_positions(unlabeled_indices)
-            reference_classes = [
-                int(self.class_labels[int(class_id)]) if self.class_labels is not None else int(class_id)
-                for class_id in class_ids
+            references = []
+            for candidates in self._reference_runs:
+                if len(candidates) == 1 and self.references_per_class == 1:
+                    # Unequal adjacent class sizes have nothing to batch. Keep
+                    # the cheap scalar path for these unbalanced datasets.
+                    choice = int(torch.randint(candidates.shape[1], (1,), generator=self.generator))
+                    references.append(int(candidates[0, choice]))
+                    continue
+                choices = torch.randint(
+                    candidates.shape[1],
+                    (len(candidates), self.references_per_class),
+                    generator=self.generator,
+                ).numpy()
+                selected = candidates[np.arange(len(candidates))[:, None], choices]
+                references.extend(selected.reshape(-1).tolist())
+            if self._drop_reference_collisions:
+                reference_positions = set(
+                    self.labeled_positions[
+                        np.asarray(references, dtype=np.int64) - self.num_unlabeled
+                    ].tolist()
+                )
+                kept = [
+                    index
+                    for index in unlabeled_indices
+                    if int(self.unlabeled_positions[index]) not in reference_positions
+                ]
+                dropped = len(unlabeled_indices) - len(kept)
+                if dropped:
+                    self.dropped_reference_collisions += dropped
+                    unlabeled_indices = kept
+                    batch_indices = list(kept)
+            batch_indices.extend(references)
+            reference_draws = [
+                (reference, offset // self.references_per_class, offset % self.references_per_class)
+                for offset, reference in enumerate(references)
             ]
-            logger.debug(
-                "Hoffer reference batch: "
-                f"batch={batch_number}, "
-                f"unlabeled_count={len(batch_indices) - len(reference_records)}, "
-                f"reference_count={len(reference_records)}, "
-                f"reference_classes={reference_classes}, "
-                f"unlabeled_joint_indices={unlabeled_indices}, "
-                f"unlabeled_train_positions={unlabeled_positions}, "
-                f"references={json.dumps(reference_records, sort_keys=True)}"
+            # This record embeds every index in the batch, so rendering it costs
+            # roughly a millisecond per batch. Defer it to the sink: with
+            # --no-debug_log there is no DEBUG sink and the lambda never runs.
+            logger.opt(lazy=True).debug(
+                "{}",
+                lambda batch_number=batch_number,
+                unlabeled_indices=unlabeled_indices,
+                reference_draws=reference_draws: self._format_reference_batch(
+                    batch_number, unlabeled_indices, reference_draws
+                ),
             )
             yield batch_indices
+
+    def _format_reference_batch(self, batch_number, unlabeled_indices, reference_draws):
+        reference_records = [
+            self._make_reference_debug_record(reference_index, class_id, draw_index)
+            for reference_index, class_id, draw_index in reference_draws
+        ]
+        reference_classes = [
+            int(self.class_labels[class_id]) if self.class_labels is not None else class_id
+            for class_id in range(self.num_classes)
+        ]
+        return (
+            "Hoffer reference batch: "
+            f"batch={batch_number}, "
+            f"unlabeled_count={len(unlabeled_indices)}, "
+            f"reference_count={len(reference_records)}, "
+            f"reference_classes={reference_classes}, "
+            f"unlabeled_joint_indices={unlabeled_indices}, "
+            f"unlabeled_train_positions={self._debug_unlabeled_positions(unlabeled_indices)}, "
+            f"references={json.dumps(reference_records, sort_keys=True)}"
+        )
 
     def _debug_unlabeled_positions(self, unlabeled_indices):
         if self.unlabeled_positions is None:

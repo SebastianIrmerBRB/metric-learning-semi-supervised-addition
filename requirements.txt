@@ -2,6 +2,7 @@
 --extra-index-url https://download.pytorch.org/whl/cu128
 
 loguru
+kagglehub>=1.0.2
 matplotlib
 numpy
 pandas
@@ -10,6 +11,8 @@ pytorch_metric_learning>=2.8.1
 scikit-learn
 torch
 torchvision
+# GPU sparse-CG backend selected with linear_solver="cupy_cg".
+cupy-cuda12x; sys_platform == "linux" or sys_platform == "win32"
 tqdm
 # The CUDA wheel also contains CPU indexes for runtime fallback. PyPI currently
 # publishes it for Linux x86-64; keep development on other platforms working.
@@ -17,3 +20,4 @@ faiss-gpu; sys_platform == "linux" and platform_machine == "x86_64"
 faiss-cpu; sys_platform != "linux" or platform_machine != "x86_64"
 tensorboard
 optuna
+plotly

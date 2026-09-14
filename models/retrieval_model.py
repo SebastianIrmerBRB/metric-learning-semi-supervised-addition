@@ -30,6 +30,38 @@ DINOV2_ARCHS = {
 BACKBONE_TUNING_FULL = "full"
 BACKBONE_TUNING_FROZEN = "frozen"
 BACKBONE_TUNING_LAST_BLOCKS_PREFIX = "last_"
+DEFAULT_PROJECTION_LAYERS = 1
+
+
+def build_projection_head(input_dim, output_dim, num_layers=DEFAULT_PROJECTION_LAYERS, hidden_dim=None):
+    """Build the trainable projection head: one linear map or a ReLU MLP."""
+
+    num_layers = int(num_layers)
+    if num_layers < 1:
+        raise ValueError("projection_layers must be at least 1")
+    if num_layers == 1:
+        return nn.Linear(int(input_dim), int(output_dim))
+
+    hidden_dim = int(input_dim) if hidden_dim is None else int(hidden_dim)
+    if hidden_dim <= 0:
+        raise ValueError("projection_hidden_dim must be positive")
+    layers = []
+    layer_input_dim = int(input_dim)
+    for _ in range(num_layers - 1):
+        layers.append(nn.Linear(layer_input_dim, hidden_dim))
+        layers.append(nn.ReLU(inplace=True))
+        layer_input_dim = hidden_dim
+    layers.append(nn.Linear(layer_input_dim, int(output_dim)))
+    return nn.Sequential(*layers)
+
+
+def initialize_orthogonal_linears(head):
+    """Apply STML's orthogonal init to every linear layer of one head."""
+
+    for layer in head.modules():
+        if isinstance(layer, nn.Linear):
+            nn.init.orthogonal_(layer.weight)
+            nn.init.zeros_(layer.bias)
 
 
 @contextmanager
@@ -221,9 +253,13 @@ _INDEXED_FEATURE_MATRICES = weakref.WeakValueDictionary()
 _INDEXED_FEATURE_MATRICES_LOCK = threading.Lock()
 
 
-def _get_indexed_feature_matrix(cache_dir, cache_key, num_rows, feature_dim):
+def _indexed_feature_matrix_path(cache_dir, cache_key):
     namespace = hashlib.sha256(str(cache_key).encode("utf-8")).hexdigest()
-    path = Path(cache_dir) / f"{namespace}.features.npy"
+    return Path(cache_dir) / f"{namespace}.features.npy"
+
+
+def _get_indexed_feature_matrix(cache_dir, cache_key, num_rows, feature_dim):
+    path = _indexed_feature_matrix_path(cache_dir, cache_key)
     registry_key = str(path.resolve())
     with _INDEXED_FEATURE_MATRICES_LOCK:
         matrix = _INDEXED_FEATURE_MATRICES.get(registry_key)
@@ -301,6 +337,8 @@ class DinoWrapper(nn.Module):
         stml=False,
         stml_g_dim=None,
         stml_normalize_student=False,
+        projection_layers=DEFAULT_PROJECTION_LAYERS,
+        projection_hidden_dim=None,
     ):
         super().__init__()
         assert dino_size in "sblg"
@@ -314,13 +352,30 @@ class DinoWrapper(nn.Module):
         self.stml_enabled = bool(stml)
         self.stml_normalize_student = bool(stml_normalize_student)
         backbone_dim = DINOV2_ARCHS[dino_size]
+        self.backbone_dim = backbone_dim
+        self.projection_layers = int(projection_layers)
+        if self.projection_layers < 1:
+            raise ValueError("projection_layers must be at least 1")
+        self.projection_hidden_dim = (
+            None if projection_hidden_dim is None else int(projection_hidden_dim)
+        )
+        if self.projection_hidden_dim is not None and self.projection_hidden_dim <= 0:
+            raise ValueError("projection_hidden_dim must be positive")
         if feat_dim is not None or self.stml_enabled:
             self.feat_dim = backbone_dim if feat_dim is None else feat_dim
-            self.fc = nn.Linear(backbone_dim, self.feat_dim)
+            self.fc = build_projection_head(
+                backbone_dim,
+                self.feat_dim,
+                num_layers=self.projection_layers,
+                hidden_dim=self.projection_hidden_dim,
+            )
             if self.stml_enabled:
-                nn.init.orthogonal_(self.fc.weight)
-                nn.init.zeros_(self.fc.bias)
+                initialize_orthogonal_linears(self.fc)
         else:
+            if self.projection_layers > 1:
+                raise ValueError(
+                    "projection_layers > 1 requires feat_dim so a trainable projection head exists"
+                )
             self.fc = nn.Identity()
             self.feat_dim = backbone_dim
         if self.stml_enabled:
@@ -412,6 +467,89 @@ class DinoWrapper(nn.Module):
         features = self.fc(features)
         return F.normalize(features, p=2.0, dim=1)
 
+    def projection_head(self):
+        """The module holding every parameter :meth:`project_features` reaches.
+
+        CUDA-graph capture of the projection differentiates exactly this
+        module's parameters, so it must not widen to the backbone or to the
+        parameters a regularizer attaches to the model.
+        """
+
+        return self.fc
+
+    def has_trainable_backbone(self):
+        """Whether the backbone still carries parameters an auxiliary task could move."""
+
+        return self.backbone_tuning != BACKBONE_TUNING_FROZEN
+
+    def projection_hidden_dims(self):
+        """Widths of the projection head's hidden activations, input side first.
+
+        ``build_projection_head`` emits ``[Linear, ReLU] * (n - 1) + [Linear]``, so
+        every linear but the last one produces a hidden activation. A single-layer
+        head (or the ``Identity`` used when no ``feat_dim`` is configured) has none.
+        """
+
+        if not isinstance(self.fc, nn.Sequential):
+            return []
+        widths = [
+            module.out_features
+            for module in self.fc
+            if isinstance(module, nn.Linear)
+        ]
+        return widths[:-1]
+
+    def auxiliary_embedding_layers(self):
+        """Activations an auxiliary embedding head can attach to, as (name, width).
+
+        These are the outputs of the *shared trunk's* internal layers, which is
+        what makes an auxiliary embedding a regularizer rather than a detached
+        side model: a head placed here backpropagates into weights the retrieval
+        head also uses. The retrieval embedding itself is excluded -- regularizing
+        it is the output mode, not the auxiliary one -- and so is a frozen
+        backbone's output, which shares no trainable parameter with anything.
+        """
+
+        layers = []
+        if self.has_trainable_backbone():
+            layers.append(("backbone", int(self.backbone_dim)))
+        for index, width in enumerate(self.projection_hidden_dims(), start=1):
+            layers.append((f"projection_hidden_{index}", int(width)))
+        return layers
+
+    def project_features_with_trunk(self, features):
+        """Project features and return the trunk tensors behind the embedding.
+
+        Returns ``(embedding, pre_norm, hidden)``. ``pre_norm`` is the projection
+        head's output before :func:`F.normalize` -- the representation the
+        retrieval embedding is the direction of, and the "last-but-one layer" a
+        2-norm embedding loss can act in without the unit sphere capping its
+        margin. ``hidden`` holds the head's post-ReLU activations, in the order
+        :meth:`auxiliary_embedding_layers` names them. This path enters below the
+        backbone, so it never yields the backbone activation; callers that start
+        from images use :meth:`forward_with_trunk`.
+        """
+
+        hidden = []
+        if isinstance(self.fc, nn.Sequential):
+            projected = features
+            for module in self.fc:
+                projected = module(projected)
+                if isinstance(module, nn.ReLU):
+                    hidden.append(projected)
+        else:
+            projected = self.fc(features)
+        return F.normalize(projected, p=2.0, dim=1), projected, hidden
+
+    def forward_with_trunk(self, images):
+        """:meth:`forward` plus the trunk tensors an embedding loss can act in."""
+
+        features = self.forward_backbone(images)
+        embedding, pre_norm, hidden = self.project_features_with_trunk(features)
+        if self.has_trainable_backbone():
+            hidden = [features, *hidden]
+        return embedding, pre_norm, hidden
+
     def project_stml_features(self, features):
         """Return the STML background head g and retrieval head f."""
 
@@ -459,6 +597,32 @@ class DinoWrapper(nn.Module):
             cache_size=cache_size,
         )
         return self.project_features(features)
+
+    def forward_cached_with_trunk(
+        self,
+        images,
+        device,
+        *,
+        cache_key=None,
+        cache_indices=None,
+        cache_size=None,
+    ):
+        """:meth:`forward_cached` plus the trunk tensors an embedding loss can act in."""
+
+        if torch.is_tensor(images) and images.ndim == 2:
+            return self.project_features_with_trunk(
+                images.to(device, non_blocking=True)
+            )
+        if not self.use_cache:
+            return self.forward_with_trunk(images.to(device, non_blocking=True))
+        features = self._load_or_compute_cached_backbone_features(
+            images,
+            device,
+            cache_key=cache_key,
+            cache_indices=cache_indices,
+            cache_size=cache_size,
+        )
+        return self.project_features_with_trunk(features)
 
     def forward_backbone_cached(
         self,
@@ -603,6 +767,12 @@ class DinoWrapper(nn.Module):
         access = matrix.materialize(cache_indices, compute_missing)
         self._record_cache_access(cache_indices, access)
         return matrix.tensor, torch.as_tensor(cache_indices, dtype=torch.long)
+
+    def cached_backbone_feature_matrix_path(self, *, cache_key, cache_size):
+        """Return the mmap path used for one indexed frozen-feature matrix."""
+
+        del cache_size
+        return _indexed_feature_matrix_path(self.cache_dir, cache_key)
 
     def _load_or_compute_cached_backbone_features(
         self,

@@ -6,12 +6,21 @@ import numpy as np
 from torch.utils.data import Dataset, Subset
 
 from . import local_datasets
+from .dataset_constants import (
+    SEMI_AVES_DEFAULT_OOD_FRACTION,
+    SEMI_AVES_DEFAULT_OOD_SEED,
+    SEMI_INAT_DEFAULT_OOD_FRACTION,
+    SEMI_INAT_DEFAULT_OOD_SEED,
+)
 
 
 EXTERNAL_UNLABELED_FILTER_NONE = "none"
 
 
 EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT = "compcars_model_min_count"
+
+
+EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER = "compcars_slade_paper"
 
 
 EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER = "compcars_stml_paper"
@@ -23,8 +32,29 @@ EXTERNAL_UNLABELED_FILTER_NABIRDS = "nabirds"
 EXTERNAL_UNLABELED_FILTERS = (
     EXTERNAL_UNLABELED_FILTER_NONE,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT,
+    EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
     EXTERNAL_UNLABELED_FILTER_NABIRDS,
+)
+
+
+# STML adopts SLADE's semi-supervised protocol, so both filters build the same
+# CompCars pool and both honor the paper count checks.
+EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER = (
+    EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,
+    EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
+)
+
+
+COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO = "auto"
+
+
+COMPCARS_PAPER_THRESHOLD_CALIBRATION_OFF = "off"
+
+
+COMPCARS_PAPER_THRESHOLD_CALIBRATION_MODES = (
+    COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO,
+    COMPCARS_PAPER_THRESHOLD_CALIBRATION_OFF,
 )
 
 
@@ -109,10 +139,14 @@ def append_external_unlabeled_dataset(
     external_filter=EXTERNAL_UNLABELED_FILTER_NONE,
     compcars_min_model_images=100,
     compcars_strict_paper_counts=False,
+    compcars_paper_threshold_calibration=COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO,
 ):
     """Append recursively discovered external images to an existing train dataset."""
 
     train_transform = get_nested_transform(train_dataset)
+    calibrate_threshold = (
+        compcars_paper_threshold_calibration == COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO
+    )
     if external_filter == EXTERNAL_UNLABELED_FILTER_NONE:
         external_dataset = local_datasets.RecursiveUnlabeledImageDataset(
             root=external_root,
@@ -124,12 +158,18 @@ def append_external_unlabeled_dataset(
             transform=train_transform,
             min_images_per_model=compcars_min_model_images,
         )
-    elif external_filter == EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER:
-        external_dataset = local_datasets.CompCarsSTMLPaperUnlabeledImageDataset(
+    elif external_filter in EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER:
+        paper_dataset_class = (
+            local_datasets.CompCarsSLADEPaperUnlabeledImageDataset
+            if external_filter == EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER
+            else local_datasets.CompCarsSTMLPaperUnlabeledImageDataset
+        )
+        external_dataset = paper_dataset_class(
             root=external_root,
             transform=train_transform,
             min_images_per_model=compcars_min_model_images,
             strict_paper_counts=compcars_strict_paper_counts,
+            calibrate_threshold=calibrate_threshold,
         )
     elif external_filter == EXTERNAL_UNLABELED_FILTER_NABIRDS:
         external_dataset = local_datasets.NABirdsUnlabeledImageDataset(
@@ -138,6 +178,64 @@ def append_external_unlabeled_dataset(
         )
     else:
         raise ValueError(f"Unknown external_unlabeled_filter: {external_filter}")
+    combined = CombinedDataset([train_dataset, external_dataset])
+    feature_transform = getattr(train_dataset, "feature_transform", None)
+    if feature_transform is not None:
+        combined.feature_transform = feature_transform
+    return combined, external_dataset
+
+
+def append_semi_aves_native_unlabeled_dataset(
+    train_dataset,
+    root,
+    out_of_class_fraction=SEMI_AVES_DEFAULT_OOD_FRACTION,
+    out_of_class_seed=SEMI_AVES_DEFAULT_OOD_SEED,
+):
+    """Append the Semi-Aves out-of-class pool with its oracle labels hidden.
+
+    The in-class images are already labeled inside the pooled development set,
+    so only the out-of-class images are appended here. ``out_of_class_fraction``
+    sets the class-mismatch level by keeping that share of the out-of-class
+    pool; the remainder is excluded from training. The pool is opt-in, so
+    callers that leave the fraction at its default get an empty pool and are
+    expected to skip this helper entirely.
+    """
+
+    train_transform = get_nested_transform(train_dataset)
+    external_dataset = local_datasets.SemiAvesNativeUnlabeledDataset(
+        root=root,
+        transform=train_transform,
+        out_of_class_fraction=out_of_class_fraction,
+        out_of_class_seed=out_of_class_seed,
+    )
+    combined = CombinedDataset([train_dataset, external_dataset])
+    feature_transform = getattr(train_dataset, "feature_transform", None)
+    if feature_transform is not None:
+        combined.feature_transform = feature_transform
+    return combined, external_dataset
+
+
+def append_semi_inat_native_unlabeled_dataset(
+    train_dataset,
+    root,
+    out_of_class_fraction=SEMI_INAT_DEFAULT_OOD_FRACTION,
+    out_of_class_seed=SEMI_INAT_DEFAULT_OOD_SEED,
+):
+    """Append the Semi-iNat out-of-class pool with its oracle labels hidden.
+
+    The labeled species' images are already in the pooled development set, so
+    only the ``u_train_out`` images are appended here. ``out_of_class_fraction``
+    sets the class-mismatch level by keeping that share of the out-of-class
+    pool; the remainder is excluded from training.
+    """
+
+    train_transform = get_nested_transform(train_dataset)
+    external_dataset = local_datasets.SemiINatNativeUnlabeledDataset(
+        root=root,
+        transform=train_transform,
+        out_of_class_fraction=out_of_class_fraction,
+        out_of_class_seed=out_of_class_seed,
+    )
     combined = CombinedDataset([train_dataset, external_dataset])
     feature_transform = getattr(train_dataset, "feature_transform", None)
     if feature_transform is not None:
