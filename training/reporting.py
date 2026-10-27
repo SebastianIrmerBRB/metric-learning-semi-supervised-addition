@@ -1,6 +1,5 @@
 """JSON and CSV reporting for HPO replay and comparison workflows."""
 
-import csv
 import json
 import math
 
@@ -18,21 +17,26 @@ from .cli import (
     STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL,
     STUDY_DIR_MODE_TRAIN_VAL,
 )
-from .io import namespace_to_dict, result_to_dict, write_json
+from .io import namespace_to_dict, result_to_dict, write_csv, write_json
+
+
+def _best_trial_source_results(attrs):
+    """The best trial's per-run results: validation replays, CV folds, or itself."""
+
+    validation_replay_results = attrs.get("validation_replay_results") or []
+    if validation_replay_results:
+        return validation_replay_results, attrs.get("validation_replay_source", "validation_replays")
+    fold_results = attrs.get("fold_results") or []
+    if fold_results:
+        return fold_results, "cross_validation_folds"
+    return [attrs], "single_validation_run"
 
 
 def get_hpo_validation_retrieval_backend(study_result):
     """Return the one validation backend a final test must inherit."""
 
     attrs = study_result.best_user_attrs or {}
-    validation_replay_results = attrs.get("validation_replay_results") or []
-    fold_results = attrs.get("fold_results") or []
-    if validation_replay_results:
-        source_results = validation_replay_results
-    elif fold_results:
-        source_results = fold_results
-    else:
-        source_results = [attrs]
+    source_results, _ = _best_trial_source_results(attrs)
     backends = {
         str(result["validation_retrieval_backend"]).lower()
         for result in source_results
@@ -72,18 +76,7 @@ def make_final_epoch_plan(study_result, aggregation=FINAL_EPOCH_AGGREGATION_MEAN
         raise ValueError(
             f"final epoch aggregation must be one of {FINAL_EPOCH_AGGREGATIONS}: {aggregation}"
         )
-    attrs = study_result.best_user_attrs or {}
-    validation_replay_results = attrs.get("validation_replay_results") or []
-    fold_results = attrs.get("fold_results") or []
-    if validation_replay_results:
-        source_results = validation_replay_results
-        source = attrs.get("validation_replay_source", "validation_replays")
-    elif fold_results:
-        source_results = fold_results
-        source = "cross_validation_folds"
-    else:
-        source_results = [attrs]
-        source = "single_validation_run"
+    source_results, source = _best_trial_source_results(study_result.best_user_attrs or {})
     selected_epoch_key = "selected_epoch"
     if not source_results or any(result.get(selected_epoch_key) is None for result in source_results):
         selected_epoch_key = "last_epoch"
@@ -125,18 +118,17 @@ def make_final_epoch_plan(study_result, aggregation=FINAL_EPOCH_AGGREGATION_MEAN
     }
 
 
-def make_final_cross_validation_plan(args):
-    """Describe a final evaluation that tests every fold instead of one model.
+def _unplanned_duration_plan(args, source, fit_mode, **details):
+    """A final evaluation whose duration is not transferred from the study.
 
-    No duration is transferred and no extra model is fitted: each fold already
-    early-stopped on its own validation partition, and it is that checkpoint
-    which is tested. The reported score is the mean over folds, optionally
-    alongside one evaluation of the folds' concatenated embeddings.
+    Early stopping picks each tested checkpoint during the run itself, so no
+    count is fixed up front; the plan records the budget the run may not exceed
+    and the validation it stops on.
     """
 
     return {
-        "source": "cross_validation_fold_models",
-        "fit_mode": FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS,
+        "source": source,
+        "fit_mode": fit_mode,
         "epoch_field": None,
         "aggregation": None,
         "selected_epoch_indices": [],
@@ -144,47 +136,81 @@ def make_final_cross_validation_plan(args):
         "mean_training_epochs": None,
         "aggregated_training_epochs": None,
         "rounding": "none",
-        # Every fold stops on its own, so there is no single planned duration.
         "final_training_epochs": None,
         "max_training_epochs": int(args.epochs),
         "patience": int(args.patience),
-        "cv_k": int(args.cv_k),
-        "cv_mode": args.cv_mode,
+        # Only recorded when set, so plans of runs that never used it stay unchanged.
+        **(
+            {"patience_delay_epochs": int(args.patience_delay_epochs)}
+            if getattr(args, "patience_delay_epochs", 0)
+            else {}
+        ),
         "val_mode": args.val_mode,
-        "concatenated_fold_test": bool(getattr(args, "concatenated_fold_test", False)),
         "selection_metric": getattr(args, "selection_metric", None),
+        **details,
     }
 
 
-def make_final_early_stopping_plan(args):
-    """Describe a final fit whose duration early stopping decides on its own.
+def make_final_cross_validation_plan(args):
+    """Describe a final evaluation that tests every fold instead of one model.
 
-    This plan carries no transferred epoch count. It records the budget the run
-    may not exceed and the validation slice it early-stops on, so the audit
-    artifact still explains where the tested checkpoint came from.
+    No extra model is fitted: each fold already early-stopped on its own
+    validation partition, and it is that checkpoint which is tested. The
+    reported score is the mean over folds, optionally alongside one evaluation
+    of the folds' concatenated embeddings.
     """
 
+    return _unplanned_duration_plan(
+        args,
+        "cross_validation_fold_models",
+        FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS,
+        cv_k=int(args.cv_k),
+        cv_mode=args.cv_mode,
+        concatenated_fold_test=bool(getattr(args, "concatenated_fold_test", False)),
+    )
+
+
+def make_final_early_stopping_plan(args):
+    """Describe a final fit whose duration early stopping decides on its own."""
+
     holdout_val_ratio = getattr(args, "holdout_val_ratio", None)
+    return _unplanned_duration_plan(
+        args,
+        "final_early_stopping_holdout",
+        FINAL_FIT_MODE_EARLY_STOP_HOLDOUT,
+        holdout_val_ratio=None if holdout_val_ratio is None else float(holdout_val_ratio),
+    )
+
+
+def _best_attrs_columns(study_result, prefix=""):
+    attrs = study_result.best_user_attrs or {}
     return {
-        "source": "final_early_stopping_holdout",
-        "fit_mode": FINAL_FIT_MODE_EARLY_STOP_HOLDOUT,
-        "epoch_field": None,
-        "aggregation": None,
-        "selected_epoch_indices": [],
-        "training_epoch_counts": [],
-        "mean_training_epochs": None,
-        "aggregated_training_epochs": None,
-        "rounding": "none",
-        # Early stopping picks the epoch during the run, so no count is fixed
-        # up front; the trained/selected epochs land in the result itself.
-        "final_training_epochs": None,
-        "max_training_epochs": int(args.epochs),
-        "patience": int(args.patience),
-        "val_mode": args.val_mode,
-        "holdout_val_ratio": (
-            None if holdout_val_ratio is None else float(holdout_val_ratio)
+        f"{prefix}best_valid_precision_at_1": optional_number(attrs.get("best_valid_precision_at_1")),
+        f"{prefix}best_valid_mean_average_precision_at_r": optional_number(
+            attrs.get("best_valid_mean_average_precision_at_r")
         ),
-        "selection_metric": getattr(args, "selection_metric", None),
+    }
+
+
+def _projection_columns(result, prefix=""):
+    return {
+        f"{prefix}test_{layout}_{kind}": optional_path(getattr(result, f"test_{layout}_{kind}"))
+        for layout in ("pacmap", "tsne")
+        for kind in ("coordinates", "plot")
+    }
+
+
+def _test_columns(result):
+    return {
+        "final_log_dir": str(result.log_dir),
+        "final_metrics_csv": str(result.metrics_csv),
+        "final_train_loss": optional_number(result.final_train_loss),
+        "epoch0_test_precision_at_1": optional_number(result.epoch0_test_precision_at_1),
+        "epoch0_test_mean_average_precision_at_r": optional_number(
+            result.epoch0_test_mean_average_precision_at_r
+        ),
+        "test_precision_at_1": optional_number(result.test_precision_at_1),
+        "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
     }
 
 
@@ -198,19 +224,14 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         "final_result": result_to_dict(final_result),
     }
     write_json(study_result.study_dir / f"{summary_stem}.json", summary)
-    csv_path = study_result.study_dir / f"{summary_stem}.csv"
+    test_columns = _test_columns(final_result)
     row = {
         "role": role,
         "study_name": study_result.study_name,
         "best_trial_number": optional_number(study_result.best_trial_number),
         "best_hpo_value": optional_number(study_result.best_value),
         "best_params": json.dumps(study_result.best_params, sort_keys=True),
-        "best_valid_precision_at_1": optional_number(
-            (study_result.best_user_attrs or {}).get("best_valid_precision_at_1")
-        ),
-        "best_valid_mean_average_precision_at_r": optional_number(
-            (study_result.best_user_attrs or {}).get("best_valid_mean_average_precision_at_r")
-        ),
+        **_best_attrs_columns(study_result),
         "epoch_source": epoch_plan["source"],
         "final_fit_mode": epoch_plan.get("fit_mode", FINAL_FIT_MODE_FULL_TRAIN),
         "epoch_field": optional_number(epoch_plan["epoch_field"]),
@@ -220,45 +241,26 @@ def write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan
         "mean_training_epochs": epoch_plan["mean_training_epochs"],
         "aggregated_training_epochs": optional_number(epoch_plan.get("aggregated_training_epochs")),
         "final_training_epochs": realized_final_training_epochs(epoch_plan, final_result),
-        "final_log_dir": str(final_result.log_dir),
-        "final_metrics_csv": str(final_result.metrics_csv),
-        "final_train_loss": optional_number(final_result.final_train_loss),
-        "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
-        "epoch0_test_mean_average_precision_at_r": optional_number(
-            final_result.epoch0_test_mean_average_precision_at_r
-        ),
-        "test_precision_at_1": optional_number(final_result.test_precision_at_1),
-        "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
+        **test_columns,
         # Populated only by cross_validation_folds, where the reported score is
         # a mean over fold models rather than one model's score.
-        "test_precision_at_1_std": optional_number(
-            getattr(final_result, "test_precision_at_1_std", None)
-        ),
-        "test_mean_average_precision_at_r_std": optional_number(
-            getattr(final_result, "test_mean_average_precision_at_r_std", None)
-        ),
-        "concatenated_test_precision_at_1": optional_number(
-            getattr(final_result, "concatenated_test_precision_at_1", None)
-        ),
-        "concatenated_test_mean_average_precision_at_r": optional_number(
-            getattr(final_result, "concatenated_test_mean_average_precision_at_r", None)
-        ),
-        "concatenated_test_embedding_dim": optional_number(
-            getattr(final_result, "concatenated_test_embedding_dim", None)
-        ),
+        **{
+            name: optional_number(getattr(final_result, name, None))
+            for name in (
+                "test_precision_at_1_std",
+                "test_mean_average_precision_at_r_std",
+                "concatenated_test_precision_at_1",
+                "concatenated_test_mean_average_precision_at_r",
+                "concatenated_test_embedding_dim",
+            )
+        },
         "validation_retrieval_backend": final_result.validation_retrieval_backend,
         "test_retrieval_backend": final_result.test_retrieval_backend,
-        "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
-        "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
-        "test_tsne_coordinates": optional_path(final_result.test_tsne_coordinates),
-        "test_tsne_plot": optional_path(final_result.test_tsne_plot),
+        **_projection_columns(final_result),
         "selected_epoch": final_result.selected_epoch,
         "global_step": final_result.global_step,
     }
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(row.keys()))
-        writer.writeheader()
-        writer.writerow(row)
+    write_csv(study_result.study_dir / f"{summary_stem}.csv", [row])
     logger.info(f"Final HPO test evaluation summary written to {study_result.study_dir}")
 
 
@@ -272,7 +274,6 @@ def write_hparam_train_val_evaluation_summary(study_result, train_result, role, 
         "train_val_result": result_to_dict(train_result),
     }
     write_json(study_result.study_dir / f"{summary_stem}.json", summary)
-    csv_path = study_result.study_dir / f"{summary_stem}.csv"
     row = {
         "role": role,
         "study_name": study_result.study_name,
@@ -280,12 +281,7 @@ def write_hparam_train_val_evaluation_summary(study_result, train_result, role, 
         "best_trial_number": optional_number(study_result.best_trial_number),
         "best_hpo_value": optional_number(study_result.best_value),
         "best_params": json.dumps(study_result.best_params, sort_keys=True),
-        "hpo_best_valid_precision_at_1": optional_number(
-            (study_result.best_user_attrs or {}).get("best_valid_precision_at_1")
-        ),
-        "hpo_best_valid_mean_average_precision_at_r": optional_number(
-            (study_result.best_user_attrs or {}).get("best_valid_mean_average_precision_at_r")
-        ),
+        **_best_attrs_columns(study_result, prefix="hpo_"),
         "train_val_log_dir": str(train_result.log_dir),
         "train_val_metrics_csv": str(train_result.metrics_csv),
         "train_val_best_valid_precision_at_1": optional_number(train_result.best_valid_precision_at_1),
@@ -300,10 +296,7 @@ def write_hparam_train_val_evaluation_summary(study_result, train_result, role, 
         "test_precision_at_1": optional_number(train_result.test_precision_at_1),
         "test_mean_average_precision_at_r": optional_number(train_result.test_mean_average_precision_at_r),
     }
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(row.keys()))
-        writer.writeheader()
-        writer.writerow(row)
+    write_csv(study_result.study_dir / f"{summary_stem}.csv", [row])
     logger.info(f"Train/validation HPO replay summary written to {study_result.study_dir}")
 
 
@@ -341,7 +334,8 @@ def write_cross_seed_train_val_evaluation_summary(
     )
     rows = []
     for candidate in candidates:
-        selected_for_final = bool(candidate["selected_for_final"])
+        selected = bool(candidate["selected_for_final"])
+        runs = candidate["validation_runs"]
         rows.append(
             {
                 "role": role,
@@ -355,164 +349,100 @@ def write_cross_seed_train_val_evaluation_summary(
                 "mean_best_valid_mean_average_precision_at_r": candidate[
                     "mean_best_valid_mean_average_precision_at_r"
                 ],
-                "comparison_seeds": json.dumps(
-                    [run["comparison_seed"] for run in candidate["validation_runs"]]
-                ),
-                "per_seed_selection_values": json.dumps(
-                    [run["selection_value"] for run in candidate["validation_runs"]]
-                ),
-                "per_seed_selected_epochs": json.dumps(
-                    [run["result"]["selected_epoch"] for run in candidate["validation_runs"]]
-                ),
-                "selected_for_final": selected_for_final,
+                "comparison_seeds": json.dumps([run["comparison_seed"] for run in runs]),
+                "per_seed_selection_values": json.dumps([run["selection_value"] for run in runs]),
+                "per_seed_selected_epochs": json.dumps([run["result"]["selected_epoch"] for run in runs]),
+                "selected_for_final": selected,
                 "final_training_epochs": (
-                    realized_final_training_epochs(epoch_plan, final_result)
-                    if selected_for_final
-                    else ""
+                    realized_final_training_epochs(epoch_plan, final_result) if selected else ""
                 ),
                 "test_precision_at_1": optional_number(
-                    final_result.test_precision_at_1 if selected_for_final else None
+                    final_result.test_precision_at_1 if selected else None
                 ),
                 "test_mean_average_precision_at_r": optional_number(
-                    final_result.test_mean_average_precision_at_r if selected_for_final else None
+                    final_result.test_mean_average_precision_at_r if selected else None
                 ),
-                "final_log_dir": str(final_result.log_dir) if selected_for_final else "",
+                "final_log_dir": str(final_result.log_dir) if selected else "",
             }
         )
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    write_csv(csv_path, rows)
     logger.info(f"Cross-seed train/validation selection summary written to {output_dir}")
     return {"json": json_path, "csv": csv_path}
+
+
+def _write_trial_evaluations_summary(study_result, evaluated, role, stem, request, description):
+    """Write one summary for the final-test evaluations of several trials."""
+
+    rows = []
+    for item in evaluated:
+        trial = item["trial"]
+        final_result = item["final_result"]
+        test_columns = _test_columns(final_result)
+        rows.append(
+            {
+                "role": role,
+                "study_name": study_result.study_name,
+                "trial_number": trial["trial_number"],
+                "hpo_value": optional_number(trial["value"]),
+                "params": json.dumps(trial["params"], sort_keys=True),
+                "summary_stem": item["summary_stem"],
+                "selected_for_test": item.get("selected_for_test", True),
+                "validation_selection_metric": item.get("validation_selection_metric", ""),
+                "validation_selection_value": optional_number(item.get("validation_selection_value")),
+                **test_columns,
+                **_projection_columns(final_result),
+                "selected_epoch": final_result.selected_epoch,
+                "global_step": final_result.global_step,
+            }
+        )
+
+    write_json(
+        study_result.study_dir / f"{stem}.json",
+        {
+            "role": role,
+            "study": hparam_study_result_to_dict(study_result),
+            **request,
+            "evaluations": [
+                {
+                    "trial": item["trial"],
+                    "summary_stem": item["summary_stem"],
+                    "selected_for_test": item.get("selected_for_test", True),
+                    "validation_selection_metric": item.get("validation_selection_metric"),
+                    "validation_selection_value": item.get("validation_selection_value"),
+                    "final_result": result_to_dict(item["final_result"]),
+                }
+                for item in evaluated
+            ],
+        },
+    )
+    write_csv(study_result.study_dir / f"{stem}.csv", rows)
+    logger.info(f"{description} final HPO test evaluation summary written to {study_result.study_dir}")
 
 
 def write_hparam_top_final_evaluation_summary(study_result, evaluated, role, requested_top_n, summary_stem):
     """Write one summary for all top-N final-test evaluations."""
 
-    top_stem = f"{summary_stem}_top_{requested_top_n}"
-    rows = []
-    for item in evaluated:
-        trial = item["trial"]
-        final_result = item["final_result"]
-        rows.append(
-            {
-                "role": role,
-                "study_name": study_result.study_name,
-                "trial_number": trial["trial_number"],
-                "hpo_value": optional_number(trial["value"]),
-                "params": json.dumps(trial["params"], sort_keys=True),
-                "summary_stem": item["summary_stem"],
-                "selected_for_test": item.get("selected_for_test", True),
-                "validation_selection_metric": item.get("validation_selection_metric", ""),
-                "validation_selection_value": optional_number(item.get("validation_selection_value")),
-                "final_log_dir": str(final_result.log_dir),
-                "final_metrics_csv": str(final_result.metrics_csv),
-                "final_train_loss": optional_number(final_result.final_train_loss),
-                "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
-                "epoch0_test_mean_average_precision_at_r": optional_number(
-                    final_result.epoch0_test_mean_average_precision_at_r
-                ),
-                "test_precision_at_1": optional_number(final_result.test_precision_at_1),
-                "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
-                "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
-                "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
-                "test_tsne_coordinates": optional_path(final_result.test_tsne_coordinates),
-                "test_tsne_plot": optional_path(final_result.test_tsne_plot),
-                "selected_epoch": final_result.selected_epoch,
-                "global_step": final_result.global_step,
-            }
-        )
-
-    write_json(
-        study_result.study_dir / f"{top_stem}.json",
-        {
-            "role": role,
-            "study": hparam_study_result_to_dict(study_result),
-            "requested_top_n": requested_top_n,
-            "evaluations": [
-                {
-                    "trial": item["trial"],
-                    "summary_stem": item["summary_stem"],
-                    "selected_for_test": item.get("selected_for_test", True),
-                    "validation_selection_metric": item.get("validation_selection_metric"),
-                    "validation_selection_value": item.get("validation_selection_value"),
-                    "final_result": result_to_dict(item["final_result"]),
-                }
-                for item in evaluated
-            ],
-        },
+    _write_trial_evaluations_summary(
+        study_result,
+        evaluated,
+        role,
+        f"{summary_stem}_top_{requested_top_n}",
+        {"requested_top_n": requested_top_n},
+        f"Top-{requested_top_n}",
     )
-    csv_path = study_result.study_dir / f"{top_stem}.csv"
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-    logger.info(f"Top-{requested_top_n} final HPO test evaluation summary written to {study_result.study_dir}")
 
 
 def write_hparam_selected_final_evaluation_summary(study_result, evaluated, role, trial_numbers, summary_stem):
     """Write one summary for explicitly selected final-test evaluations."""
 
-    selected_stem = f"{summary_stem}_selected_trials"
-    rows = []
-    for item in evaluated:
-        trial = item["trial"]
-        final_result = item["final_result"]
-        rows.append(
-            {
-                "role": role,
-                "study_name": study_result.study_name,
-                "trial_number": trial["trial_number"],
-                "hpo_value": optional_number(trial["value"]),
-                "params": json.dumps(trial["params"], sort_keys=True),
-                "summary_stem": item["summary_stem"],
-                "selected_for_test": item.get("selected_for_test", True),
-                "validation_selection_metric": item.get("validation_selection_metric", ""),
-                "validation_selection_value": optional_number(item.get("validation_selection_value")),
-                "final_log_dir": str(final_result.log_dir),
-                "final_metrics_csv": str(final_result.metrics_csv),
-                "final_train_loss": optional_number(final_result.final_train_loss),
-                "epoch0_test_precision_at_1": optional_number(final_result.epoch0_test_precision_at_1),
-                "epoch0_test_mean_average_precision_at_r": optional_number(
-                    final_result.epoch0_test_mean_average_precision_at_r
-                ),
-                "test_precision_at_1": optional_number(final_result.test_precision_at_1),
-                "test_mean_average_precision_at_r": optional_number(final_result.test_mean_average_precision_at_r),
-                "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
-                "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
-                "test_tsne_coordinates": optional_path(final_result.test_tsne_coordinates),
-                "test_tsne_plot": optional_path(final_result.test_tsne_plot),
-                "selected_epoch": final_result.selected_epoch,
-                "global_step": final_result.global_step,
-            }
-        )
-
-    write_json(
-        study_result.study_dir / f"{selected_stem}.json",
-        {
-            "role": role,
-            "study": hparam_study_result_to_dict(study_result),
-            "trial_numbers": trial_numbers,
-            "evaluations": [
-                {
-                    "trial": item["trial"],
-                    "summary_stem": item["summary_stem"],
-                    "selected_for_test": item.get("selected_for_test", True),
-                    "validation_selection_metric": item.get("validation_selection_metric"),
-                    "validation_selection_value": item.get("validation_selection_value"),
-                    "final_result": result_to_dict(item["final_result"]),
-                }
-                for item in evaluated
-            ],
-        },
+    _write_trial_evaluations_summary(
+        study_result,
+        evaluated,
+        role,
+        f"{summary_stem}_selected_trials",
+        {"trial_numbers": trial_numbers},
+        "Selected-trial",
     )
-    csv_path = study_result.study_dir / f"{selected_stem}.csv"
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-    logger.info(f"Selected-trial final HPO test evaluation summary written to {study_result.study_dir}")
 
 
 def write_comparison_summary(
@@ -525,18 +455,13 @@ def write_comparison_summary(
     supervised_final,
     ssl_final,
 ):
-    rows = [
-        make_comparison_row("supervised", supervised_study, supervised_final),
-        make_comparison_row("ssl", ssl_study, ssl_final),
-    ]
-    csv_path = comparison_dir / "comparison_summary.csv"
-    fieldnames = list(rows[0].keys())
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    deltas = make_comparison_deltas(supervised_final, ssl_final)
+    write_csv(
+        comparison_dir / "comparison_summary.csv",
+        [
+            make_comparison_row("supervised", supervised_study, supervised_final),
+            make_comparison_row("ssl", ssl_study, ssl_final),
+        ],
+    )
     write_json(
         comparison_dir / "comparison_summary.json",
         {
@@ -547,38 +472,26 @@ def write_comparison_summary(
             "ssl_study": hparam_study_result_to_dict(ssl_study),
             "supervised_final": result_to_dict(supervised_final),
             "ssl_final": result_to_dict(ssl_final),
-            "delta_ssl_minus_supervised": deltas,
+            "delta_ssl_minus_supervised": make_comparison_deltas(supervised_final, ssl_final),
         },
     )
     logger.info(f"Comparison summary written to {comparison_dir}")
 
 
+COMPARISON_DELTA_METRICS = (
+    "epoch0_test_precision_at_1",
+    "epoch0_test_mean_average_precision_at_r",
+    "test_precision_at_1",
+    "test_mean_average_precision_at_r",
+    "best_valid_precision_at_1",
+    "best_valid_mean_average_precision_at_r",
+)
+
+
 def make_comparison_deltas(supervised_final, ssl_final):
     return {
-        "epoch0_test_precision_at_1": subtract_optional(
-            ssl_final.epoch0_test_precision_at_1,
-            supervised_final.epoch0_test_precision_at_1,
-        ),
-        "epoch0_test_mean_average_precision_at_r": subtract_optional(
-            ssl_final.epoch0_test_mean_average_precision_at_r,
-            supervised_final.epoch0_test_mean_average_precision_at_r,
-        ),
-        "test_precision_at_1": subtract_optional(
-            ssl_final.test_precision_at_1,
-            supervised_final.test_precision_at_1,
-        ),
-        "test_mean_average_precision_at_r": subtract_optional(
-            ssl_final.test_mean_average_precision_at_r,
-            supervised_final.test_mean_average_precision_at_r,
-        ),
-        "best_valid_precision_at_1": subtract_optional(
-            ssl_final.best_valid_precision_at_1,
-            supervised_final.best_valid_precision_at_1,
-        ),
-        "best_valid_mean_average_precision_at_r": subtract_optional(
-            ssl_final.best_valid_mean_average_precision_at_r,
-            supervised_final.best_valid_mean_average_precision_at_r,
-        ),
+        name: subtract_optional(getattr(ssl_final, name), getattr(supervised_final, name))
+        for name in COMPARISON_DELTA_METRICS
     }
 
 
@@ -587,25 +500,16 @@ def make_comparison_row(method, study_result, final_result):
         "method": method,
         "study_name": study_result.study_name,
         "study_dir": str(study_result.study_dir),
-        "best_trial_number": "" if study_result.best_trial_number is None else study_result.best_trial_number,
-        "best_hpo_value": "" if study_result.best_value is None else study_result.best_value,
+        "best_trial_number": optional_number(study_result.best_trial_number),
+        "best_hpo_value": optional_number(study_result.best_value),
         "final_log_dir": str(final_result.log_dir),
         "best_valid_precision_at_1": final_result.best_valid_precision_at_1,
         "best_valid_mean_average_precision_at_r": final_result.best_valid_mean_average_precision_at_r,
-        "epoch0_test_precision_at_1": ""
-        if final_result.epoch0_test_precision_at_1 is None
-        else final_result.epoch0_test_precision_at_1,
-        "epoch0_test_mean_average_precision_at_r": ""
-        if final_result.epoch0_test_mean_average_precision_at_r is None
-        else final_result.epoch0_test_mean_average_precision_at_r,
-        "test_precision_at_1": "" if final_result.test_precision_at_1 is None else final_result.test_precision_at_1,
-        "test_mean_average_precision_at_r": ""
-        if final_result.test_mean_average_precision_at_r is None
-        else final_result.test_mean_average_precision_at_r,
-        "test_pacmap_coordinates": optional_path(final_result.test_pacmap_coordinates),
-        "test_pacmap_plot": optional_path(final_result.test_pacmap_plot),
-        "test_tsne_coordinates": optional_path(final_result.test_tsne_coordinates),
-        "test_tsne_plot": optional_path(final_result.test_tsne_plot),
+        **{
+            name: optional_number(getattr(final_result, name))
+            for name in COMPARISON_DELTA_METRICS[:4]
+        },
+        **_projection_columns(final_result),
         "final_training_epochs": max(0, final_result.last_epoch + 1),
         "selected_epoch": final_result.selected_epoch,
         "last_epoch": final_result.last_epoch,
@@ -651,30 +555,17 @@ def comparison_scenario_to_dict(scenario):
     }
 
 
-def write_comparison_grid_summary(grid_dir, grid_results):
+def _write_grid_summary(grid_dir, rows, aggregate_rows, description):
     grid_dir.mkdir(parents=True, exist_ok=True)
+    write_csv(grid_dir / "grid_summary.csv", rows)
+    write_csv(grid_dir / "grid_aggregate.csv", aggregate_rows)
+    write_json(grid_dir / "grid_summary.json", {"runs": rows, "aggregates": aggregate_rows})
+    logger.info(f"{description} summary written to {grid_dir}")
+
+
+def write_comparison_grid_summary(grid_dir, grid_results):
     rows = [make_grid_summary_row(result) for result in grid_results]
-    summary_csv = grid_dir / "grid_summary.csv"
-    with summary_csv.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-
-    aggregate_rows = make_grid_aggregate_rows(rows)
-    aggregate_csv = grid_dir / "grid_aggregate.csv"
-    with aggregate_csv.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(aggregate_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(aggregate_rows)
-
-    write_json(
-        grid_dir / "grid_summary.json",
-        {
-            "runs": rows,
-            "aggregates": aggregate_rows,
-        },
-    )
-    logger.info(f"Comparison grid summary written to {grid_dir}")
+    _write_grid_summary(grid_dir, rows, make_grid_aggregate_rows(rows), "Comparison grid")
 
 
 def grid_recall_at_k(grid_results):
@@ -691,33 +582,12 @@ def grid_recall_at_k(grid_results):
 
 
 def write_single_method_grid_summary(grid_dir, grid_results):
-    grid_dir.mkdir(parents=True, exist_ok=True)
     recall_at_k = grid_recall_at_k(grid_results)
     rows = [
         make_single_method_grid_summary_row(result, recall_at_k=recall_at_k)
         for result in grid_results
     ]
-    summary_csv = grid_dir / "grid_summary.csv"
-    with summary_csv.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-
-    aggregate_rows = make_single_method_grid_aggregate_rows(rows)
-    aggregate_csv = grid_dir / "grid_aggregate.csv"
-    with aggregate_csv.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(aggregate_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(aggregate_rows)
-
-    write_json(
-        grid_dir / "grid_summary.json",
-        {
-            "runs": rows,
-            "aggregates": aggregate_rows,
-        },
-    )
-    logger.info(f"Single-method grid summary written to {grid_dir}")
+    _write_grid_summary(grid_dir, rows, make_single_method_grid_aggregate_rows(rows), "Single-method grid")
 
 
 def recall_at_k_columns(result, recall_at_k):
@@ -734,44 +604,54 @@ def recall_at_k_columns(result, recall_at_k):
     }
 
 
-def make_single_method_grid_summary_row(grid_result, recall_at_k=()):
-    scenario = grid_result["scenario"]
-    method = grid_result["method"]
-    study = grid_result["study"]
-    result = grid_result["result"]
+def scenario_columns(scenario):
+    """The outer-grid coordinates every grid summary row starts with."""
 
-    row = {
-        "method": method,
+    return {
         "scenario": scenario.name,
         "label_sampling_mode": scenario.label_sampling_mode,
         "labeled_fraction": scenario.labeled_fraction,
-        "labeled_per_class": "" if scenario.labeled_per_class is None else scenario.labeled_per_class,
+        "labeled_per_class": optional_number(scenario.labeled_per_class),
         "loss": scenario.loss,
         "miner": scenario.miner,
         "comparison_seed": scenario.seed,
         "comparison_seed_targets": ",".join(scenario.comparison_seed_targets),
-        "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
-        "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
-        "support_seed": "" if scenario.support_seed is None else scenario.support_seed,
-        "hparam_seed": "" if scenario.hparam_seed is None else scenario.hparam_seed,
-        "best_trial_number": "",
-        "best_hpo_value": "",
-        "log_dir": "",
-        "metrics_csv": "",
-        "best_valid_precision_at_1": "",
-        "best_valid_mean_average_precision_at_r": "",
-        "test_precision_at_1": "",
-        "test_mean_average_precision_at_r": "",
-        "test_pacmap_coordinates": "",
-        "test_pacmap_plot": "",
-        "test_tsne_coordinates": "",
-        "test_tsne_plot": "",
-        "epoch0_test_precision_at_1": "",
-        "epoch0_test_mean_average_precision_at_r": "",
-        "final_train_loss": "",
-        "final_training_epochs": "",
-        "selected_epoch": "",
-        "global_step": "",
+        "run_seed": optional_number(scenario.run_seed),
+        "data_split_seed": optional_number(scenario.data_split_seed),
+        "support_seed": optional_number(scenario.support_seed),
+        "hparam_seed": optional_number(scenario.hparam_seed),
+    }
+
+
+SINGLE_METHOD_GRID_RESULT_COLUMNS = (
+    "best_trial_number",
+    "best_hpo_value",
+    "log_dir",
+    "metrics_csv",
+    "best_valid_precision_at_1",
+    "best_valid_mean_average_precision_at_r",
+    "test_precision_at_1",
+    "test_mean_average_precision_at_r",
+    "test_pacmap_coordinates",
+    "test_pacmap_plot",
+    "test_tsne_coordinates",
+    "test_tsne_plot",
+    "epoch0_test_precision_at_1",
+    "epoch0_test_mean_average_precision_at_r",
+    "final_train_loss",
+    "final_training_epochs",
+    "selected_epoch",
+    "global_step",
+)
+
+
+def make_single_method_grid_summary_row(grid_result, recall_at_k=()):
+    study = grid_result["study"]
+    result = grid_result["result"]
+    row = {
+        "method": grid_result["method"],
+        **scenario_columns(grid_result["scenario"]),
+        **dict.fromkeys(SINGLE_METHOD_GRID_RESULT_COLUMNS, ""),
         # Recall@K columns exist only when some run in the grid reported them,
         # and every row carries the same set so the CSV header stays rectangular.
         **{f"best_valid_recall_at_{k}": "" for k in recall_at_k},
@@ -785,54 +665,22 @@ def make_single_method_grid_summary_row(grid_result, recall_at_k=()):
                 "best_hpo_value": optional_number(study.best_value),
                 "log_dir": str(attrs.get("log_dir", "")),
                 "metrics_csv": str(attrs.get("metrics_csv", "")),
-                "best_valid_precision_at_1": optional_number(attrs.get("best_valid_precision_at_1")),
-                "best_valid_mean_average_precision_at_r": optional_number(
-                    attrs.get("best_valid_mean_average_precision_at_r")
-                ),
+                **_best_attrs_columns(study),
                 "test_precision_at_1": optional_number(attrs.get("test_precision_at_1")),
                 "test_mean_average_precision_at_r": optional_number(attrs.get("test_mean_average_precision_at_r")),
             }
         )
-        if result is not None:
-            row.update(
-                {
-                    "log_dir": str(result.log_dir),
-                    "metrics_csv": str(result.metrics_csv),
-                    "epoch0_test_precision_at_1": optional_number(result.epoch0_test_precision_at_1),
-                    "epoch0_test_mean_average_precision_at_r": optional_number(
-                        result.epoch0_test_mean_average_precision_at_r
-                    ),
-                    "test_precision_at_1": optional_number(result.test_precision_at_1),
-                    "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
-                    "test_pacmap_coordinates": optional_path(result.test_pacmap_coordinates),
-                    "test_pacmap_plot": optional_path(result.test_pacmap_plot),
-                    "test_tsne_coordinates": optional_path(result.test_tsne_coordinates),
-                    "test_tsne_plot": optional_path(result.test_tsne_plot),
-                    "final_train_loss": optional_number(result.final_train_loss),
-                    "final_training_epochs": max(0, result.last_epoch + 1),
-                    "selected_epoch": result.selected_epoch,
-                    "global_step": result.global_step,
-                    **recall_at_k_columns(result, recall_at_k),
-                }
-            )
-    else:
+    if result is not None:
+        if study is None:
+            row["best_valid_precision_at_1"] = result.best_valid_precision_at_1
+            row["best_valid_mean_average_precision_at_r"] = result.best_valid_mean_average_precision_at_r
+        test_columns = _test_columns(result)
         row.update(
             {
-                "log_dir": str(result.log_dir),
-                "metrics_csv": str(result.metrics_csv),
-                "best_valid_precision_at_1": result.best_valid_precision_at_1,
-                "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
-                "epoch0_test_precision_at_1": optional_number(result.epoch0_test_precision_at_1),
-                "epoch0_test_mean_average_precision_at_r": optional_number(
-                    result.epoch0_test_mean_average_precision_at_r
-                ),
-                "test_precision_at_1": optional_number(result.test_precision_at_1),
-                "test_mean_average_precision_at_r": optional_number(result.test_mean_average_precision_at_r),
-                "test_pacmap_coordinates": optional_path(result.test_pacmap_coordinates),
-                "test_pacmap_plot": optional_path(result.test_pacmap_plot),
-                "test_tsne_coordinates": optional_path(result.test_tsne_coordinates),
-                "test_tsne_plot": optional_path(result.test_tsne_plot),
-                "final_train_loss": optional_number(result.final_train_loss),
+                "log_dir": test_columns.pop("final_log_dir"),
+                "metrics_csv": test_columns.pop("final_metrics_csv"),
+                **test_columns,
+                **_projection_columns(result),
                 "final_training_epochs": max(0, result.last_epoch + 1),
                 "selected_epoch": result.selected_epoch,
                 "global_step": result.global_step,
@@ -842,15 +690,29 @@ def make_single_method_grid_summary_row(grid_result, recall_at_k=()):
     return row
 
 
+def aggregate_grid_rows(rows, group_keys, metric_names):
+    """Mean and sample std of each metric over the rows sharing ``group_keys``."""
+
+    groups = {}
+    for row in rows:
+        groups.setdefault(tuple(row[name] for name in group_keys), []).append(row)
+
+    aggregate_rows = []
+    for key, group_rows in sorted(groups.items()):
+        aggregate = {**dict(zip(group_keys, key)), "num_seeds": len(group_rows)}
+        for metric_name in metric_names:
+            values = [row[metric_name] for row in group_rows if row[metric_name] != ""]
+            mean_value, std_value = mean_std(values)
+            aggregate[f"{metric_name}_mean"] = optional_number(mean_value)
+            aggregate[f"{metric_name}_std"] = optional_number(std_value)
+        aggregate_rows.append(aggregate)
+    return aggregate_rows
+
+
+GRID_GROUP_KEYS = ("label_sampling_mode", "labeled_fraction", "labeled_per_class", "loss", "miner")
+
+
 def make_single_method_grid_aggregate_rows(rows):
-    group_keys = [
-        "method",
-        "label_sampling_mode",
-        "labeled_fraction",
-        "labeled_per_class",
-        "loss",
-        "miner",
-    ]
     metric_names = [
         "best_hpo_value",
         "best_valid_precision_at_1",
@@ -868,133 +730,38 @@ def make_single_method_grid_aggregate_rows(rows):
             if name.startswith(("best_valid_recall_at_", "test_recall_at_"))
         ),
     ]
-    groups = {}
-    for row in rows:
-        key = tuple(row[name] for name in group_keys)
-        groups.setdefault(key, []).append(row)
-
-    aggregate_rows = []
-    for key, group_rows in sorted(groups.items()):
-        aggregate = {
-            "method": key[0],
-            "label_sampling_mode": key[1],
-            "labeled_fraction": key[2],
-            "labeled_per_class": key[3],
-            "loss": key[4],
-            "miner": key[5],
-            "num_seeds": len(group_rows),
-        }
-        for metric_name in metric_names:
-            values = [row[metric_name] for row in group_rows if row[metric_name] != ""]
-            mean_value, std_value = mean_std(values)
-            aggregate[f"{metric_name}_mean"] = optional_number(mean_value)
-            aggregate[f"{metric_name}_std"] = optional_number(std_value)
-        aggregate_rows.append(aggregate)
-    return aggregate_rows
+    return aggregate_grid_rows(rows, ("method", *GRID_GROUP_KEYS), metric_names)
 
 
 def make_grid_summary_row(result):
-    scenario = result["scenario"]
     supervised_final = result["supervised_final"]
     ssl_final = result["ssl_final"]
     deltas = result["deltas"]
-    return {
-        "scenario": scenario.name,
-        "label_sampling_mode": scenario.label_sampling_mode,
-        "labeled_fraction": scenario.labeled_fraction,
-        "labeled_per_class": "" if scenario.labeled_per_class is None else scenario.labeled_per_class,
-        "loss": scenario.loss,
-        "miner": scenario.miner,
-        "comparison_seed": scenario.seed,
-        "comparison_seed_targets": ",".join(scenario.comparison_seed_targets),
-        "run_seed": "" if scenario.run_seed is None else scenario.run_seed,
-        "data_split_seed": "" if scenario.data_split_seed is None else scenario.data_split_seed,
-        "support_seed": "" if scenario.support_seed is None else scenario.support_seed,
-        "hparam_seed": "" if scenario.hparam_seed is None else scenario.hparam_seed,
-        "comparison_dir": str(result["comparison_dir"]),
-        "supervised_epoch0_test_precision_at_1": optional_number(supervised_final.epoch0_test_precision_at_1),
-        "ssl_epoch0_test_precision_at_1": optional_number(ssl_final.epoch0_test_precision_at_1),
-        "delta_epoch0_test_precision_at_1": optional_number(deltas["epoch0_test_precision_at_1"]),
-        "supervised_epoch0_test_mean_average_precision_at_r": optional_number(
-            supervised_final.epoch0_test_mean_average_precision_at_r
-        ),
-        "ssl_epoch0_test_mean_average_precision_at_r": optional_number(
-            ssl_final.epoch0_test_mean_average_precision_at_r
-        ),
-        "delta_epoch0_test_mean_average_precision_at_r": optional_number(
-            deltas["epoch0_test_mean_average_precision_at_r"]
-        ),
-        "supervised_test_precision_at_1": optional_number(supervised_final.test_precision_at_1),
-        "ssl_test_precision_at_1": optional_number(ssl_final.test_precision_at_1),
-        "delta_test_precision_at_1": optional_number(deltas["test_precision_at_1"]),
-        "supervised_test_mean_average_precision_at_r": optional_number(
-            supervised_final.test_mean_average_precision_at_r
-        ),
-        "ssl_test_mean_average_precision_at_r": optional_number(ssl_final.test_mean_average_precision_at_r),
-        "delta_test_mean_average_precision_at_r": optional_number(deltas["test_mean_average_precision_at_r"]),
-        "supervised_test_pacmap_coordinates": optional_path(supervised_final.test_pacmap_coordinates),
-        "supervised_test_pacmap_plot": optional_path(supervised_final.test_pacmap_plot),
-        "ssl_test_pacmap_coordinates": optional_path(ssl_final.test_pacmap_coordinates),
-        "ssl_test_pacmap_plot": optional_path(ssl_final.test_pacmap_plot),
-        "supervised_test_tsne_coordinates": optional_path(supervised_final.test_tsne_coordinates),
-        "supervised_test_tsne_plot": optional_path(supervised_final.test_tsne_plot),
-        "ssl_test_tsne_coordinates": optional_path(ssl_final.test_tsne_coordinates),
-        "ssl_test_tsne_plot": optional_path(ssl_final.test_tsne_plot),
-        "supervised_best_valid_precision_at_1": supervised_final.best_valid_precision_at_1,
-        "ssl_best_valid_precision_at_1": ssl_final.best_valid_precision_at_1,
-        "delta_best_valid_precision_at_1": optional_number(deltas["best_valid_precision_at_1"]),
-        "supervised_best_valid_mean_average_precision_at_r": supervised_final.best_valid_mean_average_precision_at_r,
-        "ssl_best_valid_mean_average_precision_at_r": ssl_final.best_valid_mean_average_precision_at_r,
-        "delta_best_valid_mean_average_precision_at_r": optional_number(
-            deltas["best_valid_mean_average_precision_at_r"]
-        ),
-    }
+    row = {**scenario_columns(result["scenario"]), "comparison_dir": str(result["comparison_dir"])}
+
+    def add_triplet(name, wrap):
+        row[f"supervised_{name}"] = wrap(getattr(supervised_final, name))
+        row[f"ssl_{name}"] = wrap(getattr(ssl_final, name))
+        row[f"delta_{name}"] = optional_number(deltas[name])
+
+    for name in COMPARISON_DELTA_METRICS[:4]:
+        add_triplet(name, optional_number)
+    for layout in ("pacmap", "tsne"):
+        for prefix, final in (("supervised", supervised_final), ("ssl", ssl_final)):
+            for kind in ("coordinates", "plot"):
+                row[f"{prefix}_test_{layout}_{kind}"] = optional_path(getattr(final, f"test_{layout}_{kind}"))
+    for name in COMPARISON_DELTA_METRICS[4:]:
+        add_triplet(name, lambda value: value)
+    return row
 
 
 def make_grid_aggregate_rows(rows):
-    group_keys = ["label_sampling_mode", "labeled_fraction", "labeled_per_class", "loss", "miner"]
     metric_names = [
-        "supervised_epoch0_test_precision_at_1",
-        "ssl_epoch0_test_precision_at_1",
-        "delta_epoch0_test_precision_at_1",
-        "supervised_epoch0_test_mean_average_precision_at_r",
-        "ssl_epoch0_test_mean_average_precision_at_r",
-        "delta_epoch0_test_mean_average_precision_at_r",
-        "supervised_test_precision_at_1",
-        "ssl_test_precision_at_1",
-        "delta_test_precision_at_1",
-        "supervised_test_mean_average_precision_at_r",
-        "ssl_test_mean_average_precision_at_r",
-        "delta_test_mean_average_precision_at_r",
-        "supervised_best_valid_precision_at_1",
-        "ssl_best_valid_precision_at_1",
-        "delta_best_valid_precision_at_1",
-        "supervised_best_valid_mean_average_precision_at_r",
-        "ssl_best_valid_mean_average_precision_at_r",
-        "delta_best_valid_mean_average_precision_at_r",
+        f"{prefix}_{name}"
+        for name in COMPARISON_DELTA_METRICS
+        for prefix in ("supervised", "ssl", "delta")
     ]
-    groups = {}
-    for row in rows:
-        key = tuple(row[name] for name in group_keys)
-        groups.setdefault(key, []).append(row)
-
-    aggregate_rows = []
-    for key, group_rows in sorted(groups.items()):
-        aggregate = {
-            "label_sampling_mode": key[0],
-            "labeled_fraction": key[1],
-            "labeled_per_class": key[2],
-            "loss": key[3],
-            "miner": key[4],
-            "num_seeds": len(group_rows),
-        }
-        for metric_name in metric_names:
-            values = [row[metric_name] for row in group_rows if row[metric_name] != ""]
-            mean_value, std_value = mean_std(values)
-            aggregate[f"{metric_name}_mean"] = optional_number(mean_value)
-            aggregate[f"{metric_name}_std"] = optional_number(std_value)
-        aggregate_rows.append(aggregate)
-    return aggregate_rows
+    return aggregate_grid_rows(rows, GRID_GROUP_KEYS, metric_names)
 
 
 def mean_std(values):

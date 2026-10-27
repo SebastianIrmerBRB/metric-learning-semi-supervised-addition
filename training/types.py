@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pytorch_metric_learning import losses
 
 DATASETS = [
     "Cars196",
@@ -14,8 +13,6 @@ DATASETS = [
     "Flowers102",
     "FGVCAircraft",
     "FGVCFungi",
-    "CIFAR10",
-    "CIFAR100",
     "NABirds",
     "PUMA",
     "PUMAStandard",
@@ -25,6 +22,8 @@ DATASETS = [
     "SPED",
     "iNat",
     "iNat2018",
+    "iNat2019",
+    "iNat2021Mini",
     "StanfordDogs",
     "StanfordOnlineProducts",
     "VehicleID"
@@ -54,7 +53,6 @@ ALL_LOSSES = [
     "LiftedStructureLoss",
     "ManifoldLoss",
     "MarginLoss",
-    "MixedLabelPropagationProxyLoss",
     "WeightRegularizerMixin",
     "MultiSimilarityLoss",
     "MultipleLosses",
@@ -71,7 +69,6 @@ ALL_LOSSES = [
     "SignalToNoiseRatioContrastiveLoss",
     "SoftTripleLoss",
     "SphereFaceLoss",
-    "STMLLoss",
     "SubCenterArcFaceLoss",
     "SupConLoss",
     "ThresholdConsistentMarginLoss",
@@ -84,7 +81,6 @@ CLASSIFICATION_LOSSES = [
     "ArcFaceLoss",
     "CosFaceLoss",
     "LargeMarginSoftmaxLoss",
-    "MixedLabelPropagationProxyLoss",
     "WeightRegularizerMixin",
     "NormalizedSoftmaxLoss",
     "ProxyAnchorLoss",
@@ -124,9 +120,6 @@ OBJECTIVE_METRICS = {
 COMPARISON_FORBIDDEN_HPARAM_KEYS = {
     "dataset",
     "dataset_protocol",
-    "cifar_imbalance_factor",
-    "cifar_train_fraction",
-    "cifar_test_fraction",
     "semi_aves_ood_fraction",
     "semi_aves_ood_seed",
     "semi_inat_ood_fraction",
@@ -198,31 +191,6 @@ JOINT_HPARAM_PREFIX = "__joint_hparam__."
 
 JOINT_TWO_STREAM_HPARAM_KEY = f"{JOINT_HPARAM_PREFIX}two_stream_batch_sampler"
 
-JOINT_STML_IN_BATCH_HPARAM_KEY = f"{JOINT_HPARAM_PREFIX}stml_in_batch_graph"
-
-# Graph sizes only the in-batch STML mode reads; the pool-wide mode has no
-# per-step graph to size, so a study covering both modes drops them there.
-STML_IN_BATCH_ONLY_HPARAM_KEYS = (
-    "ssl_config.graph_labeled_batch_size",
-    "ssl_config.graph_unlabeled_batch_size",
-)
-
-# Sampler and graph sizes the in-batch STML mode constrains against each other.
-STML_IN_BATCH_HPARAM_KEYS = (
-    *STML_IN_BATCH_ONLY_HPARAM_KEYS,
-    "ssl_config.method_params.n_neighbors",
-)
-
-# Dimensions the merged in-batch mode never reads: it takes the supervised batch
-# whole, draws the unlabeled rows uniformly, and runs one weighted loss. Leaving
-# them in would spend trials on values the run ignores -- and the config layer
-# rejects them outright, so every such trial would be lost.
-STML_MERGED_INERT_HPARAM_KEYS = (
-    "ssl_config.graph_labeled_batch_size",
-    "ssl_config.method_params.n_neighbors",
-    "ssl_config.method_params.supervised_weight",
-)
-
 HPO_MODE_KEYS = {"backbone_tuning", "use_cache"}
 
 # Structural keys consumed while loading an HPO config rather than searched over.
@@ -237,9 +205,6 @@ MERGED_HPARAM_CONFIG_KEYS = {"spaces", HPARAM_CONFIG_PER_LOSS_KEY}
 SAMPLER_CAPACITY_HPARAM_KEYS = {
     "dataset",
     "dataset_protocol",
-    "cifar_imbalance_factor",
-    "cifar_train_fraction",
-    "cifar_test_fraction",
     "seed",
     "data_split_seed",
     "support_seed",
@@ -312,6 +277,12 @@ class TrainingResult:
     # ``keep_last``, where the SSL phase just continued from the last warm-up
     # epoch.
     warmup_restored_epoch: int | None = None
+    # How much the regularizer actually acted during the SSL phase: per term, the
+    # share of sampled batches with a zero gradient and the achieved gradient
+    # ratio to the supervised loss, plus method-specific statistics (SLADE's
+    # mined-pair precision and cluster purity against the hidden labels). CV
+    # results hold the fold mean of each entry. ``None`` without a regularizer.
+    regularizer_activity: dict[str, float] | None = None
     test_precision_at_1_std: float | None = None
     test_mean_average_precision_at_r_std: float | None = None
     concatenated_test_precision_at_1: float | None = None
@@ -353,6 +324,10 @@ class HParamSearchConfig:
     pruner: str = "none"
     pruner_params: dict[str, Any] = field(default_factory=dict)
     retry_failed_trials: bool = False
+    # n_trials counts completed trials. This many pruned trials are replaced
+    # instead of consuming it; None means n_trials, 0 restores the old
+    # complete-or-pruned budget. Grid studies always use 0.
+    max_replaced_pruned_trials: int | None = None
     spaces: dict[str, Any] = field(default_factory=dict)
     # Per-loss-class overrides applied once the trial's loss is fixed. Keys that
     # are not class-qualified, such as lr and batch_sampler, cannot be scoped by

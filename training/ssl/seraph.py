@@ -249,11 +249,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
-from torch.utils.data import DataLoader
 
-import utils
+from .common import cross_squared_distances, parameter_validators
 from .data import CombinedTrainingLoader, UnlabeledSubset
 from .interfaces import BaseTrainingRegularizer
+
+(
+    _validate_positive,
+    _validate_non_negative,
+    _validate_probability,
+    _validate_positive_integer,
+) = parameter_validators("seraph")
 
 
 # "em" follows Sec 2.4: the analytical E-step of Eq 9 followed by a cross entropy
@@ -378,48 +384,6 @@ DEFAULT_UNLABELED_RATIO = 1.0
 
 # q(y) ~ p(y)^exponent in Eq 9's E-step. 2.0 is the paper's mu = 1.
 DEFAULT_EM_SHARPENING = 2.0
-
-
-def _validate_positive(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"seraph {name} must be finite and positive")
-    return value
-
-
-def _validate_non_negative(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value < 0:
-        raise ValueError(f"seraph {name} must be finite and non-negative")
-    return value
-
-
-def _validate_probability(name, value):
-    value = float(value)
-    if not math.isfinite(value) or not (0.0 < value < 1.0):
-        raise ValueError(f"seraph {name} must lie strictly between 0 and 1")
-    return value
-
-
-def _validate_positive_integer(name, value):
-    integer = int(value)
-    if integer <= 0:
-        raise ValueError(f"seraph {name} must be a positive integer")
-    return integer
-
-
-def cross_squared_distances(left, right):
-    """Return the ``[len(left), len(right)]`` squared distances between two sets.
-
-    The labeled-unlabeled block needs every cross pair but no within-set pair, so
-    this is the rectangular counterpart of ``pairwise_squared_distances`` and
-    carries the same Gram-form caveat about cancellation and the same clamp.
-    """
-
-    left_norms = left.pow(2).sum(dim=1, keepdim=True)
-    right_norms = right.pow(2).sum(dim=1, keepdim=True)
-    distances = left_norms + right_norms.t() - 2.0 * (left @ right.t())
-    return distances.clamp_min(0.0)
 
 
 def pairwise_squared_distances(projected):
@@ -1711,24 +1675,7 @@ class SeraphRegularizer(BaseTrainingRegularizer):
         # so a config that pins an absolute size does not also have to carry a
         # ratio that would be ignored. Null for both keeps the historical default
         # of one unlabeled sample per labeled sample.
-        self.unlabeled_batch_size = (
-            None if unlabeled_batch_size is None else int(unlabeled_batch_size)
-        )
-        if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
-            raise ValueError("seraph unlabeled_batch_size must be at least two")
-        self.unlabeled_ratio = (
-            None
-            if unlabeled_ratio is None
-            else _validate_positive("unlabeled_ratio", unlabeled_ratio)
-        )
-        if self.unlabeled_ratio is None and self.unlabeled_batch_size is None:
-            self.unlabeled_ratio = DEFAULT_UNLABELED_RATIO
-        elif self.unlabeled_ratio is not None and self.unlabeled_batch_size is not None:
-            logger.warning(
-                f"seraph received both unlabeled_batch_size={self.unlabeled_batch_size} "
-                f"and unlabeled_ratio={self.unlabeled_ratio}; the absolute batch size "
-                "wins and the ratio is ignored"
-            )
+        self.set_unlabeled_batch_sizing(unlabeled_batch_size, unlabeled_ratio, DEFAULT_UNLABELED_RATIO)
         self.head = None
         self.dataset = None
         # Population sizes, not batch sizes: the two blocks are weighted by how
@@ -2003,15 +1950,10 @@ class SeraphRegularizer(BaseTrainingRegularizer):
         return None
 
     def build_dataset(self, train_dataset, split, use_cache=False):
-        utils.shutdown_dataloaders(self._regularizer_loader)
-        self._regularizer_loader = None
-        self._regularizer_loader_cache_key = None
-        if self.regularizer_weight == 0:
-            self.dataset = None
+        # Every SERAPH term is a pair, so the pool needs two samples.
+        unlabeled_positions = self.begin_unlabeled_pool(split)
+        if unlabeled_positions is None:
             return None
-        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
-        if len(unlabeled_positions) < 2:
-            raise ValueError("seraph requires at least two unlabeled samples to form a pair")
         self.unlabeled_pool_size = int(len(unlabeled_positions))
         self.labeled_pool_size = int(len(np.asarray(split.labeled_positions, dtype=np.int64)))
         if self.include_labeled_unlabeled and self.labeled_pool_size < 1:
@@ -2048,49 +1990,11 @@ class SeraphRegularizer(BaseTrainingRegularizer):
 
         if self.dataset is None:
             raise RuntimeError("seraph build_dataset must run before make_loader")
-        if self.unlabeled_batch_size is not None:
-            requested_batch_size = self.unlabeled_batch_size
-            sizing = f"unlabeled_batch_size={self.unlabeled_batch_size}"
-        else:
-            requested_batch_size = max(2, int(round(float(batch_size) * self.unlabeled_ratio)))
-            sizing = (
-                f"unlabeled_ratio={self.unlabeled_ratio} x labeled batch_size={batch_size}"
-            )
-        unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
-        if unlabeled_batch_size < 2:
-            raise ValueError("seraph needs at least two unlabeled samples per batch")
-        if unlabeled_batch_size < requested_batch_size:
-            # Silently shrinking would change the pair count, and with it eta and
-            # kappa, without anything in the log saying so.
-            logger.warning(
-                f"seraph requested {requested_batch_size} unlabeled samples per step "
-                f"({sizing}) but the unlabeled pool holds only {len(self.dataset)}; "
-                f"using {unlabeled_batch_size}"
-            )
-        worker_count = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
-        cache_key = (
-            id(self.dataset),
-            int(unlabeled_batch_size),
-            int(worker_count),
-            str(start_method),
-        )
-        if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
-            utils.shutdown_dataloaders(self._regularizer_loader)
-            self._regularizer_loader = utils.make_unlabeled_stream_loader(
-                self.dataset,
-                batch_size=unlabeled_batch_size,
-                seed=seed,
-                num_workers=worker_count,
-                start_method=start_method,
-                supervised_loader=supervised_loader,
-                # A ragged final batch would shift both the pair count and the
-                # batch statistics eta and kappa are read from.
-                drop_last=True,
-                persistent_workers=True,
-                pin_memory=True,
-                desc="seraph unlabeled",
-            )
-            self._regularizer_loader_cache_key = cache_key
+        # The batch size sets the pair count, and with it eta and kappa.
+        unlabeled_batch_size, sizing = self.resolve_unlabeled_batch_size(batch_size)
+        if self.cache_unlabeled_stream_loader(
+            supervised_loader, unlabeled_batch_size, seed, num_workers, start_method, "seraph unlabeled"
+        ):
             logger.info(
                 "SERAPH unlabeled loader: "
                 f"pool={len(self.dataset)}, batch_size={unlabeled_batch_size} ({sizing}), "

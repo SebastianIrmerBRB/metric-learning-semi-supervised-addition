@@ -132,12 +132,13 @@ def save_graph_diagnostics(
     """Write bounded visual artifacts plus complete graph-level/node-level data."""
 
     plt = None
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        logger.warning(
-            "matplotlib is not installed; writing graph diagnostic data without PNGs"
-        )
+    if getattr(request, "write_plots", True):
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            logger.warning(
+                "matplotlib is not installed; writing graph diagnostic data without PNGs"
+            )
 
     embeddings = np.asarray(embeddings, dtype=np.float32)
     positions = np.asarray(positions, dtype=np.int64)
@@ -216,106 +217,107 @@ def save_graph_diagnostics(
             layout=request.layout,
             seed=request.seed,
         )
-        fig, ax = plt.subplots(figsize=(9, 7))
-        edge_styles = _graph_edge_styles(
-            edge_rows=edge_rows,
-            edge_cols=edge_cols,
-            labels=None if labels is None else labels[node_indices],
-            focus_mask=focus_mask,
-        )
-        for index, (row, col, weight) in enumerate(
-            zip(edge_rows, edge_cols, edge_weights)
-        ):
-            color, width, base_alpha, edge_zorder = edge_styles[index]
-            alpha = base_alpha + 0.35 * min(abs(float(weight)), 1.0)
-            ax.plot(
-                [coords[row, 0], coords[col, 0]],
-                [coords[row, 1], coords[col, 1]],
-                color=color,
-                linewidth=width,
-                alpha=min(alpha, 1.0),
-                zorder=edge_zorder,
+        with utils.PYPLOT_LOCK:
+            fig, ax = plt.subplots(figsize=(9, 7))
+            edge_styles = _graph_edge_styles(
+                edge_rows=edge_rows,
+                edge_cols=edge_cols,
+                labels=None if labels is None else labels[node_indices],
+                focus_mask=focus_mask,
             )
-        if focus_mask is not None:
-            for color, width, style_label in (
-                (GRAPH_EDGE_SAME_CLASS_COLOR, 0.9, "edge within a selected class"),
-                (
-                    GRAPH_EDGE_BETWEEN_CLASSES_COLOR,
-                    0.9,
-                    "edge between selected classes",
-                ),
-                (GRAPH_EDGE_LEAVING_COLOR, 0.5, "edge leaving the selection"),
+            for index, (row, col, weight) in enumerate(
+                zip(edge_rows, edge_cols, edge_weights)
             ):
-                ax.plot([], [], color=color, linewidth=width, label=style_label)
-
-        sampled_labels = None if labels is None else labels[node_indices]
-        sampled_known = None if known_mask is None else known_mask[node_indices]
-        scatter_graph_nodes(
-            ax,
-            coords,
-            sampled_labels,
-            sampled_known,
-            focus_mask=focus_mask,
-        )
-        if len(node_indices) <= request.max_labels:
-            label_offsets = (
-                (4, 4),
-                (-10, 4),
-                (4, -11),
-                (-10, -11),
-                (10, 0),
-                (-14, 0),
-                (0, 10),
-                (0, -14),
-            )
-            for local_index, position in enumerate(positions[node_indices]):
-                ax.annotate(
-                    str(int(position)),
-                    xy=(coords[local_index, 0], coords[local_index, 1]),
-                    xytext=label_offsets[local_index % len(label_offsets)],
-                    textcoords="offset points",
-                    fontsize=6,
-                    alpha=0.82,
-                    zorder=5,
+                color, width, base_alpha, edge_zorder = edge_styles[index]
+                alpha = base_alpha + 0.35 * min(abs(float(weight)), 1.0)
+                ax.plot(
+                    [coords[row, 0], coords[col, 0]],
+                    [coords[row, 1], coords[col, 1]],
+                    color=color,
+                    linewidth=width,
+                    alpha=min(alpha, 1.0),
+                    zorder=edge_zorder,
                 )
+            if focus_mask is not None:
+                for color, width, style_label in (
+                    (GRAPH_EDGE_SAME_CLASS_COLOR, 0.9, "edge within a selected class"),
+                    (
+                        GRAPH_EDGE_BETWEEN_CLASSES_COLOR,
+                        0.9,
+                        "edge between selected classes",
+                    ),
+                    (GRAPH_EDGE_LEAVING_COLOR, 0.5, "edge leaving the selection"),
+                ):
+                    ax.plot([], [], color=color, linewidth=width, label=style_label)
 
-        graph_summary = analysis["summary"]["graph"]
-        degree_summary = analysis["summary"]["degree"]["unweighted"]
-        connectivity = analysis["summary"]["connectivity"]
-        class_focus_line = ""
-        if len(focus_classes):
-            focus_summary = analysis["summary"]["class_focus"]
-            shown_classes = ", ".join(str(int(label)) for label in focus_classes[:8])
-            if len(focus_classes) > 8:
-                shown_classes += f", +{len(focus_classes) - 8} more"
-            class_focus_line = (
-                f"\nclasses {shown_classes} "
-                f"({request.class_focus}): "
-                f"{focus_summary['same_class_edge_count']} same-class, "
-                f"{focus_summary['between_selected_classes_edge_count']} between selected, "
-                f"{focus_summary['edge_count_to_classes_outside_selection']} leaving edges"
+            sampled_labels = None if labels is None else labels[node_indices]
+            sampled_known = None if known_mask is None else known_mask[node_indices]
+            scatter_graph_nodes(
+                ax,
+                coords,
+                sampled_labels,
+                sampled_known,
+                focus_mask=focus_mask,
             )
-        ax.set_title(
-            f"{request.title}\n"
-            f"showing {len(node_indices)}/{num_nodes} samples and "
-            f"{len(edge_rows)}/{graph_summary['undirected_edge_count']} undirected edges\n"
-            f"full graph: mean degree={degree_summary.get('mean', 0.0):.2f}, "
-            f"components={connectivity['component_count']}, "
-            f"isolated={connectivity['isolated_node_count']}"
-            f"{class_focus_line}",
-            fontsize=10,
-        )
-        ax.set_xlabel(f"{projection_name} 1")
-        ax.set_ylabel(f"{projection_name} 2")
-        ax.tick_params(labelsize=8)
-        ax.legend(
-            loc="best",
-            fontsize=7 if focus_mask is not None else 9,
-            ncol=2 if focus_mask is not None else 1,
-        )
-        fig.tight_layout()
-        fig.savefig(artifact_paths["graph_png"], dpi=160)
-        plt.close(fig)
+            if len(node_indices) <= request.max_labels:
+                label_offsets = (
+                    (4, 4),
+                    (-10, 4),
+                    (4, -11),
+                    (-10, -11),
+                    (10, 0),
+                    (-14, 0),
+                    (0, 10),
+                    (0, -14),
+                )
+                for local_index, position in enumerate(positions[node_indices]):
+                    ax.annotate(
+                        str(int(position)),
+                        xy=(coords[local_index, 0], coords[local_index, 1]),
+                        xytext=label_offsets[local_index % len(label_offsets)],
+                        textcoords="offset points",
+                        fontsize=6,
+                        alpha=0.82,
+                        zorder=5,
+                    )
+
+            graph_summary = analysis["summary"]["graph"]
+            degree_summary = analysis["summary"]["degree"]["unweighted"]
+            connectivity = analysis["summary"]["connectivity"]
+            class_focus_line = ""
+            if len(focus_classes):
+                focus_summary = analysis["summary"]["class_focus"]
+                shown_classes = ", ".join(str(int(label)) for label in focus_classes[:8])
+                if len(focus_classes) > 8:
+                    shown_classes += f", +{len(focus_classes) - 8} more"
+                class_focus_line = (
+                    f"\nclasses {shown_classes} "
+                    f"({request.class_focus}): "
+                    f"{focus_summary['same_class_edge_count']} same-class, "
+                    f"{focus_summary['between_selected_classes_edge_count']} between selected, "
+                    f"{focus_summary['edge_count_to_classes_outside_selection']} leaving edges"
+                )
+            ax.set_title(
+                f"{request.title}\n"
+                f"showing {len(node_indices)}/{num_nodes} samples and "
+                f"{len(edge_rows)}/{graph_summary['undirected_edge_count']} undirected edges\n"
+                f"full graph: mean degree={degree_summary.get('mean', 0.0):.2f}, "
+                f"components={connectivity['component_count']}, "
+                f"isolated={connectivity['isolated_node_count']}"
+                f"{class_focus_line}",
+                fontsize=10,
+            )
+            ax.set_xlabel(f"{projection_name} 1")
+            ax.set_ylabel(f"{projection_name} 2")
+            ax.tick_params(labelsize=8)
+            ax.legend(
+                loc="best",
+                fontsize=7 if focus_mask is not None else 9,
+                ncol=2 if focus_mask is not None else 1,
+            )
+            fig.tight_layout()
+            fig.savefig(artifact_paths["graph_png"], dpi=160)
+            plt.close(fig)
 
         write_graph_distribution_png(
             artifact_paths["distributions_png"],
@@ -418,7 +420,7 @@ def save_graph_diagnostics(
         "Saved graph diagnostics: "
         f"summary={artifact_paths['summary_json']}, "
         f"nodes={artifact_paths['nodes_csv']}, "
-        f"png={artifact_paths['graph_png'] if plt is not None else 'unavailable'}, "
+        f"png={artifact_paths['graph_png'] if plt is not None else 'not written'}, "
         f"sampled_edges={artifact_paths['sampled_edges_csv']}, "
         f"sampled_nodes={len(node_indices)}, sampled_edges={len(edge_rows)}, "
         f"available_sampled_edges={full_edge_count}, projection={projection_name}, "
@@ -910,11 +912,7 @@ def _directed_construction_diagnostics(graph_metadata, num_nodes, labels):
     positive_out_degree = np.full(num_nodes, np.nan, dtype=np.float64)
     incoming_positive_degree = np.full(num_nodes, np.nan, dtype=np.float64)
 
-    if neighbors is None:
-        construction["directed_candidate_diagnostics"] = {
-            "status": "unavailable",
-            "reason": "neighbor_indices_missing",
-        }
+    def result():
         return (
             construction,
             rank_rows,
@@ -923,6 +921,16 @@ def _directed_construction_diagnostics(graph_metadata, num_nodes, labels):
             positive_out_degree,
             incoming_positive_degree,
         )
+
+    def unavailable(reason):
+        construction["directed_candidate_diagnostics"] = {
+            "status": "unavailable",
+            "reason": reason,
+        }
+        return result()
+
+    if neighbors is None:
+        return unavailable("neighbor_indices_missing")
 
     neighbors = np.asarray(neighbors, dtype=np.int64)
     if query_indices is None:
@@ -942,32 +950,9 @@ def _directed_construction_diagnostics(graph_metadata, num_nodes, labels):
         or len(np.unique(query_indices)) != len(query_indices)
         or np.any((query_indices < 0) | (query_indices >= num_nodes))
     ):
-        construction["directed_candidate_diagnostics"] = {
-            "status": "unavailable",
-            "reason": "neighbor_metadata_shape_mismatch",
-        }
-        return (
-            construction,
-            rank_rows,
-            mutual_edge_keys,
-            candidate_edge_keys,
-            positive_out_degree,
-            incoming_positive_degree,
-        )
-
+        return unavailable("neighbor_metadata_shape_mismatch")
     if np.any((neighbors < 0) | (neighbors >= num_nodes)):
-        construction["directed_candidate_diagnostics"] = {
-            "status": "unavailable",
-            "reason": "neighbor_index_out_of_range",
-        }
-        return (
-            construction,
-            rank_rows,
-            mutual_edge_keys,
-            candidate_edge_keys,
-            positive_out_degree,
-            incoming_positive_degree,
-        )
+        return unavailable("neighbor_index_out_of_range")
 
     positive = (
         similarities > 0.0
@@ -1101,14 +1086,7 @@ def _directed_construction_diagnostics(graph_metadata, num_nodes, labels):
             )
         rank_rows.append(row)
 
-    return (
-        construction,
-        rank_rows,
-        mutual_edge_keys,
-        candidate_edge_keys,
-        positive_out_degree,
-        incoming_positive_degree,
-    )
+    return result()
 
 
 def _temporal_graph_diagnostics(
@@ -1341,7 +1319,6 @@ def _class_focus_diagnostics(
         unavailable["selection_mode"] = str(request.class_focus)
         return unavailable, np.array([], dtype=np.int64)
 
-    num_nodes = adjacency.shape[0]
     focus_size = len(focus)
     outside_code = focus_size
     unknown_code = focus_size + 1
@@ -2180,7 +2157,7 @@ def _format_csv_value(value):
         return ""
     if isinstance(value, (np.floating, float)):
         value = float(value)
-        return "" if not math.isfinite(value) else value
+        return "" if not math.isfinite(value) else utils.csv_float(value)
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.bool_,)):
@@ -2235,6 +2212,7 @@ def write_dict_rows_csv(csv_path, rows):
             )
 
 
+@utils.serialized_pyplot
 def write_graph_distribution_png(path, plot_data, title):
     import matplotlib.pyplot as plt
 
@@ -2302,8 +2280,6 @@ def maybe_update_graph_propagation_diagnostics(
     known_mask=None,
     method=None,
     confidence_threshold=None,
-    initial_scores=None,
-    dissimilarity=None,
     solver_diagnostics=None,
     extra=None,
     score_class_labels=None,
@@ -2326,8 +2302,6 @@ def maybe_update_graph_propagation_diagnostics(
             known_mask=known_mask,
             method=method,
             confidence_threshold=confidence_threshold,
-            initial_scores=initial_scores,
-            dissimilarity=dissimilarity,
             solver_diagnostics=solver_diagnostics,
             extra=extra,
         )
@@ -2588,29 +2562,6 @@ def _predicted_label_direct_anchor_support(
     return support
 
 
-def _dissimilarity_diagnostics(dissimilarity):
-    if dissimilarity is None:
-        return {"status": "unavailable"}
-    dissimilarity = dissimilarity.tocsr()
-    upper = sparse.triu(dissimilarity, k=1).tocoo()
-    degree = np.diff(dissimilarity.indptr)
-    weighted_degree = np.asarray(
-        dissimilarity.sum(axis=1),
-        dtype=np.float64,
-    ).ravel()
-    return {
-        "status": "computed",
-        "undirected_edge_count": int(upper.nnz),
-        "total_weight": float(upper.data.sum()),
-        "edge_weight": numeric_diagnostic_summary(upper.data),
-        "degree": numeric_diagnostic_summary(degree),
-        "weighted_degree": numeric_diagnostic_summary(weighted_degree),
-        "zero_degree_node_count": int((degree == 0).sum()),
-        "matrix_nnz": int(dissimilarity.nnz),
-        "matrix_memory_bytes": _csr_memory_bytes(dissimilarity),
-    }
-
-
 def _update_temporal_predictions(
     request,
     predicted_labels,
@@ -2673,7 +2624,6 @@ def _append_propagation_columns_to_node_csv(
     direct_anchor_support,
     labels,
     known_mask,
-    initial_predictions,
     previous_predictions,
     previous_confidences,
     previous_propagated,
@@ -2692,8 +2642,6 @@ def _append_propagation_columns_to_node_csv(
         "prediction_correct",
         "accepted_at_configured_threshold",
         "direct_labeled_neighbor_support",
-        "initial_predicted_label",
-        "changed_from_initial_prediction",
         "previous_predicted_label",
         "changed_from_previous_prediction",
         "confidence_delta_from_previous",
@@ -2751,19 +2699,6 @@ def _append_propagation_columns_to_node_csv(
                         if direct_anchor_support is None or not is_propagated
                         else bool(direct_anchor_support[row_index])
                     ),
-                    "initial_predicted_label": (
-                        ""
-                        if initial_predictions is None or not is_propagated
-                        else int(initial_predictions[row_index])
-                    ),
-                    "changed_from_initial_prediction": (
-                        ""
-                        if initial_predictions is None or not is_propagated
-                        else bool(
-                            predicted_labels[row_index]
-                            != initial_predictions[row_index]
-                        )
-                    ),
                     "previous_predicted_label": (
                         ""
                         if (
@@ -2813,8 +2748,6 @@ def update_graph_propagation_diagnostics(
     known_mask=None,
     method=None,
     confidence_threshold=None,
-    initial_scores=None,
-    dissimilarity=None,
     solver_diagnostics=None,
     extra=None,
     score_class_labels=None,
@@ -2897,37 +2830,6 @@ def update_graph_propagation_diagnostics(
         if labels is None
         else evaluation_mask & (predicted_labels == labels)
     )
-
-    initial_predictions = None
-    initial_change = None
-    if initial_scores is not None:
-        initial_probabilities, initial_propagated, _ = (
-            _normalized_diagnostic_probabilities(initial_scores)
-        )
-        if (
-            len(initial_probabilities) == num_nodes
-            and initial_probabilities.shape[1] == len(score_class_labels)
-        ):
-            initial_prediction_columns = np.argmax(
-                initial_probabilities,
-                axis=1,
-            ).astype(np.int64)
-            initial_predictions = score_class_labels[
-                initial_prediction_columns
-            ]
-            initial_predictions[~initial_propagated] = -1
-            comparable_initial = propagated & initial_propagated
-            initial_changed = comparable_initial & (
-                predicted_labels != initial_predictions
-            )
-            initial_change = {
-                "comparable_node_count": int(comparable_initial.sum()),
-                "changed_prediction_count": int(initial_changed.sum()),
-                "changed_prediction_fraction": _safe_ratio(
-                    int(initial_changed.sum()),
-                    int(comparable_initial.sum()),
-                ),
-            }
 
     series_key = (
         str(Path(request.output_dir).resolve()),
@@ -3116,8 +3018,6 @@ def update_graph_propagation_diagnostics(
                 ),
             }
         ),
-        "initial_to_final_change": initial_change,
-        "dissimilarity_graph": _dissimilarity_diagnostics(dissimilarity),
         "solver": solver_diagnostics,
         "temporal": temporal_predictions,
         "extra": {} if extra is None else extra,
@@ -3155,7 +3055,6 @@ def update_graph_propagation_diagnostics(
         direct_anchor_support=direct_anchor_support,
         labels=labels,
         known_mask=known_mask,
-        initial_predictions=initial_predictions,
         previous_predictions=previous_predictions,
         previous_confidences=previous_confidences,
         previous_propagated=previous_propagated,
@@ -3211,7 +3110,7 @@ def sample_graph_diagnostic_edges(adjacency, max_edges, rng):
     )
 
 
-def project_graph_embeddings_2d(embeddings, layout="pacmap", seed=0):
+def project_graph_embeddings_2d(embeddings, layout="tsne", seed=0):
     embeddings = np.asarray(embeddings, dtype=np.float64)
     if embeddings.ndim != 2:
         raise ValueError("graph diagnostic embeddings must be a matrix")

@@ -45,24 +45,30 @@ full alongside the ones that are genuine method differences.
   much less between refreshes than they would with a tunable backbone.
 """
 
+import json
 import math
+import os
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
-from torch.utils.data import DataLoader
 
 from pytorch_metric_learning import losses
 
 import utils
+from losses.bounded_ntxent import bounded_ntxent_loss, computes_upstream_ntxent
 from .algorithms import faiss_gpu_flat_index, require_faiss
+from .common import kmeans, parameter_validators
 from .config import should_rebuild_on_epoch
 from .data import CombinedTrainingLoader, UnlabeledSubset
 from .embeddings import extract_embeddings
 from .interfaces import BaseTrainingRegularizer
+
+_validate_positive, _validate_non_negative, _, _ = parameter_validators("slade")
 
 
 KMEANS_BACKENDS = ("auto", "faiss", "sklearn")
@@ -112,6 +118,61 @@ UNLABELED_RANKING_LOSSES = ("supervised", "contrastive")
 # from the gradient alone, so beta means only what the paper calls it: the
 # updating rate of Eq 6.
 SD_GRADIENT_MODES = ("full", "damped")
+
+# How the unlabeled batch is drawn.
+#
+# ``random`` is a uniform shuffle of the pool. Only ~1/k of a batch's pairs then
+# share a cluster, whatever the batch size, so Eq 6's G+ is estimated from a few
+# pairs per batch. Eq 7 thresholds on basis similarity alone, and the unrelated
+# pairs outnumber the pseudo-positive ones ~k to 1, so their upper tail outweighs
+# the true positives. Measured, ~25% of mined positives shared a cluster.
+#
+# ``pseudo_label_m_per_class`` draws ``unlabeled_batch_size / unlabeled_sampler_m``
+# distinct clusters per batch and ``unlabeled_sampler_m`` members of each. That
+# is how the framework the paper builds on (Musgrave et al. [21]) samples every
+# stream, and the paper's "we use the pseudo labels to sample a set of pseudo
+# positive pairs and pseudo negative pairs" most plausibly means it. The paper
+# does not say so outright and no reference code is public, so ``random`` stays
+# the default and this is an ablation.
+UNLABELED_SAMPLERS = ("random", "pseudo_label_m_per_class")
+DEFAULT_UNLABELED_SAMPLER_M = 4
+
+# Which unlabeled pairs Eq 9's ranking term trains on. Table 4 of the paper
+# builds SLADE up from a student trained on pseudo-label pairs alone, through
+# "+ Basis", to "+ Basis + Mining"; the last one is the method.
+#
+# ``basis_mining`` is Eq 7: the pairs the basis similarity is confident about.
+#
+# ``pseudo_label`` is Table 4's "Student (pseudo label)" row: every same-cluster
+# pair is a positive and every cross-cluster pair a negative, and the basis only
+# regularizes through L_Basis. With ``lambda_basis = 0`` nothing trains the basis
+# at all, which is the row without "+ Basis".
+#
+# ``pseudo_label_matched`` draws pseudo-label pairs at random, as many positives
+# and negatives as Eq 7 mines in the same batch, and only on the steps where Eq 7
+# mines. Eq 7 keeps fewer and easier pairs than ``pseudo_label``, so the two
+# differ in both the number and the choice of pairs. This control keeps the
+# number and changes only the choice.
+PAIR_SOURCES = ("basis_mining", "pseudo_label", "pseudo_label_matched")
+
+# The unlabeled half of Eq 2's L_Basis. Table 5 compares the paper's similarity
+# distribution loss with two cross-entropy alternatives on CUB-200.
+#
+# ``sd`` is Eq 5 on the Eq 6 Gaussians.
+#
+# ``local_ce`` labels each batch pair 1 (same cluster) or 0 (different cluster)
+# and takes the binary cross entropy of its basis cosine, read as the
+# probability ``(1 + s) / 2``. The paper does not say how that probability is
+# formed or how the two pair kinds are weighted. Each kind is averaged on its
+# own and the two means are averaged, as Eq 5 treats G+ and G- as one term each
+# whatever their pair counts; a plain mean would be almost all negatives.
+#
+# ``global_ce`` applies the same cross entropy to the Eq 6 global means, µ+
+# against 1 and µ- against 0.
+#
+# ``none`` drops the unlabeled half, so L_Basis is Eq 3 alone. The Gaussians
+# still update, because Eq 7 reads them.
+BASIS_UNLABELED_LOSSES = ("sd", "local_ce", "global_ce", "none")
 
 # Used when neither unlabeled_batch_size nor unlabeled_ratio is configured: one
 # unlabeled sample per labeled sample, the paper's 32/32 split at batch_size=32.
@@ -164,20 +225,6 @@ def _both_directions(pairs):
 
     anchors, others = pairs
     return torch.cat([anchors, others]), torch.cat([others, anchors])
-
-
-def _validate_positive(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"slade {name} must be finite and positive")
-    return value
-
-
-def _validate_non_negative(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value < 0:
-        raise ValueError(f"slade {name} must be finite and non-negative")
-    return value
 
 
 def make_equation_one_contrastive_loss(pos_margin, neg_margin):
@@ -314,85 +361,240 @@ def kmeans_cluster_labels(
     if backend not in KMEANS_BACKENDS:
         raise ValueError(f"slade kmeans_backend must be one of {list(KMEANS_BACKENDS)}")
 
-    if backend != "sklearn":
-        try:
-            faiss = require_faiss("slade pseudo-label clustering")
-        except ImportError:
-            if backend == "faiss":
-                raise
-            faiss = None
-        if faiss is not None:
-            purpose = "slade pseudo-label clustering"
-            work = len(features) * num_clusters
-            prefer_gpu = (
-                work >= DEFAULT_KMEANS_GPU_MIN_WORK if use_gpu is None else bool(use_gpu)
-            )
-            # Held for as long as the index is: a GPU index does not own them.
-            gpu_resources = None
-            gpu_index = None
-            if prefer_gpu:
-                built = faiss_gpu_flat_index(faiss, features.shape[1], purpose)
-                if built is not None:
-                    gpu_index, gpu_resources = built
-
-            def make_clustering():
-                return faiss.Kmeans(
-                    d=features.shape[1],
-                    k=num_clusters,
-                    niter=int(iterations),
-                    seed=int(seed) % (2**31 - 1),
-                    # A single unlucky initialization can collapse clusters, and
-                    # the pseudo labels are the only supervision the unlabeled
-                    # stream receives, so keep FAISS's redundant restarts.
-                    nredo=max(1, int(n_init) // 5),
-                    verbose=False,
-                    spherical=False,
-                    # The GPU index is attached below instead: gpu=True would
-                    # build uncapped resources of its own.
-                    gpu=False,
-                )
-
-            if gpu_index is not None:
-                try:
-                    clustering = make_clustering()
-                    clustering.index = gpu_index
-                    clustering.train(features)
-                    _, assignments = clustering.index.search(features, 1)
-                    record("faiss-gpu")
-                    return np.asarray(assignments, dtype=np.int64).reshape(-1)
-                except Exception as exc:
-                    logger.warning(
-                        f"{purpose}: FAISS GPU k-means failed ({exc}); retrying on CPU"
-                    )
-                finally:
-                    # Drop the index first, then the resources behind it.
-                    gpu_index = None
-                    clustering = None
-                    gpu_resources = None
-
-            clustering = make_clustering()
-            clustering.train(features)
-            _, assignments = clustering.index.search(features, 1)
-            record("faiss-cpu")
-            return np.asarray(assignments, dtype=np.int64).reshape(-1)
-
-    from sklearn.cluster import KMeans
-
-    estimator = KMeans(
-        n_clusters=num_clusters,
-        n_init=int(n_init),
-        max_iter=int(iterations),
-        random_state=int(seed) % (2**31 - 1),
+    return kmeans(
+        features,
+        num_clusters,
+        seed=seed,
+        iterations=iterations,
+        n_init=n_init,
+        backend=backend,
+        use_gpu=use_gpu,
+        min_gpu_work=DEFAULT_KMEANS_GPU_MIN_WORK,
+        purpose="slade pseudo-label clustering",
+        require_faiss=require_faiss,
+        faiss_gpu_flat_index=faiss_gpu_flat_index,
+        record=record,
+        return_labels=True,
     )
-    labels = np.asarray(estimator.fit_predict(features), dtype=np.int64)
-    record("sklearn")
-    return labels
+
+
+def pseudo_label_cluster_quality(cluster_ids, true_labels):
+    """Score one clustering against the hidden labels of the same samples.
+
+    Diagnostics only: the labels never reach a loss. Rows whose label is unknown
+    (negative, e.g. external images) are left out. Returns ``None`` when fewer
+    than two labeled rows remain.
+
+    * ``purity``: share of samples whose cluster's majority class is their own.
+    * ``pair_precision``: of the pairs sharing a cluster, the share sharing a
+      class -- how trustworthy a same-cluster pair is as a positive.
+    * ``pair_recall``: of the pairs sharing a class, the share put in one cluster.
+    * ``nmi``: normalized mutual information between clusters and classes.
+    * ``singleton_fraction``: share of samples alone in their cluster, which can
+      never form a same-cluster pair for Eq 6.
+    """
+
+    cluster_ids = np.asarray(cluster_ids).reshape(-1)
+    true_labels = np.asarray(true_labels).reshape(-1)
+    if len(cluster_ids) != len(true_labels):
+        raise ValueError("cluster ids and true labels must align")
+    known = true_labels >= 0
+    if int(known.sum()) < 2:
+        return None
+    _, cluster_index = np.unique(cluster_ids[known], return_inverse=True)
+    _, label_index = np.unique(true_labels[known], return_inverse=True)
+    num_labels = int(label_index.max()) + 1
+    joint_codes, joint_counts = np.unique(
+        cluster_index.astype(np.int64) * num_labels + label_index,
+        return_counts=True,
+    )
+    joint_counts = joint_counts.astype(np.float64)
+    majority = np.zeros(int(cluster_index.max()) + 1, dtype=np.float64)
+    np.maximum.at(majority, joint_codes // num_labels, joint_counts)
+    cluster_sizes = np.bincount(cluster_index).astype(np.float64)
+    class_sizes = np.bincount(label_index).astype(np.float64)
+
+    def pair_count(sizes):
+        return float((sizes * (sizes - 1.0) / 2.0).sum())
+
+    same_both = pair_count(joint_counts)
+    same_cluster = pair_count(cluster_sizes)
+    same_class = pair_count(class_sizes)
+    from sklearn.metrics import normalized_mutual_info_score
+
+    count = float(len(cluster_index))
+    return {
+        "purity": float(majority.sum() / count),
+        "pair_precision": same_both / same_cluster if same_cluster > 0 else float("nan"),
+        "pair_recall": same_both / same_class if same_class > 0 else float("nan"),
+        "nmi": float(normalized_mutual_info_score(label_index, cluster_index)),
+        "singleton_fraction": float((cluster_sizes[cluster_index] == 1).mean()),
+        "labeled_samples": count,
+    }
+
+
+# Where a run with an artifact directory keeps every pseudo-label refresh.
+SLADE_CLUSTER_DIR = "slade_clusters"
+SLADE_CLUSTER_INDEX = "refreshes.jsonl"
+
+
+def drop_refresh_centers(path):
+    """Rewrite one saved refresh without its ``centers``; returns the bytes freed.
+
+    Every other array stays bit-identical. The file is replaced atomically, so a
+    reader sees either the old file or the new one. The partial file's name does
+    not match ``refresh_*.npz``.
+    """
+
+    path = Path(path)
+    with np.load(path) as saved:
+        if "centers" not in saved.files:
+            return 0
+        arrays = {name: saved[name] for name in saved.files if name != "centers"}
+    before = path.stat().st_size
+    partial = path.with_name(f".{path.name}.partial")
+    with partial.open("wb") as handle:
+        np.savez_compressed(handle, **arrays)
+    os.replace(partial, path)
+    return before - path.stat().st_size
+# A sample of the pairs Eq 7 actually mined, per epoch, for the embedding viewer.
+SLADE_PAIR_DIR = "slade_pairs"
+SLADE_PAIR_SAMPLES_PER_EPOCH = 4096
+SLADE_PAIR_SAMPLES_PER_STEP = 32
+
+
+# Device-side mining counters, summed without a host sync on every step and read
+# once per epoch. Every "pair" is an unordered pair of one unlabeled batch.
+_MINED_POSITIVE_PAIRS = 0
+_MINED_POSITIVE_KNOWN = 1
+_MINED_POSITIVE_SAME_CLASS = 2
+_MINED_NEGATIVE_KNOWN = 3
+_MINED_NEGATIVE_SAME_CLASS = 4
+_STEPS_WITHOUT_MINED_POSITIVE = 5
+_LABELED_STEPS_WITH_SAME_CLASS_PAIR = 6
+_STEPS_MISSING_AN_AVAILABLE_POSITIVE = 7
+# Eq 7 mines on basis similarity alone, so a mined pair may cross clusters.
+_MINED_POSITIVE_SAME_CLUSTER = 8
+_MINED_NEGATIVE_PAIRS = 9
+_MINED_NEGATIVE_SAME_CLUSTER = 10
+_MINING_COUNTER_COUNT = 11
 
 
 def upper_triangle_pairs(count, device):
     """Return the distinct unordered index pairs of a batch."""
 
     return torch.triu_indices(int(count), int(count), offset=1, device=device)
+
+
+class PseudoLabelMPerClassBatchSampler(torch.utils.data.Sampler):
+    """Unlabeled batches of ``m`` members from each of ``batch_size / m`` clusters.
+
+    Yields row indices into the unlabeled subset. The cluster assignment is
+    replaced in place by ``set_labels`` after every pseudo-label refresh; both
+    the DataLoader and the GPU-resident loader iterate the sampler in the main
+    process once per epoch, so the next epoch reads the new clusters.
+
+    Only clusters with at least ``m`` members are drawn. Topping a smaller
+    cluster up with replacement, as pytorch-metric-learning's MPerClassSampler
+    does, would put the same image twice in a batch. That pair has similarity
+    exactly 1, which would inflate Eq 6's mu+ and add positives Eq 1 already
+    satisfies.
+
+    Clusters are chosen uniformly, as MPerClassSampler chooses classes, and
+    members without replacement within a batch. When fewer clusters qualify
+    than a batch has ``m``-sized slots, e.g. a small ``cluster_ratio`` against a
+    large unlabeled batch, the slots go round-robin over a shuffled cluster
+    order. A cluster then contributes ``2m``, ``3m``, ... distinct members, up
+    to what it holds. The epoch length is fixed at
+    ``len(pool) // batch_size`` batches, the same as the ``random`` shuffle with
+    ``drop_last``. So both samplers give the same number of unlabeled steps, and
+    the GPU-resident loader's length, read once at construction, stays valid.
+    """
+
+    def __init__(self, num_rows, batch_size, m, seed=0):
+        self.num_rows = int(num_rows)
+        self.batch_size = int(batch_size)
+        self.m = int(m)
+        if self.m < 2:
+            raise ValueError("slade unlabeled_sampler_m must be at least 2 so clusters form pairs")
+        if self.batch_size % self.m != 0:
+            raise ValueError(
+                f"slade unlabeled batch size {self.batch_size} must be divisible by "
+                f"unlabeled_sampler_m={self.m}"
+            )
+        self.clusters_per_batch = self.batch_size // self.m
+        self.num_batches = self.num_rows // self.batch_size
+        if self.num_batches < 1:
+            raise ValueError("slade pseudo-label sampler needs at least one full batch")
+        self.generator = np.random.default_rng(seed)
+        self._members = None
+        self.eligible_fraction = None
+
+    def set_labels(self, labels):
+        """Regroup the rows by their new cluster ID; returns the share of rows drawable."""
+
+        labels = np.asarray(labels, dtype=np.int64).reshape(-1)
+        if len(labels) != self.num_rows:
+            raise ValueError("slade pseudo-label sampler labels must cover every unlabeled row")
+        order = np.argsort(labels, kind="stable")
+        boundaries = np.flatnonzero(np.diff(labels[order])) + 1
+        members = [
+            group for group in np.split(order, boundaries) if len(group) >= self.m
+        ]
+        capacity = np.asarray([len(group) // self.m for group in members], dtype=np.int64)
+        if int(capacity.sum()) < self.clusters_per_batch:
+            raise ValueError(
+                f"slade pseudo-label sampling needs {self.clusters_per_batch} groups of "
+                f"unlabeled_sampler_m={self.m} same-cluster members per batch, but the "
+                f"{len(members)} clusters with at least {self.m} members hold only "
+                f"{int(capacity.sum())}. Lower unlabeled_batch_size or unlabeled_sampler_m"
+            )
+        if len(members) < self.clusters_per_batch:
+            logger.warning(
+                f"slade pseudo-label sampling: only {len(members)} clusters have at least "
+                f"m={self.m} members, fewer than the {self.clusters_per_batch} a batch of "
+                f"{self.batch_size} has slots for, so some clusters contribute a multiple of m"
+            )
+        self._members = members
+        self._capacity = capacity
+        self.eligible_fraction = float(sum(len(group) for group in members)) / self.num_rows
+        return self.eligible_fraction
+
+    def _slots_per_cluster(self):
+        """How many ``m``-sized groups each cluster gives this batch."""
+
+        order = self.generator.permutation(len(self._members))
+        slots = np.zeros(len(self._members), dtype=np.int64)
+        if len(order) >= self.clusters_per_batch:
+            slots[order[: self.clusters_per_batch]] = 1
+            return slots
+        remaining = self.clusters_per_batch
+        while remaining:
+            for index in order:
+                if slots[index] < self._capacity[index]:
+                    slots[index] += 1
+                    remaining -= 1
+                    if not remaining:
+                        break
+        return slots
+
+    def __len__(self):
+        return self.num_batches
+
+    def __iter__(self):
+        if self._members is None:
+            raise RuntimeError("slade pseudo-label sampler has no clusters; call set_labels first")
+        members = self._members
+        for _ in range(self.num_batches):
+            slots = self._slots_per_cluster()
+            batch = np.concatenate(
+                [
+                    self.generator.choice(members[index], size=int(count) * self.m, replace=False)
+                    for index, count in enumerate(slots)
+                    if count
+                ]
+            )
+            yield batch.tolist()
 
 
 class SladeBasisLayer(nn.Module):
@@ -494,15 +696,11 @@ class SladeBasisLayer(nn.Module):
 
         beta = float(beta)
         statistics = {}
-        # Read both flags together; separate scalar reads serialize CUDA work.
-        initialized_sides = torch.stack(
-            (self.positive_initialized, self.negative_initialized)
-        ).tolist()
         sides = (
             ("positive", positive_mean, positive_variance),
             ("negative", negative_mean, negative_variance),
         )
-        for was_initialized, (side, mean, variance) in zip(initialized_sides, sides):
+        for side, mean, variance in sides:
             names = (f"{side}_mean", f"{side}_variance")
             initialized = getattr(self, f"{side}_initialized")
             if mean is None or variance is None:
@@ -511,20 +709,18 @@ class SladeBasisLayer(nn.Module):
                     (name, getattr(self, name).detach().clone()) for name in names
                 )
                 continue
-            if was_initialized:
-                # Eq 6: mu+ = (1 - beta) * mu+_b + beta * mu+, where mu+_b is the
-                # batch statistic. beta is the paper's "updating rate" and weights
-                # the *running* estimate, which is what makes the two Gaussians
-                # global rather than per-batch at the paper's beta = 0.99.
-                updated = tuple(
-                    self._blend(name, value, beta, full_gradient)
-                    for name, value in zip(names, (mean, variance))
+            # Choose on-device: reading these flags on the host stalls CUDA
+            # every batch. Clone because where saves its condition for backward
+            # and the checkpointed flag is updated in-place below.
+            was_initialized = initialized.detach().clone()
+            updated = tuple(
+                torch.where(
+                    was_initialized,
+                    self._blend(name, value, beta, full_gradient),
+                    value,
                 )
-            else:
-                # The first batch carrying this pair kind seeds its estimate;
-                # interpolating against zeros would otherwise halve the first
-                # margin.
-                updated = (mean, variance)
+                for name, value in zip(names, (mean, variance))
+            )
             with torch.no_grad():
                 for name, value in zip(names, updated):
                     getattr(self, name).copy_(value.detach().to(torch.float32))
@@ -595,16 +791,22 @@ class SladeBasisLayer(nn.Module):
         ``basis_warmup_steps`` or ``sd_margin``, not this threshold.
         """
 
-        # Packing these scalars preserves their values and replaces three
-        # consecutive device-to-host waits with one.
+        return self.mining_state()[1]
+
+    def mining_state(self):
+        """Read calibration and mining eligibility in a single device transfer.
+
+        A calibrated but overlapping pair of Gaussians still contributes the
+        distribution loss, even though it cannot supply mining thresholds.
+        """
+
         calibrated, positive_mean, negative_mean = torch.stack(
             (self.distributions_initialized, self.positive_mean, self.negative_mean)
         ).tolist()
-        if not calibrated:
-            return None
-        if positive_mean <= negative_mean:
-            return None
-        return positive_mean, negative_mean
+        thresholds = None
+        if calibrated and not positive_mean <= negative_mean:
+            thresholds = (positive_mean, negative_mean)
+        return bool(calibrated), thresholds
 
 
 def similarity_distribution_loss(
@@ -621,7 +823,82 @@ def similarity_distribution_loss(
     return margin_term + float(variance_weight) * (positive_variance + negative_variance)
 
 
+def _pair_cross_entropy(similarity, positive, eps):
+    """Binary cross entropy of a cosine read as the probability ``(1 + s) / 2``."""
 
+    probability = (1.0 + similarity) / 2.0 if positive else (1.0 - similarity) / 2.0
+    return -torch.log(probability.clamp_min(eps))
+
+
+def local_pair_cross_entropy(positive_similarity, negative_similarity, eps=1e-6):
+    """Table 5's local-CE: cross entropy of each batch pair against its pseudo label.
+
+    See ``BASIS_UNLABELED_LOSSES`` for the probability and the per-kind averaging.
+    A kind the batch has no pairs of is left out rather than counted as zero.
+    """
+
+    terms = [
+        _pair_cross_entropy(similarity, positive, eps).mean()
+        for similarity, positive in ((positive_similarity, True), (negative_similarity, False))
+        if similarity.numel()
+    ]
+    if not terms:
+        raise ValueError("local pair cross entropy needs at least one pair")
+    return torch.stack(terms).mean()
+
+
+def global_pair_cross_entropy(positive_mean, negative_mean, eps=1e-6):
+    """Table 5's global-CE: the same cross entropy on the Eq 6 global means."""
+
+    return 0.5 * (
+        _pair_cross_entropy(positive_mean, True, eps)
+        + _pair_cross_entropy(negative_mean, False, eps)
+    )
+
+
+def oracle_cluster_labels(true_labels, positions, noise=0.0, seed=0):
+    """Hidden true classes as cluster IDs, a seeded share of them reassigned.
+
+    This is the SLADE counterpart of ``apply_pseudo_label_oracle``: a perfect
+    clustering, so a run shows how much of SLADE's effect depends on how well
+    k-means recovers the classes. ``true_labels`` is aligned with ``positions``.
+    Which samples are corrupted, and the class each one gets, are drawn once per
+    training-subset position from ``seed``. A sample then stays wrong in the same
+    way across refreshes, and a larger ``noise`` corrupts a superset of what a
+    smaller one does. A wrong ID is drawn uniformly from the pool's other classes.
+
+    Returns ``(cluster_ids, num_clusters, stats)`` with IDs in ``[0, num_clusters)``.
+    """
+
+    noise = float(noise)
+    if not 0.0 <= noise < 1.0:
+        raise ValueError(f"oracle cluster noise must lie in [0, 1): {noise}")
+    positions = np.asarray(positions, dtype=np.int64)
+    true_labels = np.asarray(true_labels, dtype=np.int64)
+    if len(true_labels) != len(positions):
+        raise ValueError("oracle cluster labels need one true label per position")
+    if np.any(true_labels < 0):
+        raise ValueError("oracle clusters need a hidden true label for every unlabeled sample")
+    _, cluster_ids = np.unique(true_labels, return_inverse=True)
+    count = int(cluster_ids.max()) + 1
+    generator = np.random.default_rng(int(seed))
+    size = int(positions.max()) + 1
+    draws = generator.random(size)
+    offsets = generator.integers(0, np.iinfo(np.int64).max, size)
+    corrupt = draws[positions] < noise
+    if corrupt.any():
+        if count < 2:
+            raise ValueError("oracle cluster noise needs at least two classes in the pool")
+        # Step 1..count-1 classes forward, so the new ID is never the true one.
+        wrong = (cluster_ids + 1 + offsets[positions] % (count - 1)) % count
+        cluster_ids = np.where(corrupt, wrong, cluster_ids)
+    stats = {
+        "count": int(len(positions)),
+        "classes": count,
+        "corrupted": int(corrupt.sum()),
+        "corrupted_fraction": float(corrupt.mean()) if len(positions) else 0.0,
+    }
+    return cluster_ids.astype(np.int64), count, stats
 
 
 class SladeRegularizer(BaseTrainingRegularizer):
@@ -633,6 +910,9 @@ class SladeRegularizer(BaseTrainingRegularizer):
     supports_frozen_feature_precompute = True
     uses_joint_forward = True
     requires_supervised_objective = True
+    # ``pseudo_label_source='oracle'`` replaces the k-means clusters with the
+    # hidden true classes (``oracle_cluster_labels``). Diagnostic only.
+    supports_oracle_pseudo_labels = True
     extra_component_names = (SLADE_BASIS_COMPONENT,)
     # Eq 1's margins are not published; these are the library's standard
     # contrastive settings. Named so the constructor can tell an explicit value
@@ -666,6 +946,11 @@ class SladeRegularizer(BaseTrainingRegularizer):
         contrastive_negative_margin=None,
         unlabeled_ratio=1.0,
         unlabeled_batch_size=None,
+        unlabeled_sampler="random",
+        unlabeled_sampler_m=DEFAULT_UNLABELED_SAMPLER_M,
+        mining_pseudo_label_filter=False,
+        pair_source="basis_mining",
+        basis_unlabeled_loss="sd",
         within_fold_teacher_student=False,
         cross_fold_teacher_handoff=False,
         reset_basis_on_refresh=False,
@@ -812,24 +1097,55 @@ class SladeRegularizer(BaseTrainingRegularizer):
         # so a config that pins an absolute size does not also have to carry a
         # ratio that would be ignored. Null for both keeps the historical default
         # of one unlabeled sample per labeled sample.
-        self.unlabeled_batch_size = (
-            None if unlabeled_batch_size is None else int(unlabeled_batch_size)
-        )
-        if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
-            raise ValueError("slade unlabeled_batch_size must be at least two")
-        self.unlabeled_ratio = (
-            None
-            if unlabeled_ratio is None
-            else _validate_positive("unlabeled_ratio", unlabeled_ratio)
-        )
-        if self.unlabeled_ratio is None and self.unlabeled_batch_size is None:
-            self.unlabeled_ratio = DEFAULT_UNLABELED_RATIO
-        elif self.unlabeled_ratio is not None and self.unlabeled_batch_size is not None:
-            logger.warning(
-                f"slade received both unlabeled_batch_size={self.unlabeled_batch_size} "
-                f"and unlabeled_ratio={self.unlabeled_ratio}; the absolute batch size "
-                "wins and the ratio is ignored"
+        self.set_unlabeled_batch_sizing(unlabeled_batch_size, unlabeled_ratio, DEFAULT_UNLABELED_RATIO)
+        self.unlabeled_sampler = str(unlabeled_sampler)
+        if self.unlabeled_sampler not in UNLABELED_SAMPLERS:
+            raise ValueError(
+                f"slade unlabeled_sampler must be one of {list(UNLABELED_SAMPLERS)}"
             )
+        if isinstance(unlabeled_sampler_m, bool) or int(unlabeled_sampler_m) != unlabeled_sampler_m:
+            raise ValueError("slade unlabeled_sampler_m must be an integer")
+        self.unlabeled_sampler_m = int(unlabeled_sampler_m)
+        if self.unlabeled_sampler_m < 2:
+            raise ValueError("slade unlabeled_sampler_m must be at least 2 so clusters form pairs")
+        if (
+            self.unlabeled_sampler != "pseudo_label_m_per_class"
+            and self.unlabeled_sampler_m != DEFAULT_UNLABELED_SAMPLER_M
+        ):
+            logger.warning(
+                f"slade unlabeled_sampler_m={self.unlabeled_sampler_m} only applies to "
+                "unlabeled_sampler='pseudo_label_m_per_class'; the configured "
+                f"'{self.unlabeled_sampler}' sampler ignores it"
+            )
+        # Eq 7 read literally mines on basis similarity alone, so a mined
+        # positive may cross clusters and a mined negative may share one. Table
+        # 4 lists mining as a step added on top of pseudo-label pairs, and Fig 2
+        # says the basis selects "high-confidence" pairs, which reads more like
+        # a filter on those pairs. True keeps a mined positive only when it
+        # shares a cluster and a mined negative only when it does not. The
+        # thresholds T1 = mu+ and T2 = mu- stay as they are.
+        if not isinstance(mining_pseudo_label_filter, bool):
+            raise ValueError("slade mining_pseudo_label_filter must be a boolean")
+        self.mining_pseudo_label_filter = mining_pseudo_label_filter
+        self.pair_source = str(pair_source)
+        if self.pair_source not in PAIR_SOURCES:
+            raise ValueError(f"slade pair_source must be one of {list(PAIR_SOURCES)}")
+        if self.pair_source == "pseudo_label" and self.mining_pseudo_label_filter:
+            raise ValueError(
+                "slade mining_pseudo_label_filter filters Eq 7's mined pairs by cluster, "
+                "but pair_source='pseudo_label' trains on the cluster pairs themselves, "
+                "so the filter would change nothing"
+            )
+        self.basis_unlabeled_loss = str(basis_unlabeled_loss)
+        if self.basis_unlabeled_loss not in BASIS_UNLABELED_LOSSES:
+            raise ValueError(
+                f"slade basis_unlabeled_loss must be one of {list(BASIS_UNLABELED_LOSSES)}"
+            )
+        # Seeds the random draw of ``pair_source='pseudo_label_matched'``; set
+        # from the run seed in make_loader, the generator built on first use.
+        self._pair_selection_seed = 0
+        self._pair_generator = None
+        self._unlabeled_batch_sampler = None
         if not isinstance(within_fold_teacher_student, bool):
             raise ValueError("slade within_fold_teacher_student must be a boolean")
         if not isinstance(cross_fold_teacher_handoff, bool):
@@ -876,7 +1192,12 @@ class SladeRegularizer(BaseTrainingRegularizer):
         # This step's unweighted L_Basis, read by combine_losses, the gradient
         # diagnostics, and the basis weight calibration.
         self._basis_loss = None
+        self._bounded_ntxent_logged = False
         self._last_diagnostics = {}
+        # Hidden labels by training-subset position, for the activity
+        # diagnostics only; ``None`` when the pool has no labels to audit.
+        self._true_label_by_position = None
+        self._reset_activity_counters()
         # Parameters re-initialized by a refresh reset, held until the trainer
         # collects them and drops their stale optimizer moments.
         self._pending_optimizer_state_resets = []
@@ -1015,6 +1336,26 @@ class SladeRegularizer(BaseTrainingRegularizer):
                 "sd_gradient_mode='full' removes that coupling; it is not the default "
                 "because it changes the objective's balance relative to earlier studies."
             )
+        if self.unlabeled_sampler != "random" or self.mining_pseudo_label_filter:
+            logger.info(
+                f"SLADE unlabeled_sampler={self.unlabeled_sampler}"
+                + (
+                    f" (m={self.unlabeled_sampler_m} per cluster)"
+                    if self.unlabeled_sampler == "pseudo_label_m_per_class"
+                    else ""
+                )
+                + f", mining_pseudo_label_filter={self.mining_pseudo_label_filter}"
+            )
+        if self.pair_source != "basis_mining" or self.basis_unlabeled_loss != "sd":
+            logger.info(
+                f"SLADE ablation: pair_source={self.pair_source}, "
+                f"basis_unlabeled_loss={self.basis_unlabeled_loss}"
+                + (
+                    "; sd_margin and sd_variance_weight are unused"
+                    if self.basis_unlabeled_loss != "sd"
+                    else ""
+                )
+            )
         if self.reset_basis_on_refresh or self.reset_basis_warmup_on_refresh:
             logger.info(
                 "SLADE self-training iterations: "
@@ -1024,17 +1365,13 @@ class SladeRegularizer(BaseTrainingRegularizer):
         return None
 
     def build_dataset(self, train_dataset, split, use_cache=False):
-        utils.shutdown_dataloaders(self._regularizer_loader)
-        self._regularizer_loader = None
-        self._regularizer_loader_cache_key = None
+        self._unlabeled_batch_sampler = None
         self._last_cluster_rebuild_epoch = None
         self._cluster_by_position = None
-        if self.regularizer_weight == 0:
-            self.dataset = None
+        self._pair_generator = None
+        unlabeled_positions = self.begin_unlabeled_pool(split)
+        if unlabeled_positions is None:
             return None
-        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
-        if len(unlabeled_positions) < 2:
-            raise ValueError("slade requires at least two unlabeled samples")
 
         if self.num_clusters is not None:
             resolved_clusters = self.num_clusters
@@ -1071,6 +1408,13 @@ class SladeRegularizer(BaseTrainingRegularizer):
         if resolved_clusters < 2:
             raise ValueError("slade needs at least two pseudo-label clusters")
         self._resolved_num_clusters = int(resolved_clusters)
+        self._reset_activity_counters()
+        self._cluster_refresh_count = 0
+        self._refresh_with_droppable_centers = None
+        self._true_label_by_position = self._hidden_label_lookup(
+            train_dataset,
+            unlabeled_positions,
+        )
         regularizer_dataset = self.make_regularizer_source_dataset(
             train_dataset,
             use_cache=use_cache,
@@ -1086,39 +1430,87 @@ class SladeRegularizer(BaseTrainingRegularizer):
         to the next teacher role. In both cases clustering finishes before any
         subsequent student optimizer step, so the resulting IDs are a frozen
         teacher target until the next requested refresh.
+
+        Under ``pseudo_label_source='oracle'`` the hidden true classes replace
+        k-means, so k is the number of classes in the pool rather than the
+        configured one.
         """
 
-        features = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=self.dataset.positions,
-            device=self.get_ssl_device(device),
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=seed,
-            start_method=start_method,
-            desc=f"SLADE teacher embeddings - epoch {epoch}",
-        )
-        kmeans_stats = {}
-        clusters = kmeans_cluster_labels(
-            features,
-            num_clusters=self._resolved_num_clusters,
-            seed=seed,
-            iterations=self.kmeans_iterations,
-            backend=self.kmeans_backend,
-            n_init=self.kmeans_n_init,
-            use_gpu=self.kmeans_gpu,
-            stats=kmeans_stats,
-        )
+        num_clusters = self._resolved_num_clusters
+        if getattr(config, "pseudo_label_source", "method") == "oracle":
+            if self._true_label_by_position is None:
+                raise ValueError(
+                    "slade pseudo_label_source='oracle' needs hidden labels for the unlabeled "
+                    "pool; an external pool has none"
+                )
+            noise = float(getattr(config, "pseudo_label_oracle_noise", 0.0))
+            clusters, num_clusters, oracle_stats = oracle_cluster_labels(
+                self._true_label_by_position[self.dataset.positions],
+                self.dataset.positions,
+                noise=noise,
+                seed=0 if config.seed is None else int(config.seed),
+            )
+            features = None
+            kmeans_stats = {"backend": "oracle", "seconds": 0.0}
+            logger.warning(
+                "SLADE CLUSTER ORACLE uses hidden true labels: "
+                f"{oracle_stats['count']} unlabeled samples in {num_clusters} classes, "
+                f"{oracle_stats['corrupted']} ({oracle_stats['corrupted_fraction']:.1%}) "
+                f"given a wrong class at noise={noise:g}; the configured "
+                f"k={self._resolved_num_clusters} is not used"
+            )
+        else:
+            features = extract_embeddings(
+                model=model,
+                dataset=train_dataset,
+                positions=self.dataset.positions,
+                device=self.get_ssl_device(device),
+                batch_size=config.embedding_batch_size,
+                num_workers=config.embedding_num_workers,
+                seed=seed,
+                start_method=start_method,
+                desc=f"SLADE teacher embeddings - epoch {epoch}",
+            )
+            kmeans_stats = {}
+            clusters = kmeans_cluster_labels(
+                features,
+                num_clusters=num_clusters,
+                seed=seed,
+                iterations=self.kmeans_iterations,
+                backend=self.kmeans_backend,
+                n_init=self.kmeans_n_init,
+                use_gpu=self.kmeans_gpu,
+                stats=kmeans_stats,
+            )
         # Batches identify samples by training-subset position, so index the
         # cluster IDs the same way instead of by row in the unlabeled subset.
         lookup = np.full(int(self.dataset.positions.max()) + 1, -1, dtype=np.int64)
         lookup[self.dataset.positions] = clusters
         self._cluster_by_position = lookup
         occupied = int(len(np.unique(clusters)))
+        quality = None
+        if self._true_label_by_position is not None:
+            quality = pseudo_label_cluster_quality(
+                clusters,
+                self._true_label_by_position[self.dataset.positions],
+            )
+            if quality is not None:
+                self._cluster_quality_history.append(quality)
+                self._pending_cluster_quality = quality
+                logger.info(
+                    f"SLADE pseudo-label quality - epoch {epoch} (hidden labels, "
+                    f"diagnostic only): purity={quality['purity']:.3f}, "
+                    f"same-cluster pair precision={quality['pair_precision']:.3f}, "
+                    f"same-class pair recall={quality['pair_recall']:.3f}, "
+                    f"NMI={quality['nmi']:.3f}, "
+                    f"singletons={quality['singleton_fraction']:.1%}"
+                )
+        self._save_cluster_refresh(
+            epoch, clusters, occupied, quality, features=features, num_clusters=num_clusters
+        )
         logger.info(
             f"SLADE pseudo labels - epoch {epoch}: "
-            f"{len(clusters)} unlabeled samples, k={self._resolved_num_clusters}, "
+            f"{len(clusters)} unlabeled samples, k={num_clusters}, "
             f"{occupied} non-empty clusters "
             f"({kmeans_stats.get('backend', 'unknown')}, "
             f"{kmeans_stats.get('seconds', float('nan')):.2f}s)"
@@ -1176,13 +1568,15 @@ class SladeRegularizer(BaseTrainingRegularizer):
     ):
         if self.dataset is None:
             raise RuntimeError("slade build_dataset must run before make_loader")
+        self._pair_selection_seed = int(seed)
         first_refresh = self._cluster_by_position is None
-        if first_refresh or should_rebuild_on_epoch(
+        refreshed = first_refresh or should_rebuild_on_epoch(
             config.update_mode,
             config.update_interval_epochs,
             epoch,
             self._last_cluster_rebuild_epoch,
-        ):
+        )
+        if refreshed:
             self._refresh_pseudo_labels(
                 model=model,
                 train_dataset=train_dataset,
@@ -1199,34 +1593,40 @@ class SladeRegularizer(BaseTrainingRegularizer):
                 self._begin_self_training_iteration(model, epoch)
             self._last_cluster_rebuild_epoch = None if epoch is None else int(epoch)
 
-        if self.unlabeled_batch_size is not None:
-            requested_batch_size = self.unlabeled_batch_size
-            sizing = f"unlabeled_batch_size={self.unlabeled_batch_size}"
-        else:
-            requested_batch_size = max(2, int(round(float(batch_size) * self.unlabeled_ratio)))
-            sizing = (
-                f"unlabeled_ratio={self.unlabeled_ratio} x labeled batch_size={batch_size}"
-            )
-        unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
-        if unlabeled_batch_size < 2:
-            raise ValueError("slade needs at least two unlabeled samples per batch")
-        if unlabeled_batch_size < requested_batch_size:
-            # ``drop_last`` means a shrunken batch also changes the step count,
-            # so silently clamping would move both the Eq 6 statistics and how
-            # often Eq 9's unlabeled term fires with nothing in the log saying so.
-            logger.warning(
-                f"slade requested {requested_batch_size} unlabeled samples per step "
-                f"({sizing}) but the unlabeled pool holds only {len(self.dataset)}; "
-                f"using {unlabeled_batch_size}"
-            )
+        # ``drop_last`` means a shrunken batch also changes the step count, so it
+        # moves both the Eq 6 statistics and how often Eq 9's unlabeled term fires.
+        unlabeled_batch_size, sizing = self.resolve_unlabeled_batch_size(batch_size)
         worker_count = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
         cache_key = (
             id(self.dataset),
             int(unlabeled_batch_size),
             int(worker_count),
             str(start_method),
+            self.unlabeled_sampler,
         )
-        if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
+        rebuild_loader = (
+            self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key
+        )
+        if rebuild_loader and self.unlabeled_sampler == "pseudo_label_m_per_class":
+            self._unlabeled_batch_sampler = PseudoLabelMPerClassBatchSampler(
+                num_rows=len(self.dataset),
+                batch_size=unlabeled_batch_size,
+                m=self.unlabeled_sampler_m,
+                seed=seed,
+            )
+        if self._unlabeled_batch_sampler is not None and (refreshed or rebuild_loader):
+            # The loaders iterate the sampler in the main process each epoch, so
+            # regrouping it in place is enough: a cached loader picks it up.
+            eligible = self._unlabeled_batch_sampler.set_labels(
+                self._cluster_by_position[self.dataset.positions]
+            )
+            logger.info(
+                f"SLADE pseudo-label sampler - epoch {epoch}: "
+                f"{self._unlabeled_batch_sampler.clusters_per_batch} clusters x "
+                f"m={self.unlabeled_sampler_m} per batch; {eligible:.1%} of the pool sits in "
+                f"clusters with at least m members and can be drawn"
+            )
+        if rebuild_loader:
             utils.shutdown_dataloaders(self._regularizer_loader)
             self._regularizer_loader = utils.make_unlabeled_stream_loader(
                 self.dataset,
@@ -1241,11 +1641,13 @@ class SladeRegularizer(BaseTrainingRegularizer):
                 persistent_workers=True,
                 pin_memory=True,
                 desc="slade unlabeled",
+                batch_sampler=self._unlabeled_batch_sampler,
             )
             self._regularizer_loader_cache_key = cache_key
             logger.info(
                 "SLADE unlabeled loader: "
                 f"pool={len(self.dataset)}, batch_size={unlabeled_batch_size} ({sizing}), "
+                f"sampler={self.unlabeled_sampler}, "
                 f"clusters={self._resolved_num_clusters}, steps={len(supervised_loader)}"
             )
         return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
@@ -1263,19 +1665,70 @@ class SladeRegularizer(BaseTrainingRegularizer):
         return torch.as_tensor(clusters, dtype=torch.long, device=device)
 
     @staticmethod
-    def _mined_pairs(similarity, pair_indices, thresholds):
+    def _eq7_selection(pair_similarity, thresholds, same_cluster=None):
+        """Eq 7's positive and negative flags for each upper-triangle pair.
+
+        ``same_cluster`` is passed only under ``mining_pseudo_label_filter``.
+        A mined positive must then share a cluster and a mined negative must
+        not.
+        """
+
+        positive = pair_similarity >= thresholds[0]
+        negative = pair_similarity <= thresholds[1]
+        if same_cluster is not None:
+            positive = positive & same_cluster
+            negative = negative & ~same_cluster
+        return positive, negative
+
+    def _pair_source_selection(self, pair_similarity, thresholds, same_cluster):
+        """Positive and negative flags per upper-triangle pair for a non-Eq-7 ``pair_source``."""
+
+        if self.pair_source == "pseudo_label":
+            return same_cluster, ~same_cluster
+        if self.pair_source != "pseudo_label_matched":
+            raise ValueError(f"slade pair_source {self.pair_source!r} has no alternative selection")
+        mining_filter = same_cluster if self.mining_pseudo_label_filter else None
+        positive, negative = self._eq7_selection(pair_similarity, thresholds, mining_filter)
+        return (
+            self._random_subset(same_cluster, positive.sum()),
+            self._random_subset(~same_cluster, negative.sum()),
+        )
+
+    def _random_subset(self, candidates, count):
+        """Flag ``count`` uniformly drawn ``candidates``, or all of them if fewer.
+
+        ``count`` stays a tensor: ranking random scores avoids reading it on the host.
+        """
+
+        device = candidates.device
+        # Keyed by the tensor's device: a generator built for "cuda:0" reports "cuda".
+        if self._pair_generator is None or self._pair_generator[0] != device:
+            generator = torch.Generator(device=device)
+            generator.manual_seed(self._pair_selection_seed)
+            self._pair_generator = (device, generator)
+        scores = torch.rand(candidates.shape, generator=self._pair_generator[1], device=device)
+        # Non-candidates sort last, so the first ``count`` ranks are candidates.
+        rank = scores.masked_fill(~candidates, 2.0).argsort().argsort()
+        return candidates & (rank < count)
+
+    @staticmethod
+    def _mined_pairs(similarity, pair_indices, thresholds, same_cluster=None, selection=None):
         """Eq 7: keep pairs the basis similarity is confident about.
 
         ``mining_thresholds`` guarantees ``T1 > T2``, so the two bands are
         disjoint and no pair is mined as both positive and negative. That
         guarantee is an addition to Eq 7 rather than part of it; see
         ``mining_thresholds`` for why it is kept.
+
+        ``selection`` replaces Eq 7 with precomputed flags (``pair_source``).
         """
 
-        positive_threshold, negative_threshold = thresholds
         pair_similarity = similarity[pair_indices[0], pair_indices[1]].detach()
-        positive_mask = pair_similarity >= positive_threshold
-        negative_mask = pair_similarity <= negative_threshold
+        positive_mask, negative_mask = (
+            selection
+            if selection is not None
+            else SladeRegularizer._eq7_selection(pair_similarity, thresholds, same_cluster)
+        )
         # Each mask used to be compacted twice, once per endpoint. On CUDA
         # nonzero synchronizes to learn the output size; reuse the integer IDs.
         positive_indices = positive_mask.nonzero(as_tuple=True)[0]
@@ -1284,6 +1737,23 @@ class SladeRegularizer(BaseTrainingRegularizer):
             (pair_indices[0][positive_indices], pair_indices[1][positive_indices]),
             (pair_indices[0][negative_indices], pair_indices[1][negative_indices]),
         )
+
+    @staticmethod
+    def _mined_pair_masks(similarity, pair_indices, thresholds, same_cluster=None, selection=None):
+        """The same Eq 7 pairs as _mined_pairs, kept as symmetric dense masks."""
+
+        if selection is None:
+            pair_similarity = similarity[pair_indices[0], pair_indices[1]].detach()
+            selection = SladeRegularizer._eq7_selection(pair_similarity, thresholds, same_cluster)
+        masks = []
+        for selected in selection:
+            mask = torch.zeros_like(similarity, dtype=torch.bool)
+            # Mirror the upper triangle explicitly, just as _both_directions
+            # does; do not assume the two halves of a GEMM are bit-identical.
+            mask[pair_indices[0], pair_indices[1]] = selected
+            mask[pair_indices[1], pair_indices[0]] = selected
+            masks.append(mask)
+        return tuple(masks)
 
     def _unlabeled_ranking_loss(
         self,
@@ -1323,6 +1793,17 @@ class SladeRegularizer(BaseTrainingRegularizer):
             *_both_directions(positive_pairs),
             *_both_directions(negative_pairs),
         )
+        if computes_upstream_ntxent(criterion):
+            # Upstream expands every positive against every negative before
+            # masking anchors. Dense SLADE mining can make that product tens of
+            # GiB at batch size 512, even when backbone features are frozen.
+            if not self._bounded_ntxent_logged:
+                logger.info(
+                    "SLADE NTXentLoss: using bounded-memory per-anchor negative "
+                    "sums; no positive-pair x negative-pair matrix"
+                )
+                self._bounded_ntxent_logged = True
+            return bounded_ntxent_loss(criterion, embeddings, cluster_labels, indices_tuple)
         return criterion(embeddings, cluster_labels, indices_tuple)
 
     def compute_loss(
@@ -1388,6 +1869,7 @@ class SladeRegularizer(BaseTrainingRegularizer):
 
         zero = regularizer_embeddings.sum() * 0.0
         distribution_loss = zero
+        statistics = None
         if len(positive_similarity) > 0 or len(negative_similarity) > 0:
             statistics = basis.update_distributions(
                 # Eq 6 moves only the Gaussian this batch has pairs for.
@@ -1406,9 +1888,13 @@ class SladeRegularizer(BaseTrainingRegularizer):
                 beta=self.beta,
                 full_gradient=self.sd_gradient_mode == "full",
             )
-            if basis.is_calibrated:
-                # Eq 5 is a margin between the two Gaussians, so it needs both of
-                # them seeded; until then there is nothing to separate.
+        calibrated, thresholds = basis.mining_state()
+        if self.basis_unlabeled_loss == "local_ce":
+            # Per-pair, so it needs no calibrated Gaussians.
+            distribution_loss = local_pair_cross_entropy(positive_similarity, negative_similarity)
+        elif statistics is not None and calibrated:
+            # Eq 5 still trains overlapping distributions; only mining is gated.
+            if self.basis_unlabeled_loss == "sd":
                 distribution_loss = similarity_distribution_loss(
                     positive_mean=statistics["positive_mean"],
                     positive_variance=statistics["positive_variance"],
@@ -1417,26 +1903,69 @@ class SladeRegularizer(BaseTrainingRegularizer):
                     margin=self.sd_margin,
                     variance_weight=self.sd_variance_weight,
                 )
-
-        thresholds = basis.mining_thresholds()
+            elif self.basis_unlabeled_loss == "global_ce":
+                distribution_loss = global_pair_cross_entropy(
+                    statistics["positive_mean"], statistics["negative_mean"]
+                )
         ranking_loss = zero
         positive_pairs = (pair_indices[0][:0], pair_indices[1][:0])
         negative_pairs = positive_pairs
-        self._mining_active = thresholds is not None and not basis_warmup_active
-        if thresholds is not None and not basis_warmup_active:
-            positive_pairs, negative_pairs = self._mined_pairs(
-                similarity,
-                pair_indices,
-                thresholds,
+        positive_pair_count = negative_pair_count = 0.0
+        # Cluster pairs need no thresholds; Eq 7 and the count it sets for the
+        # matched control do. All sources wait for the basis warm-up, so the
+        # ranking term starts on the same step whichever one is configured.
+        self._mining_active = not basis_warmup_active and (
+            self.pair_source == "pseudo_label" or thresholds is not None
+        )
+        mining_filter = same_cluster if self.mining_pseudo_label_filter else None
+        selection = None
+        if self._mining_active and self.pair_source != "basis_mining":
+            selection = self._pair_source_selection(
+                pair_similarity.detach(), thresholds, same_cluster
             )
-            ranking_loss = self._unlabeled_ranking_loss(
-                embeddings=regularizer_embeddings,
-                cluster_labels=cluster_labels,
-                positive_pairs=positive_pairs,
-                negative_pairs=negative_pairs,
-                supervised_criterion=supervised_criterion,
-                supervised_is_classification=supervised_is_classification,
-            )
+        self._record_mining_activity(
+            pair_similarity.detach(),
+            pair_indices,
+            thresholds if self._mining_active else None,
+            batch[2],
+            cluster_labels=cluster_labels,
+            same_cluster_filter=mining_filter,
+            selection=selection,
+        )
+        if self._mining_active:
+            dense_forward = getattr(supervised_criterion, "forward_with_pair_masks", None)
+            if (
+                self._contrastive_criterion is None
+                and not supervised_is_classification
+                and callable(dense_forward)
+            ):
+                positive_mask, negative_mask = self._mined_pair_masks(
+                    similarity, pair_indices, thresholds, mining_filter, selection=selection,
+                )
+                ranking_loss = dense_forward(
+                    regularizer_embeddings, cluster_labels, positive_mask, negative_mask,
+                )
+                if self.collect_batch_diagnostics:
+                    positive_pair_count = positive_mask.sum().detach() / 2
+                    negative_pair_count = negative_mask.sum().detach() / 2
+            else:
+                positive_pairs, negative_pairs = self._mined_pairs(
+                    similarity,
+                    pair_indices,
+                    thresholds,
+                    mining_filter,
+                    selection=selection,
+                )
+                ranking_loss = self._unlabeled_ranking_loss(
+                    embeddings=regularizer_embeddings,
+                    cluster_labels=cluster_labels,
+                    positive_pairs=positive_pairs,
+                    negative_pairs=negative_pairs,
+                    supervised_criterion=supervised_criterion,
+                    supervised_is_classification=supervised_is_classification,
+                )
+                positive_pair_count = float(len(positive_pairs[0]))
+                negative_pair_count = float(len(negative_pairs[0]))
 
         # Eq 9's two unlabeled terms are kept apart rather than summed here.
         # L_Basis trains W_a, which the supervised loss never touches, and its
@@ -1461,8 +1990,8 @@ class SladeRegularizer(BaseTrainingRegularizer):
                 "train/slade/negative_mean": basis.negative_mean.detach(),
                 "train/slade/positive_variance": basis.positive_variance.detach(),
                 "train/slade/negative_variance": basis.negative_variance.detach(),
-                "train/slade/mined_positive_pairs": float(len(positive_pairs[0])),
-                "train/slade/mined_negative_pairs": float(len(negative_pairs[0])),
+                "train/slade/mined_positive_pairs": positive_pair_count,
+                "train/slade/mined_negative_pairs": negative_pair_count,
                 "train/slade/pseudo_positive_pairs": float(len(positive_similarity)),
                 "train/slade/basis_warmup_active": float(basis_warmup_active),
                 "train/slade/mining_active": float(thresholds is not None),
@@ -1542,3 +2071,358 @@ class SladeRegularizer(BaseTrainingRegularizer):
             name: float(value.detach().item()) if torch.is_tensor(value) else float(value)
             for name, value in self._last_diagnostics.items()
         }
+
+    def _save_cluster_refresh(self, epoch, clusters, occupied, quality, features=None, num_clusters=None):
+        """Keep the clusters this refresh assigned, when the run has an artifact directory.
+
+        One ``refresh_<n>_epoch_<e>.npz`` per refresh holds the unlabeled pool's
+        training-subset positions and their cluster ids -- the exact pseudo labels
+        the student trained against until the next refresh, not a recomputation --
+        and ``refreshes.jsonl`` indexes them with k, occupancy and, where hidden
+        labels exist, the clustering's quality.
+
+        With the teacher ``features`` it also keeps every member's cosine
+        similarity to its own cluster center, and the centers themselves (the
+        mean teacher embedding, a row of NaN for an empty cluster). SLADE itself
+        never reads the centers: only the IDs enter Eq 5, so these are for
+        inspection. They are k x d float16, ~8 MB at In-Shop's k=5996, and barely
+        compress, so only the first refresh (the supervised teacher's) and the
+        newest one keep them: each new refresh drops them from the one before.
+        """
+
+        if self.artifact_dir is None:
+            return None
+        # An oracle refresh groups by true class, so its k is not the configured one.
+        k = int(self._resolved_num_clusters if num_clusters is None else num_clusters)
+        directory = Path(self.artifact_dir) / SLADE_CLUSTER_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        refresh_index = getattr(self, "_cluster_refresh_count", 0)
+        self._cluster_refresh_count = refresh_index + 1
+        epoch_value = -1 if epoch is None else int(epoch)
+        name = f"refresh_{refresh_index:03d}_epoch_{max(epoch_value, 0):04d}.npz"
+        arrays = {}
+        if features is not None:
+            features = np.asarray(features, dtype=np.float32)
+            cluster_ids = np.asarray(clusters, dtype=np.int64)
+            sums = np.zeros((k, features.shape[1]), dtype=np.float64)
+            np.add.at(sums, cluster_ids, features)
+            sizes = np.bincount(cluster_ids, minlength=k).astype(np.float64)
+            centers = np.divide(sums, sizes[:, None], out=np.full_like(sums, np.nan), where=sizes[:, None] > 0)
+            unit = lambda values: values / np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-12)
+            arrays["centers"] = centers.astype(np.float16)
+            arrays["center_similarity"] = np.sum(
+                unit(features.astype(np.float64)) * unit(np.nan_to_num(centers[cluster_ids])), axis=1
+            ).astype(np.float16)
+        np.savez_compressed(
+            directory / name,
+            positions=np.asarray(self.dataset.positions, dtype=np.int64),
+            clusters=np.asarray(clusters, dtype=np.int32),
+            num_clusters=np.int64(k),
+            epoch=np.int64(epoch_value),
+            **arrays,
+        )
+        record = {
+            "file": name,
+            "refresh": refresh_index,
+            "epoch": epoch_value,
+            "num_clusters": k,
+            "occupied_clusters": int(occupied),
+            "samples": int(len(clusters)),
+        }
+        if quality is not None:
+            record["quality"] = {key: float(value) for key, value in quality.items()}
+        with (directory / SLADE_CLUSTER_INDEX).open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+        # The new file is complete, so the previous one's centers can go.
+        previous = getattr(self, "_refresh_with_droppable_centers", None)
+        if previous is not None:
+            drop_refresh_centers(previous)
+        self._refresh_with_droppable_centers = (directory / name) if refresh_index > 0 and "centers" in arrays else None
+        return directory / name
+
+    # -- Activity diagnostics -------------------------------------------------
+    #
+    # Whether SLADE helped cannot be read off a score alone: a flat result looks
+    # the same whether the unlabeled term was trained on good pairs, on wrong
+    # pairs, or barely at all. These counters answer which, per epoch in
+    # metrics.csv and per run in the training result. Hidden labels are read
+    # here and in the refresh log only; nothing below feeds a loss.
+
+    def _reset_activity_counters(self):
+        self._epoch_mining_counts = None
+        self._epoch_steps = 0
+        self._epoch_mining_active_steps = 0
+        self._epoch_labeled_steps = 0
+        self._run_mining_counts = [0.0] * _MINING_COUNTER_COUNT
+        self._run_steps = 0
+        self._run_mining_active_steps = 0
+        self._run_labeled_steps = 0
+        self._cluster_quality_history = []
+        self._pending_cluster_quality = None
+        self._pair_samples = []
+        self._pair_sample_counts = [0, 0]
+        self._pair_rng = np.random.default_rng(0)
+        self._pair_epoch_files = 0
+
+    @staticmethod
+    def _hidden_label_lookup(train_dataset, positions):
+        labels = getattr(train_dataset, "labels", None)
+        positions = np.asarray(positions, dtype=np.int64)
+        if labels is None or len(positions) == 0:
+            return None
+        labels = np.asarray(labels).reshape(-1)
+        if len(labels) <= int(positions.max()):
+            # The pool indexes a dataset these labels do not cover (external
+            # images); there is nothing to audit against.
+            return None
+        lookup = np.full(int(positions.max()) + 1, -1, dtype=np.int64)
+        lookup[positions] = labels[positions].astype(np.int64)
+        return lookup
+
+    def _record_mining_activity(
+        self,
+        pair_similarity,
+        pair_indices,
+        thresholds,
+        positions,
+        cluster_labels=None,
+        same_cluster_filter=None,
+        selection=None,
+    ):
+        """Count this step's mining outcome; ``thresholds`` is ``None`` when mining is off.
+
+        ``same_cluster_filter`` is the pseudo-label filter the loss applied, so the
+        counters describe the pairs the loss actually trained on. ``selection``
+        is the loss's own pair flags when ``pair_source`` is not Eq 7; it counts
+        as mining being on even without thresholds.
+        """
+
+        self._epoch_steps += 1
+        if thresholds is None and selection is None:
+            return
+        self._epoch_mining_active_steps += 1
+        self._last_mining_thresholds = thresholds
+        device = pair_similarity.device
+        if self._epoch_mining_counts is None:
+            self._epoch_mining_counts = torch.zeros(
+                _MINING_COUNTER_COUNT, dtype=torch.float64, device=device
+            )
+        positive, negative = (
+            selection
+            if selection is not None
+            else self._eq7_selection(pair_similarity, thresholds, same_cluster_filter)
+        )
+        no_positive = ~positive.any()
+        zero = torch.zeros((), dtype=torch.float64, device=device)
+        known_positive = same_positive = known_negative = same_negative = zero
+        has_same_class = missed = zero
+        if self._true_label_by_position is not None:
+            index = np.asarray(
+                torch.as_tensor(positions).detach().cpu().numpy(), dtype=np.int64
+            ).reshape(-1)
+            labels = torch.as_tensor(
+                self._true_label_by_position[index], dtype=torch.long, device=device
+            )
+            left = labels[pair_indices[0]]
+            right = labels[pair_indices[1]]
+            known = (left >= 0) & (right >= 0)
+            same = known & (left == right)
+            known_positive = (positive & known).sum()
+            same_positive = (positive & same).sum()
+            known_negative = (negative & known).sum()
+            same_negative = (negative & same).sum()
+            has_same_class = same.any()
+            missed = has_same_class & no_positive
+            self._epoch_labeled_steps += 1
+        update = torch.zeros(_MINING_COUNTER_COUNT, dtype=torch.float64, device=device)
+        update[_MINED_POSITIVE_PAIRS] = positive.sum()
+        update[_MINED_POSITIVE_KNOWN] = known_positive
+        update[_MINED_POSITIVE_SAME_CLASS] = same_positive
+        update[_MINED_NEGATIVE_KNOWN] = known_negative
+        update[_MINED_NEGATIVE_SAME_CLASS] = same_negative
+        update[_STEPS_WITHOUT_MINED_POSITIVE] = no_positive
+        update[_LABELED_STEPS_WITH_SAME_CLASS_PAIR] = has_same_class
+        update[_STEPS_MISSING_AN_AVAILABLE_POSITIVE] = missed
+        update[_MINED_NEGATIVE_PAIRS] = negative.sum()
+        if cluster_labels is not None:
+            same_cluster = cluster_labels[pair_indices[0]] == cluster_labels[pair_indices[1]]
+            update[_MINED_POSITIVE_SAME_CLUSTER] = (positive & same_cluster).sum()
+            update[_MINED_NEGATIVE_SAME_CLUSTER] = (negative & same_cluster).sum()
+        self._epoch_mining_counts += update
+        if self.artifact_dir is not None:
+            self._sample_mined_pairs(pair_similarity, pair_indices, positive, negative, positions, cluster_labels)
+
+    def _sample_mined_pairs(self, pair_similarity, pair_indices, positive, negative, positions, cluster_labels):
+        """Keep a few of this step's mined pairs for the epoch's ``slade_pairs`` file.
+
+        Runs only for an inspected run (one with an artifact directory). The
+        choice uses its own NumPy generator, so the training stream's random
+        state is exactly what an uninspected run would see.
+        """
+
+        index = np.asarray(torch.as_tensor(positions).detach().cpu().numpy(), dtype=np.int64).reshape(-1)
+        for kind, mask in ((1, positive), (0, negative)):
+            room = SLADE_PAIR_SAMPLES_PER_EPOCH - self._pair_sample_counts[kind]
+            if room <= 0:
+                continue
+            chosen = mask.nonzero(as_tuple=True)[0].cpu().numpy()
+            if len(chosen) == 0:
+                continue
+            take = min(room, SLADE_PAIR_SAMPLES_PER_STEP, len(chosen))
+            chosen = torch.as_tensor(self._pair_rng.choice(chosen, size=take, replace=False), device=mask.device)
+            left = pair_indices[0][chosen]
+            right = pair_indices[1][chosen]
+            same_cluster = (
+                np.full(take, -1, dtype=np.int8)
+                if cluster_labels is None
+                else (cluster_labels[left] == cluster_labels[right]).cpu().numpy().astype(np.int8)
+            )
+            self._pair_samples.append(
+                {
+                    "left": index[left.cpu().numpy()],
+                    "right": index[right.cpu().numpy()],
+                    "similarity": pair_similarity[chosen].float().cpu().numpy(),
+                    "positive": np.full(take, kind, dtype=np.int8),
+                    "same_cluster": same_cluster,
+                }
+            )
+            self._pair_sample_counts[kind] += take
+
+    def _save_pair_samples(self, epoch, counts):
+        """Write the epoch's mined-pair sample, with the totals it was drawn from."""
+
+        samples, self._pair_samples = self._pair_samples, []
+        self._pair_sample_counts = [0, 0]
+        if self.artifact_dir is None or not samples:
+            return None
+        directory = Path(self.artifact_dir) / SLADE_PAIR_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        epoch_value = self._pair_epoch_files if epoch is None else int(epoch)
+        self._pair_epoch_files += 1
+        # The thresholds of the epoch's last mining step (Eq 6 moves them slowly).
+        thresholds = getattr(self, "_last_mining_thresholds", None)
+        arrays = {
+            name: np.concatenate([sample[name] for sample in samples])
+            for name in ("left", "right", "similarity", "positive", "same_cluster")
+        }
+        arrays["similarity"] = arrays["similarity"].astype(np.float16)
+        path = directory / f"epoch_{max(epoch_value, 0):04d}.npz"
+        np.savez_compressed(
+            path,
+            **arrays,
+            epoch=np.int64(epoch_value),
+            mined_positive_pairs=np.float64(counts[_MINED_POSITIVE_PAIRS]),
+            mined_negative_pairs=np.float64(counts[_MINED_NEGATIVE_PAIRS]),
+            thresholds=np.asarray(
+                [np.nan, np.nan] if thresholds is None else [float(value) for value in thresholds], dtype=np.float32
+            ),
+        )
+        return path
+
+    @staticmethod
+    def _mining_statistics(counts, steps, active_steps, labeled_steps):
+        def ratio(numerator, denominator):
+            return float(numerator) / float(denominator) if denominator else None
+
+        statistics = {
+            "steps": float(steps),
+            "mining_active_fraction": ratio(active_steps, steps),
+            "mined_positive_pairs_per_step": ratio(counts[_MINED_POSITIVE_PAIRS], active_steps),
+            "steps_without_mined_positive_fraction": ratio(
+                counts[_STEPS_WITHOUT_MINED_POSITIVE], active_steps
+            ),
+            "mined_positive_precision": ratio(
+                counts[_MINED_POSITIVE_SAME_CLASS], counts[_MINED_POSITIVE_KNOWN]
+            ),
+            "mined_negative_same_class_fraction": ratio(
+                counts[_MINED_NEGATIVE_SAME_CLASS], counts[_MINED_NEGATIVE_KNOWN]
+            ),
+            "steps_without_same_class_pair_fraction": (
+                None
+                if not labeled_steps
+                else 1.0 - float(counts[_LABELED_STEPS_WITH_SAME_CLASS_PAIR]) / labeled_steps
+            ),
+            "steps_missing_an_available_positive_fraction": ratio(
+                counts[_STEPS_MISSING_AN_AVAILABLE_POSITIVE], labeled_steps
+            ),
+            "mined_positive_same_cluster_fraction": ratio(
+                counts[_MINED_POSITIVE_SAME_CLUSTER], counts[_MINED_POSITIVE_PAIRS]
+            ),
+            "mined_negative_same_cluster_fraction": ratio(
+                counts[_MINED_NEGATIVE_SAME_CLUSTER], counts[_MINED_NEGATIVE_PAIRS]
+            ),
+        }
+        return {name: value for name, value in statistics.items() if value is not None}
+
+    def _flush_epoch_activity(self, epoch=None):
+        counts = (
+            [0.0] * _MINING_COUNTER_COUNT
+            if self._epoch_mining_counts is None
+            else self._epoch_mining_counts.tolist()
+        )
+        try:
+            self._save_pair_samples(epoch, counts)
+        except Exception as exc:  # pragma: no cover - diagnostics must not stop training
+            logger.warning(f"SLADE mined-pair sample was not saved: {exc}")
+        statistics = self._mining_statistics(
+            counts,
+            self._epoch_steps,
+            self._epoch_mining_active_steps,
+            self._epoch_labeled_steps,
+        )
+        self._run_mining_counts = [
+            total + value for total, value in zip(self._run_mining_counts, counts)
+        ]
+        self._run_steps += self._epoch_steps
+        self._run_mining_active_steps += self._epoch_mining_active_steps
+        self._run_labeled_steps += self._epoch_labeled_steps
+        self._epoch_mining_counts = None
+        self._epoch_steps = 0
+        self._epoch_mining_active_steps = 0
+        self._epoch_labeled_steps = 0
+        return statistics
+
+    def epoch_activity_diagnostics(self, epoch=None):
+        if not self._epoch_steps and self._pending_cluster_quality is None:
+            return {}
+        diagnostics = {
+            f"train/slade/{name}": value
+            for name, value in self._flush_epoch_activity(epoch).items()
+        }
+        if self._pending_cluster_quality is not None:
+            diagnostics.update(
+                {
+                    f"train/slade/cluster_{name}": value
+                    for name, value in self._pending_cluster_quality.items()
+                    if math.isfinite(value)
+                }
+            )
+            self._pending_cluster_quality = None
+        return diagnostics
+
+    def activity_summary(self):
+        if self._epoch_steps:
+            self._flush_epoch_activity()
+        if not self._run_steps and not self._cluster_quality_history:
+            return {}
+        summary = {
+            f"slade_{name}": value
+            for name, value in self._mining_statistics(
+                self._run_mining_counts,
+                self._run_steps,
+                self._run_mining_active_steps,
+                self._run_labeled_steps,
+            ).items()
+        }
+        if self._cluster_quality_history:
+            for name in self._cluster_quality_history[-1]:
+                values = [
+                    quality[name]
+                    for quality in self._cluster_quality_history
+                    if math.isfinite(quality[name])
+                ]
+                if values:
+                    summary[f"slade_cluster_{name}_mean"] = float(np.mean(values))
+                    summary[f"slade_cluster_{name}_last"] = float(values[-1])
+            summary["slade_cluster_refreshes"] = float(len(self._cluster_quality_history))
+        return summary

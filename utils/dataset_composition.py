@@ -1,11 +1,13 @@
 """Dataset containers and external-unlabeled-pool composition."""
 
 from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 from torch.utils.data import Dataset, Subset
 
 from . import local_datasets
+from .out_of_class_selection import select_out_of_class_records
 from .dataset_constants import (
     SEMI_AVES_DEFAULT_OOD_FRACTION,
     SEMI_AVES_DEFAULT_OOD_SEED,
@@ -23,9 +25,6 @@ EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT = "compcars_model_min_count"
 EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER = "compcars_slade_paper"
 
 
-EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER = "compcars_stml_paper"
-
-
 EXTERNAL_UNLABELED_FILTER_NABIRDS = "nabirds"
 
 
@@ -33,17 +32,12 @@ EXTERNAL_UNLABELED_FILTERS = (
     EXTERNAL_UNLABELED_FILTER_NONE,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,
-    EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
     EXTERNAL_UNLABELED_FILTER_NABIRDS,
 )
 
 
-# STML adopts SLADE's semi-supervised protocol, so both filters build the same
-# CompCars pool and both honor the paper count checks.
-EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER = (
-    EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,
-    EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
-)
+# The filters that honor the paper count checks.
+EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER = (EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,)
 
 
 COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO = "auto"
@@ -133,6 +127,77 @@ def get_nested_transform(dataset):
     return getattr(dataset, "transform", None)
 
 
+EXTERNAL_FRACTION_SELECTION_VERSION = "external_unlabeled_fraction_v1"
+# Per-image lists an external pool may carry; a fraction keeps the same rows of each.
+_EXTERNAL_PER_IMAGE_ATTRS = ("paths", "labels", "orig_labels", "model_keys", "image_ids", "image_names")
+
+
+def _external_selection_groups(dataset):
+    """The categories a fraction is balanced over: the CompCars filter's categories (model-years for
+    the paper filters), NABirds species, else one group.
+
+    An unfiltered directory has no category to balance, and its directories are no
+    substitute: Fashion200k's are single products of one or two images each.
+    """
+
+    if getattr(dataset, "model_keys", None) is not None:
+        return [str(key) for key in dataset.model_keys]
+    if getattr(dataset, "image_names", None) is not None:
+        # NABirds lists images as <class id>/<file>.
+        return [str(PurePosixPath(str(name)).parent) for name in dataset.image_names]
+    return ["all"] * len(dataset)
+
+
+def select_external_fraction(dataset, fraction, seed=None):
+    """Keep ``fraction`` of an external pool in place, the way Semi-iNat keeps its U-out share.
+
+    The rule is :func:`select_out_of_class_records`: class-balanced, a pure
+    function of each image's path below the pool root and ``seed``, and nested,
+    so a larger fraction keeps a smaller one's images. ``None`` or 1.0 keeps all.
+    """
+
+    available = len(dataset)
+    dataset.available_images = available
+    dataset.selection_fraction = None if fraction is None else float(fraction)
+    dataset.selection_seed = 0 if seed is None else int(seed)
+    if fraction is None or float(fraction) == 1.0:
+        return dataset
+    fraction = float(fraction)
+    if not 0.0 < fraction <= 1.0:
+        raise ValueError(f"external_unlabeled_fraction must be in (0, 1]: {fraction}")
+    root = Path(getattr(dataset, "root", "."))
+    groups = _external_selection_groups(dataset)
+    group_ids = {group: index for index, group in enumerate(sorted(set(groups)))}
+    records = []
+    for position, (path, group) in enumerate(zip(dataset.paths, groups)):
+        path = Path(path)
+        try:
+            relative = PurePosixPath(path.relative_to(root).as_posix())
+        except ValueError:
+            relative = PurePosixPath(path.as_posix())
+        records.append((relative, group_ids[group], position))
+    kept = select_out_of_class_records(
+        records,
+        fraction,
+        dataset.selection_seed,
+        selection_version=EXTERNAL_FRACTION_SELECTION_VERSION,
+        dataset_label="external unlabeled",
+    )
+    positions = [position for _, _, position in kept]
+    if not positions:
+        raise ValueError(
+            f"external_unlabeled_fraction={fraction} keeps no image of the {available}-image pool"
+        )
+    for name in _EXTERNAL_PER_IMAGE_ATTRS:
+        values = getattr(dataset, name, None)
+        if values is not None and len(values) == available:
+            setattr(dataset, name, [values[position] for position in positions])
+    filter_info = getattr(dataset, "filter_info", None)
+    if isinstance(filter_info, dict):
+        filter_info["fraction_kept_images"] = len(positions)
+    return dataset
+
+
 def append_external_unlabeled_dataset(
     train_dataset,
     external_root,
@@ -140,8 +205,14 @@ def append_external_unlabeled_dataset(
     compcars_min_model_images=100,
     compcars_strict_paper_counts=False,
     compcars_paper_threshold_calibration=COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO,
+    fraction=None,
+    fraction_seed=None,
 ):
-    """Append recursively discovered external images to an existing train dataset."""
+    """Append recursively discovered external images to an existing train dataset.
+
+    ``fraction`` keeps that share of the (filtered) pool; see
+    :func:`select_external_fraction`.
+    """
 
     train_transform = get_nested_transform(train_dataset)
     calibrate_threshold = (
@@ -159,12 +230,7 @@ def append_external_unlabeled_dataset(
             min_images_per_model=compcars_min_model_images,
         )
     elif external_filter in EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER:
-        paper_dataset_class = (
-            local_datasets.CompCarsSLADEPaperUnlabeledImageDataset
-            if external_filter == EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER
-            else local_datasets.CompCarsSTMLPaperUnlabeledImageDataset
-        )
-        external_dataset = paper_dataset_class(
+        external_dataset = local_datasets.CompCarsSLADEPaperUnlabeledImageDataset(
             root=external_root,
             transform=train_transform,
             min_images_per_model=compcars_min_model_images,
@@ -178,6 +244,7 @@ def append_external_unlabeled_dataset(
         )
     else:
         raise ValueError(f"Unknown external_unlabeled_filter: {external_filter}")
+    select_external_fraction(external_dataset, fraction, fraction_seed)
     combined = CombinedDataset([train_dataset, external_dataset])
     feature_transform = getattr(train_dataset, "feature_transform", None)
     if feature_transform is not None:

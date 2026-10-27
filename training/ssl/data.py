@@ -178,87 +178,6 @@ class LRMLGraphDataset(Dataset):
         ]
 
 
-class LRMLEdgeDataset(Dataset):
-    """Expose each undirected LRML edge once for ordinary shuffled loading.
-
-    ``edge_index`` follows PyG's ``[2, num_directed_edges]`` convention and is
-    expected to contain both directions. Dataset items are canonical global
-    graph-node pairs; endpoint images are fetched exactly once later by
-    :func:`collate_lrml_edge_batch`.
-    """
-
-    def __init__(self, edge_index, num_nodes):
-        edge_index = torch.as_tensor(edge_index, dtype=torch.long).detach().cpu()
-        if edge_index.ndim != 2 or edge_index.shape[0] != 2:
-            raise ValueError("lrml edge_index must have shape [2, num_directed_edges]")
-        if edge_index.shape[1] == 0:
-            raise ValueError("lrml graph regularization requires at least one edge")
-        self.num_nodes = int(num_nodes)
-        if self.num_nodes < 2:
-            raise ValueError("lrml graph regularization requires at least two nodes")
-        if int(edge_index.min()) < 0 or int(edge_index.max()) >= self.num_nodes:
-            raise ValueError("lrml edge_index refers to a node outside the graph")
-
-        canonical_edges = torch.sort(edge_index.t().contiguous(), dim=1).values
-        if torch.any(canonical_edges[:, 0] == canonical_edges[:, 1]):
-            raise ValueError("lrml edge_index must not contain self loops")
-        edges, direction_counts = torch.unique(
-            canonical_edges,
-            dim=0,
-            sorted=True,
-            return_counts=True,
-        )
-        if torch.any(direction_counts != 2):
-            raise ValueError(
-                "lrml edge_index must contain each undirected edge in both directions once"
-            )
-        self.edge_index = edge_index.contiguous()
-        self.edges = edges.contiguous()
-
-    def __len__(self):
-        return self.edges.shape[0]
-
-    def __getitem__(self, index):
-        return self.edges[int(index)]
-
-
-def collate_lrml_edge_batch(batch, node_dataset):
-    """Fetch unique endpoints and build a local PyG edge index for an edge batch."""
-
-    if len(batch) == 0:
-        raise ValueError("lrml edge collation requires at least one edge")
-    edges = torch.stack(
-        [torch.as_tensor(edge, dtype=torch.long) for edge in batch],
-        dim=0,
-    )
-    if edges.ndim != 2 or edges.shape[1] != 2:
-        raise ValueError("lrml edge dataset items must have shape [2]")
-
-    unique_node_ids = []
-    local_index_by_node = {}
-    local_edges = []
-    for left_node, right_node in edges.tolist():
-        local_pair = []
-        for node_id in (int(left_node), int(right_node)):
-            if node_id < 0 or node_id >= len(node_dataset):
-                raise ValueError("lrml edge refers to a node outside the node dataset")
-            local_index = local_index_by_node.get(node_id)
-            if local_index is None:
-                local_index = len(unique_node_ids)
-                local_index_by_node[node_id] = local_index
-                unique_node_ids.append(node_id)
-            local_pair.append(local_index)
-        local_edges.append(local_pair)
-
-    node_items = _fetch_items(node_dataset, unique_node_ids)
-    images = [item[0] for item in node_items]
-    return (
-        default_collate(images),
-        torch.as_tensor(unique_node_ids, dtype=torch.long),
-        torch.as_tensor(local_edges, dtype=torch.long).t().contiguous(),
-    )
-
-
 class HofferReferenceDataset(Dataset):
     """Joint index space over unlabeled samples and labeled reference candidates.
 
@@ -711,6 +630,180 @@ class GraphEdgeBatchSampler(torch.utils.data.Sampler):
                 self.num_edges / self.edges_per_batch
             )
         )
+
+
+def collate_graph_neighborhood_batch(batch):
+    """Collate one batch of locally linear reconstruction neighborhoods.
+
+    :class:`GraphNeighborhoodBatchSampler` emits unique
+    :class:`GraphBatchNodeIndex` values -- every anchor and every neighbor any
+    anchor needs, each fetched once -- and attaches the batch's local map to the
+    first of them. The map is rectangular because a kNN graph gives every node
+    the same neighbor count, so the energy is a dense gather rather than a
+    scatter-add: that keeps it deterministic on CUDA, which a float
+    ``index_add_`` over shared neighbors would not be.
+
+    Returns ``(images, node_ids, anchor_rows, neighbor_columns, neighbor_weights)``
+    where ``anchor_rows`` holds one local index per anchor and the last two have
+    shape ``[num_anchors, k]`` in local indices and eq. (5) weights.
+    """
+
+    if len(batch) == 0:
+        raise ValueError("graph neighborhood collation requires at least one node")
+    if len(batch[0]) != 3:
+        raise ValueError("graph neighborhood dataset items must have three fields")
+
+    maps = [item[2] for item in batch if len(item[2]) > 0]
+    if len(maps) != 1:
+        raise ValueError("graph batch must carry exactly one local neighborhood map")
+    anchor_rows, neighbor_columns, neighbor_weights = maps[0]
+    return (
+        default_collate([item[0] for item in batch]),
+        torch.as_tensor([int(item[1]) for item in batch], dtype=torch.long),
+        torch.as_tensor(anchor_rows, dtype=torch.long),
+        torch.as_tensor(neighbor_columns, dtype=torch.long),
+        torch.as_tensor(np.asarray(neighbor_weights, dtype=np.float32)),
+    )
+
+
+class GraphNeighborhoodBatchSampler(torch.utils.data.Sampler):
+    """Uniformly batch whole reconstruction neighborhoods.
+
+    The locally linear penalty of Soleymani Baghshah and Bagheri Shouraki
+    (IJCAI 2009), eq. (6), is a sum over *anchors*: each term needs one node and
+    every neighbor it is reconstructed from at the same time, so it cannot be
+    split into independent edges the way a Laplacian can. ``graph_batch_size``
+    is therefore a number of anchors, and each batch loads at most
+    ``graph_batch_size * (1 + k)`` nodes before deduplication.
+
+    Anchors are drawn without replacement in a shuffled pass over the pool and
+    the pass restarts when it runs out, matching
+    :class:`GraphEdgeBatchSampler`'s stream so a step count means the same thing
+    for both. Uniform sampling over anchors is what makes ``reduction='sum'``
+    an unbiased estimate of eq. (6)'s full trace.
+
+    ``valid_anchors`` restricts the pool to nodes that kept at least one
+    neighbor. An anchor with none has an all-zero weight row, and its residual
+    would be its own embedding rather than a reconstruction error, so it must
+    not be sampled.
+    """
+
+    def __init__(
+        self,
+        neighbor_indices,
+        neighbor_weights,
+        graph_batch_size,
+        seed,
+        num_batches=None,
+        *,
+        valid_anchors=None,
+    ):
+        if graph_batch_size <= 0:
+            raise ValueError("graph_batch_size must be positive")
+        self.graph_batch_size = int(graph_batch_size)
+        self.anchors_per_batch = self.graph_batch_size
+
+        self.num_batches = None if num_batches is None else int(num_batches)
+        if self.num_batches is not None and self.num_batches <= 0:
+            raise ValueError("graph sampler num_batches must be positive when set")
+
+        self.generator = utils.make_torch_generator(seed)
+        self.set_graph(neighbor_indices, neighbor_weights, valid_anchors=valid_anchors)
+
+    def set_graph(self, neighbor_indices, neighbor_weights, *, valid_anchors=None):
+        neighbor_indices = np.asarray(neighbor_indices, dtype=np.int64)
+        neighbor_weights = np.asarray(neighbor_weights, dtype=np.float64)
+        if neighbor_indices.ndim != 2 or len(neighbor_indices) == 0:
+            raise ValueError("neighbor_indices must be a non-empty [nodes, k] matrix")
+        if neighbor_weights.shape != neighbor_indices.shape:
+            raise ValueError("neighbor_weights must match neighbor_indices")
+        num_nodes = len(neighbor_indices)
+        if neighbor_indices.min() < 0 or neighbor_indices.max() >= num_nodes:
+            raise ValueError("neighbor_indices refer to a node outside the graph")
+        if not np.all(np.isfinite(neighbor_weights)):
+            raise ValueError("neighbor_weights must be finite")
+
+        if valid_anchors is None:
+            valid_anchors = np.any(neighbor_weights != 0.0, axis=1)
+        valid_anchors = np.asarray(valid_anchors, dtype=bool).reshape(-1)
+        if len(valid_anchors) != num_nodes:
+            raise ValueError("valid_anchors must have one flag per graph node")
+        anchor_pool = np.flatnonzero(valid_anchors).astype(np.int64)
+        if len(anchor_pool) == 0:
+            raise ValueError(
+                "locally linear reconstruction needs at least one anchor with a "
+                "neighbor"
+            )
+
+        self.neighbor_indices = neighbor_indices
+        self.neighbor_weights = neighbor_weights
+        self.anchor_pool = anchor_pool
+        self.num_nodes = int(num_nodes)
+        self.num_anchors = int(len(anchor_pool))
+        self.n_neighbors = int(neighbor_indices.shape[1])
+
+    def _batch_for(self, anchors):
+        """Deduplicate an anchor set's nodes and build its local map."""
+
+        unique_nodes = []
+        local_index_by_node = {}
+
+        def local(node_id):
+            index = local_index_by_node.get(node_id)
+            if index is None:
+                index = len(unique_nodes)
+                local_index_by_node[node_id] = index
+                unique_nodes.append(node_id)
+            return index
+
+        # Anchors first so their local rows stay contiguous and readable in a
+        # diagnostic dump; correctness only needs the map itself.
+        anchor_rows = [local(int(anchor)) for anchor in anchors]
+        neighbor_columns = [
+            [local(int(neighbor)) for neighbor in self.neighbor_indices[anchor]]
+            for anchor in anchors
+        ]
+        neighbor_weights = self.neighbor_weights[anchors]
+        return unique_nodes, (
+            tuple(anchor_rows),
+            tuple(tuple(row) for row in neighbor_columns),
+            neighbor_weights,
+        )
+
+    def __iter__(self):
+        order = self.anchor_pool[
+            torch.randperm(self.num_anchors, generator=self.generator).numpy()
+        ]
+        yielded = 0
+        start = 0
+        target_batches = len(self)
+
+        while yielded < target_batches:
+            if start >= self.num_anchors:
+                order = self.anchor_pool[
+                    torch.randperm(self.num_anchors, generator=self.generator).numpy()
+                ]
+                start = 0
+
+            anchors = order[start : start + self.anchors_per_batch]
+            unique_nodes, local_map = self._batch_for(anchors)
+            batch = [
+                GraphBatchNodeIndex(
+                    node_id=node_id,
+                    edge_indices=local_map if local_index == 0 else (),
+                )
+                for local_index, node_id in enumerate(unique_nodes)
+            ]
+
+            yield batch
+
+            yielded += 1
+            start += self.anchors_per_batch
+
+    def __len__(self):
+        if self.num_batches is not None:
+            return self.num_batches
+        return int(math.ceil(self.num_anchors / self.anchors_per_batch))
 
 
 class HofferReferenceBatchSampler(torch.utils.data.Sampler):

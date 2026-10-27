@@ -1,0 +1,32 @@
+{
+  "name": "react-trial-visualizer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "sync-optuna": "node --no-warnings scripts/export-optuna-studies.mjs",
+    "predev": "npm run sync-optuna && npm run sync-sorted",
+    "dev": "next dev",
+    "prebuild": "npm run sync-optuna && npm run sync-sorted",
+    "build": "next build && node scripts/prepare-sites-dist.mjs",
+    "build:share": "node scripts/build-share-site.mjs",
+    "typecheck": "tsc --noEmit",
+    "sync-sorted": "node --no-warnings scripts/export-sorted-studies.mjs",
+    "sync-configs": "node --no-warnings scripts/export-study-configs.mjs",
+    "sync-epoch-tracking": "python ../evaluate/export_react.py --root \"${EPOCH_TRACKING_ROOT:-../logs}\" --app .",
+    "verify-phase0": "node --experimental-strip-types --no-warnings scripts/verify-phase0.mts"
+  },
+  "dependencies": {
+    "lucide-react": "0.559.0",
+    "next": "16.1.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.18",
+    "@types/node": "25.0.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "4.1.18",
+    "typescript": "5.8.3"
+  }
+}

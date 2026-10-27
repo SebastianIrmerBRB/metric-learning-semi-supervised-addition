@@ -12,8 +12,10 @@ Two levels of reuse exist because the two artifacts have different granularity:
   finished, so the run is skipped and its recorded metrics are reused.
 * A ``cv_*`` directory whose summary lists fewer completed folds than ``cv_k``
   means one run was interrupted mid-cross-validation. Training continues in
-  that directory at the first unfinished fold; the interrupted fold itself is
-  retrained, because a fold keeps no resumable state of its own.
+  that directory with the folds it does not list; an interrupted fold itself is
+  retrained, because a fold keeps no resumable state of its own. A directory
+  whose summary already holds the aggregate of all ``cv_k`` folds is a
+  finished run, and that recorded aggregate is reused as it stands.
 
 Reuse only ever applies to a run whose artifacts sit exactly where the current
 request would write them and whose identity fields still match, so replaying
@@ -65,12 +67,26 @@ CV_RESUME_IDENTITY_FIELDS = (
 )
 
 
+# The joint evaluation of every fold's test embeddings, which only a CV
+# aggregate carries. It cannot be recomputed from the summary alone.
+CONCATENATED_TEST_FIELDS = (
+    "concatenated_test_precision_at_1",
+    "concatenated_test_mean_average_precision_at_r",
+    "concatenated_test_embedding_dim",
+    "concatenated_test_recall_at_k",
+    "concatenated_test_measurements",
+)
+
+
 @dataclass(frozen=True)
 class ResumableCrossValidationRun:
-    """One interrupted ``cv_*`` directory and the folds it already finished."""
+    """One ``cv_*`` directory and the folds it already finished."""
 
     cv_dir: Path
     fold_results: tuple[TrainingResult, ...]
+    # The aggregate the summary recorded over exactly these folds; set only
+    # when all cv_k of them are reused, i.e. the run had already finished.
+    recorded_aggregate: TrainingResult | None = None
 
     @property
     def completed_folds(self) -> int:
@@ -128,7 +144,7 @@ def load_reusable_replay_result(
 
 
 def find_resumable_cross_validation_run(args):
-    """Return the interrupted CV directory this run should continue, if any."""
+    """Return the interrupted or finished CV directory this run should continue, if any."""
 
     if not getattr(args, RESUME_CROSS_VALIDATION_ATTRIBUTE, False) or not resume_enabled(args):
         return None
@@ -152,7 +168,17 @@ def find_resumable_cross_validation_run(args):
         fold_results = reusable_fold_results(summary, args.cv_k, args=args)
         if not fold_results:
             continue
-        candidates.append(ResumableCrossValidationRun(cv_dir, tuple(fold_results)))
+        candidates.append(
+            ResumableCrossValidationRun(
+                cv_dir,
+                tuple(fold_results),
+                recorded_aggregate=recorded_cross_validation_aggregate(
+                    summary,
+                    fold_results,
+                    args.cv_k,
+                ),
+            )
+        )
     if not candidates:
         return None
     # Prefer the run that got furthest; the newest attempt breaks ties because
@@ -160,41 +186,139 @@ def find_resumable_cross_validation_run(args):
     return max(candidates, key=lambda candidate: (candidate.completed_folds, candidate.cv_dir.name))
 
 
-def reusable_fold_results(summary, cv_k, args=None):
-    """Return the leading folds of a CV summary that need no retraining.
+# Where --save_epoch_head_interval keeps a run's heads, and the one file
+# epoch_head_pack.py packs them into once the run ends. Defined here rather than
+# in the engine, which imports this module.
+EPOCH_HEADS_DIRNAME = "epoch_heads"
+PACKED_EPOCH_HEADS_FILENAME = "epoch_heads.npz"
 
-    With ``args`` from a run that evaluates the test set, a fold must also have
-    measured the test table that run reports; reusing one that did not would
-    leave its columns blank in the reported results.
+
+def lacks_requested_epoch_heads(log_dir, args):
+    """Whether ``args`` asks for epoch heads the run in ``log_dir`` did not keep."""
+
+    if args is None or not getattr(args, "save_epoch_head_interval", None):
+        return False
+    if not log_dir:
+        return True
+    if (Path(log_dir) / PACKED_EPOCH_HEADS_FILENAME).is_file():
+        return False
+    return not any((Path(log_dir) / EPOCH_HEADS_DIRNAME).glob("*.pt"))
+
+
+def reusable_fold_results(summary, cv_k, args=None):
+    """Return the folds of a CV summary that need no retraining, in fold order.
+
+    Folds trained in parallel finish in any order, so a summary can record fold
+    2 without fold 1; each recorded fold is judged on its own. With ``args`` from
+    a run that evaluates the test set, a fold must also have measured the test
+    table that run reports; reusing one that did not would leave its columns
+    blank in the reported results.
     """
 
     folds = summary.get("folds")
     if not isinstance(folds, list):
         return []
-    reusable = []
-    for fold_index, fold in enumerate(folds):
-        if fold_index >= cv_k:
-            break
-        if not isinstance(fold, dict) or fold.get("cv_fold") != fold_index:
-            break
+    reusable = {}
+    for fold in folds:
+        if not isinstance(fold, dict):
+            continue
+        fold_index = fold.get("cv_fold")
+        if not isinstance(fold_index, int) or not 0 <= fold_index < cv_k or fold_index in reusable:
+            continue
         if fold.get("best_valid_precision_at_1") is None:
-            break
+            continue
         if fold.get("best_valid_mean_average_precision_at_r") is None:
-            break
+            continue
         log_dir = fold.get("log_dir")
         if not log_dir or not Path(log_dir).is_dir():
             # A fold whose artifacts were removed is treated as unfinished.
-            break
+            continue
+        if args is not None and getattr(args, "save_head_state", False):
+            head_path = fold.get("head_state_path")
+            if not head_path or not Path(head_path).is_file():
+                logger.info(
+                    f"Retraining fold {fold_index}: this run requests a saved head and "
+                    "the recorded fold has none"
+                )
+                continue
+        if lacks_requested_epoch_heads(log_dir, args):
+            logger.info(
+                f"Retraining fold {fold_index}: this run saves epoch heads and the "
+                "recorded fold has none"
+            )
+            continue
         if args is not None and getattr(args, "evaluate_test", False):
             missing = missing_test_metrics(fold, args)
             if missing:
                 logger.info(
-                    f"Retraining from fold {fold_index}: its recorded test evaluation lacks "
+                    f"Retraining fold {fold_index}: its recorded test evaluation lacks "
                     f"{list(missing)}, which this run reports"
                 )
-                break
-        reusable.append(result_from_dict(fold))
-    return reusable
+                continue
+        reusable[fold_index] = result_from_dict(fold)
+    return [reusable[index] for index in sorted(reusable)]
+
+
+def recorded_cross_validation_aggregate(summary, fold_results, cv_k):
+    """The aggregate a CV summary recorded, if it covers exactly ``fold_results``.
+
+    The aggregate is written once, after the last fold, so it describes the
+    reused folds only while every one of the ``cv_k`` recorded folds is reused.
+    """
+
+    aggregate = summary.get("aggregate")
+    if not isinstance(aggregate, dict) or summary.get("completed_folds") != cv_k:
+        return None
+    if len(fold_results) != cv_k:
+        # A fold dropped for retraining changes the mean the aggregate holds.
+        return None
+    try:
+        return result_from_dict(aggregate)
+    except (KeyError, TypeError, ValueError):
+        logger.warning(f"Ignoring an unreadable recorded cross-validation aggregate: {aggregate.get('log_dir')}")
+        return None
+
+
+def recorded_concatenated_test_metrics(aggregate):
+    """The concatenated fold test fields of a recorded aggregate, or ``None`` without them."""
+
+    if aggregate is None:
+        return None
+    if aggregate.concatenated_test_precision_at_1 is None:
+        return None
+    if aggregate.concatenated_test_mean_average_precision_at_r is None:
+        return None
+    return {name: getattr(aggregate, name) for name in CONCATENATED_TEST_FIELDS}
+
+
+def missing_concatenated_test_metrics(aggregate, args):
+    """Return the concatenated test metrics this run reports that ``aggregate`` lacks.
+
+    The joint evaluation reports the same table as each fold's test run, so it
+    is held to the same check as a fold, Recall@K rungs included.
+    """
+
+    concatenated = recorded_concatenated_test_metrics(aggregate)
+    if concatenated is None:
+        return ("concatenated_test_precision_at_1", "concatenated_test_mean_average_precision_at_r")
+    return missing_test_metrics(
+        {
+            "test_measurements": concatenated["concatenated_test_measurements"],
+            "test_recall_at_k": concatenated["concatenated_test_recall_at_k"],
+        },
+        args,
+    )
+
+
+def leading_fold_results(fold_results):
+    """The folds ``0..n-1`` without a gap, for work that must run in fold order."""
+
+    leading = []
+    for fold_index, result in enumerate(sorted(fold_results, key=lambda result: result.cv_fold)):
+        if result.cv_fold != fold_index:
+            break
+        leading.append(result)
+    return leading
 
 
 def missing_test_metrics(recorded, args):

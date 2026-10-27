@@ -66,6 +66,16 @@ CROSS_SEED_VALIDATION_TARGETS = ("seed", "data_split_seed", "support_seed")
 LABEL_SAMPLING_MODE_CLASS_SUBSET_K_SHOT = "class_subset_k_shot"
 FINAL_TEST_VISUALIZATION_NONE = "none"
 FINAL_TEST_VISUALIZATION_MODES = (FINAL_TEST_VISUALIZATION_NONE, "pacmap", "tsne")
+# Spelled out rather than imported from training.cli, which the scheduler keeps
+# out of its import graph so it stays PyTorch-free.
+TRACK_EPOCH_NONE = "none"
+# Mirrors training.epoch_tracking.TRACK_EPOCH_ARTIFACTS; the scheduler stays PyTorch-free.
+TRACK_EPOCH_ARTIFACTS = (TRACK_EPOCH_NONE, "graph", "embeddings", "test", "geometry")
+TRACK_EPOCH_LAYOUTS = ("pca", "pacmap", "tsne")
+# Mirrors training.cli.EPOCH_HEAD_DTYPES.
+EPOCH_HEAD_DTYPES = ("float32", "float16", "bfloat16")
+# Mirrors training.epoch_tracking.TRACK_EPOCH_POOL_SAMPLINGS.
+TRACK_EPOCH_POOL_SAMPLINGS = ("images", "classes")
 # Mirrors training.cli: keep the file, delete it once the concatenated fold
 # evaluation has read it, or never write one.
 FOLD_TEST_EMBEDDING_STORAGES = ("file", "temporary", "memory")
@@ -133,6 +143,20 @@ class StudyReplaySpec:
     comparison_seeds: tuple[int, ...] | None = None
     comparison_seed_targets: tuple[str, ...] | None = None
     final_test_visualization: tuple[str, ...] | None = None
+    # Keep each validation-selected fold model so it can be exported into the
+    # embedding viewer's Saved heads source after the replay finishes.
+    save_head_state: bool | None = None
+    # Also keep the head itself every this many epochs (epoch_heads/); 0 keeps none.
+    save_epoch_head_interval: int | None = None
+    epoch_head_dtype: str | None = None
+    # What each replayed fold records about its own structure while it trains:
+    # the artifacts, the epochs between them, the projection, and the sample cap.
+    # Off unless an interval is set.
+    track_epoch_artifacts: tuple[str, ...] | None = None
+    track_epoch_interval: int | None = None
+    track_epoch_layout: str | None = None
+    track_epoch_max_samples: int | None = None
+    track_epoch_pool_sampling: str | None = None
     # Where the replayed folds keep the test embeddings the concatenated fold
     # evaluation needs: on disk, on disk until it has read them, or in memory.
     fold_test_embedding_storage: str | None = None
@@ -177,6 +201,31 @@ class StudyReplaySpec:
         if self.final_test_visualization is not None:
             arguments.append("--final_test_visualization")
             arguments.extend(self.final_test_visualization)
+        if self.save_head_state is not None:
+            arguments.append(
+                "--save_final_head_state"
+                if self.save_head_state
+                else "--no-save_final_head_state"
+            )
+        if self.save_epoch_head_interval is not None:
+            arguments.extend(
+                ["--save_epoch_head_interval", str(self.save_epoch_head_interval)]
+            )
+        if self.epoch_head_dtype is not None:
+            arguments.extend(["--epoch_head_dtype", self.epoch_head_dtype])
+        if self.track_epoch_artifacts is not None:
+            arguments.append("--track_epoch_artifacts")
+            arguments.extend(self.track_epoch_artifacts)
+        if self.track_epoch_interval is not None:
+            arguments.extend(["--track_epoch_interval", str(self.track_epoch_interval)])
+        if self.track_epoch_layout is not None:
+            arguments.extend(["--track_epoch_layout", self.track_epoch_layout])
+        if self.track_epoch_max_samples is not None:
+            arguments.extend(
+                ["--track_epoch_max_samples", str(self.track_epoch_max_samples)]
+            )
+        if self.track_epoch_pool_sampling is not None:
+            arguments.extend(["--track_epoch_pool_sampling", self.track_epoch_pool_sampling])
         if self.fold_test_embedding_storage is not None:
             arguments.extend(
                 ["--fold_test_embedding_storage", self.fold_test_embedding_storage]
@@ -220,6 +269,9 @@ class RunSpec:
     # one variant it executes.
     ablation_config: str | None = None
     ablation_variant: str | None = None
+    # Only these variants of ablation_config, so one config can back several runs
+    # (e.g. one enabled cell and one already finished, disabled cell).
+    ablation_variants: tuple[str, ...] | None = None
     save_dir: str | None = None
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
@@ -322,6 +374,7 @@ _RUN_KEYS = {
     "study_dir",
     "study_replay",
     "ablation_config",
+    "ablation_variants",
     "save_dir",
     "args",
     "env",
@@ -361,6 +414,24 @@ _STUDY_REPLAY_OWNED_OPTIONS = {
     "--comparison-seed-targets",
     "--final_test_visualization",
     "--final-test-visualization",
+    "--save_final_head_state",
+    "--save-final-head-state",
+    "--no-save_final_head_state",
+    "--no-save-final-head-state",
+    "--save_epoch_head_interval",
+    "--save-epoch-head-interval",
+    "--epoch_head_dtype",
+    "--epoch-head-dtype",
+    "--track_epoch_artifacts",
+    "--track-epoch-artifacts",
+    "--track_epoch_interval",
+    "--track-epoch-interval",
+    "--track_epoch_layout",
+    "--track-epoch-layout",
+    "--track_epoch_max_samples",
+    "--track-epoch-max-samples",
+    "--track_epoch_pool_sampling",
+    "--track-epoch-pool-sampling",
     "--fold_test_embedding_storage",
     "--fold-test-embedding-storage",
     "--report_test_metrics",
@@ -515,18 +586,17 @@ def _choice_list(value: Any, source: str, choices: Sequence[str]) -> tuple[str, 
     return tuple(result)
 
 
-def _final_test_visualization_list(value: Any, source: str) -> tuple[str, ...]:
-    """Load one or more final-test visualizations, one mode still being a bare string."""
+def _absorbing_choice_list(value, source, choices, none_choice, noun):
+    """Load one or more choices, one still being a bare string; ``none_choice`` stands alone."""
 
     if isinstance(value, str):
-        return (_choice(value, source, FINAL_TEST_VISUALIZATION_MODES),)
-    modes = _choice_list(value, source, FINAL_TEST_VISUALIZATION_MODES)
-    if FINAL_TEST_VISUALIZATION_NONE in modes and len(modes) > 1:
+        return (_choice(value, source, choices),)
+    selected = _choice_list(value, source, choices)
+    if none_choice in selected and len(selected) > 1:
         raise ManifestError(
-            f"{source} combines {FINAL_TEST_VISUALIZATION_NONE!r} with a visualization; "
-            "request one or the other"
+            f"{source} combines {none_choice!r} with {noun}; request one or the other"
         )
-    return modes
+    return selected
 
 
 def _load_study_replay(raw: Any, source: str) -> StudyReplaySpec:
@@ -560,7 +630,35 @@ def _load_study_replay(raw: Any, source: str) -> StudyReplaySpec:
         ),
         final_test_visualization=parse(
             "final_test_visualization",
-            _final_test_visualization_list,
+            lambda value, item: _absorbing_choice_list(
+                value,
+                item,
+                FINAL_TEST_VISUALIZATION_MODES,
+                FINAL_TEST_VISUALIZATION_NONE,
+                "a visualization",
+            ),
+        ),
+        save_head_state=parse("save_head_state", _require_bool),
+        save_epoch_head_interval=parse("save_epoch_head_interval", _non_negative_int),
+        epoch_head_dtype=parse(
+            "epoch_head_dtype",
+            lambda value, item: _choice(value, item, EPOCH_HEAD_DTYPES),
+        ),
+        track_epoch_artifacts=parse(
+            "track_epoch_artifacts",
+            lambda value, item: _absorbing_choice_list(
+                value, item, TRACK_EPOCH_ARTIFACTS, TRACK_EPOCH_NONE, "an artifact"
+            ),
+        ),
+        track_epoch_interval=parse("track_epoch_interval", _positive_int),
+        track_epoch_layout=parse(
+            "track_epoch_layout",
+            lambda value, item: _choice(value, item, TRACK_EPOCH_LAYOUTS),
+        ),
+        track_epoch_max_samples=parse("track_epoch_max_samples", _non_negative_int),
+        track_epoch_pool_sampling=parse(
+            "track_epoch_pool_sampling",
+            lambda value, item: _choice(value, item, TRACK_EPOCH_POOL_SAMPLINGS),
         ),
         fold_test_embedding_storage=parse(
             "fold_test_embedding_storage",
@@ -688,7 +786,16 @@ def expand_ablation_runs(runs: Sequence[RunSpec], working_dir: Path) -> tuple[Ru
             config = ablation.load_ablation_config(path)
         except (OSError, ValueError) as exc:
             raise ManifestError(f"Invalid ablation_config for run {run.name!r}: {exc}") from exc
-        for variant in config["variants"]:
+        variants = list(config["variants"])
+        if run.ablation_variants is not None:
+            unknown = sorted(set(run.ablation_variants) - set(variants))
+            if unknown:
+                raise ManifestError(
+                    f"Run {run.name!r} selects ablation_variants {unknown}, which {path.name} does not "
+                    f"define; it has {variants}"
+                )
+            variants = [variant for variant in variants if variant in run.ablation_variants]
+        for variant in variants:
             expanded.append(
                 replace(
                     run,
@@ -741,6 +848,13 @@ def _load_run_spec(
     ablation_config = _optional_string(
         values.get("ablation_config"), f"{source}.ablation_config"
     )
+    ablation_variants = values.get("ablation_variants")
+    if ablation_variants is not None:
+        if ablation_config is None:
+            raise ManifestError(f"{source}.ablation_variants requires {source}.ablation_config")
+        ablation_variants = _string_list(ablation_variants, f"{source}.ablation_variants")
+        if not ablation_variants:
+            raise ManifestError(f"{source}.ablation_variants must name at least one variant")
     args = _string_list(values.get("args", []), f"{source}.args")
     _validate_extra_args(
         args,
@@ -769,6 +883,7 @@ def _load_run_spec(
         study_dir=study_dir,
         study_replay=study_replay,
         ablation_config=ablation_config,
+        ablation_variants=ablation_variants,
         save_dir=_optional_string(values.get("save_dir"), f"{source}.save_dir"),
         args=args,
         env=_environment(values.get("env", {}), f"{source}.env"),

@@ -1,5 +1,6 @@
 """Serialization helpers shared by experiment modules."""
 
+import csv
 import json
 from pathlib import Path
 
@@ -129,6 +130,9 @@ def result_to_dict(result):
         "concatenated_test_measurements": measurements_to_json(
             getattr(result, "concatenated_test_measurements", None)
         ),
+        "regularizer_activity": measurements_to_json(
+            getattr(result, "regularizer_activity", None)
+        ),
     }
 
 def result_from_dict(values):
@@ -172,6 +176,7 @@ def result_from_dict(values):
         warmup_selected_epoch=values.get("warmup_selected_epoch"),
         warmup_checkpoint_mode=values.get("warmup_checkpoint_mode"),
         warmup_restored_epoch=values.get("warmup_restored_epoch"),
+        regularizer_activity=values.get("regularizer_activity"),
         test_precision_at_1_std=values.get("test_precision_at_1_std"),
         test_mean_average_precision_at_r_std=values.get(
             "test_mean_average_precision_at_r_std"
@@ -230,6 +235,15 @@ def is_scalar(value):
 def write_json(path, data):
     with Path(path).open("w") as json_file:
         json.dump(to_jsonable(data), json_file, indent=2, sort_keys=True)
+
+def write_csv(path, rows, fieldnames=None):
+    """Write dict rows; the header defaults to the first row's keys, in order."""
+
+    with Path(path).open("w", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0]) if fieldnames is None else fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
 
 def read_json(path):
     with Path(path).open(encoding="utf-8") as json_file:

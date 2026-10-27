@@ -202,8 +202,31 @@ def make_args_from_run_config(recorded_args, request_args):
     return args
 
 
-def evaluate_saved_head_run(run):
-    """Embed and score D_test with one run's reloaded projection head."""
+def rebuild_dataset_bundle(run):
+    """The run's own fold of datasets, rebuilt from its recorded seeds and split settings."""
+
+    args = run.args
+    return utils.setup_dataset_bundle(
+        args.dataset,
+        seed=args.seed,
+        data_split_seed=engine.get_data_split_seed(args),
+        cv_k=args.cv_k if run.cv_fold is not None else 1,
+        cv_fold=run.cv_fold,
+        cv_mode=args.cv_mode,
+        val_mode=args.val_mode,
+        dataset_protocol=args.dataset_protocol,
+        full_train=bool(getattr(args, "final_full_train", False)),
+        holdout_val_ratio=engine.get_holdout_val_ratio(args),
+        image_resize_mode=engine.get_image_resize_mode(args),
+    )
+
+
+def rebuild_saved_head_model(run):
+    """Return ``(model, dataset_bundle, metadata)`` for one run's reloaded head.
+
+    The model carries the saved head on ``run.args.device``; the dataset bundle
+    is the run's own fold, rebuilt from its recorded seeds and split settings.
+    """
 
     args = run.args
     ssl_config = run.ssl_config
@@ -224,22 +247,16 @@ def evaluate_saved_head_run(run):
     model = model.to(args.device)
     engine.restore_head_state(model, payload)
 
-    dataset_bundle = utils.setup_dataset_bundle(
-        args.dataset,
-        seed=args.seed,
-        data_split_seed=engine.get_data_split_seed(args),
-        cv_k=args.cv_k if run.cv_fold is not None else 1,
-        cv_fold=run.cv_fold,
-        cv_mode=args.cv_mode,
-        val_mode=args.val_mode,
-        dataset_protocol=args.dataset_protocol,
-        cifar_imbalance_factor=args.cifar_imbalance_factor,
-        cifar_train_fraction=args.cifar_train_fraction,
-        cifar_test_fraction=args.cifar_test_fraction,
-        full_train=bool(getattr(args, "final_full_train", False)),
-        holdout_val_ratio=engine.get_holdout_val_ratio(args),
-        image_resize_mode=engine.get_image_resize_mode(args),
-    )
+    dataset_bundle = rebuild_dataset_bundle(run)
+    return model, dataset_bundle, metadata
+
+
+def evaluate_saved_head_run(run):
+    """Embed and score D_test with one run's reloaded projection head."""
+
+    args = run.args
+    ssl_config = run.ssl_config
+    model, dataset_bundle, metadata = rebuild_saved_head_model(run)
 
     pin_memory = torch.device(utils.normalize_device_name(args.device)).type == "cuda"
     test_loader = engine._make_eval_loader(

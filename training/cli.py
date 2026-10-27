@@ -13,10 +13,9 @@ from models.retrieval_model import (
     DEFAULT_PROJECTION_LAYERS,
     normalize_backbone_tuning,
 )
-from tensorboard import default
 from utils.dataset_constants import SAME_SOURCE_EVALUATION, VAL_MODE_MATCH_TRAIN
 
-from . import cpu_threads, device_thresholds, semi_supervised
+from . import cpu_threads, device_thresholds, epoch_tracking, semi_supervised
 from .ssl import step_visualization
 from .types import (
     ALL_LOSSES,
@@ -82,32 +81,13 @@ def get_fold_test_embedding_storage(args):
 
 
 def normalize_final_test_visualization(value):
-    """Return the requested final-test visualizations as an ordered tuple.
-
-    Accepts a bare string because every study saved before this option took
-    several modes recorded one, and 'none' stays absorbing: it means no
-    visualization, so combining it with a real mode is a contradiction rather
-    than a request for both.
-    """
-
-    if value is None:
-        return ()
-    modes = (value,) if isinstance(value, str) else tuple(value)
-    unknown = [mode for mode in modes if mode not in FINAL_TEST_VISUALIZATION_MODES]
-    if unknown:
-        raise ValueError(
-            f"final_test_visualization must be one or more of {FINAL_TEST_VISUALIZATION_MODES}: "
-            f"{unknown}"
-        )
-    if FINAL_TEST_VISUALIZATION_NONE in modes:
-        if len(set(modes)) > 1:
-            raise ValueError(
-                f"final_test_visualization={list(modes)} combines "
-                f"{FINAL_TEST_VISUALIZATION_NONE!r} with a visualization; request one or the other"
-            )
-        return ()
-    # dict.fromkeys keeps the requested order while dropping repeats.
-    return tuple(dict.fromkeys(modes))
+    return epoch_tracking.normalize_absorbing_choices(
+        value,
+        "final_test_visualization",
+        FINAL_TEST_VISUALIZATION_MODES,
+        FINAL_TEST_VISUALIZATION_NONE,
+        "a visualization",
+    )
 RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLD_ENV = (
     device_thresholds.RUN_SCHEDULER_GPU_BATCH_SIZE_THRESHOLD_ENV
 )
@@ -281,29 +261,6 @@ parser.add_argument(
 )
 parser.add_argument("--dataset", type=utils.normalize_dataset_name, default="Cars196", choices=DATASETS, help="dataset")
 parser.add_argument(
-    "--cifar_imbalance_factor",
-    type=float,
-    default=None,
-    help=(
-        "CIFAR long-tail factor img_min/img_max. None keeps balanced data; "
-        "for example, 0.01 produces approximately 100:1 head-to-tail imbalance."
-    ),
-)
-parser.add_argument(
-    "--cifar_train_fraction",
-    "--cifar-train-fraction",
-    type=float,
-    default=0.5,
-    help="per-class fraction assigned to development/training by dataset_protocol=cifar_balanced_fraction",
-)
-parser.add_argument(
-    "--cifar_test_fraction",
-    "--cifar-test-fraction",
-    type=float,
-    default=0.5,
-    help="per-class fraction assigned to the final test set by dataset_protocol=cifar_balanced_fraction",
-)
-parser.add_argument(
     "--dataset_protocol",
     choices=utils.DATASET_PROTOCOLS,
     default="official",
@@ -459,12 +416,6 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
-    "--stml_g_dim",
-    type=int,
-    default=None,
-    help="STML background-head dimension. None uses the DINO backbone dimension.",
-)
-parser.add_argument(
     "--device",
     type=utils.normalize_device_name,
     default="cuda",
@@ -546,16 +497,56 @@ parser.add_argument(
 )
 parser.add_argument("--epochs", type=int, default=1, help="maximum number of training epochs")
 parser.add_argument("--patience", type=int, default=3, help="early-stopping patience after SSL warmup")
+parser.add_argument(
+    "--patience_delay_epochs",
+    "--patience-delay-epochs",
+    dest="patience_delay_epochs",
+    type=int,
+    default=0,
+    help=(
+        "number of epochs after the warm-up (after the start of training without warm-up) that do "
+        "not consume early-stopping patience. A method whose SSL term first pulls the validation "
+        "metric down and then climbs back slowly is otherwise stopped while still rising. Selection "
+        "still covers these epochs, so their best is kept if nothing later beats it. After them, "
+        "patience counts epochs without a value above the last delay epoch's (then above the highest "
+        "value since), so a climb that has not yet passed an earlier best keeps training. 0 counts "
+        "patience from the first selectable epoch against the selected best"
+    ),
+)
 parser.add_argument("--cv_k", type=int, default=4, help="number of cross-validation folds. Set to 1 to disable CV")
+parser.add_argument(
+    "--cv_parallel_folds",
+    "--cv-parallel-folds",
+    dest="cv_parallel_folds",
+    type=int,
+    default=1,
+    help=(
+        "train up to this many cross-validation folds of one run at the same time; the run "
+        "continues (fold aggregation, concatenated test evaluation) once all of them have "
+        "finished. 1 trains the folds one after another. SLADE's cross-fold teacher handoff "
+        "makes the folds sequential and always trains them one at a time"
+    ),
+)
+parser.add_argument(
+    "--cv_parallel_backend",
+    "--cv-parallel-backend",
+    dest="cv_parallel_backend",
+    choices=("process", "thread"),
+    default="process",
+    help=(
+        "how --cv_parallel_folds > 1 runs its folds. 'process' spawns one Python process per "
+        "fold: each fold is reproducible and trains exactly as it would sequentially, but holds "
+        "its own CUDA context, backbone and host memory. 'thread' runs the folds on threads of "
+        "this process, sharing one CUDA context and the in-memory frozen features; they share "
+        "the global RNGs too, so the fold results are not reproducible"
+    ),
+)
 parser.add_argument(
     "--cv_mode",
     type=str,
     choices=utils.CV_MODES,
     default="kfold",
-    help=(
-        "cross-validation splitter to use when cv_k > 1. "
-        "Use superclass_group_kfold with cifar100_fc100 to hold out complete superclasses"
-    ),
+    help="cross-validation splitter to use when cv_k > 1",
 )
 parser.add_argument(
     "--val_mode",
@@ -634,7 +625,7 @@ parser.add_argument(
     default=True,
     help=(
         "on by default: report the full retrieval table on D_test only: precision_at_1, r_precision, "
-        "mean_average_precision_at_r, mean_average_precision, mean_reciprocal_rank, NMI, AMI "
+        "mean_average_precision_at_r, NMI, AMI "
         "and Recall@"
         + "/".join(str(k) for k in utils.REPORT_TEST_RECALL_AT_K)
         + ". Validation keeps reporting --measurements and --recall_at_k, so the extra "
@@ -656,7 +647,11 @@ parser.add_argument(
     metavar="MEASUREMENT",
     help=(
         "measurements to report on D_test, if they should differ from --measurements. "
-        "Unset means the test evaluation reports the same list validation does"
+        "Unset means the test evaluation reports the same list validation does. "
+        "mean_average_precision and mean_reciprocal_rank are the only ones that read past "
+        "the top R, so asking for either puts the whole shared retrieval at full depth and "
+        "makes the evaluation's working set quadratic in the split size (~9 GiB on an "
+        "In-Shop fold against ~0.5 GiB without them)"
     ),
 )
 parser.add_argument(
@@ -749,6 +744,18 @@ parser.add_argument(
     help=(
         "log per-batch diagnostic metrics such as gradient norms and miner counts; "
         "this adds overhead and should stay off for throughput runs"
+    ),
+)
+parser.add_argument(
+    "--log_head_dynamics",
+    "--log-head-dynamics",
+    dest="log_head_dynamics",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "log the projection head's parameter norm ||W||, its per-epoch update ||dW|| and the "
+        "effective step ||dW||/||W|| to diagnostics.csv (category head_dynamics); one parameter "
+        "snapshot per epoch"
     ),
 )
 parser.add_argument(
@@ -1061,11 +1068,32 @@ parser.add_argument(
     help=(
         "optional filtering applied to external unlabeled images. "
         "compcars_model_min_count keeps CompCars model-level categories with enough images; "
-        "compcars_slade_paper reproduces the SLADE CompCars subset from the official "
-        "classification split and checks for 16,537 images across 145 model classes; "
-        "compcars_stml_paper is the same pool under the STML name, since STML adopts SLADE's "
-        "protocol; nabirds reads the official NABirds metadata and exposes all "
+        "compcars_slade_paper reproduces the SLADE CompCars subset (all whole-car web-nature "
+        "images, make/model/year categories with >= 100 images) and checks for 16,537 images "
+        "across 145 classes; nabirds reads the official NABirds metadata and exposes all "
         "listed images as hidden-label samples for CUB."
+    ),
+)
+parser.add_argument(
+    "--external_unlabeled_fraction",
+    "--external-unlabeled-fraction",
+    type=float,
+    default=None,
+    help=(
+        "share of the external unlabeled pool (after --external_unlabeled_filter) that joins the "
+        "unlabeled data, like --semi_inat_ood_fraction: class-balanced over CompCars models and "
+        "NABirds species, uniform for an unfiltered directory. Nested: a larger fraction keeps a "
+        "smaller one's images. Unset or 1.0 keeps the whole pool"
+    ),
+)
+parser.add_argument(
+    "--external_unlabeled_seed",
+    "--external-unlabeled-seed",
+    type=int,
+    default=None,
+    help=(
+        "seed selecting which images --external_unlabeled_fraction keeps (default 0). It does not "
+        "follow --seed, so every method, fold and replay seed sees the same subset"
     ),
 )
 parser.add_argument(
@@ -1079,7 +1107,7 @@ parser.add_argument(
     action="store_true",
     default=False,
     help=(
-        "fail CompCars SLADE/STML-paper filtering unless the filtered pool has exactly "
+        "fail CompCars SLADE-paper filtering unless the filtered pool has exactly "
         "16,537 images across 145 model classes"
     ),
 )
@@ -1089,7 +1117,7 @@ parser.add_argument(
     default=utils.COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO,
     choices=utils.COMPCARS_PAPER_THRESHOLD_CALIBRATION_MODES,
     help=(
-        "how CompCars SLADE/STML-paper filtering picks its count threshold. auto keeps "
+        "how CompCars SLADE-paper filtering picks its count threshold. auto keeps "
         "--compcars_min_model_images when it reproduces the published 16,537 images across "
         "145 model classes and otherwise searches for a threshold that does; off always uses "
         "--compcars_min_model_images"
@@ -1224,7 +1252,55 @@ parser.add_argument(
     help=(
         "write the validation-selected projection head of every run to head_state.pt in its log "
         "directory. With a frozen backbone that head is the whole fitted model, so "
-        "--evaluate_saved_heads can measure it again without training it again"
+        "--evaluate_saved_heads can measure it again without training it again and the embedding "
+        "exporter can add it to the viewer's Saved heads source. This can be enabled beside "
+        "--final_test_visualization for final-study replays"
+    ),
+)
+parser.add_argument(
+    "--save_final_head_state",
+    "--save-final-head-state",
+    dest="save_final_head_state",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "write head_state.pt only for the final model or final cross-validation folds that "
+        "produce D_test performance/visualizations. Unlike --save_head_state, this does not "
+        "save a head for every HPO trial. The embedding exporter can add these artifacts to "
+        "the viewer's Saved heads source"
+    ),
+)
+parser.add_argument(
+    "--save_epoch_head_interval",
+    "--save-epoch-head-interval",
+    dest="save_epoch_head_interval",
+    type=parse_optional_interval,
+    default=None,
+    metavar="EPOCHS",
+    help=(
+        "also write the projection head at epoch -1, every EPOCHS epochs and the last epoch to "
+        "epoch_heads/epoch_<NNNN>.pt in the run's log directory, in head_state.pt's format. "
+        "With a frozen backbone one file, the run's config, its split and the feature cache "
+        "reproduce that epoch's embeddings; a 768-d linear head is ~2.4 MB per file. Applies "
+        "to every run this process trains, so set it on replays rather than HPO studies. "
+        "null (or 0) saves none"
+    ),
+)
+# Measured on 2026-10-01 against the fp32 head of a Cars LRML fold (8131 test
+# images): bfloat16 moves a cosine by <= 6e-4 and keeps 99.9 % of top-1 and 10-NN
+# neighbours, effective rank within 0.03; float16 is ten times closer.
+EPOCH_HEAD_DTYPES = ("float32", "float16", "bfloat16")
+parser.add_argument(
+    "--epoch_head_dtype",
+    "--epoch-head-dtype",
+    dest="epoch_head_dtype",
+    choices=EPOCH_HEAD_DTYPES,
+    default="bfloat16",
+    help=(
+        "precision --save_epoch_head_interval stores the heads in. Packed, a bfloat16 head "
+        "takes ~1/6 of a float32 file and float16 ~1/4, against ~2/3 for float32 kept "
+        "bit-exact. bfloat16 keeps geometry trends and 99.9 %% of nearest neighbours; use "
+        "float16 or float32 to recompute neighbour-exact pseudo-labels"
     ),
 )
 parser.add_argument(
@@ -1327,11 +1403,134 @@ parser.add_argument(
     "--final-test-visualization",
     nargs="+",
     choices=FINAL_TEST_VISUALIZATION_MODES,
-    default=[FINAL_TEST_VISUALIZATION_PACMAP],
+    default=[FINAL_TEST_VISUALIZATION_NONE],
     help=(
         "optional final D_test embedding visualization artifacts to create after test "
         "evaluation; name several to get them all from the same embeddings, or 'none' alone "
         "to skip"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_artifacts",
+    "--track-epoch-artifacts",
+    dest="track_epoch_artifacts",
+    nargs="+",
+    choices=epoch_tracking.TRACK_EPOCH_ARTIFACTS,
+    default=[epoch_tracking.TRACK_EPOCH_NONE],
+    help=(
+        "what to record about a fold's structure at epoch -1 and every "
+        "--track_epoch_interval epochs thereafter: 'graph' rebuilds the SSL pool's kNN graph "
+        "from the current embeddings and measures purity, degree, components and spectral gap; "
+        "'embeddings' projects the same pool and measures effective rank, alignment, uniformity "
+        "and the intra/inter-class cosine gap; 'test' evaluates D_test off the selection path so "
+        "the test curve can be read against the structure; 'geometry' measures singular spectrum, "
+        "spectral decay, class distances, alignment and uniformity per split (labeled, unlabeled, "
+        "validation, test) and once on the backbone features. Name several, or 'none' alone. "
+        "Requires --track_epoch_interval; see docs/epoch_tracking.md"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_interval",
+    "--track-epoch-interval",
+    dest="track_epoch_interval",
+    type=parse_optional_interval,
+    default=None,
+    metavar="EPOCHS",
+    help=(
+        "epochs between two --track_epoch_artifacts bundles. Epoch -1 (before any optimizer "
+        "step) and the last epoch are always included, so the curve has a baseline and ends on "
+        "the model the run is reported on. null (or 0) tracks nothing"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_layout",
+    "--track-epoch-layout",
+    dest="track_epoch_layout",
+    choices=epoch_tracking.TRACK_EPOCH_LAYOUTS,
+    default=epoch_tracking.DEFAULT_TRACK_EPOCH_LAYOUT,
+    help=(
+        "2-D projection for --track_epoch_artifacts plots. The graph and the embedding space "
+        "share it, so the two can be read together; nonlinear layouts fall back to PCA on failure"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_pool_sampling",
+    "--track-epoch-pool-sampling",
+    dest="track_epoch_pool_sampling",
+    choices=epoch_tracking.TRACK_EPOCH_POOL_SAMPLINGS,
+    default=epoch_tracking.DEFAULT_TRACK_EPOCH_POOL_SAMPLING,
+    help=(
+        "how --track_epoch_max_samples caps the pool: 'images' draws single images at the "
+        "pool's labeled/unlabeled ratio, 'classes' draws whole classes like the validation and "
+        "test splits, so no tracked class is left with one image"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_max_samples",
+    "--track-epoch-max-samples",
+    dest="track_epoch_max_samples",
+    type=int,
+    default=epoch_tracking.DEFAULT_TRACK_EPOCH_MAX_SAMPLES,
+    help=(
+        "cap on the pool samples each tracked epoch embeds, projects and builds a graph over. "
+        "The subset is drawn once per fold at the pool's own labeled/unlabeled ratio, so every "
+        "tracked epoch describes the same samples. 0 keeps the whole pool, at the projection's "
+        "cost"
+    ),
+)
+parser.add_argument(
+    "--track_epoch_workers",
+    "--track-epoch-workers",
+    dest="track_epoch_workers",
+    type=int,
+    default=epoch_tracking.DEFAULT_TRACK_EPOCH_WORKERS,
+    help=(
+        "worker processes that compute the 'geometry' rows while training goes on; the fold "
+        "waits for the last of them when it ends. Each worker holds the run's --num_threads "
+        "BLAS budget, so the rows are the ones the training process would have computed. "
+        "0 computes them in the training process"
+    ),
+)
+parser.add_argument(
+    "--projection_3d",
+    "--projection-3d",
+    dest="projection_3d",
+    action=argparse.BooleanOptionalAction,
+    default=False,
+    help=(
+        "also write a 3-D projection next to every 2-D one: each --track_epoch_artifacts "
+        "embeddings layout (embeddings_<layout>_3d.csv) and each --final_test_visualization "
+        "(test_<layout>_3d.csv). The embedding viewer reads them, so a run needs no saved head "
+        "for a 3-D view. Off by default: the projection runs a second time, at its own cost"
+    ),
+)
+parser.add_argument(
+    "--tsne_backend",
+    "--tsne-backend",
+    dest="tsne_backend",
+    choices=utils.TSNE_BACKENDS,
+    default=utils.DEFAULT_TSNE_BACKEND,
+    help=(
+        "how every t-SNE projection (final test, concatenated folds, epoch tracking, graph "
+        "diagnostics) is computed. 'exact' (default) is this repository's GPU t-SNE: sklearn's "
+        "schedule and neighbour affinities with exact repulsion in a Triton kernel, measured at "
+        "1.5 s (2-D) and 1.6 s (3-D) on the 8131 Cars196 test embeddings, where sklearn took 28 s "
+        "and 74 s, with the same neighbourhood preservation. 'cuml' runs RAPIDS cuML (2-D only; "
+        "3-D projections use 'exact'). 'torchdr' runs TorchDR, which differentiates a dense N x N "
+        "matrix, so a projection needing more than --tsne_max_dense_gpu_gb uses 'exact' instead. "
+        "'sklearn' is the original CPU Barnes-Hut. Without CUDA, or when a GPU backend runs out of "
+        "memory, the projection falls back to sklearn. The layouts differ between backends"
+    ),
+)
+parser.add_argument(
+    "--tsne_max_dense_gpu_gb",
+    "--tsne-max-dense-gpu-gb",
+    dest="tsne_max_dense_gpu_gb",
+    type=float,
+    default=utils.DEFAULT_TSNE_MAX_DENSE_GPU_BYTES / 1024**3,
+    help=(
+        "largest dense pairwise allocation, in GiB, a TorchDR t-SNE may make before the "
+        "projection switches to the block-wise 'exact' backend"
     ),
 )
 parser.add_argument(
@@ -1556,6 +1755,15 @@ def get_support_seed(args):
 
     support_seed = getattr(args, "support_seed", None)
     return DEFAULT_SUPPORT_SEED if support_seed is None else int(support_seed)
+
+def load_args_ssl_config(args, path=None):
+    """Load ``path`` (default: ``args.ssl_config``) seeded from this run's seeds."""
+
+    return semi_supervised.load_ssl_config(
+        args.ssl_config if path is None else path,
+        default_seed=args.seed,
+        default_support_seed=get_support_seed(args),
+    )
 
 def resolve_support_seed(args):
     """Keep labeled support selection independent from the run seed."""

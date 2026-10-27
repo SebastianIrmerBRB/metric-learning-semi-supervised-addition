@@ -10,8 +10,11 @@ indices do not.  The post-apportion helpers therefore return remapped positions
 for the new training subset.
 """
 
+import contextlib
+import contextvars
 import copy
 import csv
+import functools
 import json
 import math
 import multiprocessing as mp
@@ -40,31 +43,7 @@ from training import gpu_feature_loader
 
 from . import local_datasets
 from .dataset_constants import (
-    CIFAR100_DEVELOPMENT_CLASSES,
-    CIFAR100_FC100_DEVELOPMENT_CLASSES,
-    CIFAR100_FC100_DEVELOPMENT_SUPERCLASSES,
-    CIFAR100_FC100_TEST_CLASSES,
-    CIFAR100_FC100_TEST_SUPERCLASSES,
-    CIFAR100_FC100_TRAIN_CLASSES,
-    CIFAR100_FC100_TRAIN_SUPERCLASSES,
-    CIFAR100_FC100_VALIDATION_CLASSES,
-    CIFAR100_FC100_VALIDATION_SUPERCLASSES,
-    CIFAR100_FINE_CLASS_DISJOINT_DEVELOPMENT_CLASSES,
-    CIFAR100_FINE_CLASS_DISJOINT_TEST_CLASSES,
-    CIFAR100_FINE_CLASS_TO_SUPERCLASS,
-    CIFAR100_HELD_OUT_TEST_CLASSES,
-    CIFAR100_SUPERCLASS_DISJOINT_DEVELOPMENT_CLASSES,
-    CIFAR100_SUPERCLASS_DISJOINT_DEVELOPMENT_SUPERCLASSES,
-    CIFAR100_SUPERCLASS_DISJOINT_TEST_CLASSES,
-    CIFAR100_SUPERCLASS_DISJOINT_TEST_SUPERCLASSES,
-    CIFAR100_SUPERCLASS_FINE_CLASSES,
-    CIFAR100_SUPERCLASS_NAMES,
-    CIFAR10_DEVELOPMENT_CLASSES,
-    CIFAR10_HELD_OUT_TEST_CLASSES,
-    CIFAR_DATASETS,
-    CIFAR_LONG_TAIL_SOURCE,
     ANY_DATASET,
-    CIFAR_UNSEEN_CLASS_PROTOCOLS,
     CUB_ALTERNATING_CLASS_SPLIT_VERSION,
     CUB_ALTERNATING_DEVELOPMENT_CLASSES,
     CUB_ALTERNATING_HELD_OUT_TEST_CLASSES,
@@ -72,16 +51,8 @@ from .dataset_constants import (
     CUB_EXPECTED_CLASS_COUNT,
     CUB_PROTOCOLS,
     CV_MODES,
-    CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
-    CV_MODE_SUPERCLASS_GROUP_KFOLD,
     DATASET_PROTOCOLS,
     DATASET_PROTOCOL_INFO,
-    DATASET_PROTOCOL_CIFAR100_FC100,
-    DATASET_PROTOCOL_CIFAR100_FINE_CLASS_DISJOINT,
-    DATASET_PROTOCOL_CIFAR100_SUPERCLASS_DISJOINT,
-    DATASET_PROTOCOL_CIFAR100_UNSEEN_CLASSES,
-    DATASET_PROTOCOL_CIFAR10_UNSEEN_CLASSES,
-    DATASET_PROTOCOL_CIFAR_BALANCED_FRACTION,
     DATASET_PROTOCOL_CUB_ALTERNATING_100_100,
     DATASET_PROTOCOL_NABIRDS_ALTERNATING_277_278,
     DATASET_PROTOCOL_NABIRDS_PUMA_278_277,
@@ -118,7 +89,6 @@ from .dataset_constants import (
     SEMI_INAT_DEFAULT_OOD_FRACTION,
     SEMI_INAT_DEFAULT_OOD_SEED,
     SEMI_INAT_PROTOCOLS,
-    SUPERCLASS_AWARE_CV_MODES,
     VAL_MODES,
     VAL_MODE_ALL,
     VAL_MODE_MATCH_TRAIN,
@@ -135,26 +105,23 @@ from .dataset_composition import (
     EXTERNAL_UNLABELED_FILTERS_COMPCARS_PAPER,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_MODEL_MIN_COUNT,
     EXTERNAL_UNLABELED_FILTER_COMPCARS_SLADE_PAPER,
-    EXTERNAL_UNLABELED_FILTER_COMPCARS_STML_PAPER,
     EXTERNAL_UNLABELED_FILTER_NABIRDS,
     EXTERNAL_UNLABELED_FILTER_NONE,
     append_external_unlabeled_dataset,
+    select_external_fraction,
     append_semi_aves_native_unlabeled_dataset,
     append_semi_inat_native_unlabeled_dataset,
     get_nested_transform,
 )
+from .external_pool_download import ensure_external_unlabeled_pool
 from .dataset_protocols import (
-    apply_cifar_long_tail,
     describe_dataset_protocols,
     format_dataset_protocol_help,
     get_dataset_class,
     is_dataset_ready,
     load_dataset_protocol_sources as _load_dataset_protocol_sources,
-    make_cifar_long_tail_class_counts,
     normalize_dataset_name,
     sanitize_native_unlabeled_pool_fractions,
-    validate_cifar_balanced_fraction_protocol,
-    validate_cifar_imbalance_factor,
     validate_dataset_protocol,
     validate_semi_aves_ood_fraction,
     validate_semi_inat_ood_fraction,
@@ -172,27 +139,19 @@ from .dataset_splits import (
     apply_post_apportion_validation_split,
     apply_validation_mode,
     assert_disjoint_dataset_classes,
-    build_class_groups_by_superclass,
-    cifar100_superclass_labels_for_fine_labels,
     count_dataset_classes,
     count_labels_at_positions,
     derive_query_gallery_indices,
     make_holdout_split_info,
-    make_superclass_balanced_group_folds,
-    make_superclass_group_folds,
     make_train_valid_subsets,
     remap_positions,
     select_balanced_subset_indices,
     set_nested_transform,
-    split_cifar_balanced_by_fraction,
     split_dataset_by_classes,
-    split_dataset_by_fixed_classes,
-    split_dataset_by_classes_superclass_balanced,
     split_dataset_cross_validation,
     split_positions_class_disjoint_by_label,
     split_positions_cross_validation,
     split_positions_stratified_by_label,
-    split_positions_superclass_balanced_holdout,
     subset_dataset_by_classes,
     subset_dataset_by_indices,
     unique_sorted_positions,
@@ -340,25 +299,112 @@ def activate_torch_device(device_name):
     return device
 
 
+LOG_FORMAT = "<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}"
+
+
+class _RunLogScope:
+    """The file sinks of one run that shares this process with sibling runs."""
+
+    def __init__(self, label):
+        self.label = str(label)
+        # The label is for people; the filter needs something no sibling shares.
+        self.key = f"{self.label}#{id(self)}"
+        self.sink_ids = []
+
+    def accepts(self, record):
+        return record["extra"].get("run_log_scope") == self.key
+
+    def remove_sinks(self):
+        for sink_id in self.sink_ids:
+            with contextlib.suppress(ValueError):
+                logger.remove(sink_id)
+        self.sink_ids.clear()
+
+
+_RUN_LOG_SCOPE = contextvars.ContextVar("run_log_scope", default=None)
+
+
+@contextlib.contextmanager
+def scoped_run_logging(label):
+    """Keep one thread's run logs out of the sibling runs' files.
+
+    Inside this block :func:`initialize_logger` adds file sinks that accept only
+    records logged from the same context, and leaves every other sink alone,
+    instead of replacing the process's sinks with its own.
+    """
+
+    scope = _RUN_LOG_SCOPE.get()
+    if scope is not None:
+        raise RuntimeError("scoped_run_logging blocks cannot be nested")
+    scope = _RunLogScope(label)
+    token = _RUN_LOG_SCOPE.set(scope)
+    try:
+        with logger.contextualize(run_log_scope=scope.key, run_log_label=scope.label):
+            yield scope
+    finally:
+        scope.remove_sinks()
+        _RUN_LOG_SCOPE.reset(token)
+
+
+def _shared_console_format(record):
+    label = record["extra"].get("run_log_label")
+    prefix = "" if label is None else f"[{label}] "
+    return "<green>{time:%Y-%m-%d %H:%M:%S}</green> " + prefix + "{message}\n{exception}"
+
+
+@contextlib.contextmanager
+def shared_console_logging():
+    """One console sink for runs logging from several threads at once.
+
+    Each record is prefixed with the label of the :func:`scoped_run_logging`
+    block it came from. Afterwards the console keeps a plain sink, as a
+    sequential run would.
+    """
+
+    logger.remove()
+    sink_id = logger.add(sys.stdout, colorize=True, format=_shared_console_format, level="INFO")
+    try:
+        yield
+    finally:
+        with contextlib.suppress(ValueError):
+            logger.remove(sink_id)
+        logger.add(sys.stdout, colorize=True, format=LOG_FORMAT, level="INFO")
+
+
 def initialize_logger(args):
     """Create or reuse a run directory and configure console/file logging."""
 
     start_time = datetime.now()
-    logger.remove()
+    scope = _RUN_LOG_SCOPE.get()
+    if scope is None:
+        logger.remove()
+    else:
+        scope.remove_sinks()
     # Mutating args.log_dir makes the concrete path available to all later
     # artifact writers. HPO trials use a stable directory so recovered trials
     # overwrite the same trial folder instead of creating timestamp children.
     args.log_dir = resolve_log_dir(args, start_time)
     args.log_dir.mkdir(parents=True, exist_ok=True)
-    logger.add(sys.stdout, colorize=True, format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
-    logger.add(args.log_dir / "info.log", format="<green>{time:%Y-%m-%d %H:%M:%S}</green> {message}", level="INFO")
-    # Opt-in: the DEBUG sink is the only one below INFO, so leaving it off keeps
-    # the lazy debug records below from ever being rendered.
-    if getattr(args, "debug_log", False):
-        logger.add(args.log_dir / "debug.log", level="DEBUG")
-    # Route otherwise uncaught exceptions through the run log, preserving a
-    # traceback in interrupted experiment directories.
-    sys.excepthook = lambda _, value, tb: logger.info("\n" + "".join(traceback.format_exception(type, value, tb)))
+    if scope is None:
+        logger.add(sys.stdout, colorize=True, format=LOG_FORMAT, level="INFO")
+        logger.add(args.log_dir / "info.log", format=LOG_FORMAT, level="INFO")
+        # Opt-in: the DEBUG sink is the only one below INFO, so leaving it off keeps
+        # the lazy debug records below from ever being rendered.
+        if getattr(args, "debug_log", False):
+            logger.add(args.log_dir / "debug.log", level="DEBUG")
+        # Route otherwise uncaught exceptions through the run log, preserving a
+        # traceback in interrupted experiment directories.
+        sys.excepthook = lambda _, value, tb: logger.info("\n" + "".join(traceback.format_exception(type, value, tb)))
+    else:
+        # The console sink belongs to shared_console_logging; this run adds
+        # only its own files, filtered to its own records.
+        scope.sink_ids.append(
+            logger.add(args.log_dir / "info.log", format=LOG_FORMAT, level="INFO", filter=scope.accepts)
+        )
+        if getattr(args, "debug_log", False):
+            scope.sink_ids.append(
+                logger.add(args.log_dir / "debug.log", level="DEBUG", filter=scope.accepts)
+            )
     logger.info(" ".join(sys.argv))
     logger.info(f"Arguments: {args}")
     logger.info(f"The outputs are being saved in {args.log_dir}")
@@ -402,6 +448,144 @@ def make_torch_generator(seed):
     generator = torch.Generator()
     generator.manual_seed(seed)
     return generator
+
+
+TSNE_BACKEND_TORCHDR = "torchdr"
+TSNE_BACKEND_CUML = "cuml"
+TSNE_BACKEND_EXACT = "exact"
+TSNE_BACKEND_SKLEARN = "sklearn"
+TSNE_BACKENDS = (
+    TSNE_BACKEND_TORCHDR,
+    TSNE_BACKEND_CUML,
+    TSNE_BACKEND_EXACT,
+    TSNE_BACKEND_SKLEARN,
+)
+DEFAULT_TSNE_BACKEND = TSNE_BACKEND_EXACT
+#: TorchDR differentiates a dense N x N Student-t matrix. Its peak on the 8131
+#: Cars196 test embeddings was 1347 MiB, 5.3 float32 N x N buffers; rounded up.
+TORCHDR_DENSE_BUFFERS = 6
+#: Largest dense TorchDR allocation allowed before a projection switches to the
+#: block-wise exact backend, whose buffers stay under its own block budget.
+DEFAULT_TSNE_MAX_DENSE_GPU_BYTES = int(3 * 1024**3)
+
+#: Set once from ``--tsne_backend``; the device follows the training device.
+_TSNE_BACKEND = DEFAULT_TSNE_BACKEND
+_TSNE_DEVICE = None
+_TSNE_MAX_DENSE_GPU_BYTES = DEFAULT_TSNE_MAX_DENSE_GPU_BYTES
+_TSNE_NOTICES = set()
+_TSNE_NOTICES_LOCK = threading.Lock()
+
+
+def set_tsne_backend(backend, device=None, max_dense_gpu_bytes=None):
+    """Choose how every t-SNE projection in this process is computed.
+
+    GPU backends run on ``device`` when it is a CUDA device and on the current
+    CUDA device otherwise; without CUDA every projection uses sklearn.
+    """
+
+    global _TSNE_BACKEND, _TSNE_DEVICE, _TSNE_MAX_DENSE_GPU_BYTES
+    backend = str(backend or DEFAULT_TSNE_BACKEND).lower()
+    if backend not in TSNE_BACKENDS:
+        raise ValueError(f"t-SNE backend must be one of {TSNE_BACKENDS}: {backend!r}")
+    _TSNE_BACKEND = backend
+    _TSNE_DEVICE = None if device is None else str(device)
+    if max_dense_gpu_bytes is not None:
+        _TSNE_MAX_DENSE_GPU_BYTES = int(max_dense_gpu_bytes)
+
+
+def tsne_backend_settings():
+    return {
+        "backend": _TSNE_BACKEND,
+        "device": _TSNE_DEVICE,
+        "max_dense_gpu_bytes": _TSNE_MAX_DENSE_GPU_BYTES,
+    }
+
+
+def _tsne_notice(key, message):
+    """Log a backend substitution once per process rather than per projection."""
+
+    with _TSNE_NOTICES_LOCK:
+        if key in _TSNE_NOTICES:
+            return
+        _TSNE_NOTICES.add(key)
+    logger.info(message)
+
+
+def resolve_tsne_backend(n_samples, n_components, backend=None):
+    """Return ``(backend, device)`` that will actually run one projection."""
+
+    backend = str(backend or _TSNE_BACKEND).lower()
+    if backend not in TSNE_BACKENDS:
+        raise ValueError(f"t-SNE backend must be one of {TSNE_BACKENDS}: {backend!r}")
+    if backend == TSNE_BACKEND_SKLEARN:
+        return backend, None
+    if not torch.cuda.is_available():
+        _tsne_notice(
+            "no-cuda",
+            f"t-SNE backend {backend!r} needs CUDA, which is unavailable; using sklearn on the CPU",
+        )
+        return TSNE_BACKEND_SKLEARN, None
+    device = None if _TSNE_DEVICE is None else torch.device(normalize_device_name(_TSNE_DEVICE))
+    if device is None or device.type != "cuda":
+        device = torch.device("cuda", torch.cuda.current_device())
+    if backend == TSNE_BACKEND_CUML and n_components != 2:
+        _tsne_notice(
+            "cuml-3d",
+            "cuML t-SNE supports 2 components only; 3-D projections use the exact GPU backend",
+        )
+        backend = TSNE_BACKEND_EXACT
+    if backend == TSNE_BACKEND_TORCHDR:
+        dense_bytes = TORCHDR_DENSE_BUFFERS * 4 * int(n_samples) ** 2
+        if dense_bytes > _TSNE_MAX_DENSE_GPU_BYTES:
+            _tsne_notice(
+                ("torchdr-dense", int(n_samples)),
+                f"TorchDR t-SNE on {n_samples} points would hold about "
+                f"{dense_bytes / 1024**3:.1f} GiB of dense pairwise buffers, above the "
+                f"{_TSNE_MAX_DENSE_GPU_BYTES / 1024**3:.1f} GiB limit; using the block-wise "
+                "exact backend instead",
+            )
+            backend = TSNE_BACKEND_EXACT
+    return backend, device
+
+
+def _gpu_tsne_coordinates(backend, features, *, n_components, perplexity, seed, device, init):
+    if backend == TSNE_BACKEND_TORCHDR:
+        from torchdr import TSNE as TorchDRTSNE
+
+        model = TorchDRTSNE(
+            n_components=n_components,
+            perplexity=perplexity,
+            # sklearn's iteration budget rather than TorchDR's 2000.
+            max_iter=1000,
+            init=init,
+            device=str(device),
+            random_state=seed,
+        )
+        coordinates = model.fit_transform(torch.as_tensor(features, device=device))
+        return coordinates.detach().to("cpu", torch.float32).numpy()
+    if backend == TSNE_BACKEND_CUML:
+        from cuml.manifold import TSNE as CumlTSNE
+
+        with torch.cuda.device(device):
+            model = CumlTSNE(
+                n_components=2,
+                perplexity=perplexity,
+                init=init,
+                random_state=seed,
+                output_type="numpy",
+            )
+            return np.asarray(model.fit_transform(features), dtype=np.float32)
+    if backend == TSNE_BACKEND_EXACT:
+        from .gpu_tsne import gpu_tsne
+
+        return gpu_tsne(
+            features,
+            n_components=n_components,
+            perplexity=perplexity,
+            random_state=seed,
+            device=device,
+        )
+    raise ValueError(f"Not a GPU t-SNE backend: {backend!r}")
 
 
 #: Set once from ``--eval_amp``. Both this and the training step's autocast
@@ -1051,9 +1235,6 @@ def setup_dataset_bundle(
     cv_mode="group_kfold",
     val_mode=VAL_MODE_ALL,
     dataset_protocol=DATASET_PROTOCOL_OFFICIAL,
-    cifar_imbalance_factor=None,
-    cifar_train_fraction=0.8,
-    cifar_test_fraction=0.2,
     full_train=False,
     holdout_val_ratio=None,
     image_resize_mode=DEFAULT_IMAGE_RESIZE_MODE,
@@ -1073,16 +1254,6 @@ def setup_dataset_bundle(
     dataset_name = normalize_dataset_name(dataset_name)
     if data_split_seed is None:
         data_split_seed = seed
-    if (
-        dataset_protocol == DATASET_PROTOCOL_CIFAR100_FC100
-        and cv_k > 1
-        and cv_mode != CV_MODE_SUPERCLASS_GROUP_KFOLD
-    ):
-        raise ValueError(
-            "dataset_protocol='cifar100_fc100' requires "
-            "cv_mode='superclass_group_kfold' when cv_k > 1 so complete "
-            "superclasses remain disjoint"
-        )
     # Training uses stochastic augmentation. Validation, test, and SSL feature
     # extraction use the deterministic test_transform below. image_resize_mode
     # selects the geometry of both; see utils/image_transforms.py.
@@ -1098,10 +1269,6 @@ def setup_dataset_bundle(
         test_transform=test_transform,
         dataset_protocol=dataset_protocol,
         download=download,
-        cifar_imbalance_factor=cifar_imbalance_factor,
-        cifar_train_fraction=cifar_train_fraction,
-        cifar_test_fraction=cifar_test_fraction,
-        seed=data_split_seed,
     )
 
     if val_mode not in VAL_MODES:
@@ -1164,32 +1331,12 @@ def setup_dataset_bundle(
     else:
         # The default metric-learning holdout splits by class, testing whether
         # embeddings generalize to validation classes unseen during training.
-        if dataset_protocol == DATASET_PROTOCOL_CIFAR100_FC100:
-            if holdout_val_ratio is not None:
-                raise ValueError(
-                    "dataset_protocol='cifar100_fc100' uses the canonical FC100 validation "
-                    "superclasses, so holdout_val_ratio cannot resize its holdout"
-                )
-            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_fixed_classes(
-                train_val_dataset,
-                train_classes=CIFAR100_FC100_TRAIN_CLASSES,
-                valid_classes=CIFAR100_FC100_VALIDATION_CLASSES,
-            )
-            split_label = "canonical FC100 holdout"
-        elif dataset_name == "CIFAR100" and cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
-            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes_superclass_balanced(
-                train_val_dataset,
-                split_ratio=holdout_split_ratio,
-                seed=data_split_seed,
-            )
-            split_label = "superclass-balanced holdout"
-        else:
-            train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes(
-                train_val_dataset,
-                split_ratio=holdout_split_ratio,
-                seed=data_split_seed,
-            )
-            split_label = "holdout"
+        train_dataset, valid_dataset, train_labels_mapper = split_dataset_by_classes(
+            train_val_dataset,
+            split_ratio=holdout_split_ratio,
+            seed=data_split_seed,
+        )
+        split_label = "holdout"
         split_info = make_holdout_split_info(
             train_val_dataset=train_val_dataset,
             train_dataset=train_dataset,
@@ -1200,10 +1347,6 @@ def setup_dataset_bundle(
             None if holdout_val_ratio is None else float(holdout_val_ratio)
         )
         split_info["holdout_split_ratio"] = float(holdout_split_ratio)
-        if split_label == "superclass-balanced holdout":
-            split_info["holdout_strategy"] = "superclass_balanced_by_cifar100_superclass"
-        elif split_label == "canonical FC100 holdout":
-            split_info["holdout_strategy"] = "canonical_fc100_train_validation_superclasses"
     split_info["dataset_protocol"] = protocol_info
     split_info["image_resize_mode"] = image_resize_mode
     # Training keeps augmented images for optimization but exposes a separate
@@ -1712,84 +1855,6 @@ def make_train_loader(
     return train_loader
 
 
-class STMLNearestNeighborBatchSampler(torch.utils.data.Sampler):
-    """Build STML batches from nearest-neighbor groups, as in the upstream code."""
-
-    def __init__(self, embeddings, batch_size, neighbors_per_query, seed, device="cpu"):
-        device = torch.device(normalize_device_name(device))
-        embeddings = torch.as_tensor(embeddings, dtype=torch.float32, device=device)
-        if embeddings.ndim != 2:
-            raise ValueError("STML sampling embeddings must be a matrix")
-        if neighbors_per_query <= 0:
-            raise ValueError("neighbors_per_query must be positive")
-        if batch_size % neighbors_per_query != 0:
-            raise ValueError("STML batch_size must be divisible by neighbors_per_query")
-        if len(embeddings) < batch_size:
-            raise ValueError("STML nearest-neighbor sampling requires at least batch_size samples")
-        if neighbors_per_query > len(embeddings):
-            raise ValueError("neighbors_per_query cannot exceed the STML training dataset size")
-        self.num_samples = len(embeddings)
-        self.batch_size = int(batch_size)
-        self.neighbors_per_query = int(neighbors_per_query)
-        self.queries_per_batch = self.batch_size // self.neighbors_per_query
-        self.generator = make_torch_generator(seed)
-        self.neighbor_indices = self._make_neighbor_indices(embeddings)
-
-    def _make_neighbor_indices(self, embeddings, chunk_size=512):
-        neighbors = []
-        for start in range(0, len(embeddings), chunk_size):
-            distances = torch.cdist(embeddings[start : start + chunk_size], embeddings)
-            neighbors.append(distances.topk(self.neighbors_per_query, largest=False).indices.cpu())
-        return torch.cat(neighbors, dim=0)
-
-    def __iter__(self):
-        for _ in range(len(self)):
-            query_indices = torch.randperm(self.num_samples, generator=self.generator)[: self.queries_per_batch]
-            yield self.neighbor_indices[query_indices].reshape(-1).tolist()
-
-    def __len__(self):
-        return self.num_samples // self.batch_size
-
-
-def make_stml_train_loader(
-    train_dataset,
-    sampling_embeddings,
-    batch_size,
-    neighbors_per_query,
-    seed,
-    num_workers=8,
-    start_method="spawn",
-    pin_memory=True,
-    graph_device="cpu",
-):
-    """Create the nearest-neighbor batch loader used by STML."""
-
-    num_workers = dataloader_num_workers_for_dataset(train_dataset, num_workers)
-    sampler = STMLNearestNeighborBatchSampler(
-        embeddings=sampling_embeddings,
-        batch_size=batch_size,
-        neighbors_per_query=neighbors_per_query,
-        seed=seed,
-        device=graph_device,
-    )
-    loader = DataLoader(
-        train_dataset,
-        batch_sampler=sampler,
-        **make_dataloader_kwargs(
-            num_workers,
-            seed,
-            start_method,
-            persistent_workers=False,
-            pin_memory=pin_memory,
-        ),
-    )
-    logger.info(
-        f"STML train loader: {len(train_dataset)} samples, {neighbors_per_query} neighbors/query, "
-        f"{len(loader)} batches/epoch"
-    )
-    return loader
-
-
 def validate_m_per_class_sampler_capacity(labels, batch_size, sampler_m):
     """Check that MPerClassSampler can build a complete training batch."""
 
@@ -1849,6 +1914,7 @@ def make_unlabeled_stream_loader(
     persistent_workers=True,
     pin_memory=True,
     desc="regularizer",
+    batch_sampler=None,
 ):
     """Shuffled unlabeled stream, GPU-resident when the supervised loader is.
 
@@ -1856,6 +1922,10 @@ def make_unlabeled_stream_loader(
     than threading the residency arguments through every regularizer. A resident
     stream draws its permutation from a ``RandomSampler`` over the DataLoader's
     own generator, so it visits exactly the batches ``shuffle=True`` would have.
+
+    ``batch_sampler`` replaces the shuffle with caller-built batches, each of
+    exactly ``batch_size`` rows. Both paths iterate it in the main process once
+    per epoch, so a sampler whose state changes between epochs is re-read.
     """
 
     dataloader_kwargs = make_dataloader_kwargs(
@@ -1871,10 +1941,15 @@ def make_unlabeled_stream_loader(
             dataset,
             device=gpu_resident_device,
             batch_size=batch_size,
-            sampler=torch.utils.data.RandomSampler(
-                dataset,
-                generator=dataloader_kwargs["generator"],
+            sampler=(
+                None
+                if batch_sampler is not None
+                else torch.utils.data.RandomSampler(
+                    dataset,
+                    generator=dataloader_kwargs["generator"],
+                )
             ),
+            batch_sampler=batch_sampler,
             drop_last=drop_last,
             seed=seed,
             max_bytes=gpu_feature_loader.resident_loader_max_bytes(supervised_loader),
@@ -1882,6 +1957,8 @@ def make_unlabeled_stream_loader(
         )
         if stream_loader is not None:
             return stream_loader
+    if batch_sampler is not None:
+        return DataLoader(dataset, batch_sampler=batch_sampler, **dataloader_kwargs)
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -2617,42 +2694,6 @@ def use_feature_transform_for_training(dataset):
     set_nested_transform(dataset, feature_transform)
 
 
-def setup_datasets(
-    dataset_name,
-    batch_size,
-    sampler_m,
-    seed=0,
-    num_workers=8,
-    start_method="spawn",
-    cv_k=1,
-    cv_fold=None,
-    cv_mode="group_kfold",
-    val_mode=VAL_MODE_ALL,
-    dataset_protocol=DATASET_PROTOCOL_OFFICIAL,
-    cifar_imbalance_factor=None,
-    cifar_train_fraction=0.8,
-    cifar_test_fraction=0.2,
-    image_resize_mode=DEFAULT_IMAGE_RESIZE_MODE,
-):
-    dataset_bundle = setup_dataset_bundle(
-        dataset_name=dataset_name,
-        seed=seed,
-        cv_k=cv_k,
-        cv_fold=cv_fold,
-        cv_mode=cv_mode,
-        val_mode=val_mode,
-        dataset_protocol=dataset_protocol,
-        cifar_imbalance_factor=cifar_imbalance_factor,
-        cifar_train_fraction=cifar_train_fraction,
-        cifar_test_fraction=cifar_test_fraction,
-        image_resize_mode=image_resize_mode,
-    )
-    train_loader = make_train_loader(dataset_bundle.train_dataset, batch_size, sampler_m, seed, num_workers, start_method)
-    valid_loader = make_eval_loader(dataset_bundle.valid_dataset, seed=seed, num_workers=num_workers, start_method=start_method)
-    test_loader = make_eval_loader(dataset_bundle.test_dataset, seed=seed, num_workers=num_workers, start_method=start_method)
-    return train_loader, valid_loader, test_loader, dataset_bundle.train_labels_mapper
-
-
 def _selected_faiss_gpu(device):
     """Return ``(faiss, gpu_id)`` when the requested CUDA device supports FAISS."""
 
@@ -2938,6 +2979,37 @@ class _ReusableSingleGpuFaissKNN:
         distances = torch.as_tensor(distances, device=result_device)
         indices = torch.as_tensor(indices, device=result_device)
         return return_results(distances, indices, ref_includes_query)
+
+    def kmeans(self, x, nmb_clusters):
+        """PML's ``FaissKMeans(niter=20)`` for NMI/AMI, run on these resources.
+
+        PML's own version calls ``faiss.Kmeans(gpu=True)``, which builds fresh
+        ``StandardGpuResources`` on every visible GPU and allocates the default
+        ~1.5 GiB scratch arena on each, right after retrieval -- ignoring
+        ``gpu_id`` and the low-memory policy. That arena is what ran out of
+        memory. Same clustering parameters and output; only the index moved.
+        """
+
+        device = x.device if torch.is_tensor(x) else torch.device("cpu")
+        values = x.detach().cpu().numpy() if torch.is_tensor(x) else np.asarray(x)
+        values = np.ascontiguousarray(values, dtype=np.float32)
+        dimension = values.shape[1]
+        # gpu=False keeps faiss.Kmeans from building resources; the GPU index
+        # is attached below instead, as in training/ssl/algorithms.py.
+        clustering = self.faiss.Kmeans(dimension, int(nmb_clusters), niter=20, gpu=False)
+        with self._lock:
+            clustering.index = self.faiss.index_cpu_to_gpu(
+                self.resources,
+                self.gpu_id,
+                self.faiss.IndexFlatL2(dimension),
+            )
+            try:
+                clustering.train(values)
+                _, assignments = clustering.index.search(values, 1)
+            finally:
+                clustering.index.reset()
+                clustering.index = None
+        return torch.as_tensor(assignments.reshape(-1).astype(np.int64), device=device)
 
 
 _REUSABLE_FAISS_KNN = {}
@@ -3378,20 +3450,24 @@ def normalize_measurements(measurements=None):
 
 
 # The reported D_test table, following Vasileva & D'yakonov (2023): P@1 with the
-# Recall@K ladder above it, the rank-aware RP, MAP@R, MAP and MRR, and the
-# clustering scores NMI and AMI. Validation keeps its own cheaper set, so this is
-# applied to the test evaluation only. The clustering scores share one k-means
-# over the query embeddings; on a 14218-query In-Shop fold that costs about
-# 1.4 s per evaluation, which is why they stay off validation.
+# Recall@K ladder above it, the rank-aware RP and MAP@R, and the clustering
+# scores NMI and AMI. Validation keeps its own cheaper set, so this is applied to
+# the test evaluation only. The clustering scores share one k-means over the
+# query embeddings; on a 14218-query In-Shop fold that costs about 1.4 s per
+# evaluation, which is why they stay off validation.
 #
-# MAP and MRR are the metric library's definitions at its default depth, the
-# whole reference set.
+# MAP and MRR are deliberately absent although the paper reports them. They are
+# the only measurements that read past the top R, so one of them puts the shared
+# retrieval at the library's default depth -- the whole reference set -- and with
+# it every other metric in the same pass. Measured GPU-resident that is ~57 bytes
+# per query-reference pair against ~1.7 for this set, so a 14218x12612 In-Shop
+# fold peaks at 9.4 GiB instead of 0.5 and a 40k-sample split would need ~85 GiB.
+# They stay available through --test_measurements for a one-off table; they are
+# just not worth that cost on every fold of every run.
 REPORT_TEST_MEASUREMENTS = (
     MEASUREMENT_PRECISION_AT_1,
     MEASUREMENT_R_PRECISION,
     MEASUREMENT_MAP_AT_R,
-    MEASUREMENT_MAP,
-    MEASUREMENT_MRR,
     MEASUREMENT_NMI,
     MEASUREMENT_AMI,
 )
@@ -3658,11 +3734,17 @@ def evaluate_embeddings(
         calculator_kwargs["device"] = (
             device if gpu_resident_embeddings else torch.device("cpu")
         )
-        calculator_kwargs["knn_func"] = _get_reusable_faiss_knn(
+        knn = _get_reusable_faiss_knn(
             faiss_module,
             gpu_id,
             low_memory=not gpu_resident_embeddings,
         )
+        calculator_kwargs["knn_func"] = knn
+        if gpu_resident_embeddings:
+            # Only here would PML's default k-means run on the GPU (a CPU
+            # calculator clusters on the CPU), and it would do so on fresh
+            # resources on every GPU; see _ReusableSingleGpuFaissKNN.kmeans.
+            calculator_kwargs["kmeans_func"] = knn.kmeans
         logger.debug(
             f"{name}: using single-GPU FAISS retrieval on cuda:{gpu_id} "
             f"for {len(all_embeddings)} embeddings "
@@ -3975,17 +4057,6 @@ def class_names_for_labels(dataset, labels):
     return names
 
 
-def cifar100_superclass_names_for_labels(superclass_labels):
-    names = []
-    for superclass_label in superclass_labels:
-        superclass_index = int(superclass_label)
-        if 0 <= superclass_index < len(CIFAR100_SUPERCLASS_NAMES):
-            names.append(CIFAR100_SUPERCLASS_NAMES[superclass_index])
-        else:
-            names.append("")
-    return names
-
-
 def load_sop_superclass_metadata(data_root=None):
     data_root = Path("data") / "StanfordOnlineProducts" if data_root is None else Path(data_root)
     sop_root = data_root
@@ -4038,15 +4109,6 @@ def pacmap_plot_groups(labels, dataset=None, dataset_name=None):
     labels = np.asarray(labels, dtype=np.int64).reshape(-1)
     normalized_name = normalize_dataset_name(dataset_name) if dataset_name is not None else None
 
-    if normalized_name == "CIFAR100":
-        superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
-        return {
-            "labels": superclass_labels,
-            "names": cifar100_superclass_names_for_labels(superclass_labels),
-            "basis": "superclass",
-            "legend_title": "superclass",
-        }
-
     if normalized_name == "StanfordOnlineProducts":
         sop_groups = align_sop_superclass_metadata(labels, load_sop_superclass_metadata())
         if sop_groups is not None:
@@ -4095,8 +4157,12 @@ def _embedding_visualization_inputs(embeddings, labels, method_name):
     return embeddings, labels
 
 
-def project_tsne_embeddings(embeddings, seed=0, perplexity=None):
-    """Project an embedding matrix to two reproducible t-SNE coordinates."""
+def project_tsne_embeddings(embeddings, seed=0, perplexity=None, n_components=2, backend=None):
+    """Project an embedding matrix to reproducible t-SNE coordinates (2 by default).
+
+    ``backend`` overrides the process-wide :func:`set_tsne_backend` choice. Every
+    backend sees the same 50-component PCA input and the same perplexity.
+    """
 
     embeddings = np.ascontiguousarray(embeddings, dtype=np.float32)
     if embeddings.ndim != 2:
@@ -4130,19 +4196,84 @@ def project_tsne_embeddings(embeddings, seed=0, perplexity=None):
         ).fit_transform(embeddings)
 
     init = "pca" if projection_input.shape[1] >= 2 else "random"
-    coordinates = TSNE(
-        n_components=2,
-        perplexity=perplexity,
-        learning_rate="auto",
-        init=init,
-        random_state=int(seed),
-    ).fit_transform(projection_input)
+    n_components = int(n_components)
+    if n_components not in (2, 3):
+        # Barnes-Hut t-SNE, sklearn's default, supports fewer than four dimensions.
+        raise ValueError("t-SNE projection supports 2 or 3 components")
+    projection_input = np.ascontiguousarray(projection_input, dtype=np.float32)
+    backend, device = resolve_tsne_backend(len(embeddings), n_components, backend=backend)
+    coordinates = None
+    if backend != TSNE_BACKEND_SKLEARN:
+        try:
+            coordinates = _gpu_tsne_coordinates(
+                backend,
+                projection_input,
+                n_components=n_components,
+                perplexity=perplexity,
+                seed=int(seed),
+                device=device,
+                init=init,
+            )
+        except torch.cuda.OutOfMemoryError as exc:
+            logger.warning(
+                f"t-SNE backend {backend!r} ran out of GPU memory for {len(embeddings)} points "
+                f"({exc}); falling back to sklearn on the CPU"
+            )
+        finally:
+            if torch.cuda.is_available():
+                # The pairwise buffers are large and one-off; hand them back to
+                # the device instead of keeping them in this process's cache.
+                torch.cuda.empty_cache()
+    if coordinates is None:
+        coordinates = TSNE(
+            n_components=n_components,
+            perplexity=perplexity,
+            learning_rate="auto",
+            init=init,
+            random_state=int(seed),
+        ).fit_transform(projection_input)
     coordinates = np.asarray(coordinates, dtype=np.float32)
-    if coordinates.shape != (len(embeddings), 2) or not np.all(np.isfinite(coordinates)):
+    if coordinates.shape != (len(embeddings), n_components) or not np.all(np.isfinite(coordinates)):
         raise ValueError(
-            f"t-SNE returned invalid coordinates with shape {coordinates.shape}, expected [N, 2]"
+            f"t-SNE returned invalid coordinates with shape {coordinates.shape}, "
+            f"expected [N, {n_components}]"
         )
     return coordinates
+
+
+#: pyplot keeps process-global figure state. Runs that share a process on
+#: several threads (``--cv_parallel_backend thread``) draw one figure at a time.
+PYPLOT_LOCK = threading.RLock()
+
+
+def serialized_pyplot(function):
+    """Hold :data:`PYPLOT_LOCK` for the whole call."""
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        with PYPLOT_LOCK:
+            return function(*args, **kwargs)
+
+    return wrapper
+
+
+#: Significant digits of the floats written to projection and graph CSVs. The
+#: CSVs are what a viewer draws and reads per node; full float64 reprs
+#: (``19.48634147644043``) doubled their size for digits nothing can show.
+CSV_SIGNIFICANT_DIGITS = 5
+
+
+def csv_float(value, digits=CSV_SIGNIFICANT_DIGITS):
+    """``value`` rounded to ``digits`` significant digits, for writing to a CSV.
+
+    Whole numbers (counts, positions, labels stored as floats) are returned
+    unchanged, so rounding never alters an identifier.
+    """
+
+    value = float(value)
+    if not math.isfinite(value) or value.is_integer():
+        return value
+    return float(f"{value:.{int(digits)}g}")
 
 
 def _write_embedding_visualization_artifacts(
@@ -4155,14 +4286,13 @@ def _write_embedding_visualization_artifacts(
     axis_label,
     dataset=None,
     dataset_name=None,
+    write_plot=True,
 ):
-    """Write shared CSV and scatter-plot artifacts for a 2-D projection."""
+    """Write shared CSV and scatter-plot artifacts for a 2-D projection.
 
-    import matplotlib
-
-    matplotlib.use("Agg")
-
-    import matplotlib.pyplot as plt
+    ``write_plot=False`` writes the coordinates only: the PNG is a pure function
+    of the CSV, so :func:`plot_projection_csv` can draw it later on demand.
+    """
 
     coordinates = np.asarray(coordinates, dtype=np.float32)
     labels = np.asarray(labels).reshape(-1)
@@ -4184,7 +4314,10 @@ def _write_embedding_visualization_artifacts(
 
     x_field = f"{coordinate_prefix}_x"
     y_field = f"{coordinate_prefix}_y"
-    with coordinates_path.open("w", newline="", encoding="utf-8") as csv_file:
+    # Written beside the target and renamed into place, so a live reader (the
+    # Trial Atlas dev server polls epoch tracking) never sees half a layout.
+    temporary_path = coordinates_path.with_name(f".{coordinates_path.name}.tmp")
+    with temporary_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(
             csv_file,
             fieldnames=[
@@ -4208,11 +4341,55 @@ def _write_embedding_visualization_artifacts(
                     "class_name": class_name,
                     "plot_group_label": int(group_label),
                     "plot_group_name": group_name,
-                    x_field: float(coordinate[0]),
-                    y_field: float(coordinate[1]),
+                    x_field: csv_float(coordinate[0]),
+                    y_field: csv_float(coordinate[1]),
                 }
             )
+    os.replace(temporary_path, coordinates_path)
 
+    if write_plot:
+        plot_projection_coordinates(
+            coordinates,
+            plot_group_labels,
+            plot_group_names,
+            legend_title=plot_groups["legend_title"],
+            title=title,
+            axis_label=axis_label,
+            path=plot_path,
+        )
+
+    return {
+        "coordinates": coordinates_path,
+        "plot": plot_path if write_plot else None,
+        "sample_count": int(len(labels)),
+        "color_basis": str(plot_groups["basis"]),
+    }
+
+
+@serialized_pyplot
+def plot_projection_coordinates(
+    coordinates,
+    plot_group_labels,
+    plot_group_names,
+    *,
+    legend_title,
+    title,
+    axis_label,
+    path,
+):
+    """Draw the plot-group-colored scatter of a 2-D projection to ``path``.
+
+    ``path`` may also be a binary file object; the figure is saved as PNG.
+    """
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+
+    import matplotlib.pyplot as plt
+
+    coordinates = np.asarray(coordinates, dtype=np.float32)
+    plot_group_labels = np.asarray(plot_group_labels, dtype=np.int64).reshape(-1)
     unique_labels = np.unique(plot_group_labels)
     fig, ax = plt.subplots(figsize=(9, 7))
     if len(unique_labels) <= 20:
@@ -4230,7 +4407,7 @@ def _write_embedding_visualization_artifacts(
                 color=color_map(color_index),
                 label=legend_label,
             )
-        ax.legend(title=str(plot_groups["legend_title"]), loc="best", markerscale=1.8, fontsize="small")
+        ax.legend(title=str(legend_title), loc="best", markerscale=1.8, fontsize="small")
     else:
         scatter = ax.scatter(
             coordinates[:, 0],
@@ -4241,22 +4418,67 @@ def _write_embedding_visualization_artifacts(
             linewidths=0,
             cmap="turbo",
         )
-        fig.colorbar(scatter, ax=ax, label=str(plot_groups["legend_title"]))
+        fig.colorbar(scatter, ax=ax, label=str(legend_title))
 
     ax.set_title(title)
     ax.set_xlabel(f"{axis_label} 1")
     ax.set_ylabel(f"{axis_label} 2")
     ax.grid(alpha=0.18, linewidth=0.6)
     fig.tight_layout()
-    fig.savefig(plot_path, dpi=160)
+    fig.savefig(path, dpi=160, format="png")
     plt.close(fig)
+    return path
 
+
+def read_projection_csv(csv_path):
+    """Read a projection CSV back: coordinates [N, 2], plot groups, and the axis name.
+
+    Takes the 2-D CSVs :func:`_write_embedding_visualization_artifacts` writes and
+    the 3-D ones :func:`write_projection_3d_csv` writes (their first two axes).
+    """
+
+    with Path(csv_path).open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fields = list(reader.fieldnames or ())
+        rows = list(reader)
+    x_field = next((field for field in fields if field.endswith("_x")), None)
+    y_field = None if x_field is None else f"{x_field[:-2]}_y"
+    if x_field is None or y_field not in fields:
+        raise ValueError(f"{csv_path} has no <layout>_x/_y columns")
+    coordinates = np.asarray([[float(row[x_field]), float(row[y_field])] for row in rows], dtype=np.float32)
+    group_field = "plot_group_label" if "plot_group_label" in fields else "label"
+    name_field = "plot_group_name" if "plot_group_name" in fields else "class_name"
+    labels = np.asarray([int(row["label"]) for row in rows], dtype=np.int64)
+    plot_group_labels = np.asarray([int(row[group_field]) for row in rows], dtype=np.int64)
     return {
-        "coordinates": coordinates_path,
-        "plot": plot_path,
-        "sample_count": int(len(labels)),
-        "color_basis": str(plot_groups["basis"]),
+        "coordinates": coordinates.reshape(-1, 2),
+        "labels": labels,
+        "plot_group_labels": plot_group_labels,
+        "plot_group_names": [row.get(name_field, "") or "" for row in rows],
+        # The two titles pacmap_plot_groups gives: groups are labels unless a
+        # dataset's superclasses replaced them.
+        "legend_title": "label" if np.array_equal(labels, plot_group_labels) else "superclass",
+        "layout": x_field[:-2],
     }
+
+
+_PROJECTION_AXIS_LABELS = {"tsne": "t-SNE", "pacmap": "PacMAP", "pca": "PCA"}
+
+
+def plot_projection_csv(csv_path, path, title=None):
+    """Draw the scatter a projection CSV was written without (``write_plot=False``)."""
+
+    projection = read_projection_csv(csv_path)
+    axis_label = _PROJECTION_AXIS_LABELS.get(projection["layout"], projection["layout"])
+    return plot_projection_coordinates(
+        projection["coordinates"],
+        projection["plot_group_labels"],
+        projection["plot_group_names"],
+        legend_title=projection["legend_title"],
+        title=title or f"{Path(csv_path).stem} - {axis_label}",
+        axis_label=axis_label,
+        path=path,
+    )
 
 
 def write_pacmap_visualization(
@@ -4267,8 +4489,9 @@ def write_pacmap_visualization(
     title="Test embeddings - PacMAP",
     dataset=None,
     dataset_name=None,
+    write_plot=True,
 ):
-    """Write PacMAP 2D coordinates and a plot-group-colored scatter plot."""
+    """Write PacMAP 2D coordinates and (unless ``write_plot=False``) a scatter plot."""
 
     embeddings, labels = _embedding_visualization_inputs(embeddings, labels, "PacMAP")
 
@@ -4294,6 +4517,7 @@ def write_pacmap_visualization(
         axis_label="PacMAP",
         dataset=dataset,
         dataset_name=dataset_name,
+        write_plot=write_plot,
     )
 
 
@@ -4307,8 +4531,9 @@ def write_tsne_visualization(
     dataset_name=None,
     seed=0,
     perplexity=None,
+    write_plot=True,
 ):
-    """Write t-SNE 2D coordinates and a plot-group-colored scatter plot."""
+    """Write t-SNE 2D coordinates and (unless ``write_plot=False``) a scatter plot."""
 
     embeddings, labels = _embedding_visualization_inputs(embeddings, labels, "t-SNE")
     coordinates = project_tsne_embeddings(
@@ -4326,7 +4551,85 @@ def write_tsne_visualization(
         axis_label="t-SNE",
         dataset=dataset,
         dataset_name=dataset_name,
+        write_plot=write_plot,
     )
+
+
+PROJECTION_DISPLAY_NAMES = {"pacmap": "PacMAP", "tsne": "t-SNE"}
+
+
+def write_projection_visualization(
+    layout,
+    embeddings,
+    labels,
+    *,
+    output_dir,
+    stem,
+    title,
+    dataset=None,
+    dataset_name=None,
+    seed=0,
+    write_plot=True,
+):
+    """Write one 2-D ``layout`` ('pacmap' or 'tsne') projection; PacMAP takes no seed."""
+
+    kwargs = dict(
+        output_dir=output_dir,
+        stem=stem,
+        title=f"{title} - {PROJECTION_DISPLAY_NAMES[layout]}",
+        dataset=dataset,
+        dataset_name=dataset_name,
+        write_plot=write_plot,
+    )
+    if layout == "pacmap":
+        return write_pacmap_visualization(embeddings, labels, **kwargs)
+    return write_tsne_visualization(embeddings, labels, seed=seed, **kwargs)
+
+
+def project_embeddings_3d(embeddings, layout, seed=0):
+    """Three reproducible coordinates per row with the named projection (tsne, pacmap, pca)."""
+
+    embeddings = np.ascontiguousarray(_as_numpy(embeddings), dtype=np.float32)
+    if layout == "tsne":
+        return project_tsne_embeddings(embeddings, seed=seed, n_components=3)
+    if layout == "pacmap":
+        import pacmap
+
+        return np.asarray(
+            pacmap.PaCMAP(n_components=3, random_state=int(seed)).fit_transform(embeddings),
+            dtype=np.float32,
+        )
+    from sklearn.decomposition import PCA
+
+    return np.asarray(
+        PCA(n_components=min(3, *embeddings.shape), random_state=int(seed)).fit_transform(embeddings),
+        dtype=np.float32,
+    )
+
+
+def write_projection_3d_csv(embeddings, labels, output_dir, stem, layout, seed=0, dataset=None):
+    """Write ``<stem>.csv`` with sample_position, label, class_name and ``<layout>_x/_y/_z``.
+
+    The 3-D twin of the 2-D coordinate CSVs, in the same row order, so a viewer can
+    join the two by row. No plot: a static picture of a 3-D cloud shows little.
+    """
+
+    embeddings, labels = _embedding_visualization_inputs(embeddings, labels, "3-D projection")
+    coordinates = np.asarray(project_embeddings_3d(embeddings, layout, seed=seed), dtype=np.float32)
+    if coordinates.ndim != 2 or len(coordinates) != len(labels) or coordinates.shape[1] < 3:
+        raise ValueError(f"3-D {layout} returned coordinates with shape {coordinates.shape}")
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{stem}.csv"
+    class_names = class_names_for_labels(dataset, labels) if dataset is not None else [""] * len(labels)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    with temporary_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["sample_position", "label", "class_name", f"{layout}_x", f"{layout}_y", f"{layout}_z"])
+        for position, (label, class_name, coordinate) in enumerate(zip(labels, class_names, coordinates)):
+            writer.writerow([position, int(label), class_name, *(csv_float(value) for value in coordinate[:3])])
+    os.replace(temporary_path, path)
+    return path
 
 
 def make_per_class_retrieval_metrics(labels, accuracy, reference_labels=None, ref_includes_query=True):

@@ -30,12 +30,11 @@ from torch.utils.data import DataLoader
 
 import utils
 from losses import metric_losses
-from models.retrieval_model import BACKBONE_TUNING_FROZEN, normalize_backbone_tuning
 
 from .ssl import interfaces
 from .ssl import gradient_surgery as grad_surgery
 from .ssl.algorithms import (
-    block_cg as block_cg,
+    apply_graph_edge_ablation,
     build_manifold_preserving_graph,
     build_lrml_knn_graph,
     entropy_confidence as entropy_confidence,
@@ -43,15 +42,11 @@ from .ssl.algorithms import (
     faiss_label_spreading as _faiss_label_spreading,
     iscen_label_spreading as _iscen_label_spreading,
     majority_vote,
-    make_dissimilarity_affinity as make_dissimilarity_affinity,
     make_mixed_label_affinity as make_mixed_label_affinity,
-    mixed_label_propagation as _mixed_label_propagation,
     normalize_linear_solver,
-    normalize_mixed_label_rows as normalize_mixed_label_rows,
     require_faiss,
     select_self_training_candidates,
     solve_sparse_label_system as solve_sparse_label_system,
-    solve_sparse_label_system_cholmod as solve_sparse_label_system_cholmod,
     suppress_ssl_timing_logs,
 )
 from .ssl.config import (
@@ -62,9 +57,10 @@ from .ssl.config import (
     GRAPH_DIAGNOSTICS_CLASS_FOCUS_MODES,
     GRAPH_DIAGNOSTICS_LAYOUTS,
     GRAPH_DIAGNOSTICS_MODES,
+    GRAPH_EDGE_ABLATION_MODES,
     LABEL_SAMPLING_MODES,
-    LOSS_DRIVEN_METHODS,
     PSEUDO_LABEL_DIAGNOSTICS_MODES,
+    PSEUDO_LABEL_SOURCES,
     TWO_STREAM_SAMPLER_METHODS,
     UNLABELED_CLASS_SCOPE_LABELED_CLASSES,
     UNLABELED_CLASS_SCOPES,
@@ -90,7 +86,6 @@ from .ssl.data import (
 )
 from .ssl.embeddings import (
     extract_embeddings,
-    make_feature_dataset,
     make_embedding_loader,
     ssl_compute_device,
 )
@@ -105,9 +100,8 @@ from .ssl.graph_diagnostics import (
 from .ssl.interfaces import BaseSemiSupervisedMethod, BaseTrainingRegularizer
 from .ssl.ismlp import IsmlpRegularizer
 from .ssl.seraph import SeraphRegularizer
-from .ssl.simmatch_v2 import SimMatchV2Regularizer
+from .ssl.ssmlpc import SsmlpcRegularizer
 from .ssl.slade import SladeRegularizer
-from .ssl.stml_threshold import STMLThresholdInBatchMethod, STMLThresholdPseudoLabeler
 from .ssl.pseudo_labels import (
     PseudoLabelDiagnosticsTracker,
     filter_pseudo_labels,
@@ -361,13 +355,6 @@ def iscen_label_spreading(*args, **kwargs):
     return _iscen_label_spreading(*args, **kwargs)
 
 
-def mixed_label_propagation(*args, **kwargs):
-    """Call the modular implementation with façade-level helper overrides."""
-
-    kwargs.setdefault("_dependencies", globals())
-    return _mixed_label_propagation(*args, **kwargs)
-
-
 def _make_in_batch_graph_affinity(*args, **kwargs):
     """Use a CPU flat index for small, per-step graphs to avoid GPU setup cost."""
 
@@ -407,37 +394,17 @@ def _make_in_batch_graph_unlabeled_loader(
             f"using {unlabeled_batch_size}"
         )
 
-    worker_count = utils.dataloader_num_workers_for_dataset(
-        regularizer.dataset,
-        num_workers,
-    )
-    cache_key = (
-        "in_batch",
-        id(regularizer.dataset),
+    # Every graph has the configured composition. A ragged final graph would
+    # change both neighborhood density and loss scale.
+    regularizer.cache_unlabeled_stream_loader(
+        supervised_loader,
         unlabeled_batch_size,
-        int(worker_count),
-        str(start_method),
+        seed,
+        num_workers,
+        start_method,
+        "in-batch graph",
+        pin_memory=torch.device(device).type == "cuda",
     )
-    if (
-        regularizer._regularizer_loader is None
-        or regularizer._regularizer_loader_cache_key != cache_key
-    ):
-        utils.shutdown_dataloaders(regularizer._regularizer_loader)
-        regularizer._regularizer_loader = utils.make_unlabeled_stream_loader(
-            regularizer.dataset,
-            batch_size=unlabeled_batch_size,
-            seed=seed,
-            num_workers=worker_count,
-            start_method=start_method,
-            supervised_loader=supervised_loader,
-            # Every graph has the configured composition. A ragged final graph
-            # would change both neighborhood density and loss scale.
-            drop_last=True,
-            persistent_workers=True,
-            pin_memory=torch.device(device).type == "cuda",
-            desc="in-batch graph",
-        )
-        regularizer._regularizer_loader_cache_key = cache_key
 
     # A run can contain thousands of local graphs. Preserve useful graph
     # diagnostics without producing one artifact bundle per optimizer step.
@@ -636,54 +603,6 @@ def _build_lrml_graph(regularizer, features, *, prefer_gpu=True):
     )
     degrees = np.asarray(adjacency.sum(axis=1), dtype=np.float64).ravel()
     return construction["neighbor_indices"], adjacency, degrees
-
-
-def _filter_lrml_graph_to_oracle_same_class(adjacency, labels):
-    """Keep only graph edges whose endpoints have the same hidden true label.
-
-    This is an explicit oracle ablation, not a deployable SSL operation.  It is
-    useful for separating failures of the learned neighbourhood graph from
-    failures of the Laplacian objective after the graph is correct.  Filtering
-    the completed symmetric graph preserves either binary or cosine edge
-    weights and therefore changes only which pairs reach the regularizer.
-    """
-
-    labels = np.asarray(labels, dtype=np.int64)
-    if labels.ndim != 1 or len(labels) != adjacency.shape[0]:
-        raise ValueError("LRML oracle labels must align with the graph nodes")
-    if adjacency.shape[0] != adjacency.shape[1]:
-        raise ValueError("LRML oracle filtering requires a square adjacency")
-
-    original = adjacency.tocoo()
-    same_class = labels[original.row] == labels[original.col]
-    filtered = sparse.coo_matrix(
-        (
-            original.data[same_class],
-            (original.row[same_class], original.col[same_class]),
-        ),
-        shape=original.shape,
-        dtype=original.dtype,
-    ).tocsr()
-    filtered.setdiag(0)
-    filtered.eliminate_zeros()
-    if filtered.nnz == 0:
-        raise ValueError("LRML oracle same-class filtering removed every graph edge")
-
-    degrees = np.asarray(filtered.sum(axis=1), dtype=np.float64).ravel()
-    original_edges = int(adjacency.nnz // 2)
-    retained_edges = int(filtered.nnz // 2)
-    original_weight = float(adjacency.sum()) / 2.0
-    retained_weight = float(filtered.sum()) / 2.0
-    return filtered, degrees, {
-        "original_undirected_edges": original_edges,
-        "retained_undirected_edges": retained_edges,
-        "removed_undirected_edges": original_edges - retained_edges,
-        "retained_edge_fraction": retained_edges / float(original_edges),
-        "original_undirected_weight": original_weight,
-        "retained_undirected_weight": retained_weight,
-        "retained_weight_fraction": retained_weight / original_weight,
-        "isolated_nodes": int(np.sum(degrees == 0.0)),
-    }
 
 
 def _lrml_node_scale(regularizer, degrees):
@@ -1057,6 +976,10 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         if self.graph_batch_size is not None and self.graph_batch_size <= 0:
             raise ValueError("lrml graph_batch_size must be positive when set")
         self.oracle_same_class_edges = bool(merged["oracle_same_class_edges"])
+        self.graph_edge_ablation = (
+            "oracle_pruned" if self.oracle_same_class_edges else "off"
+        )
+        self.graph_edge_ablation_seed = 0
         self.contrastive = bool(merged["contrastive"])
         self.contrastive_margin = float(merged["contrastive_margin"])
         if not math.isfinite(self.contrastive_margin) or self.contrastive_margin <= 0:
@@ -1133,6 +1056,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self.graph_weight_sum = None
         self.graph_construction_metadata = {}
         self.oracle_filter_stats = None
+        self.graph_ablation_stats = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
@@ -1209,6 +1133,23 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         )
 
     def configure_graph_batching(self, config):
+        configured_ablation = str(config.graph_edge_ablation)
+        if self.oracle_same_class_edges and configured_ablation != "off":
+            raise ValueError(
+                "lrml legacy regularizer_params.oracle_same_class_edges cannot be "
+                "combined with ssl_config.graph_edge_ablation"
+            )
+        self.graph_edge_ablation = (
+            "oracle_pruned"
+            if self.oracle_same_class_edges
+            else configured_ablation
+        )
+        ablation_seed = (
+            config.seed
+            if config.graph_edge_ablation_seed is None
+            else config.graph_edge_ablation_seed
+        )
+        self.graph_edge_ablation_seed = 0 if ablation_seed is None else int(ablation_seed)
         self.graph_batch_mode = str(config.graph_batch_mode)
         if self.embed_mode != "output" and self.graph_batch_mode != "global":
             raise ValueError(
@@ -1226,8 +1167,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         if self.graph_batch_mode == "global":
             return
         if self.graph_batch_mode != "in_batch":
-            # 'in_batch_merged' folds the supervised term into the regularizer's
-            # own loss call, which only stml_threshold implements.
             raise ValueError(
                 "lrml graph_batch_mode must be one of ['global', 'in_batch']"
             )
@@ -1295,6 +1234,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
         self.graph_weight_sum = None
         self.graph_construction_metadata = {}
         self.oracle_filter_stats = None
+        self.graph_ablation_stats = None
         self._last_graph_rebuild_epoch = None
         self._regularizer_sampler = None
         self._regularizer_loader = None
@@ -1381,7 +1321,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 seed=seed,
                 start_method=start_method,
                 desc=f"LRML graph embeddings - epoch {epoch}",
-                embedding_kind="default",
                 loader=self._embedding_loader,
             )
 
@@ -1409,19 +1348,26 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 self.graph_positions,
             )
             oracle_filter_stats = None
-            if self.oracle_same_class_edges:
-                adjacency, degrees, oracle_filter_stats = (
-                    _filter_lrml_graph_to_oracle_same_class(
-                        adjacency,
-                        graph_labels,
-                    )
+            if self.graph_edge_ablation != "off":
+                adjacency, oracle_filter_stats = apply_graph_edge_ablation(
+                    adjacency,
+                    graph_labels,
+                    mode=self.graph_edge_ablation,
+                    seed=self.graph_edge_ablation_seed,
                 )
+                degrees = np.asarray(
+                    adjacency.sum(axis=1),
+                    dtype=np.float64,
+                ).ravel()
                 logger.warning(
-                    "LRML ORACLE graph filter used hidden true labels: "
+                    "LRML ORACLE ABLATION uses hidden true labels: "
+                    f"mode={self.graph_edge_ablation}, "
+                    f"raw_edge_purity={oracle_filter_stats['edge_purity']:.3%}, "
                     f"retained {oracle_filter_stats['retained_undirected_edges']} / "
-                    f"{oracle_filter_stats['original_undirected_edges']} same-class "
-                    "edges "
-                    f"({oracle_filter_stats['retained_edge_fraction']:.3%}); "
+                    f"{oracle_filter_stats['original_undirected_edges']} edges "
+                    f"({oracle_filter_stats['retained_edge_fraction']:.3%}), "
+                    f"retained_edge_purity="
+                    f"{oracle_filter_stats['retained_edge_purity']:.3%}; "
                     f"isolated_nodes={oracle_filter_stats['isolated_nodes']}"
                 )
             edge_rows, _, edge_weights = graph_upper_triangle_edges(adjacency)
@@ -1442,45 +1388,28 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 positions=self.graph_positions,
                 labels=graph_labels,
                 known_mask=self.graph_known_mask,
-                graph_metadata={
-                    "graph_kind": (
-                        "density_weighted_gaussian_knn"
-                        if self.mode == "manifold_preserving"
-                        else (
-                            "binary_knn_union"
-                            if self.edge_weighting == "binary"
-                            else "positive_part_cosine_knn"
-                        )
-                    ),
-                    "mode": self.mode,
-                    "edge_weighting": (
-                        "density_gaussian"
-                        if self.mode == "manifold_preserving"
-                        else self.edge_weighting
-                    ),
-                    "gamma": (
-                        self.gamma
-                        if self.mode == "lrml" and self.edge_weighting == "cosine"
-                        else None
-                    ),
-                    "requested_n_neighbors": self.n_neighbors,
-                    "search_n_neighbors": (
+                graph_metadata=self._graph_metadata(
+                    "",
+                    (
                         min(self.n_neighbors, max(len(embeddings) - 1, 0))
                         if neighbor_indices is None
                         else int(neighbor_indices.shape[1])
                     ),
-                    "neighbor_indices": neighbor_indices,
-                    "oracle_same_class_edges": self.oracle_same_class_edges,
-                    "oracle_filter": oracle_filter_stats,
-                    **self.graph_construction_metadata,
-                },
+                    neighbor_indices,
+                    oracle_filter_stats,
+                ),
             )
             self.neighbor_indices = neighbor_indices
             self.adjacency = adjacency
             self.degrees = degrees
             self.graph_edge_count = int(len(edge_rows))
             self.graph_weight_sum = float(edge_weights.sum())
-            self.oracle_filter_stats = oracle_filter_stats
+            self.oracle_filter_stats = (
+                oracle_filter_stats
+                if self.oracle_same_class_edges
+                else None
+            )
+            self.graph_ablation_stats = oracle_filter_stats
             self._last_graph_rebuild_epoch = None if epoch is None else int(epoch)
             scale = _lrml_node_scale(self, degrees)
             self.node_scale = torch.as_tensor(scale, dtype=torch.float32, device=device)
@@ -1502,7 +1431,7 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 f"edge_weighting={weighting_name}{weighting_details}, "
                 f"mean_edge_weight={float(edge_weights.mean()):.4f}, "
                 f"normalized_laplacian={self.normalized_laplacian}, "
-                f"oracle_same_class_edges={self.oracle_same_class_edges}"
+                f"graph_edge_ablation={self.graph_edge_ablation}"
             )
 
         num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
@@ -1820,6 +1749,31 @@ class LRMLRegularizer(BaseTrainingRegularizer):
             zip(self.auxiliary_heads.layer_names, self.auxiliary_heads(activations))
         )
 
+    def _graph_metadata(self, kind_prefix, search_n_neighbors, neighbor_indices, ablation_stats):
+        """Construction metadata the graph diagnostics record for one graph."""
+
+        if self.mode == "manifold_preserving":
+            graph_kind = "density_weighted_gaussian_knn"
+        elif self.edge_weighting == "binary":
+            graph_kind = "binary_knn_union"
+        else:
+            graph_kind = "positive_part_cosine_knn"
+        return {
+            "graph_kind": kind_prefix + graph_kind,
+            "mode": self.mode,
+            "edge_weighting": (
+                "density_gaussian" if self.mode == "manifold_preserving" else self.edge_weighting
+            ),
+            "gamma": self.gamma if self.mode == "lrml" and self.edge_weighting == "cosine" else None,
+            "requested_n_neighbors": self.n_neighbors,
+            "search_n_neighbors": search_n_neighbors,
+            "neighbor_indices": neighbor_indices,
+            "oracle_same_class_edges": self.oracle_same_class_edges,
+            "oracle_filter": ablation_stats if self.oracle_same_class_edges else None,
+            "graph_edge_ablation": ablation_stats,
+            **self.graph_construction_metadata,
+        }
+
     def _contrastive_repulsion(
         self,
         embeddings,
@@ -2093,17 +2047,21 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                     prefer_gpu=False,
                 )
             oracle_filter_stats = None
-            if self.oracle_same_class_edges:
+            if self.graph_edge_ablation != "off":
                 if graph_positions is None:
                     raise RuntimeError(
-                        "LRML oracle same-class filtering requires graph positions"
+                        "LRML graph edge ablation requires graph positions"
                     )
-                adjacency, degrees, oracle_filter_stats = (
-                    _filter_lrml_graph_to_oracle_same_class(
-                        adjacency,
-                        self._train_dataset_labels[graph_positions],
-                    )
+                adjacency, oracle_filter_stats = apply_graph_edge_ablation(
+                    adjacency,
+                    self._train_dataset_labels[graph_positions],
+                    mode=self.graph_edge_ablation,
+                    seed=self.graph_edge_ablation_seed,
                 )
+                degrees = np.asarray(
+                    adjacency.sum(axis=1),
+                    dtype=np.float64,
+                ).ravel()
             scaled = graph_embeddings
             if self.normalized_laplacian:
                 scale = torch.as_tensor(
@@ -2123,34 +2081,12 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 adjacency=adjacency,
                 graph_positions=graph_positions,
                 labeled_count=labeled_count,
-                graph_metadata={
-                    "graph_kind": (
-                        "in_batch_density_weighted_gaussian_knn"
-                        if self.mode == "manifold_preserving"
-                        else (
-                            "in_batch_binary_knn_union"
-                            if self.edge_weighting == "binary"
-                            else "in_batch_positive_part_cosine_knn"
-                        )
-                    ),
-                    "mode": self.mode,
-                    "edge_weighting": (
-                        "density_gaussian"
-                        if self.mode == "manifold_preserving"
-                        else self.edge_weighting
-                    ),
-                    "gamma": (
-                        self.gamma
-                        if self.mode == "lrml" and self.edge_weighting == "cosine"
-                        else None
-                    ),
-                    "requested_n_neighbors": self.n_neighbors,
-                    "search_n_neighbors": int(neighbor_indices.shape[1]),
-                    "neighbor_indices": neighbor_indices,
-                    "oracle_same_class_edges": self.oracle_same_class_edges,
-                    "oracle_filter": oracle_filter_stats,
-                    **self.graph_construction_metadata,
-                },
+                graph_metadata=self._graph_metadata(
+                    "in_batch_",
+                    int(neighbor_indices.shape[1]),
+                    neighbor_indices,
+                    oracle_filter_stats,
+                ),
             )
             # The step's own labeled and unlabeled samples are the only pool in
             # this mode, so the partner is drawn from all of it that the batch
@@ -2176,8 +2112,23 @@ class LRMLRegularizer(BaseTrainingRegularizer):
                 "train/lrml/in_batch_graph_weight": float(weight_sum),
                 "train/lrml/oracle_retained_edge_fraction": (
                     1.0
-                    if oracle_filter_stats is None
+                    if not self.oracle_same_class_edges
                     else oracle_filter_stats["retained_edge_fraction"]
+                ),
+                **(
+                    {}
+                    if oracle_filter_stats is None
+                    else {
+                        "train/lrml/graph_edge_purity": oracle_filter_stats[
+                            "edge_purity"
+                        ],
+                        "train/lrml/retained_graph_edge_purity": (
+                            oracle_filter_stats["retained_edge_purity"]
+                        ),
+                        "train/lrml/retained_graph_edge_fraction": (
+                            oracle_filter_stats["retained_edge_fraction"]
+                        ),
+                    }
                 ),
                 **contrastive_diagnostics,
             }
@@ -2264,169 +2215,6 @@ class LRMLRegularizer(BaseTrainingRegularizer):
 
     def batch_diagnostics(self):
         return dict(self._last_diagnostics)
-
-class STMLRegularizer(BaseTrainingRegularizer):
-    """Use the existing STML objective as an unlabeled regularization term."""
-
-    name = "stml"
-    supports_frozen_feature_precompute = True
-    provides_trainable_projection_without_feat_dim = True
-
-    def __init__(self, regularizer_weight=1.0, supervised_weight=1.0, **params):
-        super().__init__(
-            regularizer_weight=regularizer_weight,
-            supervised_weight=supervised_weight,
-        )
-        self.criterion = metric_losses.STMLLoss(**params)
-        self.num_views = self.criterion.num_views
-        self.num_neighbors = self.criterion.num_neighbors
-        self.teacher_momentum = self.criterion.teacher_momentum
-        self.normalize_student = self.criterion.normalize_student
-        self.dataset = None
-        self._regularizer_loader = None
-        self._regularizer_loader_cache_key = None
-        self._last_sampling_rebuild_epoch = None
-
-    def model_kwargs(self, args):
-        return {
-            "stml": True,
-            "stml_g_dim": getattr(args, "stml_g_dim", None),
-            "stml_normalize_student": self.normalize_student,
-        }
-
-    def validate_run_args(self, args):
-        if args.batch_size < 2:
-            raise ValueError("STML regularization requires batch_size >= 2")
-        if args.batch_size % self.num_neighbors != 0:
-            raise ValueError(
-                "STML regularization requires batch_size to be divisible by "
-                "method_params.regularizer_params.num_neighbors"
-            )
-        if args.stml_g_dim is not None and args.stml_g_dim <= 0:
-            raise ValueError("stml_g_dim must be positive when set")
-
-    def build_dataset(self, train_dataset, split, use_cache=False):
-        if len(split.unlabeled_positions) < 2:
-            raise ValueError("STML regularization requires at least two unlabeled samples")
-        self.use_cache = bool(use_cache)
-        self.dataset = UnlabeledSubset(
-            train_dataset,
-            split.unlabeled_positions,
-            num_views=self.num_views,
-        )
-        utils.shutdown_dataloaders(self._regularizer_loader)
-        self._regularizer_loader = None
-        self._regularizer_loader_cache_key = None
-        self._last_sampling_rebuild_epoch = None
-        return self.dataset
-
-    def make_loader(
-        self,
-        model,
-        train_dataset,
-        supervised_loader,
-        device,
-        config,
-        batch_size,
-        seed,
-        num_workers,
-        start_method,
-        epoch,
-        log_dir=None,
-    ):
-        if self.dataset is None:
-            raise RuntimeError("build_dataset must be called before make_loader")
-        effective_num_workers = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
-        cache_key = (
-            id(self.dataset),
-            int(batch_size),
-            int(self.num_neighbors),
-            int(effective_num_workers),
-            str(start_method),
-        )
-        should_rebuild_sampling = (
-            self._regularizer_loader is None
-            or self._regularizer_loader_cache_key != cache_key
-            or should_rebuild_on_epoch(
-                config.update_mode,
-                config.update_interval_epochs,
-                epoch,
-                self._last_sampling_rebuild_epoch,
-            )
-        )
-        if should_rebuild_sampling:
-            utils.shutdown_dataloaders(self._regularizer_loader)
-            sampling_embeddings = extract_embeddings(
-                model=model,
-                dataset=train_dataset,
-                positions=self.dataset.positions,
-                device=self.get_ssl_device(device),
-                batch_size=config.embedding_batch_size,
-                num_workers=config.embedding_num_workers,
-                seed=seed,
-                start_method=start_method,
-                desc=f"STML sampling embeddings - epoch {epoch}",
-                embedding_kind="stml_g",
-            )
-            self._regularizer_loader = utils.make_stml_train_loader(
-                train_dataset=self.dataset,
-                sampling_embeddings=sampling_embeddings,
-                batch_size=batch_size,
-                neighbors_per_query=self.num_neighbors,
-                seed=seed,
-                num_workers=effective_num_workers,
-                start_method=start_method,
-                graph_device=self.get_ssl_device(device),
-            )
-            self._regularizer_loader_cache_key = cache_key
-            self._last_sampling_rebuild_epoch = None if epoch is None else int(epoch)
-        else:
-            logger.info(
-                "Reusing STML nearest-neighbor sampler: "
-                f"{len(self.dataset)} samples, {self.num_neighbors} neighbors/query"
-            )
-        return CombinedTrainingLoader(supervised_loader, self._regularizer_loader)
-
-    def initialize_state(self, student_model, device):
-        teacher_model = copy.deepcopy(student_model)
-        torch.nn.init.orthogonal_(teacher_model.embedding_g.weight)
-        torch.nn.init.zeros_(teacher_model.embedding_g.bias)
-        teacher_model.requires_grad_(False)
-        teacher_model.eval()
-        logger.info("Initialized STML EMA teacher from the supervised student")
-        return teacher_model.to(device)
-
-    def compute_loss(self, student_model, state, batch, device, timings=None):
-        teacher_model = state
-        if teacher_model is None:
-            raise RuntimeError("STML regularization requires an initialized EMA teacher")
-        images, _, instance_ids = batch
-        if not isinstance(images, (list, tuple)) or len(images) != self.num_views:
-            raise ValueError(f"STML batches must contain {self.num_views} augmented views per sample")
-        images = torch.cat(list(images), dim=0)
-        instance_ids = instance_ids.repeat(self.num_views).to(device)
-        student_g, student_f = student_model.forward_stml_cached(images, device)
-        with torch.no_grad():
-            teacher_g = teacher_model.forward_stml_teacher_cached(images, device)
-        return self.criterion(student_f, student_g, teacher_g, instance_ids)
-
-    @torch.no_grad()
-    def after_optimizer_step(self, student_model, state):
-        teacher_model = state
-        if teacher_model is None:
-            raise RuntimeError("STML regularization requires an initialized EMA teacher")
-        teacher_parameters = dict(teacher_model.named_parameters())
-        for name, student_parameter in student_model.named_parameters():
-            if name.startswith("fc."):
-                continue
-            teacher_parameters[name].lerp_(student_parameter.detach(), 1 - self.teacher_momentum)
-        teacher_buffers = dict(teacher_model.named_buffers())
-        for name, student_buffer in student_model.named_buffers():
-            teacher_buffer = teacher_buffers[name]
-            if torch.is_floating_point(teacher_buffer):
-                teacher_buffer.lerp_(student_buffer.detach(), 1 - self.teacher_momentum)
-            else:
-                teacher_buffer.copy_(student_buffer.detach())
 
 
 class HofferEntropyRegularizer(BaseTrainingRegularizer):
@@ -2699,6 +2487,7 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
         "regularizer_target_ratio_statistic_anchor",
         "regularizer_target_ratio_diagnostics",
         "gradient_surgery",
+        "regularizer_max_ratio",
         "grad_norm_alpha",
         "grad_norm_lr",
         "grad_norm_update_interval",
@@ -2794,6 +2583,15 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
                 "regularizer_target_ratio_update_interval_samples are alternative "
                 "ways to schedule probes; configure only one"
             )
+        if (
+            params.get("regularizer_max_ratio") is not None
+            and params.get("grad_norm_alpha") is not None
+        ):
+            raise ValueError(
+                f"{self.name} method_params regularizer_max_ratio cannot be combined "
+                "with grad_norm_alpha: GradNorm learns the regularizer weight, and the "
+                "cap would lower it behind the learner's back"
+            )
         if params.get("grad_norm_alpha") is None:
             unused = sorted(
                 name for name in self.grad_norm_params if params.get(name) is not None
@@ -2837,6 +2635,7 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
                 False,
             ),
             "gradient_surgery": params.get("gradient_surgery"),
+            "regularizer_max_ratio": params.get("regularizer_max_ratio"),
             "grad_norm_alpha": params.get("grad_norm_alpha"),
             "grad_norm_lr": params.get("grad_norm_lr"),
             "grad_norm_update_interval": params.get("grad_norm_update_interval"),
@@ -2875,6 +2674,7 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
             "regularizer_target_ratio_diagnostics"
         )
         surgery_mode = params.pop("gradient_surgery")
+        max_ratio = params.pop("regularizer_max_ratio")
         grad_norm_alpha = params.pop("grad_norm_alpha")
         grad_norm_settings = {
             name.removeprefix("grad_norm_"): params.pop(name)
@@ -2960,6 +2760,14 @@ class RegularizedSemiSupervisedMethod(BaseSemiSupervisedMethod):
         if surgery_mode is not None:
             regularizer.set_gradient_surgery(surgery_mode)
             grad_surgery.log_gradient_surgery_configuration(regularizer)
+        if max_ratio is not None:
+            regularizer.set_max_ratio(max_ratio)
+            logger.info(
+                f"{regularizer.name}: regularizer_max_ratio={regularizer.regularizer_max_ratio:g} "
+                "caps the Euclidean gradient ratio of the regularizer and of each "
+                "extra term to the supervised loss on every regularized step (one "
+                "extra gradient pass per term per step)"
+            )
         if grad_norm_alpha is not None:
             superseded = [
                 "regularizer_target_ratio"
@@ -3025,13 +2833,7 @@ class SklearnGraphSSLMethod(BaseSemiSupervisedMethod):
         """Fit a graph SSL estimator on embeddings and predict unlabeled nodes."""
 
         if len(split.unlabeled_positions) == 0:
-            # Preserve the normal result shape/typing so the later filtering and
-            # merging pipeline does not need a separate no-unlabeled branch.
-            return PseudoLabelResult(
-                positions=np.array([], dtype=np.int64),
-                mapped_labels=np.array([], dtype=np.int64),
-                confidences=np.array([], dtype=np.float32),
-            )
+            return empty_pseudo_label_result()
 
         # train_dataset.labels already contains dense mapped labels. Graph SSL
         # therefore predicts directly in the label space used for training.
@@ -3039,27 +2841,11 @@ class SklearnGraphSSLMethod(BaseSemiSupervisedMethod):
         # The labeled prefix followed by the unlabeled suffix is an important
         # ordering contract used again after estimator.fit.
         ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-        # sklearn recognizes -1 as the unknown target.  Labeled and unlabeled
-        # embeddings are concatenated in the same order as ssl_targets.
-        ssl_targets = np.concatenate(
-            [
-                labels[split.labeled_positions],
-                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
-            ]
-        )
-
-        # Embeddings are extracted in ssl_positions order, so each feature row
-        # lines up with the target at the same ssl_targets offset.
-        features = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
-            desc=f"{self.name} embeddings",
+        # sklearn recognizes -1 as the unknown target. Embeddings are extracted
+        # in ssl_positions order, so each feature row lines up with its target.
+        ssl_targets = _labeled_then_unlabeled_targets(labels, split)
+        features = _method_embeddings(
+            self.name, model, train_dataset, ssl_positions, device, config, epoch, start_method
         )
 
         # Copy defaults before applying config overrides so the shared registry
@@ -3110,13 +2896,7 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         log_dir=None,
     ):
         if len(split.unlabeled_positions) == 0:
-            # Return an empty, correctly typed result that downstream code can
-            # concatenate/filter without special handling.
-            return PseudoLabelResult(
-                positions=np.array([], dtype=np.int64),
-                mapped_labels=np.array([], dtype=np.int64),
-                confidences=np.array([], dtype=np.float32),
-            )
+            return empty_pseudo_label_result()
         if len(split.labeled_positions) == 0:
             raise ValueError(f"{self.name} requires at least one labeled sample")
 
@@ -3142,16 +2922,8 @@ class FaissKNNMajorityVotePseudoLabeler(BaseSemiSupervisedMethod):
         # Extract all embeddings in one deterministic pass. The labeled prefix
         # is indexed; the unlabeled suffix becomes the query matrix.
         ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-        embeddings = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
-            desc=f"{self.name} embeddings",
+        embeddings = _method_embeddings(
+            self.name, model, train_dataset, ssl_positions, device, config, epoch, start_method
         )
 
         # Split the embedding matrix at the same boundary used to build
@@ -3432,15 +3204,8 @@ class SelfTrainingKNNPseudoLabeler(BaseSemiSupervisedMethod):
             [labeled_positions, self._promoted_positions]
         )
         ssl_positions = np.concatenate([support_positions, remaining_positions])
-        embeddings = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
+        embeddings = _method_embeddings(
+            self.name, model, train_dataset, ssl_positions, device, config, epoch, start_method,
             desc=f"{self.name} meta-iteration {self._meta_iteration + 1} embeddings",
         )
         num_support = len(support_positions)
@@ -3527,28 +3292,70 @@ class SelfTrainingKNNPseudoLabeler(BaseSemiSupervisedMethod):
         return self._current_result()
 
 
-class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
-    """Zhou et al. label spreading solved directly on a FAISS kNN graph."""
+def _method_embeddings(name, model, train_dataset, positions, device, config, epoch, start_method, desc=None, num_workers=None):
+    """Embed ``positions`` the way every pool-wide pseudo-labeler does."""
 
-    DEFAULT_PARAMS = {
-        "n_neighbors": 10,
-        "gamma": 1.0,
-        "alpha": 0.2,
-        "cg_rtol": 1e-5,
-        "cg_max_iter": 1000,
-        "linear_solver": "cg",
-    }
+    return extract_embeddings(
+        model=model,
+        dataset=train_dataset,
+        positions=positions,
+        device=device,
+        batch_size=config.embedding_batch_size,
+        num_workers=config.embedding_num_workers if num_workers is None else num_workers,
+        seed=config.seed if epoch is None else config.seed + epoch,
+        start_method=start_method,
+        desc=f"{name} embeddings" if desc is None else desc,
+    )
 
-    def __init__(self, name="faiss_label_spreading"):
+
+def _labeled_then_unlabeled_targets(labels, split):
+    """Targets in ``ssl_positions`` order: true labels, then UNLABELED_TARGET."""
+
+    return np.concatenate(
+        [
+            labels[split.labeled_positions],
+            np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
+        ]
+    )
+
+
+class _LabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
+    """Propagate labels over an affinity graph of the labeled + unlabeled pool."""
+
+    DEFAULT_PARAMS = {}
+    graph_title = "symmetric affinity graph"
+    # None follows config.embedding_num_workers.
+    embedding_num_workers = None
+
+    def __init__(self, name):
         self.name = name
 
-    def validate_config(self, config, source=""):
+    def resolve_params(self, config):
         params = dict(self.DEFAULT_PARAMS)
         params.update(config.method_params)
+        validate_label_spreading_params(self.name, self.DEFAULT_PARAMS, params)
+        return params
+
+    def validate_config(self, config, source=""):
         try:
-            validate_faiss_label_spreading_params(params)
+            self.resolve_params(config)
         except ValueError as exc:
             raise ValueError(f"Invalid {self.name} configuration{source}: {exc}") from exc
+
+    def propagate(self, **kwargs):
+        raise NotImplementedError
+
+    def select(self, split, probabilities, confidences):
+        """Turn the unlabeled rows' propagated scores into a PseudoLabelResult."""
+
+        pseudo_labels = np.argmax(probabilities, axis=1).astype(np.int64)
+        confidences = confidences.astype(np.float32)
+        logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(confidences)}")
+        return PseudoLabelResult(
+            positions=split.unlabeled_positions,
+            mapped_labels=pseudo_labels,
+            confidences=confidences,
+        )
 
     def generate_pseudo_labels(
         self,
@@ -3562,50 +3369,39 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         log_dir=None,
     ):
         if len(split.unlabeled_positions) == 0:
-            return PseudoLabelResult(
-                positions=np.array([], dtype=np.int64),
-                mapped_labels=np.array([], dtype=np.int64),
-                confidences=np.array([], dtype=np.float32),
-            )
+            return empty_pseudo_label_result()
         if len(split.labeled_positions) == 0:
             raise ValueError(f"{self.name} requires at least one labeled sample")
 
-        params = dict(self.DEFAULT_PARAMS)
-        params.update(config.method_params)
-        validate_faiss_label_spreading_params(params)
+        params = self.resolve_params(config)
         logger.info(f"Running {self.name} with params: {params}")
+        # The common graph-method ordering contract makes the unlabeled output
+        # a direct suffix slice after propagation.
         ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-
-        features = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
-            desc=f"{self.name} embeddings"
+        features = _method_embeddings(
+            self.name, model, train_dataset, ssl_positions, device, config, epoch, start_method,
+            num_workers=self.embedding_num_workers,
         )
-
         labels = np.asarray(train_dataset.labels, dtype=np.int64)
-        targets = np.concatenate(
-            [
-                labels[split.labeled_positions],
-                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
-            ]
-        )
-        probabilities, confidences = faiss_label_spreading(
+        targets = _labeled_then_unlabeled_targets(labels, split)
+        probabilities, confidences = self.propagate(
             features=features,
             targets=targets,
             num_classes=int(labels.max()) + 1,
+            graph_edge_ablation=config.graph_edge_ablation,
+            graph_edge_ablation_labels=labels[ssl_positions],
+            graph_edge_ablation_seed=(
+                config.seed
+                if config.graph_edge_ablation_seed is None
+                else config.graph_edge_ablation_seed
+            ),
             graph_diagnostics={
                 "request": make_graph_diagnostics_request(
                     config=config,
                     log_dir=log_dir,
                     name=f"{self.name}_affinity",
                     epoch=epoch,
-                    title=f"{self.name} symmetric affinity graph",
+                    title=f"{self.name} {self.graph_title}",
                 ),
                 "positions": ssl_positions,
                 "labels": labels[ssl_positions],
@@ -3615,18 +3411,29 @@ class FaissLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
             **params,
         )
         unlabeled_start = len(split.labeled_positions)
-        unlabeled_probabilities = probabilities[unlabeled_start:]
-        pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
-        unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
-        logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(unlabeled_confidences)}")
-        return PseudoLabelResult(
-            positions=split.unlabeled_positions,
-            mapped_labels=pseudo_labels,
-            confidences=unlabeled_confidences,
-        )
+        return self.select(split, probabilities[unlabeled_start:], confidences[unlabeled_start:])
 
 
-class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
+class FaissLabelSpreadingPseudoLabeler(_LabelSpreadingPseudoLabeler):
+    """Zhou et al. label spreading solved directly on a FAISS kNN graph."""
+
+    DEFAULT_PARAMS = {
+        "n_neighbors": 10,
+        "gamma": 1.0,
+        "alpha": 0.2,
+        "cg_rtol": 1e-5,
+        "cg_max_iter": 1000,
+        "linear_solver": "cg",
+    }
+
+    def __init__(self, name="faiss_label_spreading"):
+        super().__init__(name)
+
+    def propagate(self, **kwargs):
+        return faiss_label_spreading(**kwargs)
+
+
+class IscenLabelSpreadingPseudoLabeler(_LabelSpreadingPseudoLabeler):
     """LP-DeepSSL label propagation from Iscen et al., CVPR 2019."""
 
     # The whole refresh is one build_ssl_training_dataset call, so the engine can
@@ -3641,258 +3448,60 @@ class IscenLabelSpreadingPseudoLabeler(BaseSemiSupervisedMethod):
         "cg_max_iter": 20,
         "linear_solver": "cg",
     }
+    graph_title = "LP-DeepSSL affinity graph"
+    embedding_num_workers = 0
 
     def __init__(self, name="iscen_label_spreading"):
-        self.name = name
+        super().__init__(name)
 
-    def validate_config(self, config, source=""):
-        params = dict(self.DEFAULT_PARAMS)
-        params.update(config.method_params)
-        try:
-            validate_iscen_label_spreading_params(params)
-        except ValueError as exc:
-            raise ValueError(f"Invalid {self.name} configuration{source}: {exc}") from exc
+    def propagate(self, **kwargs):
+        return iscen_label_spreading(**kwargs)
 
-    def generate_pseudo_labels(
-        self,
-        model,
-        train_dataset,
-        split,
-        device,
-        config,
-        epoch=None,
-        start_method="spawn",
-        log_dir=None,
-    ):
-        if len(split.unlabeled_positions) == 0:
-            return PseudoLabelResult(
-                positions=np.array([], dtype=np.int64),
-                mapped_labels=np.array([], dtype=np.int64),
-                confidences=np.array([], dtype=np.float32),
-            )
-        if len(split.labeled_positions) == 0:
-            raise ValueError(f"{self.name} requires at least one labeled sample")
-
-        params = dict(self.DEFAULT_PARAMS)
-        params.update(config.method_params)
-        validate_iscen_label_spreading_params(params)
-        logger.info(f"Running {self.name} with params: {params}")
-
-        # The common graph-method ordering contract makes the unlabeled output
-        # a direct suffix slice after propagation.
-        ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-        features = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=0,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
-            desc=f"{self.name} embeddings",
-        )
-
-        labels = np.asarray(train_dataset.labels, dtype=np.int64)
-        targets = np.concatenate(
-            [
-                labels[split.labeled_positions],
-                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
-            ]
-        )
-        probabilities, confidences = iscen_label_spreading(
-            features=features,
-            targets=targets,
-            num_classes=int(labels.max()) + 1,
-            graph_diagnostics={
-                "request": make_graph_diagnostics_request(
-                    config=config,
-                    log_dir=log_dir,
-                    name=f"{self.name}_affinity",
-                    epoch=epoch,
-                    title=f"{self.name} LP-DeepSSL affinity graph",
-                ),
-                "positions": ssl_positions,
-                "labels": labels[ssl_positions],
-                "known_mask": targets != UNLABELED_TARGET,
-                "confidence_threshold": config.confidence_threshold,
-            },
-            **params,
-        )
-        unlabeled_start = len(split.labeled_positions)
-        unlabeled_probabilities = probabilities[unlabeled_start:]
-        propagated_mask = unlabeled_probabilities.sum(axis=1) > 0.0
+    def select(self, split, probabilities, confidences):
+        propagated_mask = probabilities.sum(axis=1) > 0.0
         omitted_count = int((~propagated_mask).sum())
         if omitted_count > 0:
             logger.warning(
                 f"{self.name} omitted {omitted_count} unlabeled candidates with no "
                 "propagated class mass; they will not enter pseudo-label training"
             )
-        unlabeled_probabilities = unlabeled_probabilities[propagated_mask]
-        pseudo_labels = np.argmax(unlabeled_probabilities, axis=1).astype(np.int64)
-        unlabeled_confidences = confidences[unlabeled_start:][propagated_mask].astype(np.float32)
+        pseudo_labels = np.argmax(probabilities[propagated_mask], axis=1).astype(np.int64)
+        confidences = confidences[propagated_mask].astype(np.float32)
         logger.info(
             f"{self.name} entropy-certainty distribution: "
-            f"{summarize_numeric_values(unlabeled_confidences)}"
+            f"{summarize_numeric_values(confidences)}"
         )
         return PseudoLabelResult(
             positions=split.unlabeled_positions[propagated_mask],
             mapped_labels=pseudo_labels,
-            confidences=unlabeled_confidences,
+            confidences=confidences,
         )
 
 
-class MixedLabelPropagationPseudoLabeler(BaseSemiSupervisedMethod):
-    """Sparse mixed label propagation from Zhuang and Moulin, CVPR 2023."""
-
-    DEFAULT_PARAMS = {
-        "n_neighbors": 50,
-        "gamma": 3.0,
-        "temperature": 4.0,
-        "beta": 1.0,
-        "mu": 1.0 / 99.0,
-        "cg_rtol": 1e-5,
-        "cg_max_iter": 1000,
-        "edge_batch_size": 65536,
-        "linear_solver": "cg",
-    }
-
-    def __init__(self, name="mixed_label_propagation"):
-        self.name = name
-
-    def generate_pseudo_labels(
-        self,
-        model,
-        train_dataset,
-        split,
-        device,
-        config,
-        epoch=None,
-        start_method="spawn",
-        log_dir=None,
-    ):
-        if len(split.unlabeled_positions) == 0:
-            return PseudoLabelResult(
-                positions=np.array([], dtype=np.int64),
-                mapped_labels=np.array([], dtype=np.int64),
-                confidences=np.array([], dtype=np.float32),
-            )
-        if len(split.labeled_positions) == 0:
-            raise ValueError(f"{self.name} requires at least one labeled sample")
-
-        params = dict(self.DEFAULT_PARAMS)
-        params.update(config.method_params)
-        validate_mixed_label_propagation_params(params)
-        logger.info(f"Running {self.name} with params: {params}")
-        ssl_positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-        features = extract_embeddings(
-            model=model,
-            dataset=train_dataset,
-            positions=ssl_positions,
-            device=device,
-            batch_size=config.embedding_batch_size,
-            num_workers=config.embedding_num_workers,
-            seed=config.seed if epoch is None else config.seed + epoch,
-            start_method=start_method,
-            desc=f"{self.name} embeddings",
-        )
-
-        labels = np.asarray(train_dataset.labels, dtype=np.int64)
-        targets = np.concatenate(
-            [
-                labels[split.labeled_positions],
-                np.full(len(split.unlabeled_positions), UNLABELED_TARGET, dtype=np.int64),
-            ]
-        )
-        num_classes = int(labels.max()) + 1
-        normalized_scores, confidences = mixed_label_propagation(
-            features=features,
-            targets=targets,
-            num_classes=num_classes,
-            graph_diagnostics={
-                "request": make_graph_diagnostics_request(
-                    config=config,
-                    log_dir=log_dir,
-                    name=f"{self.name}_affinity",
-                    epoch=epoch,
-                    title=f"{self.name} symmetric affinity graph",
-                ),
-                "positions": ssl_positions,
-                "labels": labels[ssl_positions],
-                "known_mask": targets != UNLABELED_TARGET,
-                "confidence_threshold": config.confidence_threshold,
-            },
-            **params,
-        )
-        unlabeled_start = len(split.labeled_positions)
-        unlabeled_scores = normalized_scores[unlabeled_start:]
-        pseudo_labels = np.argmax(unlabeled_scores, axis=1).astype(np.int64)
-        unlabeled_confidences = confidences[unlabeled_start:].astype(np.float32)
-        logger.info(f"{self.name} confidence distribution: {summarize_numeric_values(unlabeled_confidences)}")
-        return PseudoLabelResult(
-            positions=split.unlabeled_positions,
-            mapped_labels=pseudo_labels,
-            confidences=unlabeled_confidences,
-        )
-
-
-def validate_mixed_label_propagation_params(params):
-    unknown = sorted(set(params) - set(MixedLabelPropagationPseudoLabeler.DEFAULT_PARAMS))
+def validate_label_spreading_params(name, defaults, params):
+    unknown = sorted(set(params) - set(defaults))
     if unknown:
-        raise ValueError(f"Unknown mixed_label_propagation params: {unknown}")
+        raise ValueError(f"Unknown {name} params: {unknown}")
     if int(params["n_neighbors"]) <= 0:
-        raise ValueError("mixed_label_propagation n_neighbors must be positive")
-    for name in ("gamma", "temperature", "beta", "mu", "cg_rtol"):
-        if float(params[name]) <= 0:
-            raise ValueError(f"mixed_label_propagation {name} must be positive")
-    if int(params["cg_max_iter"]) <= 0:
-        raise ValueError("mixed_label_propagation cg_max_iter must be positive")
-    if int(params["edge_batch_size"]) <= 0:
-        raise ValueError("mixed_label_propagation edge_batch_size must be positive")
-    try:
-        normalize_linear_solver(params["linear_solver"])
-    except ValueError as exc:
-        raise ValueError(f"mixed_label_propagation {exc}") from exc
-
-
-def validate_faiss_label_spreading_params(params):
-    unknown = sorted(set(params) - set(FaissLabelSpreadingPseudoLabeler.DEFAULT_PARAMS))
-    if unknown:
-        raise ValueError(f"Unknown faiss_label_spreading params: {unknown}")
-    if int(params["n_neighbors"]) <= 0:
-        raise ValueError("faiss_label_spreading n_neighbors must be positive")
-    for name in ("gamma", "cg_rtol"):
-        if not np.isfinite(float(params[name])) or float(params[name]) <= 0:
-            raise ValueError(f"faiss_label_spreading {name} must be positive")
+        raise ValueError(f"{name} n_neighbors must be positive")
+    for param in ("gamma", "cg_rtol"):
+        if not np.isfinite(float(params[param])) or float(params[param]) <= 0:
+            raise ValueError(f"{name} {param} must be positive")
     alpha = float(params["alpha"])
     if not np.isfinite(alpha) or not (0.0 < alpha < 1.0):
-        raise ValueError("faiss_label_spreading alpha must be in (0, 1)")
+        raise ValueError(f"{name} alpha must be in (0, 1)")
     if int(params["cg_max_iter"]) <= 0:
-        raise ValueError("faiss_label_spreading cg_max_iter must be positive")
+        raise ValueError(f"{name} cg_max_iter must be positive")
     try:
         normalize_linear_solver(params["linear_solver"])
     except ValueError as exc:
-        raise ValueError(f"faiss_label_spreading {exc}") from exc
+        raise ValueError(f"{name} {exc}") from exc
 
 
 def validate_iscen_label_spreading_params(params):
-    unknown = sorted(set(params) - set(IscenLabelSpreadingPseudoLabeler.DEFAULT_PARAMS))
-    if unknown:
-        raise ValueError(f"Unknown iscen_label_spreading params: {unknown}")
-    if int(params["n_neighbors"]) <= 0:
-        raise ValueError("iscen_label_spreading n_neighbors must be positive")
-    for name in ("gamma", "cg_rtol"):
-        if not np.isfinite(float(params[name])) or float(params[name]) <= 0:
-            raise ValueError(f"iscen_label_spreading {name} must be positive")
-    alpha = float(params["alpha"])
-    if not np.isfinite(alpha) or not (0.0 < alpha < 1.0):
-        raise ValueError("iscen_label_spreading alpha must be in (0, 1)")
-    if int(params["cg_max_iter"]) <= 0:
-        raise ValueError("iscen_label_spreading cg_max_iter must be positive")
-    try:
-        normalize_linear_solver(params["linear_solver"])
-    except ValueError as exc:
-        raise ValueError(f"iscen_label_spreading {exc}") from exc
+    validate_label_spreading_params(
+        "iscen_label_spreading", IscenLabelSpreadingPseudoLabeler.DEFAULT_PARAMS, params
+    )
 
 
 GRAPH_PSEUDO_LABEL_METHODS = frozenset(
@@ -3902,9 +3511,34 @@ GRAPH_PSEUDO_LABEL_METHODS = frozenset(
         "sklearn_label_propagation",
         "faiss_label_spreading",
         "iscen_label_spreading",
-        "mixed_label_propagation",
     }
 )
+
+# These methods expose the completed symmetric affinity before it is consumed,
+# so the same edge intervention can be applied without changing their graph
+# search, similarities, or downstream objective. LRML is handled through its
+# registered regularizer below.
+GRAPH_EDGE_ABLATION_PSEUDO_LABEL_METHODS = frozenset(
+    {
+        "faiss_label_spreading",
+        "iscen_label_spreading",
+    }
+)
+
+
+def graph_edge_ablation_is_supported(config):
+    if config.method in GRAPH_EDGE_ABLATION_PSEUDO_LABEL_METHODS:
+        return True
+    if config.method != "regularized":
+        return False
+    regularizer_name = dict(config.method_params).get(
+        "regularizer",
+        getattr(METHOD_REGISTRY.get(config.method), "default_regularizer", None),
+    )
+    # Both graph regularizers prune with hidden labels: LRML prunes the
+    # symmetric adjacency, ssmlpc prunes eq. (5)'s neighborhoods before the
+    # reconstruction weights are solved.
+    return regularizer_name in {"lrml", "ssmlpc"}
 
 
 def _in_batch_graph_diagnostics(
@@ -3939,6 +3573,9 @@ def _run_graph_pseudo_label_batch(
     num_classes,
     method_params,
     graph_diagnostics,
+    graph_edge_ablation="off",
+    graph_edge_ablation_labels=None,
+    graph_edge_ablation_seed=0,
 ):
     """Apply one registered graph pseudo-labeler to an already embedded batch."""
 
@@ -4084,44 +3721,22 @@ def _run_graph_pseudo_label_batch(
         # Propagation operates in the compact class space, while diagnostic
         # artifacts should continue to display dataset-wide mapped labels.
         diagnostics["score_class_labels"] = local_class_lookup
-    if isinstance(method, FaissLabelSpreadingPseudoLabeler):
-        params = dict(method.DEFAULT_PARAMS)
-        params.update(method_params)
-        validate_faiss_label_spreading_params(params)
-        probabilities, confidences = faiss_label_spreading(
-            features=features,
-            targets=algorithm_targets,
-            num_classes=algorithm_num_classes,
-            graph_diagnostics=diagnostics,
-            _dependencies=IN_BATCH_GRAPH_DEPENDENCIES,
-            **params,
-        )
-    elif isinstance(method, IscenLabelSpreadingPseudoLabeler):
-        params = dict(method.DEFAULT_PARAMS)
-        params.update(method_params)
-        validate_iscen_label_spreading_params(params)
-        probabilities, confidences = iscen_label_spreading(
-            features=features,
-            targets=algorithm_targets,
-            num_classes=algorithm_num_classes,
-            graph_diagnostics=diagnostics,
-            _dependencies=IN_BATCH_GRAPH_DEPENDENCIES,
-            **params,
-        )
-    elif isinstance(method, MixedLabelPropagationPseudoLabeler):
-        params = dict(method.DEFAULT_PARAMS)
-        params.update(method_params)
-        validate_mixed_label_propagation_params(params)
-        probabilities, confidences = mixed_label_propagation(
-            features=features,
-            targets=algorithm_targets,
-            num_classes=algorithm_num_classes,
-            graph_diagnostics=diagnostics,
-            _dependencies=IN_BATCH_GRAPH_DEPENDENCIES,
-            **params,
-        )
-    else:
+    if not isinstance(method, _LabelSpreadingPseudoLabeler):
         raise TypeError(f"{type(method).__name__} is not an in-batch graph method")
+    params = dict(method.DEFAULT_PARAMS)
+    params.update(method_params)
+    validate_label_spreading_params(method.name, method.DEFAULT_PARAMS, params)
+    probabilities, confidences = method.propagate(
+        features=features,
+        targets=algorithm_targets,
+        num_classes=algorithm_num_classes,
+        graph_diagnostics=diagnostics,
+        graph_edge_ablation=graph_edge_ablation,
+        graph_edge_ablation_labels=graph_edge_ablation_labels,
+        graph_edge_ablation_seed=graph_edge_ablation_seed,
+        _dependencies=IN_BATCH_GRAPH_DEPENDENCIES,
+        **params,
+    )
 
     unlabeled_probabilities = probabilities[unlabeled_slice]
     unlabeled_confidences = np.asarray(
@@ -4158,6 +3773,13 @@ class InBatchGraphPseudoLabelRegularizer(BaseTrainingRegularizer):
         self.graph_labeled_batch_size = int(config.graph_labeled_batch_size)
         self.graph_unlabeled_batch_size = int(config.graph_unlabeled_batch_size)
         self.confidence_threshold = float(config.confidence_threshold)
+        self.graph_edge_ablation = str(config.graph_edge_ablation)
+        ablation_seed = (
+            config.seed
+            if config.graph_edge_ablation_seed is None
+            else config.graph_edge_ablation_seed
+        )
+        self.graph_edge_ablation_seed = 0 if ablation_seed is None else int(ablation_seed)
         self.dataset = None
         self.num_classes = None
         self._labeled_positions = None
@@ -4284,6 +3906,13 @@ class InBatchGraphPseudoLabelRegularizer(BaseTrainingRegularizer):
                 num_classes=self.num_classes,
                 method_params=self.method_params,
                 graph_diagnostics=graph_diagnostics,
+                graph_edge_ablation=self.graph_edge_ablation,
+                graph_edge_ablation_labels=(
+                    None
+                    if graph_positions is None
+                    else self._train_dataset_labels[graph_positions]
+                ),
+                graph_edge_ablation_seed=self.graph_edge_ablation_seed,
             )
         confidences = np.asarray(confidences, dtype=np.float32)
         accepted = (
@@ -4408,13 +4037,12 @@ class InBatchGraphSemiSupervisedMethod(BaseSemiSupervisedMethod):
 
 
 REGULARIZER_REGISTRY = {
-    "stml": STMLRegularizer,
     "lrml": LRMLRegularizer,
     "hoffer_entropy": HofferEntropyRegularizer,
-    "simmatch_v2": SimMatchV2Regularizer,
     "slade": SladeRegularizer,
     "seraph": SeraphRegularizer,
     "ismlp": IsmlpRegularizer,
+    "ssmlpc": SsmlpcRegularizer,
 }
 
 
@@ -4437,18 +4065,8 @@ METHOD_REGISTRY = {
     ),
     "faiss_label_spreading": FaissLabelSpreadingPseudoLabeler(),
     "iscen_label_spreading": IscenLabelSpreadingPseudoLabeler(),
-    # STML's teacher relations cut at a confidence threshold instead of
-    # applied as soft pairwise weights, which frees them from STML's own loss.
-    "stml_threshold": STMLThresholdPseudoLabeler(),
-    "mixed_label_propagation": MixedLabelPropagationPseudoLabeler(),
     # Generic composition point for supervised loss + unlabeled regularizer.
     "regularized": RegularizedSemiSupervisedMethod(name="regularized"),
-    # Convenience alias; this is still the same supervised-loss + regularizer
-    # composition and therefore works with every supported PML loss/miner.
-    "simmatch_v2": RegularizedSemiSupervisedMethod(
-        name="simmatch_v2",
-        default_regularizer="simmatch_v2",
-    ),
     # SLADE's student stage is the same composition: the configured pair-based
     # ranking loss on labeled data plus the unlabeled ranking and feature-basis
     # terms of Eq 9.
@@ -4538,6 +4156,20 @@ def sample_scoped_refresh_is_supported(config):
     return bool(regularizer_class.supports_sample_scoped_refresh)
 
 
+def oracle_regularizer_is_supported(config):
+    """Whether this configuration's regularizer builds oracle pseudo-labels itself."""
+
+    method = METHOD_REGISTRY.get(config.method)
+    if method is None or not method.is_regularization_method:
+        return False
+    regularizer_name = dict(config.method_params).get(
+        "regularizer",
+        getattr(method, "default_regularizer", None),
+    )
+    regularizer_class = REGULARIZER_REGISTRY.get(regularizer_name)
+    return bool(getattr(regularizer_class, "supports_oracle_pseudo_labels", False))
+
+
 def sample_scoped_refresh_methods():
     """Names accepted by ``update_mode='every_n_samples'``, for error messages."""
 
@@ -4554,7 +4186,7 @@ def validate_ssl_config(config, path=None):
     """Validate label-selection and method settings before any data is loaded."""
 
     source = f" in {path}" if path is not None else ""
-    if config.method != "none" and config.method not in METHOD_REGISTRY and config.method not in LOSS_DRIVEN_METHODS:
+    if config.method != "none" and config.method not in METHOD_REGISTRY:
         raise ValueError(f"Unknown SSL method{source}: {config.method}. Available: {available_methods()}")
     if config.update_mode not in UPDATE_MODES:
         raise ValueError(f"Unknown SSL update_mode{source}: {config.update_mode}. Available: {sorted(UPDATE_MODES)}")
@@ -4629,11 +4261,6 @@ def validate_ssl_config(config, path=None):
             f"Available: {sorted(WARMUP_CHECKPOINT_MODES)}"
         )
     method = METHOD_REGISTRY.get(config.method)
-    if config.method in LOSS_DRIVEN_METHODS and config.method_params:
-        raise ValueError(
-            f"method_params must be empty for loss-driven method {config.method!r}{source}; "
-            "configure the loss with loss_params"
-        )
     if config.seed is None:
         raise ValueError(f"seed must be resolved before validation{source}")
     if config.support_seed is None:
@@ -4687,6 +4314,67 @@ def validate_ssl_config(config, path=None):
         raise ValueError(
             f"graph_batch_mode must be one of {sorted(GRAPH_BATCH_MODES)}{source}"
         )
+    if config.graph_edge_ablation not in GRAPH_EDGE_ABLATION_MODES:
+        raise ValueError(
+            "graph_edge_ablation must be one of "
+            f"{sorted(GRAPH_EDGE_ABLATION_MODES)}{source}: "
+            f"{config.graph_edge_ablation!r}"
+        )
+    if config.graph_edge_ablation_seed is not None and (
+        isinstance(config.graph_edge_ablation_seed, bool)
+        or not isinstance(config.graph_edge_ablation_seed, (int, np.integer))
+    ):
+        raise ValueError(
+            f"graph_edge_ablation_seed must be an integer or null{source}"
+        )
+    if (
+        config.graph_edge_ablation_seed is not None
+        and config.graph_edge_ablation_seed < 0
+    ):
+        raise ValueError(
+            f"graph_edge_ablation_seed must be non-negative when set{source}"
+        )
+    if config.graph_edge_ablation == "degree_rewired" and config.method == "regularized" and dict(
+        config.method_params
+    ).get("regularizer") == "ssmlpc":
+        raise ValueError(
+            "graph_edge_ablation='degree_rewired' rewires a symmetric adjacency; ssmlpc's "
+            f"eq. (5) reconstruction neighborhoods have none{source}"
+        )
+    if config.pseudo_label_source not in PSEUDO_LABEL_SOURCES:
+        raise ValueError(
+            f"pseudo_label_source must be one of {sorted(PSEUDO_LABEL_SOURCES)}{source}: "
+            f"{config.pseudo_label_source!r}"
+        )
+    noise = config.pseudo_label_oracle_noise
+    if isinstance(noise, bool) or not isinstance(noise, (int, float)) or not 0.0 <= float(noise) < 1.0:
+        raise ValueError(f"pseudo_label_oracle_noise must be a number in [0, 1){source}: {noise!r}")
+    if float(noise) > 0.0 and config.pseudo_label_source != "oracle":
+        raise ValueError(f"pseudo_label_oracle_noise only applies to pseudo_label_source='oracle'{source}")
+    if config.pseudo_label_source != "method":
+        generates = getattr(METHOD_REGISTRY.get(config.method), "generates_pseudo_labels", False)
+        regularizer_oracle = (
+            config.pseudo_label_source == "oracle" and oracle_regularizer_is_supported(config)
+        )
+        if not regularizer_oracle and (
+            not generates or config.graph_batch_mode in IN_BATCH_GRAPH_MODES
+        ):
+            raise ValueError(
+                f"pseudo_label_source={config.pseudo_label_source!r} replaces the pseudo-labels of a "
+                "pseudo-labeling method (e.g. iscen_label_spreading) or, for 'oracle', the clusters "
+                "of a regularizer that opts in (slade); other regularizers set "
+                f"method_params.regularizer_weight=0 instead; got method={config.method!r}{source}"
+            )
+    if (
+        config.graph_edge_ablation != "off"
+        and not graph_edge_ablation_is_supported(config)
+    ):
+        raise ValueError(
+            "graph_edge_ablation is an oracle-only ablation implemented for "
+            "LRML and explicit-affinity label propagation methods "
+            f"{sorted(GRAPH_EDGE_ABLATION_PSEUDO_LABEL_METHODS)}; got "
+            f"method={config.method!r}{source}"
+        )
     for name in ("graph_labeled_batch_size", "graph_unlabeled_batch_size"):
         value = getattr(config, name)
         if value is None:
@@ -4707,32 +4395,15 @@ def validate_ssl_config(config, path=None):
             raise ValueError(
                 f"graph_unlabeled_batch_size is required for in-batch graphs{source}"
             )
-    if config.graph_batch_mode == "in_batch_merged":
-        # The merged mode owns the whole objective, so it needs a method that can
-        # fold the supervised term into its own loss call.
-        if config.method != "stml_threshold":
-            raise ValueError(
-                "graph_batch_mode='in_batch_merged' is implemented for "
-                f"stml_threshold only; got method={config.method!r}{source}"
-            )
-        if config.graph_labeled_batch_size is not None:
-            raise ValueError(
-                "graph_labeled_batch_size does not apply to "
-                f"graph_batch_mode='in_batch_merged'{source}: the graph spans the "
-                "whole supervised batch, so there is no labeled subsample to size"
-            )
-    elif config.graph_batch_mode == "in_batch":
+    if config.graph_batch_mode == "in_batch":
         if config.graph_labeled_batch_size is None:
             raise ValueError(
                 f"graph_labeled_batch_size is required for in-batch graphs{source}"
             )
-        if (
-            config.method not in GRAPH_PSEUDO_LABEL_METHODS
-            and config.method not in {"regularized", "stml_threshold"}
-        ):
+        if config.method not in GRAPH_PSEUDO_LABEL_METHODS and config.method != "regularized":
             raise ValueError(
                 "graph_batch_mode='in_batch' is supported by graph pseudo-label "
-                "methods, stml_threshold, and the lrml/slrml regularizers; "
+                "methods and the lrml/slrml regularizers; "
                 f"got method={config.method!r}{source}"
             )
     if config.pseudo_label_diagnostics_mode not in PSEUDO_LABEL_DIAGNOSTICS_MODES:
@@ -4841,7 +4512,7 @@ def validate_ssl_config(config, path=None):
 
 
 def available_methods():
-    return ["none", *sorted(METHOD_REGISTRY), *sorted(LOSS_DRIVEN_METHODS)]
+    return ["none", *sorted(METHOD_REGISTRY)]
 
 
 def get_method(config):
@@ -4850,16 +4521,8 @@ def get_method(config):
     if not config.enabled:
         return None
     method = METHOD_REGISTRY.get(config.method)
-    if method is not None and config.graph_batch_mode in IN_BATCH_GRAPH_MODES:
-        # stml_threshold keeps its own in-batch adapter: the paper's loop needs a
-        # per-step EMA teacher and nearest-neighbor batches, neither of which the
-        # generic graph adapter provides.
-        if config.method == "stml_threshold":
-            return STMLThresholdInBatchMethod(method)
-        # Only stml_threshold implements the merged single-term objective, so the
-        # generic adapter stays on the two-term 'in_batch' mode.
-        if config.graph_batch_mode == "in_batch" and config.method in GRAPH_PSEUDO_LABEL_METHODS:
-            return InBatchGraphSemiSupervisedMethod(method)
+    if config.graph_batch_mode == "in_batch" and config.method in GRAPH_PSEUDO_LABEL_METHODS:
+        return InBatchGraphSemiSupervisedMethod(method)
     return method
 
 
@@ -4954,6 +4617,88 @@ def prepare_label_split(train_dataset, config):
     return split
 
 
+def empty_pseudo_label_result():
+    return PseudoLabelResult(
+        positions=np.array([], dtype=np.int64),
+        mapped_labels=np.array([], dtype=np.int64),
+        confidences=np.array([], dtype=np.float32),
+    )
+
+
+def apply_pseudo_label_oracle(
+    pseudo_labels,
+    *,
+    train_dataset,
+    train_labels_mapper,
+    labeled_positions,
+    noise=0.0,
+    seed=0,
+):
+    """Give accepted pseudo-labels their hidden true label, a share of them a wrong one.
+
+    Coverage and confidences are left exactly as the method chose them. Which
+    samples are corrupted, and the wrong class each one gets, are drawn once per
+    training-subset position from ``seed``: a sample stays wrong in the same way
+    across refreshes (as a method's own systematic error would), and a larger
+    ``noise`` corrupts a superset of what a smaller one does, so the points of a
+    noise curve differ only by the added errors. A wrong label is drawn uniformly
+    from the classes with labeled support -- the classes a method can predict --
+    other than the true one.
+
+    Returns ``(pseudo_labels, stats)``.
+    """
+
+    noise = float(noise)
+    positions = np.asarray(pseudo_labels.positions, dtype=np.int64)
+    predicted = np.asarray(pseudo_labels.mapped_labels, dtype=np.int64)
+    if len(positions) == 0:
+        stats = {"count": 0, "corrupted": 0, "corrupted_fraction": 0.0, "method_accuracy": float("nan")}
+        return pseudo_labels, stats
+    source_labels = np.asarray(train_dataset.orig_labels, dtype=np.int64)
+
+    def mapped(values):
+        try:
+            return np.array([train_labels_mapper[int(value)] for value in values], dtype=np.int64)
+        except KeyError as exc:
+            raise ValueError(
+                f"pseudo_label_source='oracle' needs a mapped true label for every sample; "
+                f"class {int(exc.args[0])} is absent from the training label mapper"
+            ) from exc
+
+    true_labels = mapped(source_labels[positions])
+    candidates = np.unique(mapped(source_labels[np.asarray(labeled_positions, dtype=np.int64)]))
+    generator = np.random.default_rng(int(seed))
+    draws = generator.random(len(source_labels))
+    offsets = generator.integers(0, np.iinfo(np.int64).max, len(source_labels))
+    corrupt = draws[positions] < noise
+    labels = true_labels.copy()
+    if corrupt.any():
+        count = len(candidates)
+        if count < 2:
+            raise ValueError("pseudo-label oracle noise needs at least two labeled classes")
+        slot = np.searchsorted(candidates, true_labels)
+        in_pool = (slot < count) & (candidates[np.minimum(slot, count - 1)] == true_labels)
+        # Skip over the true class when it is a candidate; otherwise any candidate is wrong.
+        wrong = np.where(
+            in_pool,
+            candidates[(slot + 1 + offsets[positions] % (count - 1)) % count],
+            candidates[offsets[positions] % count],
+        )
+        labels[corrupt] = wrong[corrupt]
+    stats = {
+        "count": int(len(positions)),
+        "corrupted": int(corrupt.sum()),
+        "corrupted_fraction": float(corrupt.mean()),
+        "method_accuracy": float(np.mean(predicted == true_labels)),
+    }
+    result = PseudoLabelResult(
+        positions=positions,
+        mapped_labels=labels,
+        confidences=pseudo_labels.confidences,
+    )
+    return result, stats
+
+
 def build_ssl_training_dataset(
     model,
     train_dataset,
@@ -4981,11 +4726,6 @@ def build_ssl_training_dataset(
             "in-batch graph methods generate pseudo-labels during each training "
             "step and must use the regularized training path"
         )
-    if config.method in LOSS_DRIVEN_METHODS:
-        raise ValueError(
-            f"{config.method} is a loss-driven SSL method and does not generate pseudo-labels; "
-            "use build_loss_driven_training_dataset"
-        )
     method = METHOD_REGISTRY[config.method] if method is None else method
     if not method.generates_pseudo_labels:
         raise ValueError(
@@ -4998,6 +4738,22 @@ def build_ssl_training_dataset(
         split = prepare_ssl_split(train_dataset, config)
 
     epoch_label = "" if epoch is None else f" for epoch {epoch}"
+    if config.pseudo_label_source == "none":
+        # The unlabeled term at weight zero: same schedule, warm-up, selection
+        # and sampler budget, but nothing but the labeled support to train on.
+        logger.info(
+            f"pseudo_label_source='none': no {config.method} pseudo-labels{epoch_label}; "
+            "training on the labeled subset only"
+        )
+        return make_relabeled_training_dataset(
+            train_dataset=train_dataset,
+            train_labels_mapper=train_labels_mapper,
+            labeled_positions=split.labeled_positions,
+            pseudo_labels=method.prepare_pseudo_labels_for_training(
+                empty_pseudo_label_result(),
+                config,
+            ),
+        )
     logger.info(f"Generating {config.method} pseudo-labels{epoch_label}")
 
     # Methods predict dense mapped labels because those are the labels used by
@@ -5050,6 +4806,26 @@ def build_ssl_training_dataset(
             else pseudo_label_rescue_top_k
         ),
     )
+    if config.pseudo_label_source == "oracle":
+        # After filtering, so the coverage -- which samples, how many, their
+        # confidences -- is exactly what the method chose; only the labels move.
+        # The diagnostics then audit these labels, while the raw ones stay the
+        # method's own prediction.
+        pseudo_labels, oracle_stats = apply_pseudo_label_oracle(
+            pseudo_labels,
+            train_dataset=train_dataset,
+            train_labels_mapper=train_labels_mapper,
+            labeled_positions=split.labeled_positions,
+            noise=config.pseudo_label_oracle_noise,
+            seed=0 if config.seed is None else int(config.seed),
+        )
+        logger.warning(
+            "PSEUDO-LABEL ORACLE uses hidden true labels: "
+            f"{oracle_stats['count']} accepted samples relabeled, "
+            f"{oracle_stats['corrupted']} ({oracle_stats['corrupted_fraction']:.1%}) given a wrong label "
+            f"at noise={config.pseudo_label_oracle_noise:g}; the method's own labels were "
+            f"{oracle_stats['method_accuracy']:.1%} correct on the same samples"
+        )
     if diagnostics_tracker is not None:
         diagnostics_tracker.log(
             raw_pseudo_labels=raw_pseudo_labels,
@@ -5090,24 +4866,10 @@ def build_labeled_training_dataset(
 
     # Reuse the same relabeling/merging function as SSL, but provide an empty
     # pseudo-label group so only true-labeled positions remain.
-    empty_pseudo_labels = PseudoLabelResult(
-        positions=np.array([], dtype=np.int64),
-        mapped_labels=np.array([], dtype=np.int64),
-        confidences=np.array([], dtype=np.float32),
-    )
     return make_relabeled_training_dataset(
         train_dataset=train_dataset,
         train_labels_mapper=train_labels_mapper,
         labeled_positions=split.labeled_positions,
-        pseudo_labels=empty_pseudo_labels,
+        pseudo_labels=empty_pseudo_label_result(),
         return_indices=return_indices,
     )
-
-
-def build_loss_driven_training_dataset(train_dataset, split, num_views=1):
-    """Expose labeled and unlabeled candidates without exposing their labels."""
-
-    positions = np.concatenate([split.labeled_positions, split.unlabeled_positions])
-    if len(positions) < 2:
-        raise ValueError("loss-driven SSL requires at least two labeled or unlabeled training samples")
-    return UnlabeledSubset(train_dataset, positions, num_views=num_views)

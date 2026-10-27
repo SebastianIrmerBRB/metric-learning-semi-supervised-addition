@@ -216,13 +216,6 @@ def resolve_resident_batch_view(dataset, mode=RESIDENT_MODE_TRAIN):
     return _resolve_plain_view(dataset, mode)
 
 
-def feature_view_nbytes(features, sample_weights):
-    total = features.numel() * features.element_size()
-    if sample_weights is not None:
-        total += sample_weights.numel() * sample_weights.element_size()
-    return int(total)
-
-
 class GpuResidentFeatureLoader:
     """Yield precomputed-feature batches straight from device memory.
 
