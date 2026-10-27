@@ -1,0 +1,12 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_NTXentLoss.json",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_NTXentLoss/classes_0.25/49425ea5e0cb",
+  "save_epoch_head_interval": null,
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_NTXentLoss/classes_0.25/seed_11_49425ea5e0cb.json",
+  "support_seed": 11,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

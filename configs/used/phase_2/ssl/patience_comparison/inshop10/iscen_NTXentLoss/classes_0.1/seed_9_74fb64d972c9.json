@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/iscen_NTXentLoss.json",
+  "labeled_fraction": 0.1,
+  "pseudo_label_diagnostics_mode": "off",
+  "seed": 9,
+  "support_seed": 9
+}

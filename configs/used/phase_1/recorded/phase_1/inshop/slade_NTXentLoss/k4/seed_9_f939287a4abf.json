@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 11645,
+    "length_before_new_iter_num_unlabeled": 7976,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/slade_nt/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-29_18-14-10/fold_00/2026-09-29_18-14-13",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/slade_nt/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-29_18-14-10/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop/slade_nt/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop/slade_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

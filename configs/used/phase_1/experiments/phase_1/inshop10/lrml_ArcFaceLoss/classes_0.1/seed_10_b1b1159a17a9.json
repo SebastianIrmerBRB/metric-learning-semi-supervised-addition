@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/lrml_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/lrml_ArcFaceLoss/classes_0.1/b1b1159a17a9",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/lrml_ArcFaceLoss/classes_0.1/seed_10_b1b1159a17a9.json",
+  "support_seed": 10
+}

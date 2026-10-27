@@ -1,0 +1,21 @@
+{
+  "confidence_threshold": 0.16412550869018777,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "labeled_batch_size": 128,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.8349538385224566,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 4.0,
+    "linear_solver": "torch_block_cg",
+    "n_neighbors": 200
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 1,
+  "update_mode": "every_epoch",
+  "warmup_epochs": 0
+}

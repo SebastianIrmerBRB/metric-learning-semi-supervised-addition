@@ -1,0 +1,37 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "cv_fold": 1,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 19446,
+    "length_before_new_iter_num_labeled": 4863,
+    "length_before_new_iter_num_unlabeled": 14583,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_nt/class_subset_label_0p25_comparison_seed_11/final/supervised/cv_2026-09-29_18-58-27/fold_01/2026-09-29_18-58-30",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_nt/class_subset_label_0p25_comparison_seed_11/final/supervised/cv_2026-09-29_18-58-27/fold_01",
+    "seed": 11,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_nt/study_replay_grid/ssl_configs/class_subset_label_0p25_comparison_seed_11.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.25,
+      "seed": 11,
+      "support_seed": 11
+    },
+    "support_seed": 11
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.25,
+    "seed": 11,
+    "support_seed": 11
+  }
+}

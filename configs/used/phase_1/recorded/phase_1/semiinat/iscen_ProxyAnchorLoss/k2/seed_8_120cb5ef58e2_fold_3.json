@@ -1,0 +1,30 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "cv_fold": 3,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 45959,
+    "length_before_new_iter_num_labeled": 610,
+    "length_before_new_iter_num_unlabeled": 45349,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_prx/class_subset_k_shot_label_1_k_2_comparison_seed_8/final/ssl/cv_2026-09-26_19-22-16/fold_03/2026-09-26_19-28-32",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_prx/class_subset_k_shot_label_1_k_2_comparison_seed_8/final/ssl/cv_2026-09-26_19-22-16/fold_03",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_prx/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/semiinat/iscen_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

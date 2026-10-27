@@ -1,0 +1,41 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/p40_ersatz_2026-10-20.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "patience_delay_epochs": 20
+      },
+      "description": "Replacements of every patience-40 run of the thesis data (CUB excepted) by the same launch with patience 20 and patience_delay_epochs 20 (Thesis/review/patience40_ersatz_2026-10-20). Each variant is the run's original resolved ablation variant plus its epoch cap, patience 20 and the delay.",
+      "name": "patience40_ersatz_2026-10-20",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/p40_ersatz_2026-10-20.json"
+    },
+    "comparison_seeds": [
+      10
+    ],
+    "hparam_final_epoch_plan": {
+      "patience_delay_epochs": 20
+    },
+    "label_budget_grid": [
+      0.5
+    ],
+    "length_before_new_iter_num_labeled": 9751,
+    "length_before_new_iter_num_unlabeled": 9870,
+    "log_dir": "logs/final/patience40_ersatz/seeded_runs/in_shop_10/supervised_prx/b0p5_s10/epochs_prx__epochs/class_subset_label_0p5_comparison_seed_10/final/supervised/cv_2026-10-20_15-00-43/fold_00/2026-10-20_15-00-43",
+    "patience_delay_epochs": 20,
+    "save_dir": "final/patience40_ersatz/seeded_runs/in_shop_10/supervised_prx/b0p5_s10/epochs_prx__epochs/class_subset_label_0p5_comparison_seed_10/final/supervised/cv_2026-10-20_15-00-43/fold_00",
+    "seed": 10,
+    "ssl_config": "logs/final/patience40_ersatz/seeded_runs/in_shop_10/supervised_prx/b0p5_s10/epochs_prx__epochs/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_10.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5,
+      "seed": 10,
+      "support_seed": 10
+    },
+    "support_seed": 10
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5,
+    "seed": 10,
+    "support_seed": 10
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "confidence_threshold": 0.2835901282487284,
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop/iscen_CircleLoss.json",
+  "graph_edge_ablation": "degree_rewired",
+  "labeled_batch_size": 128,
+  "labeled_per_class": 2,
+  "method_params": {
+    "n_neighbors": 95
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "update_mode": "every_epoch",
+  "warmup_epochs": 10
+}

@@ -1,0 +1,67 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 3,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 3,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase1/lrml_edge_weighting/lrml_iscen.json",
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/other/server/configs/runs/lrml/cars_edge_weighting.json",
+      "name": "lrml_nt"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase1/lrml_edge_weighting/lrml_iscen.json",
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/other/server/configs/runs/lrml/cars_edge_weighting.json",
+      "name": "lrml_ms"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase1/lrml_edge_weighting/lrml_iscen.json",
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/other/server/configs/runs/lrml/cars_edge_weighting.json",
+      "name": "lrml_cir"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase1/lrml_edge_weighting/lrml_iscen.json",
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/other/server/configs/runs/lrml/cars_edge_weighting.json",
+      "name": "lrml_arc"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase1/lrml_edge_weighting/lrml_iscen.json",
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/other/server/configs/runs/lrml/cars_edge_weighting.json",
+      "name": "lrml_prx"
+    }
+  ],
+  "save_dir_root": "ssl/phase_1/cars/lrml_edge_weighting",
+  "scheduler_log_dir": "logs/run_scheduler/phase_1/cars/lrml_edge_weighting",
+  "version": 1
+}

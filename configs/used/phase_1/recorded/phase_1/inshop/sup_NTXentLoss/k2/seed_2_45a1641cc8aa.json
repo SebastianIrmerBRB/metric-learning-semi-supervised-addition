@@ -1,0 +1,51 @@
+{
+  "args": {
+    "ablation_config": null,
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "epochs": 600,
+    "final_study_request_overrides": [
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      2,
+      4
+    ],
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop/sup_nt/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/supervised/cv_2026-09-12_23-42-24/fold_00/2026-09-12_23-42-24",
+    "save_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop/sup_nt/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/supervised/cv_2026-09-12_23-42-24/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop/sup_nt/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop/sup_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

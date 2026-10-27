@@ -1,0 +1,27 @@
+{
+  "args": {
+    "cv_fold": 3,
+    "final_test_visualization": [
+      "tsne"
+    ],
+    "length_before_new_iter": 6049,
+    "length_before_new_iter_num_labeled": 592,
+    "length_before_new_iter_num_unlabeled": 5457,
+    "log_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs/sup_cir/class_subset_k_shot_label_1_k_8_comparison_seed_8/final/supervised/cv_2026-09-11_23-31-54/fold_03/2026-09-12_00-01-21",
+    "save_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs/sup_cir/class_subset_k_shot_label_1_k_8_comparison_seed_8/final/supervised/cv_2026-09-11_23-31-54/fold_03",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/phase_1/seeded_runs/sup_cir/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/sup_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

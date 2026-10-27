@@ -1,0 +1,14 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_7f4747a7c725.json",
+      "name": "7f4747a7c725"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_1/patience_comparison/semiinat/cuda_ssl_cuda"
+}

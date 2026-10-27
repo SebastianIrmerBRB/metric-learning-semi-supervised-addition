@@ -1,0 +1,22 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/slade_ArcFaceLoss.json",
+  "labeled_per_class": 8,
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 1.4468878545263524,
+      "cluster_ratio": 1,
+      "num_clusters": null,
+      "sd_margin": 0.5904648844282594,
+      "unlabeled_batch_size": 32
+    },
+    "regularizer_target_ratio": 0.580263613525241,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 1,
+  "warmup_epochs": 15
+}

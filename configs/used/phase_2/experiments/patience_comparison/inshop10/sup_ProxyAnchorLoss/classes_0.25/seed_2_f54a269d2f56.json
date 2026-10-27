@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/sup_ProxyAnchorLoss.json",
+  "patience_delay_epochs": 0,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/f54a269d2f56",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_f54a269d2f56.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0
+}

@@ -1,0 +1,50 @@
+{
+  "batch_size": 512,
+  "classifier_lr": 0.0257447558107256,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "cv_parallel_folds": 4,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "hparam_config": null,
+  "log_head_dynamics": false,
+  "loss": "ArcFaceLoss",
+  "loss_params": {
+    "margin": 20.023876995488123,
+    "scale": 13.158269132767037
+  },
+  "lr": 6.446960416253467e-06,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "projection_3d": false,
+  "sampler_m": 2,
+  "save_epoch_head_interval": null,
+  "save_test_embeddings": true,
+  "semi_inat_ood_fraction": 0,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 30,
+  "study_dir_mode": "final_train",
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 20.023876995488123,
+    "scale": 13.158269132767037
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

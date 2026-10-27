@@ -1,0 +1,27 @@
+{
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "hoffer_entropy",
+    "regularizer_params": {
+      "distance_scale": 1.0,
+      "reference_sets": 1
+    },
+    "regularizer_target_ratio": 0.5,
+    "regularizer_target_ratio_diagnostics": true,
+    "regularizer_target_ratio_ema_alpha": 0.3,
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 1,
+  "update_mode": "once",
+  "warmup_epochs": 0
+}

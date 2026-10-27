@@ -1,0 +1,489 @@
+{
+  "description": "Reruns from the run audit of 23 Oct 2026 (Thesis/review/audit_laeufe_2026-10-23). Each variant is the run's original resolved ablation variant plus its own epoch cap and patience. LRML/Proxy-Anchor sup_all_shared on Cars196 additionally sets batch_sampler 32:4 (the supervised value the original variant missed). Round 2: main results without delayed patience; runs with 10-50 % CompCars from before the pool was rebuilt (16 Oct) change nothing; former patience-40 runs use patience 20; *_verzoegert variants add patience_delay_epochs 20 for runs that meet criterion A.",
+  "name": "audit_rerun_2_2026-10-23",
+  "variants": {
+    "epochs__epochs": {
+      "cv_parallel_folds": 2,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "cpu",
+      "patience": 20
+    },
+    "epochs__epochs__2": {
+      "cv_parallel_folds": 2,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "epochs_prx__epochs": {
+      "cv_parallel_folds": 1,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "hoffer__external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "iscen__confidence_threshold_0p7": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.confidence_threshold": 0.7,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "iscen__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "iscen__graph_rewired": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.graph_edge_ablation": "degree_rewired",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "iscen__n_neighbors_25": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 25,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "iscen__n_neighbors_50": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 50,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "iscen__oracle_noise_60": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.6,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "iscen_n__external_10_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 100,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_10_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 200,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_10_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 300,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_10_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 50,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_25_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 100,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_25_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 200,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_25_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 300,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_25_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 50,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_50_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 100,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_50_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 200,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_50_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 300,
+      "unlabeled_source": "external"
+    },
+    "iscen_n__external_50_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.n_neighbors": 50,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_10": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_25": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.05,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_50": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade__external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_10_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 100,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_10_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 200,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_10_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 300,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_10_400": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 400,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_10_500": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 500,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_25_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 100,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_25_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 200,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_25_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 300,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_25_400": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 400,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_25_500": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 500,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_50_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 100,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_50_200": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 200,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_50_300": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 300,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_50_400": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 400,
+      "unlabeled_source": "external"
+    },
+    "slade_c__external_50_500": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+      "ssl_config.method_params.regularizer_params.num_clusters": 500,
+      "unlabeled_source": "external"
+    },
+    "uncapped_default_p40__defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "track_epoch_max_samples": 0
+    }
+  }
+}

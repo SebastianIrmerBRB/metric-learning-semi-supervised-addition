@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/iscen_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/iscen_MultiSimilarityLoss/classes_0.5/d47e30cce7e2",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/iscen_MultiSimilarityLoss/classes_0.5/seed_2_d47e30cce7e2.json",
+  "support_seed": 2
+}

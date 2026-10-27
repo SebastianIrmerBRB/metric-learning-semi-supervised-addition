@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_NTXentLoss.json",
+  "graph_diagnostics_layout": "pacmap",
+  "labeled_fraction": 0.05,
+  "method_params": {
+    "regularizer_params": {
+      "oracle_same_class_edges": false
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "batch_size": 16,
+  "cv_k": 4,
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "extends": "../common.json",
+  "final_test_visualization": [
+    "pacmap"
+  ],
+  "lr": 1e-06,
+  "measurements": [
+    "precision_at_1",
+    "mean_average_precision_at_r"
+  ],
+  "patience": 20,
+  "semi_inat_ood_fraction": 0
+}

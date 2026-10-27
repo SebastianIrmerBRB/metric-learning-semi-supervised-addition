@@ -1,0 +1,24 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/slade_CircleLoss.json",
+  "labeled_per_class": 16,
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 0.7789658027626528,
+      "cluster_ratio": 2,
+      "num_clusters": null,
+      "sd_margin": 0.5810187263799318,
+      "unlabeled_batch_size": 32
+    },
+    "regularizer_target_ratio": 0.7900995207446015,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "restart_selection_after_warmup": true,
+  "seed": 2,
+  "support_seed": 2,
+  "update_interval_epochs": 5,
+  "warmup_epochs": 20
+}

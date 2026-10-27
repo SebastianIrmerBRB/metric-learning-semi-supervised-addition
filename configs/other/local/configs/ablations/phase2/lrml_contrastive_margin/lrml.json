@@ -1,0 +1,30 @@
+{
+  "description": "LRML with the repulsive branch of Weston et al. (2012) eq. (3) switched on (contrastive = true), swept over its margin m in the L2-normalized embedding space (distances lie in [0, 2], so m = 2 repels every non-neighbour pair and m > 2 would be inert). Tests the thesis' choice to omit the repulsion (Methodik 4.6.3). Everything else keeps the tuned LRML configuration of the study: one random non-neighbour pair per sampled graph edge (Algorithm 1), joint update, loss on the output embedding, repulsion at the shared regularizer weight, so the target-ratio weighting scales attraction and repulsion together. LRML uncapped (regularizer_max_ratio = null) as in Phase 1 and every other Phase 2 LRML ablation. Reference: the unmodified replay (defaults) of the same study and seed.",
+  "name": "lrml_contrastive_margin",
+  "variants": {
+    "contrastive_margin_0p5": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.contrastive": true,
+      "ssl_config.method_params.regularizer_params.contrastive_margin": 0.5
+    },
+    "contrastive_margin_1p0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.contrastive": true,
+      "ssl_config.method_params.regularizer_params.contrastive_margin": 1.0
+    },
+    "contrastive_margin_1p5": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.contrastive": true,
+      "ssl_config.method_params.regularizer_params.contrastive_margin": 1.5
+    },
+    "contrastive_margin_2p0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.contrastive": true,
+      "ssl_config.method_params.regularizer_params.contrastive_margin": 2.0
+    }
+  }
+}

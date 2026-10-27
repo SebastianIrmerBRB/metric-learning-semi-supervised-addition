@@ -1,0 +1,40 @@
+{
+  "batch_size": 512,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "epochs": 1000,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "hparam_config": null,
+  "loss": "NTXentLoss",
+  "loss_params": {
+    "temperature": 0.05171805103965605
+  },
+  "lr": 1.8613581492137393e-05,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "projection_3d": true,
+  "sampler_m": 2,
+  "save_test_embeddings": true,
+  "semi_inat_ood_fraction": 0.0,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.05171805103965605
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

@@ -1,0 +1,29 @@
+{
+  "extends": "../../../_templates/hpo/phase_0/cub/slade.json",
+  "spaces": {
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 25,
+      "log": false,
+      "low": 2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.3,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 160,
+      "log": true,
+      "low": 20,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    }
+  }
+}

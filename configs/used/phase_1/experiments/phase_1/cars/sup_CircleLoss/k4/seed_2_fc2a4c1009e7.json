@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_CircleLoss.json",
+  "final_test_visualization": [
+    "pacmap",
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_CircleLoss/k4/fc2a4c1009e7",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_CircleLoss/k4/seed_2_fc2a4c1009e7.json",
+  "support_seed": 2
+}

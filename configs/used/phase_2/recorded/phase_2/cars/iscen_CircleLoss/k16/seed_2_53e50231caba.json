@@ -1,0 +1,98 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "evaluation_embedding_residency": "gpu",
+        "ssl_config.graph_edge_ablation": "degree_rewired",
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Mechanism controls for cars/lp/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+      "name": "cars_cir_controls_iscen_cir",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+      "variant": "graph_rewired"
+    },
+    "ablation_variant": "graph_rewired",
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "cv_fold": 0,
+    "epochs": 600,
+    "evaluation_embedding_residency": "gpu",
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "file",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter": 6003,
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars/iscen_cir_graph_rewired/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-24_20-11-51/fold_00/2026-09-24_20-11-51",
+    "loss_params": {
+      "gamma": 90.38342585155723,
+      "m": 0.11243360155386083
+    },
+    "lr": 1.3042994313551001e-05,
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/iscen_cir_graph_rewired/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-24_20-11-51/fold_00",
+    "ssl_config": "logs/final/phase_2/cars/iscen_cir_graph_rewired/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.8058219112925765,
+      "graph_edge_ablation": "degree_rewired",
+      "labeled_per_class": 16,
+      "method_params": {
+        "n_neighbors": 38
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 20
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 90.38342585155723,
+      "m": 0.11243360155386083
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_CircleLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.8058219112925765,
+    "graph_edge_ablation": "degree_rewired",
+    "labeled_per_class": 16,
+    "method_params": {
+      "n_neighbors": 38
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 20
+  }
+}

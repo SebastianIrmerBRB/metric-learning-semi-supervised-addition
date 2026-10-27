@@ -1,0 +1,21 @@
+{
+  "compcars_strict_paper_counts": false,
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../common.json",
+  "external_unlabeled_filter": "none",
+  "final_test_visualization": [
+    "none"
+  ],
+  "patience": 20,
+  "sampler_m": 2,
+  "semi_inat_ood_fraction": 0,
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ]
+}

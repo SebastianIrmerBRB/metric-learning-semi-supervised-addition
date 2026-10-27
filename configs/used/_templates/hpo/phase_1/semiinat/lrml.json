@@ -1,0 +1,32 @@
+{
+  "extends": "common.json",
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "high": 100,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 1.25,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 2,
+      "low": 0,
+      "step": 1,
+      "type": "int"
+    }
+  },
+  "study_name": "in_shop_target_ratio"
+}

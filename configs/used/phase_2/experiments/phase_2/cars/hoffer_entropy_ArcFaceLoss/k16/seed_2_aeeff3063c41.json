@@ -1,0 +1,25 @@
+{
+  "classifier_lr": 0.00016128386060324106,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/hoffer_entropy_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "margin": 16.326445909895053,
+    "scale": 0.37446339811204205
+  },
+  "lr": 2.428173570728425e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/hoffer_entropy_ArcFaceLoss/k16/aeeff3063c41",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/hoffer_entropy_ArcFaceLoss/k16/seed_2_aeeff3063c41.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "same_as_loss",
+  "warmup_loss_params": {}
+}

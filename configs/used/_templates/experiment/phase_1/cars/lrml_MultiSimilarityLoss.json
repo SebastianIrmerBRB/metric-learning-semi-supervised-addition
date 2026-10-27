@@ -1,0 +1,80 @@
+{
+  "ablation_variant": null,
+  "batch_size": 64,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": true,
+  "cv_parallel_backend": "process",
+  "cv_parallel_folds": 1,
+  "device": "cuda",
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "evaluate_test": true,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "common.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "final_test_visualization": [
+    "none"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": null,
+  "log_head_dynamics": false,
+  "loss": "MultiSimilarityLoss",
+  "loss_params": {
+    "alpha": 5.732795870007971,
+    "base": 0.4354102133140684,
+    "beta": 54.225038853057534
+  },
+  "lr": 0.00012577651851108048,
+  "max_unlabeled_samples": null,
+  "miner": "MultiSimilarityMiner",
+  "miner_params": {
+    "epsilon": 0.2010514717505199
+  },
+  "mode": "ssl",
+  "projection_3d": false,
+  "report_test_metrics": true,
+  "save_epoch_head_interval": null,
+  "save_final_head_state": false,
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 30,
+  "study_dir_mode": "final_train",
+  "test_measurements": null,
+  "test_recall_at_k": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_layout": "tsne",
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "tsne_backend": "exact",
+  "tsne_max_dense_gpu_gb": 3.0,
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 5.732795870007971,
+    "base": 0.4354102133140684,
+    "beta": 54.225038853057534
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.2010514717505199
+  }
+}

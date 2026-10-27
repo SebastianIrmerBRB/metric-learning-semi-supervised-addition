@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/iscen_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/iscen_ProxyAnchorLoss/k2/120cb5ef58e2",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/iscen_ProxyAnchorLoss/k2/seed_8_120cb5ef58e2.json",
+  "support_seed": 8
+}

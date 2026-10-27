@@ -1,0 +1,61 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay: unmodified tuned run, 600 epochs / patience 10 (Semi-iNat's Phase-1 patience, as its earlier tracking runs) for every method. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_default_uncapped_semi_inat",
+      "path": "configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "cv_parallel_folds": 1,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "k_shot_grid": [
+      2,
+      4,
+      16
+    ],
+    "length_before_new_iter_num_labeled": 4864,
+    "length_before_new_iter_num_unlabeled": 41308,
+    "log_dir": "logs/final/phase_2/semi_inat_geometry_retuned/hoffer_cir_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-13_10-38-11/fold_00/2026-10-13_10-38-11",
+    "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_cir_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-13_10-38-11/fold_00",
+    "ssl_config": "logs/final/phase_2/semi_inat_geometry_retuned/hoffer_cir_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16
+    },
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/semiinat/hoffer_entropy_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16
+  }
+}

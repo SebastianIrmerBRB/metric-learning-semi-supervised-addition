@@ -1,0 +1,8 @@
+{
+  "extends": "../common.json",
+  "spaces": {
+    "lr": {
+      "low": 1e-05
+    }
+  }
+}

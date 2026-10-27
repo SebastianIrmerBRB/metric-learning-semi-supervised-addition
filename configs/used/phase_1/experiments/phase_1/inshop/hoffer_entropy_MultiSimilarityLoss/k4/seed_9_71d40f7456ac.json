@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/hoffer_entropy_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/hoffer_entropy_MultiSimilarityLoss/k4/71d40f7456ac",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/hoffer_entropy_MultiSimilarityLoss/k4/seed_9_71d40f7456ac.json",
+  "support_seed": 9
+}

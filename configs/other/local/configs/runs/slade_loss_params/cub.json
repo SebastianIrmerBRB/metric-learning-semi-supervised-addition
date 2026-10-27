@@ -1,0 +1,19 @@
+{
+  "extends": "standardized_loss_params.json",
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "64:4",
+        "128:4",
+        "256:4"
+      ],
+      "type": "categorical"
+    },
+    "lr": {
+      "high": 0.0001,
+      "log": true,
+      "low": 5e-06,
+      "type": "float"
+    }
+  }
+}

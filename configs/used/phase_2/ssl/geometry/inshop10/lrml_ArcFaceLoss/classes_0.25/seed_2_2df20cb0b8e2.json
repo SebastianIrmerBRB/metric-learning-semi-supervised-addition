@@ -1,0 +1,15 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_ArcFaceLoss.json",
+  "labeled_fraction": 0.25,
+  "method_params": {
+    "regularizer_max_ratio": null,
+    "regularizer_params": {
+      "graph_batch_size": 64,
+      "n_neighbors": 2
+    },
+    "regularizer_target_ratio": 0.5008590845683127
+  },
+  "seed": 2,
+  "support_seed": 2,
+  "warmup_epochs": 20
+}

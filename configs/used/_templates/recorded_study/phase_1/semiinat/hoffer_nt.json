@@ -1,0 +1,97 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cv_parallel_folds": 2,
+    "epoch_head_dtype": "bfloat16",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/hoffer.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/cars_lrml.json",
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/hoffer/semi_inat_2021.json",
+    "log_head_dynamics": false,
+    "loss": "NTXentLoss",
+    "loss_miner_grid": [
+      "NTXentLoss:no_miner"
+    ],
+    "lr": 1e-06,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "projection_3d": false,
+    "save_dir": "semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo",
+    "save_epoch_head_interval": null,
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config": "logs/semi_inat/hoffer/nt-xent/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "loss.NTXentLoss.temperature": {
+        "high": 0.15,
+        "log": true,
+        "low": 0.005,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.distance_scale": {
+        "high": 256,
+        "log": true,
+        "low": 4,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.reference_sets": {
+        "choices": [
+          1
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+        "choices": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_target_ratio": {
+        "high": 1.25,
+        "log": false,
+        "low": 0.5,
+        "type": "float"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 2,
+        "low": 0,
+        "step": 1,
+        "type": "int"
+      }
+    },
+    "study_name": "tpe_run"
+  },
+  "in_flight_sampler_state_path": "logs/semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run/optuna_study.db",
+  "resolved_study_name": "tpe_run",
+  "sampler_state_path": "logs/semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run/sampler.pkl",
+  "tpe_transition_sampler_state_path": "logs/semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run/sampler_before_tpe.pkl"
+}

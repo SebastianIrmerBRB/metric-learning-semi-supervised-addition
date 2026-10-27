@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_MultiSimilarityLoss.json",
+  "graph_diagnostics_layout": "tsne",
+  "labeled_fraction": 0.1,
+  "method_params": {
+    "regularizer_target_ratio": 0.801201357113207
+  },
+  "seed": 10,
+  "support_seed": 10
+}

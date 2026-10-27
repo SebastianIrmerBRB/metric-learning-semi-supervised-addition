@@ -1,0 +1,22 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_030f6a2fbd1f.json",
+      "name": "030f6a2fbd1f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_c780bc787981.json",
+      "name": "c780bc787981"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_f28a0f2f6ba2.json",
+      "name": "f28a0f2f6ba2"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/patience_comparison/semiinat/cuda_ssl_cuda"
+}

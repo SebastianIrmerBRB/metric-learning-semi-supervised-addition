@@ -1,0 +1,61 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/in_shop_full_external_e1000/sup.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20
+      },
+      "description": "Unmodified supervised replay of in_shop/sup/* with all labels: the external-data reference, rerun with 1000 epochs / patience 20 like the SSL runs (the first runs had 600 and hit it in 5 of 20 folds).",
+      "name": "in_shop_full_external_sup_e1000",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/in_shop_full_external_e1000/sup.json"
+    },
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_num_labeled": 19621,
+    "length_before_new_iter_num_unlabeled": 0,
+    "log_dir": "logs/final/phase_2/in_shop_full_sup_e1000/sup_prx_defaults/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/supervised/cv_2026-10-15_12-22-15/fold_00/2026-10-15_12-22-15",
+    "projection_3d": false,
+    "save_dir": "final/phase_2/in_shop_full_sup_e1000/sup_prx_defaults/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/supervised/cv_2026-10-15_12-22-15/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_full_sup_e1000/sup_prx_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 99999
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/sup_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 99999
+  }
+}

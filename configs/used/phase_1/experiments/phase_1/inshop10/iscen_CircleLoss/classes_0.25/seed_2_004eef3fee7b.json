@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/iscen_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/iscen_CircleLoss/classes_0.25/004eef3fee7b",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/iscen_CircleLoss/classes_0.25/seed_2_004eef3fee7b.json",
+  "support_seed": 2
+}

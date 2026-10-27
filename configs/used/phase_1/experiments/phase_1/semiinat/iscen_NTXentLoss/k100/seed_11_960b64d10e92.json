@@ -1,0 +1,11 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/iscen_NTXentLoss.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "log_head_dynamics": false,
+  "save_dir": "thesis/phase_1/phase_1/semiinat/iscen_NTXentLoss/k100/960b64d10e92",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/iscen_NTXentLoss/k100/seed_11_960b64d10e92.json",
+  "support_seed": 11
+}

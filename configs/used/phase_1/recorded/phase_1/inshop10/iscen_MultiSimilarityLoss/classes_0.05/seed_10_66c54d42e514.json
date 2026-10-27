@@ -1,0 +1,25 @@
+{
+  "args": {
+    "label_budget_grid": [
+      0.05
+    ],
+    "length_before_new_iter_num_labeled": 924,
+    "length_before_new_iter_num_unlabeled": 18697,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_ms/class_subset_label_0p05_comparison_seed_10/final/ssl/cv_2026-10-14_13-33-17/fold_00/2026-10-14_13-33-20",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_ms/class_subset_label_0p05_comparison_seed_10/final/ssl/cv_2026-10-14_13-33-17/fold_00",
+    "seed": 10,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_ms/study_replay_grid/ssl_configs/class_subset_label_0p05_comparison_seed_10.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.05,
+      "seed": 10,
+      "support_seed": 10
+    },
+    "support_seed": 10
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/iscen_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.05,
+    "seed": 10,
+    "support_seed": 10
+  }
+}

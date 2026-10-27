@@ -1,0 +1,28 @@
+{
+  "args": {
+    "comparison_seeds": [
+      9
+    ],
+    "k_shot_grid": [
+      8
+    ],
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/audit_rerun_2026-10-23/runde2/seeded_runs/cars/hoffer_nt/k8_s9/epochs__epochs/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-10-23_15-04-07/fold_00/2026-10-23_15-04-10",
+    "save_dir": "final/audit_rerun_2026-10-23/runde2/seeded_runs/cars/hoffer_nt/k8_s9/epochs__epochs/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-10-23_15-04-07/fold_00",
+    "seed": 9,
+    "ssl_config": "logs/final/audit_rerun_2026-10-23/runde2/seeded_runs/cars/hoffer_nt/k8_s9/epochs__epochs/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/hoffer_entropy_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

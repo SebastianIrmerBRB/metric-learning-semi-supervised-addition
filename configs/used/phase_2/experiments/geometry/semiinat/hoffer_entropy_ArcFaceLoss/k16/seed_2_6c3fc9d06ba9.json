@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/hoffer_entropy_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k16/6c3fc9d06ba9",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k16/seed_2_6c3fc9d06ba9.json"
+}

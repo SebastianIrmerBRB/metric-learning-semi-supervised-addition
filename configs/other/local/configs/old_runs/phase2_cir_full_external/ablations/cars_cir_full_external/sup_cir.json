@@ -1,0 +1,9 @@
+{
+  "description": "Unmodified supervised replay of cars/sup/cir: the external-data reference.",
+  "name": "cars_cir_full_external_sup_cir",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1
+      },
+      "description": "Reruns of every thesis CV run whose values did not all come from its own cv_summary.json (only info.log, or no Concat in cv_summary.json), Thesis/review/cvsum_rerun_2026-10-21. Each variant is the run's original resolved ablation variant plus its own recorded epoch cap and patience; nothing else changes.",
+      "name": "cvsum_rerun_2026-10-21",
+      "path": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+      "variant": "epochs__epochs"
+    },
+    "ablation_variant": "epochs__epochs",
+    "comparison_seeds": [
+      2
+    ],
+    "cv_parallel_folds": 1,
+    "epoch_head_dtype": "bfloat16",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "label_budget_grid",
+      "save_dir",
+      "ssl_device",
+      "ssl_label_sampling_modes",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "label_budget_grid": [
+      0.1
+    ],
+    "length_before_new_iter_num_labeled": 1647,
+    "length_before_new_iter_num_unlabeled": 17974,
+    "log_dir": "logs/final/cvsum_rerun/seeded_runs/in_shop_10/supervised_ms/b0p1_s2/epochs__epochs/class_subset_label_0p1_comparison_seed_2/final/supervised/cv_2026-10-21_17-38-05/fold_00/2026-10-21_17-38-05",
+    "patience_delay_epochs": 0,
+    "projection_3d": false,
+    "save_dir": "final/cvsum_rerun/seeded_runs/in_shop_10/supervised_ms/b0p1_s2/epochs__epochs/class_subset_label_0p1_comparison_seed_2/final/supervised/cv_2026-10-21_17-38-05/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 2,
+    "ssl_config": "logs/final/cvsum_rerun/seeded_runs/in_shop_10/supervised_ms/b0p1_s2/epochs__epochs/study_replay_grid/ssl_configs/class_subset_label_0p1_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.1,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.1,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

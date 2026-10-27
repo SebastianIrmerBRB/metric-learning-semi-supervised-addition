@@ -1,0 +1,30 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1
+      }
+    },
+    "cv_fold": 0,
+    "cv_parallel_folds": 1,
+    "length_before_new_iter": 19621,
+    "length_before_new_iter_num_labeled": 924,
+    "length_before_new_iter_num_unlabeled": 18697,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/lrml_mult_arc/class_subset_label_0p05_comparison_seed_10/final/ssl/cv_2026-10-15_12-02-30/fold_00/2026-10-15_12-02-30",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/lrml_mult_arc/class_subset_label_0p05_comparison_seed_10/final/ssl/cv_2026-10-15_12-02-30/fold_00",
+    "seed": 10,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/lrml_mult_arc/study_replay_grid/ssl_configs/class_subset_label_0p05_comparison_seed_10.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.05,
+      "seed": 10,
+      "support_seed": 10
+    },
+    "support_seed": 10
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/lrml_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.05,
+    "seed": 10,
+    "support_seed": 10
+  }
+}

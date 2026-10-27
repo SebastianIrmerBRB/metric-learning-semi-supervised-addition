@@ -1,0 +1,35 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 0.0021904246875039356,
+  "compcars_strict_paper_counts": true,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/slade_ArcFaceLoss.json",
+  "external_unlabeled_dir": "data/CompCars",
+  "external_unlabeled_filter": "compcars_slade_paper",
+  "external_unlabeled_fraction": 0.25,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "margin": 11.660590903103149,
+    "scale": 3.9390877490915535
+  },
+  "lr": 0.00014675501774168558,
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/cars/slade_ArcFaceLoss/k99999/d6e44a5858d9",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/cars/slade_ArcFaceLoss/k99999/seed_2_d6e44a5858d9.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "external",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 11.660590903103149,
+    "scale": 3.9390877490915535
+  }
+}

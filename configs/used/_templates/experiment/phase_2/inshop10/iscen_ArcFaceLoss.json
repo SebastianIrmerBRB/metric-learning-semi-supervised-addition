@@ -1,0 +1,24 @@
+{
+  "batch_size": 64,
+  "classifier_lr": 1.0998030863259485,
+  "compile_train_step": true,
+  "extends": "common.json",
+  "length_before_new_iter": null,
+  "loss": "ArcFaceLoss",
+  "loss_params": {
+    "margin": 28.054349906690096,
+    "scale": 11.69505225030588
+  },
+  "lr": 0.0014593069348259324,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 0,
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 28.054349906690096,
+    "scale": 11.69505225030588
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

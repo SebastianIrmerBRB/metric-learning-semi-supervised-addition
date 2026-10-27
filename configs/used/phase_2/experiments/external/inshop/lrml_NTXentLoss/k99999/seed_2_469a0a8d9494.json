@@ -1,0 +1,27 @@
+{
+  "batch_size": 256,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_NTXentLoss.json",
+  "external_unlabeled_dir": "data/Fashion200k",
+  "external_unlabeled_fraction": 0.5,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.07444415869918694
+  },
+  "lr": 7.504666879061826e-05,
+  "patience_delay_epochs": 0,
+  "save_dir": "thesis/phase_2/external/inshop/lrml_NTXentLoss/k99999/469a0a8d9494",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/lrml_NTXentLoss/k99999/seed_2_469a0a8d9494.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "external",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.07444415869918694
+  }
+}

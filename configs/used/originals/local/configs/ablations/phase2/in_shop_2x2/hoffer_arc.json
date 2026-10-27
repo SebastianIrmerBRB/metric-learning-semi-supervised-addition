@@ -1,0 +1,21 @@
+{
+  "description": "2x2 of in_shop/hoffer/arc: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop/supervised/supervised_arc/class_subset_k_shot_label_1_k_2_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_2x2_hoffer_arc",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "512:2",
+      "classifier_lr": 0.01208,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ArcFaceLoss.margin": 34.22,
+      "loss.ArcFaceLoss.scale": 8.563,
+      "lr": 0.6684
+    }
+  }
+}

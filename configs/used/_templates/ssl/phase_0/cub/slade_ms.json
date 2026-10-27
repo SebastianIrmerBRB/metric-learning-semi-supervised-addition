@@ -1,0 +1,41 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 1024,
+  "extends": "common.json",
+  "graph_diagnostics_class_context": true,
+  "graph_diagnostics_class_count": 6,
+  "graph_diagnostics_class_focus": "off",
+  "graph_diagnostics_classes": null,
+  "labeled_batch_size": null,
+  "method": "slade",
+  "method_params": {
+    "grad_norm_alpha": 1,
+    "regularizer_params": {
+      "basis_target_ratio": 1,
+      "basis_warmup_steps": null,
+      "beta": 0.99,
+      "lambda_basis": 1,
+      "num_clusters": null,
+      "sd_gradient_mode": "damped",
+      "sd_margin": 0.5,
+      "sd_variance_weight": 1.0,
+      "unlabeled_ranking_loss": "supervised",
+      "unlabeled_ratio": 1.0
+    },
+    "regularizer_target_ratio": 1,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 1,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_epochs": 25,
+  "update_interval_samples": null,
+  "update_mode": "every_n_epochs",
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 0
+}

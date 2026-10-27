@@ -1,0 +1,37 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "SemiAves",
+  "dataset_protocol": "semi_aves_known_100_100",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": null,
+  "k_shot_grid": [
+    5
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter_override": 10000,
+  "loss_miner_grid": [
+    "CircleLoss:no_miner"
+  ],
+  "loss_params": {
+    "gamma": 18.26503152825121,
+    "m": 0.01019917295141441
+  },
+  "mode": "ssl",
+  "patience": 100,
+  "save_dir": "SemiINaturalist2021",
+  "semi_inat_ood_fraction": 0,
+  "ssl_config": "configs/used/originals/server/configs/ssl_methods/lrml.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

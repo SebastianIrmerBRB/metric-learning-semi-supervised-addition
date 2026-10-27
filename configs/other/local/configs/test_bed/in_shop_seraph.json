@@ -1,0 +1,32 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 32,
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "k_shot_grid": [
+    2
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner"
+  ],
+  "lr": 1e-05,
+  "mode": "ssl",
+  "patience": 20,
+  "sampler_m": 4,
+  "save_dir": "test_bed/in_shop_seraph",
+  "ssl_config": "configs/other/local/configs/test_bed/ssl_seraph.json",
+  "ssl_gradient_contribution_log_interval": 10,
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

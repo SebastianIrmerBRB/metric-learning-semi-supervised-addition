@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_MultiSimilarityLoss.json",
+  "graph_diagnostics_layout": "pacmap",
+  "labeled_fraction": 0.05,
+  "method_params": {
+    "regularizer_max_ratio": null,
+    "regularizer_params": {
+      "oracle_same_class_edges": false
+    },
+    "regularizer_target_ratio": 0.8996171309585244
+  },
+  "seed": 2,
+  "support_seed": 2
+}

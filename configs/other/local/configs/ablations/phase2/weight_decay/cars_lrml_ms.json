@@ -1,0 +1,29 @@
+{
+  "description": "Tests whether decoupled weight decay helps by keeping the head's effective step from shrinking. The head is Linear+L2-normalize, so the loss is scale-invariant in (W,b); without decay ||W|| grows and Adam's ~lr-sized steps turn the direction by less and less. Replays Phase-1 cars/lrml/lrml_ms trial 66 (best, lr 7.4e-5, 64:4) with Adam wd=0 (the tuned control) against AdamW wd in {1e-3,1e-2,1e-1,1}. Every run logs --log_head_dynamics: ||W||, ||dW|| and ||dW||/||W|| per epoch in diagnostics.csv.",
+  "name": "cars_lrml_ms_weight_decay",
+  "variants": {
+    "adam_wd0": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "adamw_wd_1": {
+      "evaluation_embedding_residency": "gpu",
+      "optim": "adamw",
+      "weight_decay": 1.0
+    },
+    "adamw_wd_1em1": {
+      "evaluation_embedding_residency": "gpu",
+      "optim": "adamw",
+      "weight_decay": 0.1
+    },
+    "adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "optim": "adamw",
+      "weight_decay": 0.01
+    },
+    "adamw_wd_1em3": {
+      "evaluation_embedding_residency": "gpu",
+      "optim": "adamw",
+      "weight_decay": 0.001
+    }
+  }
+}

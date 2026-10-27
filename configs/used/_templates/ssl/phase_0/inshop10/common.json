@@ -1,0 +1,15 @@
+{
+  "extends": "../common.json",
+  "graph_diagnostics_class_context": true,
+  "graph_diagnostics_class_count": 6,
+  "graph_diagnostics_class_focus": "off",
+  "graph_diagnostics_classes": null,
+  "graph_diagnostics_layout": "pacmap",
+  "label_sampling_mode": "class_subset",
+  "labeled_batch_size": null,
+  "labeled_fraction": 0.1,
+  "labeled_per_class": null,
+  "restart_selection_after_warmup": true,
+  "update_interval_samples": null,
+  "warmup_epochs": 0
+}

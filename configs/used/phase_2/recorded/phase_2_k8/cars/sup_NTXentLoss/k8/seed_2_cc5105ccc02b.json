@@ -1,0 +1,65 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "patience_delay_epochs": 20
+      },
+      "description": "Every Cars196 Phase 2 run of the thesis (variants.csv, SLADE sweeps) replayed at k=8 instead of k=16; built by Thesis/review/cars_k8_2026-10-19/baue_manifest_k8.py. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus 1000 epochs, its patience and patience_delay_epochs 20.",
+      "name": "phase2_k8_cars_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "variant": "sup_nt__defaults"
+    },
+    "ablation_variant": "sup_nt__defaults",
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      8
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/phase_2_k8/phase_2/cars/sup_nt_defaults/k8_s2/sup_nt__defaults/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/supervised/cv_2026-10-19_19-10-40/fold_00/2026-10-19_19-10-40",
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "save_dir": "final/phase_2_k8/phase_2/cars/sup_nt_defaults/k8_s2/sup_nt__defaults/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/supervised/cv_2026-10-19_19-10-40/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2_k8/phase_2/cars/sup_nt_defaults/k8_s2/sup_nt__defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/sup_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8
+  }
+}

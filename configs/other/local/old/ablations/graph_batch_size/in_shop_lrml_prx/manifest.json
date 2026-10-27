@@ -1,0 +1,30 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 1,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 2048,
+  "runs": [
+    {
+      "experiment_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/experiment_seed_7.json",
+      "hparam_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/hparam_config.json",
+      "name": "in_shop_lrml_prx_seed_7"
+    },
+    {
+      "experiment_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/experiment_seed_8.json",
+      "hparam_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/hparam_config.json",
+      "name": "in_shop_lrml_prx_seed_8"
+    },
+    {
+      "experiment_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/experiment_seed_9.json",
+      "hparam_config": "configs/ablations/graph_batch_size/in_shop_lrml_prx/hparam_config.json",
+      "name": "in_shop_lrml_prx_seed_9"
+    }
+  ],
+  "save_dir_root": "ablations/graph_batch_size/in_shop_lrml_prx",
+  "scheduler_log_dir": "logs/run_scheduler/graph_batch_size_in_shop_lrml_prx",
+  "version": 1
+}

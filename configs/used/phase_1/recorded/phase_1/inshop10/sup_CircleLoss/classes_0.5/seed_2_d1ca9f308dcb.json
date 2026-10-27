@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 9859,
+    "length_before_new_iter_num_unlabeled": 9762,
+    "log_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop_10/sup_cir/class_subset_label_0p5_comparison_seed_2/final/supervised/cv_2026-09-13_13-32-54/fold_00/2026-09-13_13-32-54",
+    "save_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop_10/sup_cir/class_subset_label_0p5_comparison_seed_2/final/supervised/cv_2026-09-13_13-32-54/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop_10/sup_cir/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_CircleLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

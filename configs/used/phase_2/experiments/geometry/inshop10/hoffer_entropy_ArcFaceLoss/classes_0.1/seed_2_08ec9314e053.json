@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/hoffer_entropy_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.1/08ec9314e053",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.1/seed_2_08ec9314e053.json"
+}

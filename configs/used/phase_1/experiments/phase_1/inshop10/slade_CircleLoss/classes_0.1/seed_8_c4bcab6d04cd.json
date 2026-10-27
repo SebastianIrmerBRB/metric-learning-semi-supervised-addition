@@ -1,0 +1,13 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_CircleLoss.json",
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_CircleLoss/classes_0.1/c4bcab6d04cd",
+  "save_epoch_head_interval": null,
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_CircleLoss/classes_0.1/seed_8_c4bcab6d04cd.json",
+  "support_seed": 8,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

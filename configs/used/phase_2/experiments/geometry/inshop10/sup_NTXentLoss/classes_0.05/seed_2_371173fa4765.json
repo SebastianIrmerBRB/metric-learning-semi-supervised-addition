@@ -1,0 +1,7 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/sup_NTXentLoss.json",
+  "fold_test_embedding_storage": "file",
+  "save_dir": "thesis/phase_2/geometry/inshop10/sup_NTXentLoss/classes_0.05/371173fa4765",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/sup_NTXentLoss/classes_0.05/seed_2_371173fa4765.json"
+}

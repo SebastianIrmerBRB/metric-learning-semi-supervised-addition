@@ -1,0 +1,106 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "ssl_config.pseudo_label_diagnostics_mode": "save",
+        "ssl_config.pseudo_label_oracle_noise": 0.0,
+        "ssl_config.pseudo_label_source": "oracle"
+      },
+      "description": "Reruns of every thesis CV run whose values did not all come from its own cv_summary.json (only info.log, or no Concat in cv_summary.json), Thesis/review/cvsum_rerun_2026-10-21. Each variant is the run's original resolved ablation variant plus its own recorded epoch cap and patience; nothing else changes.",
+      "name": "cvsum_rerun_2026-10-21",
+      "path": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+      "variant": "iscen__oracle_noise_0"
+    },
+    "ablation_variant": "iscen__oracle_noise_0",
+    "appended_unlabeled_pool_size": 0,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epochs",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/cvsum_rerun/phase_2/in_shop_ablation/iscen_ms_oracle_noise_0/k2_s2/iscen__oracle_noise_0/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-21_21-40-54/fold_00/2026-10-21_21-40-54",
+    "loss_params": {
+      "alpha": 0.5984723037876807,
+      "base": 0.5749153748153104,
+      "beta": 211.7922781636263
+    },
+    "lr": 5.3835877606519596e-05,
+    "miner_params": {
+      "epsilon": 0.45475659820365627
+    },
+    "patience_delay_epochs": 0,
+    "save_dir": "final/cvsum_rerun/phase_2/in_shop_ablation/iscen_ms_oracle_noise_0/k2_s2/iscen__oracle_noise_0/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-21_21-40-54/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/cvsum_rerun/phase_2/in_shop_ablation/iscen_ms_oracle_noise_0/k2_s2/iscen__oracle_noise_0/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.21922589512450227,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 2,
+      "method_params": {
+        "n_neighbors": 6
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "oracle",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 25
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "MultiSimilarityLoss",
+    "warmup_loss_params": {
+      "alpha": 0.5984723037876807,
+      "base": 0.5749153748153104,
+      "beta": 211.7922781636263
+    },
+    "warmup_miner": "MultiSimilarityMiner",
+    "warmup_miner_params": {
+      "epsilon": 0.45475659820365627
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.21922589512450227,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 2,
+    "method_params": {
+      "n_neighbors": 6
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "oracle",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 25
+  }
+}

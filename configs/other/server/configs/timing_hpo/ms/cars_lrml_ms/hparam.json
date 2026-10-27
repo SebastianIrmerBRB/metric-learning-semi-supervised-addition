@@ -1,0 +1,93 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "max_replaced_pruned_trials": null,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_jobs": 1,
+  "n_trials": 80,
+  "per_loss": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "retry_failed_trials": false,
+  "sampler": "tpe",
+  "sampler_params": {
+    "group": true,
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4"
+      ],
+      "type": "categorical"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 30,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.4,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 280,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "high": 100,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 1.5,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "in-shop",
+  "timeout": null,
+  "tpe_startup_trials": 40
+}

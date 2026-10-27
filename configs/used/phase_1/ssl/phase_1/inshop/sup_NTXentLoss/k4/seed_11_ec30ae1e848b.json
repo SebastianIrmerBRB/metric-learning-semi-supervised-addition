@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop/sup_NTXentLoss.json",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "labeled_per_class": 4,
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 11,
+  "support_seed": 11
+}

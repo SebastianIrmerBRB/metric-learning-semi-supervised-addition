@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/lrml_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/lrml_ProxyAnchorLoss/k4/adad0a2a5d1a",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/lrml_ProxyAnchorLoss/k4/seed_11_adad0a2a5d1a.json",
+  "support_seed": 11
+}

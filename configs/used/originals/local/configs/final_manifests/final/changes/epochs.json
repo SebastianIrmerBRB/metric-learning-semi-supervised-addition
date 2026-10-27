@@ -1,0 +1,11 @@
+{
+  "description": "increasing Epochs and Patience",
+  "name": "increase_epochs",
+  "variants": {
+    "epochs": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "cpu",
+      "patience": 20
+    }
+  }
+}

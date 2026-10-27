@@ -1,0 +1,30 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "SemiAves",
+  "dataset_protocol": "semi_aves_known_100_100",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": "configs/ssl/cars_lrml.json",
+  "k_shot_grid": [
+    9999
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "CircleLoss:no_miner"
+  ],
+  "mode": "supervised",
+  "patience": 10,
+  "save_dir": "iNat",
+  "ssl_config": "configs/ssl_faiss_knn.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

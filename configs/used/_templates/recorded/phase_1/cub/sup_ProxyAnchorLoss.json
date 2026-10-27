@@ -1,0 +1,131 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/changes/epochs.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "evaluation_embedding_residency": "cpu"
+      },
+      "path": "configs/final_manifests/changes/epochs.json"
+    },
+    "batch_size": 128,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 0.018865542439804955,
+    "compile_train_step": false,
+    "configured_length_before_new_iter": 4692,
+    "cv_fold": 0,
+    "evaluation_embedding_residency": "cpu",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cub/supervised.json",
+    "experiment_config_resolved": {
+      "epochs": 500,
+      "length_before_new_iter": 4692,
+      "mode": "supervised",
+      "save_dir": "ssl_methods/phase_1/lrml/cub/nt",
+      "ssl_config": "configs/ssl_methods/lrml.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "tsne"
+    ],
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/cub.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "32:4",
+            "64:4",
+            "128:4",
+            "256:4"
+          ]
+        },
+        "classifier_lr": {
+          "high": 10,
+          "log": true,
+          "low": 1e-05,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.alpha": {
+          "high": 30.0,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.margin": {
+          "high": 1.0,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 10,
+          "low": 1e-05
+        }
+      },
+      "study_name": "tpe_run_supervised"
+    },
+    "hparam_final_from_study": "tpe_run_supervised",
+    "hparam_final_trial_number": 61,
+    "hparam_params": {
+      "batch_sampler": "128:4",
+      "classifier_lr": 0.018865542439804955,
+      "loss.ProxyAnchorLoss.alpha": 6.747342601089474,
+      "loss.ProxyAnchorLoss.margin": 0.36420516976500206,
+      "lr": 7.043875572792385e-05
+    },
+    "length_before_new_iter": 4672,
+    "loss": "ProxyAnchorLoss",
+    "loss_params": {
+      "alpha": 6.747342601089474,
+      "margin": 0.36420516976500206
+    },
+    "lr": 7.043875572792385e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "supervised",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "graph_diagnostics_layout": "pacmap",
+      "labeled_batch_size": null,
+      "method": "none",
+      "method_params": {},
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": false,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "warmup_loss": "NTXentLoss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "graph_diagnostics_layout": "pacmap",
+    "labeled_batch_size": null,
+    "method": "none",
+    "method_params": {},
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": false,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 0
+  }
+}

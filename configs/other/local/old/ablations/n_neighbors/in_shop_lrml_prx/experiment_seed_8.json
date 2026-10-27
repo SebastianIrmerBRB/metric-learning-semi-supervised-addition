@@ -1,0 +1,40 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 64,
+  "classifier_lr": 3.3181283105742674,
+  "cv_k": 4,
+  "cv_mode": "stratified_group_kfold",
+  "data_split_seed": 7,
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "hparam_config": "configs/ablations/n_neighbors/in_shop_lrml_prx/hparam_config.json",
+  "k_shot_grid": [
+    2
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 20706,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "loss_params": {
+    "alpha": 87.36320483358732,
+    "margin": 0.4439684681300717
+  },
+  "lr": 5.113976371207591e-05,
+  "mode": "ssl",
+  "patience": 10,
+  "sampler_m": 2,
+  "save_dir": "ablations/n_neighbors/in_shop_lrml_prx/seed_8",
+  "seed": 8,
+  "ssl_config": "configs/ablations/n_neighbors/in_shop_lrml_prx/ssl_config.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "support_seed": 7,
+  "use_cache": true,
+  "val_mode": "all"
+}

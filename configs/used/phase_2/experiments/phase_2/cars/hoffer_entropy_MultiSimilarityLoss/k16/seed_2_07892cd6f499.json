@@ -1,0 +1,37 @@
+{
+  "batch_size": 64,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/hoffer_entropy_MultiSimilarityLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "alpha": 8.53107768629961,
+    "base": 0.730524184186991,
+    "beta": 3.2473504772497015
+  },
+  "lr": 2.1848994709590475e-05,
+  "miner_params": {
+    "epsilon": 0.7878514672129868
+  },
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/hoffer_entropy_MultiSimilarityLoss/k16/07892cd6f499",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/hoffer_entropy_MultiSimilarityLoss/k16/seed_2_07892cd6f499.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 8.53107768629961,
+    "base": 0.730524184186991,
+    "beta": 3.2473504772497015
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.7878514672129868
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/sup_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/sup_CircleLoss/k32/4a2364718f88",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/sup_CircleLoss/k32/seed_2_4a2364718f88.json",
+  "support_seed": 2
+}

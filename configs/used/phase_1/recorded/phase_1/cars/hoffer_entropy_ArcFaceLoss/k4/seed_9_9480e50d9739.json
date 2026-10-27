@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 292,
+    "length_before_new_iter_num_unlabeled": 5711,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_arc/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-27_14-24-40/fold_00/2026-09-27_14-24-43",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_arc/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-27_14-24-40/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_arc/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/hoffer_entropy_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "2x2 of in_shop/lrml/arc: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop_10/supervised/supervised_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_10_2x2_lrml_arc",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "256:8",
+      "classifier_lr": 6.391,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ArcFaceLoss.margin": 32.52,
+      "loss.ArcFaceLoss.scale": 8.051,
+      "lr": 0.0002572,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

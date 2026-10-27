@@ -1,0 +1,100 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/hoffer.json",
+    "experiment_config_resolved": {
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/cars_lrml.json",
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/hoffer/first/semi_inat_2021_initial.json",
+    "loss": "MultiSimilarityLoss",
+    "loss_miner_grid": [
+      "MultiSimilarityLoss:MultiSimilarityMiner"
+    ],
+    "lr": 1e-06,
+    "miner": "MultiSimilarityMiner",
+    "mode": "ssl",
+    "save_dir": "phase_0/ssl/semi_inat/new/hoffer/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo",
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config": "logs/phase_0/ssl/semi_inat/new/hoffer/ms-loss/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "loss.MultiSimilarityLoss.alpha": {
+        "high": 25,
+        "log": false,
+        "low": 2,
+        "type": "float"
+      },
+      "loss.MultiSimilarityLoss.base": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.3,
+        "type": "float"
+      },
+      "loss.MultiSimilarityLoss.beta": {
+        "high": 160,
+        "log": true,
+        "low": 20,
+        "type": "float"
+      },
+      "miner.MultiSimilarityMiner.epsilon": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.distance_scale": {
+        "high": 100,
+        "log": true,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.reference_sets": {
+        "choices": [
+          1,
+          2,
+          3
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+        "choices": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_target_ratio": {
+        "high": 1.5,
+        "log": false,
+        "low": 0.5,
+        "type": "float"
+      }
+    },
+    "study_name": "in_shop"
+  },
+  "in_flight_sampler_state_path": "logs/phase_0/ssl/semi_inat/new/hoffer/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_0/ssl/semi_inat/new/hoffer/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop/optuna_study.db",
+  "resolved_study_name": "in_shop",
+  "sampler_state_path": "logs/phase_0/ssl/semi_inat/new/hoffer/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop/sampler.pkl"
+}

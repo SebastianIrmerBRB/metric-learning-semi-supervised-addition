@@ -1,0 +1,22 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 0.0030416706813380916,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "margin": 48.28161557304633,
+    "scale": 2.880163505812744
+  },
+  "lr": 0.000113722820904357,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/slade_ArcFaceLoss/k2/306d0e9b60f5",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/slade_ArcFaceLoss/k2/seed_2_306d0e9b60f5.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split"
+}

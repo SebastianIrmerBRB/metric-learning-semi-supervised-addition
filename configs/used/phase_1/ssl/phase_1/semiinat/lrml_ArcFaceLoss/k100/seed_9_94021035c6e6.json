@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/semiinat/lrml_ArcFaceLoss.json",
+  "labeled_per_class": 100,
+  "seed": 9,
+  "support_seed": 9
+}

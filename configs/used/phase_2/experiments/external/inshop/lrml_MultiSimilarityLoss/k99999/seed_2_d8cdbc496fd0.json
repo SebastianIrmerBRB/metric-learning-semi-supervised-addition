@@ -1,0 +1,38 @@
+{
+  "batch_size": 128,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_MultiSimilarityLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "alpha": 2.5825035554894065,
+    "base": 0.6805174586787118,
+    "beta": 50.98406697002257
+  },
+  "lr": 3.6059651369755146e-05,
+  "miner_params": {
+    "epsilon": 0.24140532073236257
+  },
+  "patience_delay_epochs": 0,
+  "save_dir": "thesis/phase_2/external/inshop/lrml_MultiSimilarityLoss/k99999/d8cdbc496fd0",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_d8cdbc496fd0.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 2.5825035554894065,
+    "base": 0.6805174586787118,
+    "beta": 50.98406697002257
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.24140532073236257
+  }
+}

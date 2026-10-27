@@ -1,0 +1,123 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_default.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay: unmodified tuned run, 600 epochs / patience 20 for every method. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_default_uncapped",
+      "path": "configs/ablations/phase2/geometry/uncapped_default.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "appended_unlabeled_pool_size": 0,
+    "classifier_lr": 1.569891154003262,
+    "cv_fold": 2,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2,
+      4
+    ],
+    "length_before_new_iter": 19170,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 11635,
+    "length_before_new_iter_num_unlabeled": 7535,
+    "log_dir": "logs/final/phase_2/in_shop_geometry_uncapped/slade_prx_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-01_21-45-44/fold_02/2026-10-01_23-15-02",
+    "loss_params": {
+      "alpha": 0.31847110473996687,
+      "margin": 0.24072443600363824
+    },
+    "lr": 0.0004632785040660739,
+    "model_total_parameters": 89473536,
+    "model_trainable_parameters": 2893056,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2/in_shop_geometry_uncapped/slade_prx_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-01_21-45-44/fold_02",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_geometry_uncapped/slade_prx_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "basis_target_ratio": 0.6337842762750695,
+          "cluster_ratio": 2,
+          "sd_margin": 0.1152581014201785,
+          "unlabeled_batch_size": 32
+        },
+        "regularizer_target_ratio": 0.6152977261524779,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 5,
+      "warmup_epochs": 5
+    },
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 0.31847110473996687,
+      "margin": 0.24072443600363824
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/slade_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "basis_target_ratio": 0.6337842762750695,
+        "cluster_ratio": 2,
+        "sd_margin": 0.1152581014201785,
+        "unlabeled_batch_size": 32
+      },
+      "regularizer_target_ratio": 0.6152977261524779,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 5,
+    "warmup_epochs": 5
+  }
+}

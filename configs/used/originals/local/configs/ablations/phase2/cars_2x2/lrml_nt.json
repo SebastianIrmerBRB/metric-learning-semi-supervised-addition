@@ -1,0 +1,22 @@
+{
+  "description": "2x2 of cars/lrml/nt: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "cars_2x2_lrml_nt",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "128:4",
+      "evaluation_embedding_residency": "gpu",
+      "loss.NTXentLoss.temperature": 0.1777,
+      "lr": 1.688e-05,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

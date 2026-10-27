@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/iscen_CircleLoss.json",
+  "labeled_fraction": 0.25,
+  "pseudo_label_diagnostics_mode": "off",
+  "seed": 8,
+  "support_seed": 8
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/lrml_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/lrml_ArcFaceLoss/k8/da30bd650663",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/lrml_ArcFaceLoss/k8/seed_8_da30bd650663.json",
+  "support_seed": 8
+}

@@ -1,0 +1,26 @@
+{
+  "description": "2x2 of cars/slade/prx: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "cars_2x2_slade_prx",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "classifier_lr": 0.001503,
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ProxyAnchorLoss.alpha": 2.66,
+      "loss.ProxyAnchorLoss.margin": 0.06927,
+      "lr": 0.0008236,
+      "patience": 20
+    }
+  }
+}

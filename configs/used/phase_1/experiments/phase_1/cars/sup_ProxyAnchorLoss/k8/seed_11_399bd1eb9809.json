@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_ProxyAnchorLoss.json",
+  "final_test_visualization": [
+    "pacmap",
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_ProxyAnchorLoss/k8/399bd1eb9809",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_ProxyAnchorLoss/k8/seed_11_399bd1eb9809.json",
+  "support_seed": 11
+}

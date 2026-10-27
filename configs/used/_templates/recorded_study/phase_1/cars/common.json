@@ -1,0 +1,55 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cv_k": 4,
+    "dataset": "Cars196",
+    "dataset_protocol": "official",
+    "epochs": 600,
+    "evaluation_embedding_residency": "cpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "Cars196",
+      "dataset_protocol": "official",
+      "epochs": 600,
+      "feat_dim": 768,
+      "k_shot_grid": [
+        16
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "patience": 20,
+      "ssl_label_sampling_modes": [
+        "class_subset_k_shot"
+      ]
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "label_budget_grid": [
+      1.0
+    ],
+    "lr": 1e-06,
+    "patience": 20,
+    "semi_inat_ood_fraction": 0,
+    "ssl_label_sampling_modes": [
+      "class_subset_k_shot"
+    ]
+  },
+  "extends": "../common.json",
+  "hparam_config": {
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "32:4",
+          "64:4",
+          "128:4",
+          "256:4"
+        ]
+      },
+      "lr": {
+        "low": 1e-05
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/hoffer_entropy_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.1/681759518feb",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.1/seed_2_681759518feb.json"
+}

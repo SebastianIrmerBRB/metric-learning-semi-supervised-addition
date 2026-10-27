@@ -1,0 +1,51 @@
+{
+  "authority": "current compact thesis data bundle",
+  "files": [
+    {
+      "bytes": 13253,
+      "path": "/mnt/f/Thesis/daten/README.md",
+      "sha256": "7a6cc84cf22bb0833f767739003ce577d12a2e276a4a8d532de0ac7adba5549d"
+    },
+    {
+      "bytes": 33848,
+      "path": "/mnt/f/Thesis/daten/manifest.json",
+      "sha256": "ae478e174f32873fb49a0054d16b8a0310dde9e71de79ff7ae21d270aaffa660"
+    },
+    {
+      "bytes": 2198065,
+      "path": "/mnt/f/Thesis/daten/sources.csv",
+      "sha256": "56bd616ea37985cafb742e133d138b5faf8ffcbba370bacf93ecfd0f2cfa11f2"
+    },
+    {
+      "bytes": 2330116,
+      "path": "/mnt/f/Thesis/daten/results.csv",
+      "sha256": "ae8740ecd992efa1ff5055e50494cac5cdafb7e071fca4aec9e2b054d2cbc8e2"
+    },
+    {
+      "bytes": 9891275,
+      "path": "/mnt/f/Thesis/daten/hyperparameters.csv",
+      "sha256": "c21d3e48ace3f4d644f591136fdc6c0d991f59a1b55778ba5f59ab659d5c80a2"
+    },
+    {
+      "bytes": 9116279,
+      "path": "/mnt/f/Thesis/daten/folds.csv",
+      "sha256": "c6425cb9015dfe7d4f21483b26d4af6afe8d505a0fb2e05898ba9ac74f484aaf"
+    },
+    {
+      "bytes": 733020,
+      "path": "/mnt/f/Thesis/daten/ablations.csv",
+      "sha256": "6f91a8e61b4236258ee583fbe192d24a421cf5ff2a27b1d822f7bb3db70c4b66"
+    },
+    {
+      "bytes": 320054,
+      "path": "/mnt/f/Thesis/daten/external.csv",
+      "sha256": "734f4fc917f444c255d86fa48dcc55ac1f0d53e8ef845b554db334b807ec8211"
+    },
+    {
+      "bytes": 11905648,
+      "path": "/mnt/f/Thesis/daten/details.zip",
+      "sha256": "349fc6af88f8a6d4b9ba2c30ef39487e359667b6f96e43eecdd399e788ffc2ba"
+    }
+  ],
+  "schema_version": 1
+}

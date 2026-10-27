@@ -1,0 +1,13 @@
+{
+  "batch_size": 64,
+  "compile_train_step": true,
+  "extends": "common.json",
+  "loss": "ProxyAnchorLoss",
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 30,
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

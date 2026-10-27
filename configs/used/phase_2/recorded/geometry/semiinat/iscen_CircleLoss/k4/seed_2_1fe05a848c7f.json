@@ -1,0 +1,41 @@
+{
+  "args": {
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "k_shot_grid": [
+      2,
+      4,
+      16
+    ],
+    "length_before_new_iter_num_labeled": 1216,
+    "length_before_new_iter_num_unlabeled": 44956,
+    "log_dir": "logs/final/phase_2/semi_inat_geometry_uncapped/iscen_cir_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-02_00-51-56/fold_00/2026-10-02_00-51-56",
+    "save_dir": "final/phase_2/semi_inat_geometry_uncapped/iscen_cir_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-02_00-51-56/fold_00",
+    "ssl_config": "logs/final/phase_2/semi_inat_geometry_uncapped/iscen_cir_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/semiinat/iscen_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4
+  }
+}

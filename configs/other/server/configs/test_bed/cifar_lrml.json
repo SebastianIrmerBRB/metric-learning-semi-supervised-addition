@@ -1,0 +1,33 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 256,
+  "cv_k": 4,
+  "cv_mode": "superclass_balanced_group_kfold",
+  "dataset": "CIFAR100",
+  "dataset_protocol": "cifar100_fine_class_disjoint",
+  "epochs": 600,
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "hparam_config": null,
+  "k_shot_grid": [
+    24
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 22800,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "lr": 1e-05,
+  "mode": "ssl",
+  "patience": 20,
+  "sampler_m": 8,
+  "save_dir": "ssl_methods/phase_1/lrml/cifar/arc",
+  "ssl_config": "configs/used/originals/server/configs/ssl_methods/lrml.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

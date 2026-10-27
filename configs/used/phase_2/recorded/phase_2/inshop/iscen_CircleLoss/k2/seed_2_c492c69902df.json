@@ -1,0 +1,97 @@
+{
+  "args": {
+    "ablation_config": "/home/basti/metric-learning/configs/ablations/phase2/in_shop_cir_2x2/iscen_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "batch_sampler": "128:2",
+        "loss.CircleLoss.gamma": 14.67,
+        "loss.CircleLoss.m": 0.02051,
+        "lr": 1.153e-05
+      },
+      "description": "Ablation path from the supervised to the SSL configuration of in_shop/lp/cir: each variant sets shared parameters to the supervised study's best trial (/mnt/f/server_logs/final/in_shop/supervised/supervised_cir/class_subset_k_shot_label_1_k_2_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised). | Mechanism controls for in_shop/lp/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+      "name": "in_shop_cir_2x2_iscen_cir",
+      "path": "/home/basti/metric-learning/configs/ablations/phase2/in_shop_cir_2x2/iscen_cir.json",
+      "variant": "sup_all_shared"
+    },
+    "ablation_variant": "sup_all_shared",
+    "batch_size": 128,
+    "cv_fold": 0,
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "file",
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter": 19621,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/phase_2/in_shop/iscen_cir_sup_all_shared/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-09-24_12-17-21/fold_00/2026-09-24_12-17-21",
+    "loss_params": {
+      "gamma": 14.67,
+      "m": 0.02051
+    },
+    "lr": 1.153e-05,
+    "projection_3d": true,
+    "save_dir": "final/phase_2/in_shop/iscen_cir_sup_all_shared/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-09-24_12-17-21/fold_00",
+    "ssl_config": "logs/final/phase_2/in_shop/iscen_cir_sup_all_shared/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.2835901282487284,
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": 64,
+      "labeled_per_class": 2,
+      "method_params": {
+        "n_neighbors": 95
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 10
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 14.67,
+      "m": 0.02051
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_CircleLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.2835901282487284,
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": 64,
+    "labeled_per_class": 2,
+    "method_params": {
+      "n_neighbors": 95
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 10
+  }
+}

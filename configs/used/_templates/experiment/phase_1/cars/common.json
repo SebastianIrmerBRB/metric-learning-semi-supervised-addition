@@ -1,0 +1,9 @@
+{
+  "cv_k": 4,
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "extends": "../common.json",
+  "patience": 20,
+  "sampler_m": 4,
+  "semi_inat_ood_fraction": 0
+}

@@ -1,0 +1,33 @@
+{
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "lrml",
+    "regularizer_params": {
+      "edge_weighting": "cosine",
+      "gamma": 3.0,
+      "graph_batch_size": 512,
+      "graph_on": "all",
+      "n_neighbors": 6,
+      "normalized_laplacian": true,
+      "oracle_same_class_edges": false,
+      "reduction": "mean"
+    },
+    "regularizer_target_ratio": 0.5,
+    "regularizer_target_ratio_diagnostics": true,
+    "regularizer_target_ratio_probe_memory": 10,
+    "regularizer_target_ratio_update_interval_samples": 640,
+    "regularizer_weight": 1.0,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": false,
+  "update_interval_epochs": 1,
+  "update_mode": "once",
+  "warmup_epochs": 0
+}

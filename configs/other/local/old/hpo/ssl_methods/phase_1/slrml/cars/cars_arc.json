@@ -1,0 +1,78 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 60,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "tpe",
+  "sampler_params": {
+    "group": true,
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "16:4",
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4",
+        "512:8"
+      ],
+      "type": "categorical"
+    },
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.margin": {
+      "high": 30.0,
+      "log": false,
+      "low": 15,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.scale": {
+      "high": 128.0,
+      "log": false,
+      "low": 32,
+      "type": "float"
+    },
+    "lr": {
+      "high": 20,
+      "log": true,
+      "low": 0.01,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 10,
+      "log": true,
+      "low": 0.001,
+      "type": "float"
+    },
+    "ssl_config.method_params.supervised_weight": {
+      "high": 2.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_imb_search",
+  "timeout": null,
+  "tpe_startup_trials": 20
+}

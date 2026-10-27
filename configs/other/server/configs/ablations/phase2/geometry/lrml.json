@@ -1,0 +1,12 @@
+{
+  "description": "Geometry replay of LRML without the regularizer max-ratio cap (regularizer_max_ratio = null); 600 epochs / patience 20.",
+  "name": "geometry_lrml",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "batch_size": 64,
+  "classifier_lr": 2.322378191557241,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/iscen_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "margin": 27.12528442036004,
+    "scale": 12.206473413721833
+  },
+  "lr": 0.05654291641418013,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/iscen_ArcFaceLoss/k2/b8eaa113f5e8",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/iscen_ArcFaceLoss/k2/seed_2_b8eaa113f5e8.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 27.12528442036004,
+    "scale": 12.206473413721833
+  }
+}

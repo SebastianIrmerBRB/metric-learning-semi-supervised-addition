@@ -1,0 +1,21 @@
+{
+  "args": {
+    "k_shot_grid": [
+      2,
+      4,
+      16
+    ],
+    "length_before_new_iter_num_labeled": 4864,
+    "length_before_new_iter_num_unlabeled": 41308,
+    "log_dir": "logs/final/phase_2/semi_inat_geometry_retuned/lrml_ms_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-13_10-30-36/fold_00/2026-10-13_10-30-36",
+    "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_ms_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-13_10-30-36/fold_00",
+    "ssl_config": "logs/final/phase_2/semi_inat_geometry_retuned/lrml_ms_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/semiinat/lrml_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16
+  }
+}

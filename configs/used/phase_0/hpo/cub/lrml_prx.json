@@ -1,0 +1,23 @@
+{
+  "extends": "../../../_templates/hpo/phase_0/cub/lrml.json",
+  "spaces": {
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.ProxyAnchorLoss.alpha": {
+      "high": 100.0,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "high": 1.0,
+      "log": false,
+      "low": 0.01,
+      "type": "float"
+    }
+  }
+}

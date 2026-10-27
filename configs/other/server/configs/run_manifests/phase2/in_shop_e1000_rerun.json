@@ -1,0 +1,90 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 5,
+  "max_total_runs": 5,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/in_shop_e1000_rerun/iscen_ms.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_ms",
+      "study_dir": "final/phase_2_studies/geometry/in_shop/iscen/iscen_ms/class_subset_k_shot_label_1_k_2_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/in_shop_e1000_rerun/iscen_nt.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_nt",
+      "study_dir": "final/phase_2_studies/geometry/in_shop/iscen/iscen_nt/class_subset_k_shot_label_1_k_2_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/in_shop_e1000_rerun/slade_nt.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "slade_nt",
+      "study_dir": "final/phase_2_studies/geometry/in_shop/slade/slade_nt/class_subset_k_shot_label_1_k_2_NTXentLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/in_shop_e1000_rerun/slade_prx.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "slade_prx",
+      "study_dir": "final/phase_2_studies/geometry/in_shop/slade/slade_prx/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/in_shop_e1000_rerun/lrml_cir.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "lrml_cir",
+      "study_dir": "final/phase_2_studies/geometry/in_shop/lrml/lrml_cir/class_subset_k_shot_label_1_k_2_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    }
+  ],
+  "save_dir_root": "final/phase_2/in_shop_e1000_rerun",
+  "scheduler_log_dir": "final/phase_2/in_shop_e1000_rerun/_scheduler",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "epoch_head_dtype": "bfloat16",
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "file",
+    "k_shot_grid": [
+      2
+    ],
+    "save_epoch_head_interval": 0,
+    "save_head_state": false,
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ]
+  },
+  "version": 1
+}

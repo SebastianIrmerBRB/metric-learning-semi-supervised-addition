@@ -1,0 +1,39 @@
+{
+  "batch_size": 16,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "data_split_seed",
+    "support_seed",
+    "hparam_seed"
+  ],
+  "compile_train_step": false,
+  "device": "cuda",
+  "epochs": 600,
+  "evaluate_test": false,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "final_test_visualization": [
+    "pacmap"
+  ],
+  "hparam_config": "configs/used/phase_1/hpo/cars/iscen_ms.json",
+  "length_before_new_iter": null,
+  "loss": "MultiSimilarityLoss",
+  "loss_params": {},
+  "lr": 1e-06,
+  "miner": "MultiSimilarityMiner",
+  "miner_params": {},
+  "mode": "ssl",
+  "save_dir": "thesis/phase_1/hpo/cars/iscen_ms",
+  "save_test_embeddings": false,
+  "seed": 7,
+  "skip_test_during_hpo": true,
+  "ssl_config": "configs/used/phase_1/hpo_ssl/cars/iscen_ms.json",
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "train_val",
+  "support_seed": 7,
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {},
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

@@ -1,0 +1,20 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop/lrml_MultiSimilarityLoss.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "labeled_per_class": 2,
+  "method_params": {
+    "regularizer_max_ratio": null,
+    "regularizer_params": {
+      "graph_batch_size": 32,
+      "n_neighbors": 2
+    },
+    "regularizer_target_ratio": 0.35,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 20
+}

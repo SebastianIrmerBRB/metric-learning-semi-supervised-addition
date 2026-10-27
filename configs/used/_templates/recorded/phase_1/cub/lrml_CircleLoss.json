@@ -1,0 +1,222 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2,
+        "evaluation_embedding_residency": "gpu"
+      },
+      "path": "configs/final_manifests/final/changes/epochs.json"
+    },
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 128,
+    "classifier_lr": 1.0,
+    "compile_train_step": true,
+    "configured_length_before_new_iter": 4692,
+    "cv_fold": 0,
+    "cv_parallel_backend": "process",
+    "cv_parallel_folds": 2,
+    "epoch_head_dtype": "bfloat16",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cub/lrml.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "epochs": 600,
+      "length_before_new_iter": 4692,
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/lrml/cub/nt",
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_test_visualization": [
+      "none"
+    ],
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/cub.json",
+    "hparam_config_resolved": {
+      "max_replaced_pruned_trials": null,
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "32:4",
+            "64:4",
+            "128:4",
+            "256:4"
+          ]
+        },
+        "loss.CircleLoss.gamma": {
+          "high": 512,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "loss.CircleLoss.m": {
+          "high": 0.5,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 0.0001,
+          "low": 5e-06
+        },
+        "ssl_config.method_params.regularizer_params.graph_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128,
+            256,
+            512
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.n_neighbors": {
+          "high": 200,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 12,
+          "low": 0,
+          "step": 2,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_final_trial_number": 53,
+    "hparam_params": {
+      "batch_sampler": "128:4",
+      "loss.CircleLoss.gamma": 56.70488332626052,
+      "loss.CircleLoss.m": 0.04516278195093354,
+      "lr": 3.4613654066476614e-05,
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 32,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 128,
+      "ssl_config.method_params.regularizer_target_ratio": 1.0295678415710108,
+      "ssl_config.warmup_epochs": 12
+    },
+    "length_before_new_iter": 4672,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "log_head_dynamics": false,
+    "loss": "CircleLoss",
+    "loss_params": {
+      "gamma": 56.70488332626052,
+      "m": 0.04516278195093354
+    },
+    "lr": 3.4613654066476614e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_epoch_head_interval": null,
+    "save_final_head_state": false,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "graph_edge_ablation_seed": null,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "lrml",
+        "regularizer_params": {
+          "edge_weighting": "binary",
+          "graph_batch_size": 32,
+          "graph_on": "all",
+          "n_neighbors": 128,
+          "normalized_laplacian": true,
+          "reduction": "torch_sum"
+        },
+        "regularizer_target_ratio": 1.0295678415710108,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 12
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0,
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 56.70488332626052,
+      "m": 0.04516278195093354
+    },
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "graph_edge_ablation_seed": null,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "lrml",
+      "regularizer_params": {
+        "edge_weighting": "binary",
+        "graph_batch_size": 32,
+        "graph_on": "all",
+        "n_neighbors": 128,
+        "normalized_laplacian": true,
+        "reduction": "torch_sum"
+      },
+      "regularizer_target_ratio": 1.0295678415710108,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 12
+  }
+}

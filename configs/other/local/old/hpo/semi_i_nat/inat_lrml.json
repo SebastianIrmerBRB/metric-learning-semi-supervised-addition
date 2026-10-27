@@ -1,0 +1,31 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 1,
+  "cv_mode": "stratified_group_kfold",
+  "dataset": "SemiINaturalist2021",
+  "dataset_protocol": "official",
+  "epochs": 1000,
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": "configs/ssl/cars_lrml.json",
+  "k_shot_grid": [
+    5
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 6041,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "mode": "ssl",
+  "patience": 20,
+  "save_dir": "SemiINaturalist2021Lrml",
+  "ssl_config": "configs/ssl_regularized_lrml.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

@@ -1,0 +1,19 @@
+{
+  "compile_train_step": false,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "faiss_temp_memory_mb": 4096,
+  "final_fit_mode": "full_train",
+  "frozen_feature_cache_max_gb": 16000,
+  "frozen_feature_residency_max_gb": 8.0,
+  "hparam_config": "configs/used/phase_0/hpo/cars/iscen_nt.json",
+  "loss": "NTXentLoss",
+  "miner": "no_miner",
+  "mode": "ssl",
+  "save_dir": "thesis/phase_0/hpo/cars/iscen_nt",
+  "save_head_state": false,
+  "ssl_config": "configs/used/phase_0/hpo_ssl/cars/iscen_nt.json",
+  "ssl_gradient_contribution_log_interval": 0,
+  "warmup_loss": null,
+  "warmup_miner": null
+}

@@ -1,0 +1,9 @@
+{
+  "description": "Loss control for a semi-supervised claim: the unlabeled objective still runs, with the same weight and the same updates per epoch, but every sample it sees is one the supervised term already trains on. Against the unmodified run this isolates the unlabeled data from the unlabeled objective.",
+  "name": "unlabeled_pool_labeled",
+  "variants": {
+    "unlabeled_pool_labeled": {
+      "unlabeled_source": "labeled"
+    }
+  }
+}

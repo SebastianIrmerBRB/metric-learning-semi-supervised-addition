@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/iscen_CircleLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/iscen_CircleLoss/k16/8cd393028c4c",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/iscen_CircleLoss/k16/seed_2_8cd393028c4c.json"
+}

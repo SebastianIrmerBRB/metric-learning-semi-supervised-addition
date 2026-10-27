@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/sup_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/sup_ProxyAnchorLoss/k100/42c5ffbb09cb",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/sup_ProxyAnchorLoss/k100/seed_11_42c5ffbb09cb.json",
+  "support_seed": 11
+}

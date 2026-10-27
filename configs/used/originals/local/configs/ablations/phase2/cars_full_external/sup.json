@@ -1,0 +1,9 @@
+{
+  "description": "Unmodified supervised replay of cars/sup, any loss: the external-data reference.",
+  "name": "cars_full_external_sup",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "batch_size": 64,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/hoffer_entropy_NTXentLoss.json",
+  "external_unlabeled_dir": "data/Fashion200k",
+  "external_unlabeled_fraction": 0.05,
+  "loss_params": {
+    "temperature": 0.23808912125621443
+  },
+  "lr": 2.84106647895727e-05,
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/inshop/hoffer_entropy_NTXentLoss/k99999/4c67072e935c",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_4c67072e935c.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "external",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.23808912125621443
+  }
+}

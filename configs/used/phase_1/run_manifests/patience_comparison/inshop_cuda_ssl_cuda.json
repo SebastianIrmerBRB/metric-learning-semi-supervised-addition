@@ -1,0 +1,22 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop/lrml_ArcFaceLoss/k4/seed_11_2f480d0d8d96.json",
+      "name": "2f480d0d8d96"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop/lrml_ArcFaceLoss/k4/seed_9_6d399ddccae5.json",
+      "name": "6d399ddccae5"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop/lrml_ArcFaceLoss/k2/seed_8_bd2c0ec04132.json",
+      "name": "bd2c0ec04132"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_1/patience_comparison/inshop/cuda_ssl_cuda"
+}

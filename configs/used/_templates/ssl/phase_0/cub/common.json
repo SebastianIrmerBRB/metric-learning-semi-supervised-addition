@@ -1,0 +1,8 @@
+{
+  "embedding_num_workers": 0,
+  "extends": "../common.json",
+  "graph_diagnostics_layout": "pacmap",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16
+}

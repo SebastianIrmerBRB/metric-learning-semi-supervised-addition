@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/hoffer_entropy_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k16/ae7a7dfd209f",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k16/seed_2_ae7a7dfd209f.json"
+}

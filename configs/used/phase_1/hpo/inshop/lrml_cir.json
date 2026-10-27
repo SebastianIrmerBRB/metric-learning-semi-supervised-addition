@@ -1,0 +1,20 @@
+{
+  "extends": "../../../_templates/hpo/phase_1/inshop/lrml.json",
+  "spaces": {
+    "loss.CircleLoss.gamma": {
+      "high": 512,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.5,
+      "log": true,
+      "low": 0.01,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005
+    }
+  }
+}

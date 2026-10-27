@@ -1,0 +1,15 @@
+{
+  "confidence_threshold": 0.6577798442225513,
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/iscen_ProxyAnchorLoss.json",
+  "graph_edge_ablation": "off",
+  "labeled_batch_size": 16,
+  "labeled_per_class": 8,
+  "method_params": {
+    "n_neighbors": 7
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.6,
+  "pseudo_label_source": "oracle",
+  "update_mode": "every_epoch",
+  "warmup_epochs": 10
+}

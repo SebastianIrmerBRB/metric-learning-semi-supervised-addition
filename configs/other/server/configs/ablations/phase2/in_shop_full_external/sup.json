@@ -1,0 +1,9 @@
+{
+  "description": "Unmodified supervised replay of in_shop/sup/cir: the external-data reference.",
+  "name": "in_shop_cir_full_external_sup_cir",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

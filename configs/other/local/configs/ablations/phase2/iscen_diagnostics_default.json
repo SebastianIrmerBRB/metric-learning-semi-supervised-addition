@@ -1,0 +1,10 @@
+{
+  "description": "Unmodified LP replay with pseudo-label diagnostics on (accuracy, confidences, class counts, label changes, pair precision/recall per generation); the tuned config has them off.",
+  "name": "iscen_diagnostics_default",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    }
+  }
+}

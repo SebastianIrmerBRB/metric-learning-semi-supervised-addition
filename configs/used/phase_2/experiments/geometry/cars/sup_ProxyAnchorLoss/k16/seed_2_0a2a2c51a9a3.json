@@ -1,0 +1,16 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/sup_ProxyAnchorLoss.json",
+  "fold_test_embedding_storage": "file",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/cars/sup_ProxyAnchorLoss/k16/0a2a2c51a9a3",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/cars/sup_ProxyAnchorLoss/k16/seed_2_0a2a2c51a9a3.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

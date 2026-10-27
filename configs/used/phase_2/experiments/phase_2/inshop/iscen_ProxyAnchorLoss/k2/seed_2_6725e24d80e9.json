@@ -1,0 +1,27 @@
+{
+  "classifier_lr": 0.007334867663900393,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/iscen_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "alpha": 4.478129298930762,
+    "margin": 0.05892560964759625
+  },
+  "lr": 5.646121545886887e-05,
+  "save_dir": "thesis/phase_2/phase_2/inshop/iscen_ProxyAnchorLoss/k2/6725e24d80e9",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/iscen_ProxyAnchorLoss/k2/seed_2_6725e24d80e9.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 4.478129298930762,
+    "margin": 0.05892560964759625
+  }
+}

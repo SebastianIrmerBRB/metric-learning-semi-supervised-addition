@@ -1,0 +1,13 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/sup_ArcFaceLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/sup_ArcFaceLoss/k2/0b036268f0ec",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/sup_ArcFaceLoss/k2/seed_2_0b036268f0ec.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000
+}

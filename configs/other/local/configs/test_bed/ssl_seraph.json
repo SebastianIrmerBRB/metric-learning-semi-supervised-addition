@@ -1,0 +1,37 @@
+{
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 0,
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 25,
+  "method": "seraph",
+  "method_params": {
+    "grad_norm_alpha": 1.5,
+    "grad_norm_parameterization": "log",
+    "grad_norm_renormalize": "supervised",
+    "regularizer_params": {
+      "em_sharpening": 2,
+      "include_labeled_unlabeled": true,
+      "kappa": 1,
+      "kappa_mode": "batch_std",
+      "metric": "identity",
+      "metric_dim": null,
+      "objective": "em",
+      "positive_pair_prior": 0.1,
+      "positive_pair_prior_min": 0.01,
+      "prior_mode": "fixed",
+      "threshold": 0.5,
+      "threshold_mode": "quantile",
+      "threshold_momentum": 0.1,
+      "unlabeled_batch_size": 128,
+      "unlabeled_ratio": null
+    },
+    "regularizer_weight": 15.0,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "update_interval_epochs": 1,
+  "update_mode": "once",
+  "warmup_epochs": 20
+}

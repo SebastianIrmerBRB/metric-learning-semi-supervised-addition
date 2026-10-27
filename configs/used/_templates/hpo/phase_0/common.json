@@ -1,0 +1,29 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_jobs": 1,
+  "n_trials": 50,
+  "per_loss": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "retry_failed_trials": false,
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "type": "categorical"
+    },
+    "lr": {
+      "high": 10,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "timeout": null,
+  "tpe_startup_trials": null
+}

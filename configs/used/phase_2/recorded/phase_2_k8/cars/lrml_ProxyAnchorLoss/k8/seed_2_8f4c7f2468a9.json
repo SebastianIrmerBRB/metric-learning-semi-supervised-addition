@@ -1,0 +1,149 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience_delay_epochs": 20,
+        "ssl_config.method_params.regularizer_max_ratio": null,
+        "ssl_config.method_params.regularizer_params.n_neighbors": 2,
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Every Cars196 Phase 2 run of the thesis (variants.csv, SLADE sweeps) replayed at k=8 instead of k=16; built by Thesis/review/cars_k8_2026-10-19/baue_manifest_k8.py. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus 1000 epochs, its patience and patience_delay_epochs 20.",
+      "name": "phase2_k8_cars_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "variant": "lrml__n_neighbors_2"
+    },
+    "ablation_variant": "lrml__n_neighbors_2",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "classifier_lr": 0.004347904745063254,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "compile_train_step": true,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 1
+    },
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_config_resolved": {
+      "sampler_params": {
+        "group": true,
+        "multivariate": true
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "hparam_final_trial_number": 54,
+    "hparam_params": {
+      "batch_sampler": "64:4",
+      "classifier_lr": 0.004347904745063254,
+      "loss.ProxyAnchorLoss.alpha": 9.824976328253602,
+      "loss.ProxyAnchorLoss.margin": 0.012597149861422467,
+      "lr": 2.538718646023269e-05,
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 16,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 45,
+      "ssl_config.method_params.regularizer_target_ratio": 1.0654083903452674,
+      "ssl_config.warmup_epochs": 30
+    },
+    "k_shot_grid": [
+      8
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_n_neighbors_2/k8_s2/lrml__n_neighbors_2/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_22-01-57/fold_00/2026-10-19_22-01-57",
+    "loss_params": {
+      "alpha": 9.824976328253602,
+      "margin": 0.012597149861422467
+    },
+    "lr": 2.538718646023269e-05,
+    "patience_delay_epochs": 20,
+    "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_n_neighbors_2/k8_s2/lrml__n_neighbors_2/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_22-01-57/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 2,
+    "ssl_config": "logs/final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_n_neighbors_2/k8_s2/lrml__n_neighbors_2/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 8,
+      "method_params": {
+        "regularizer_max_ratio": null,
+        "regularizer_params": {
+          "graph_batch_size": 16,
+          "n_neighbors": 2
+        },
+        "regularizer_target_ratio": 1.0654083903452674,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "seed": 2,
+      "support_seed": 2,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 30
+    },
+    "support_seed": 2,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 9.824976328253602,
+      "margin": 0.012597149861422467
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/lrml_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 8,
+    "method_params": {
+      "regularizer_max_ratio": null,
+      "regularizer_params": {
+        "graph_batch_size": 16,
+        "n_neighbors": 2
+      },
+      "regularizer_target_ratio": 1.0654083903452674,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "seed": 2,
+    "support_seed": 2,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 30
+  }
+}

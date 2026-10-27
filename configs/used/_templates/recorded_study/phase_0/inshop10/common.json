@@ -1,0 +1,64 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cv_k": 4,
+    "dataset": "DeepFashionInShop",
+    "dataset_protocol": "official",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "DeepFashionInShop",
+      "dataset_protocol": "official",
+      "evaluation_embedding_residency": "gpu",
+      "feat_dim": 768,
+      "final_test_after_hpo": true,
+      "hparam_config": null,
+      "label_budget_grid": [
+        0.1
+      ],
+      "patience": 20,
+      "ssl_label_sampling_modes": [
+        "class_subset"
+      ]
+    },
+    "faiss_temp_memory_mb": 256,
+    "final_fit_mode": "cross_validation_folds",
+    "final_test_after_hpo": true,
+    "frozen_feature_cache_max_gb": 8096,
+    "frozen_feature_residency_max_gb": 2.0,
+    "image_resize_mode": "squash",
+    "k_shot_grid": null,
+    "label_budget_grid": [
+      0.1
+    ],
+    "length_before_new_iter": null,
+    "lr": 1e-06,
+    "measurements": [
+      "precision_at_1",
+      "mean_average_precision_at_r"
+    ],
+    "patience": 20,
+    "save_head_state": false,
+    "semi_inat_ood_fraction": 0,
+    "ssl_label_sampling_modes": [
+      "class_subset"
+    ],
+    "validation_gallery_fraction": 0.5,
+    "validation_retrieval_mode": "same_source",
+    "warmup_miner": "no_miner"
+  },
+  "extends": "../common.json",
+  "hparam_config": {
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "32:2",
+          "64:2",
+          "128:2",
+          "256:2",
+          "512:2"
+        ]
+      }
+    }
+  }
+}

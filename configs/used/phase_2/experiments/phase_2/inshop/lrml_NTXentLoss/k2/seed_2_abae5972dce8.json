@@ -1,0 +1,26 @@
+{
+  "batch_size": 256,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.07444415869918694
+  },
+  "lr": 7.504666879061826e-05,
+  "save_dir": "thesis/phase_2/phase_2/inshop/lrml_NTXentLoss/k2/abae5972dce8",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/lrml_NTXentLoss/k2/seed_2_abae5972dce8.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.07444415869918694
+  }
+}

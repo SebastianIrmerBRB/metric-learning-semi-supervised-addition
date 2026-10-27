@@ -1,0 +1,25 @@
+{
+  "args": {
+    "label_budget_grid": [
+      0.1
+    ],
+    "length_before_new_iter_num_labeled": 1931,
+    "length_before_new_iter_num_unlabeled": 17690,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_arc/class_subset_label_0p1_comparison_seed_9/final/ssl/cv_2026-10-14_12-59-13/fold_00/2026-10-14_12-59-16",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_arc/class_subset_label_0p1_comparison_seed_9/final/ssl/cv_2026-10-14_12-59-13/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_arc/study_replay_grid/ssl_configs/class_subset_label_0p1_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.1,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/iscen_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.1,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

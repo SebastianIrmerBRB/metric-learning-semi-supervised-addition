@@ -1,0 +1,53 @@
+{
+  "ablation_variant": null,
+  "batch_size": 256,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": false,
+  "epochs": 600,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": null,
+  "loss": "CircleLoss",
+  "loss_params": {
+    "gamma": 28.08535587245302,
+    "m": 0.3651657780269176
+  },
+  "lr": 2.1503161747225267e-05,
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "report_test_metrics": true,
+  "sampler_m": 2,
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "test_measurements": null,
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 28.08535587245302,
+    "m": 0.3651657780269176
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

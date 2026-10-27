@@ -1,0 +1,203 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_semi_inat_lp.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "ssl_config.pseudo_label_diagnostics_mode": "save",
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay of LP with pseudo-label diagnostics on (the tuned config has them off); 600 epochs / patience 10 (Semi-iNat's Phase-1 patience, as its earlier tracking runs). Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_lp_uncapped_semi_inat",
+      "path": "configs/ablations/phase2/geometry/uncapped_semi_inat_lp.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 256,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "cv_parallel_folds": 1,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/iscen.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/phase_0/cars_phase0.json",
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/iscen.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/iscen/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "labeled_batch_fraction": {
+          "choices": [
+            0.125,
+            0.25,
+            0.5
+          ],
+          "type": "categorical"
+        },
+        "loss.MultiSimilarityLoss.alpha": {
+          "high": 30,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "loss.MultiSimilarityLoss.base": {
+          "high": 0.7,
+          "log": false,
+          "low": 0.01,
+          "type": "float"
+        },
+        "loss.MultiSimilarityLoss.beta": {
+          "high": 280,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "miner.MultiSimilarityMiner.epsilon": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.confidence_threshold": {
+          "high": 0.9,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.alpha": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.gamma": {
+          "high": 10,
+          "log": false,
+          "low": 1,
+          "type": "int"
+        },
+        "ssl_config.method_params.n_neighbors": {
+          "high": 100,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 10,
+          "low": 0,
+          "step": 2,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_final_trial_number": 53,
+    "hparam_params": {
+      "batch_sampler": "256:2",
+      "labeled_batch_fraction": 0.25,
+      "loss.MultiSimilarityLoss.alpha": 0.47381654742116247,
+      "loss.MultiSimilarityLoss.base": 0.5729072499777415,
+      "loss.MultiSimilarityLoss.beta": 3.865769483871439,
+      "lr": 6.428125569086838e-06,
+      "miner.MultiSimilarityMiner.epsilon": 0.11131581886084689,
+      "ssl_config.confidence_threshold": 0.390690328171894,
+      "ssl_config.method_params.alpha": 0.8169368383811186,
+      "ssl_config.method_params.gamma": 3,
+      "ssl_config.method_params.n_neighbors": 33,
+      "ssl_config.warmup_epochs": 2
+    },
+    "loss": "MultiSimilarityLoss",
+    "loss_params": {
+      "alpha": 0.47381654742116247,
+      "base": 0.5729072499777415,
+      "beta": 3.865769483871439
+    },
+    "lr": 6.428125569086838e-06,
+    "miner": "MultiSimilarityMiner",
+    "miner_params": {
+      "epsilon": 0.11131581886084689
+    },
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "replaced_split_unlabeled_size": 0,
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.390690328171894,
+      "embedding_batch_size": 1024,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": 64,
+      "method": "iscen_label_spreading",
+      "method_params": {
+        "alpha": 0.8169368383811186,
+        "cg_max_iter": 2000,
+        "cg_rtol": 1e-05,
+        "gamma": 3,
+        "linear_solver": "torch_block_cg",
+        "n_neighbors": 33
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_epoch",
+      "warmup_epochs": 2
+    },
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "warmup_loss": "MultiSimilarityLoss",
+    "warmup_loss_params": {
+      "alpha": 0.47381654742116247,
+      "base": 0.5729072499777415,
+      "beta": 3.865769483871439
+    },
+    "warmup_miner": "MultiSimilarityMiner",
+    "warmup_miner_params": {
+      "epsilon": 0.11131581886084689
+    }
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.390690328171894,
+    "embedding_batch_size": 1024,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": 64,
+    "method": "iscen_label_spreading",
+    "method_params": {
+      "alpha": 0.8169368383811186,
+      "cg_max_iter": 2000,
+      "cg_rtol": 1e-05,
+      "gamma": 3,
+      "linear_solver": "torch_block_cg",
+      "n_neighbors": 33
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_epoch",
+    "warmup_epochs": 2
+  }
+}

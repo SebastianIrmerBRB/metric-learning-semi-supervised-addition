@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/slade_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/slade_MultiSimilarityLoss/k32/c43d4be57c62",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/slade_MultiSimilarityLoss/k32/seed_10_c43d4be57c62.json",
+  "support_seed": 10
+}

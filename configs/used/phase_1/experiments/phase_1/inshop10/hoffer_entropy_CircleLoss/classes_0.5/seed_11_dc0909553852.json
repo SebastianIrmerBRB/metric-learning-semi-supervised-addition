@@ -1,0 +1,11 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_CircleLoss.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "log_head_dynamics": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_CircleLoss/classes_0.5/dc0909553852",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_CircleLoss/classes_0.5/seed_11_dc0909553852.json",
+  "support_seed": 11
+}

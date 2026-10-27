@@ -1,0 +1,34 @@
+{
+  "description": "Replacements of every patience-40 run of the thesis data (CUB excepted) by the same launch with patience 20 and patience_delay_epochs 20 (Thesis/review/patience40_ersatz_2026-10-20). Each variant is the run's original resolved ablation variant plus its epoch cap, patience 20 and the delay.",
+  "name": "patience40_ersatz_2026-10-20",
+  "variants": {
+    "epochs__epochs": {
+      "cv_parallel_folds": 2,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "cpu",
+      "patience": 20,
+      "patience_delay_epochs": 20
+    },
+    "epochs__epochs__2": {
+      "cv_parallel_folds": 2,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "patience_delay_epochs": 20
+    },
+    "epochs_prx__epochs": {
+      "cv_parallel_folds": 1,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "patience_delay_epochs": 20
+    },
+    "uncapped_default_p40__defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "patience_delay_epochs": 20,
+      "track_epoch_max_samples": 0
+    }
+  }
+}

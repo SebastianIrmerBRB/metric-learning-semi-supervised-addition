@@ -1,0 +1,33 @@
+{
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "max_unlabeled_samples": null,
+  "method": "slade",
+  "method_params": {
+    "grad_norm_alpha": 1,
+    "grad_norm_parameterization": "log",
+    "grad_norm_renormalize": "supervised",
+    "regularizer_params": {
+      "basis_warmup_steps": null,
+      "beta": 0.99,
+      "lambda_basis": 1,
+      "num_clusters": null,
+      "sd_gradient_mode": "damped",
+      "sd_margin": 0.5,
+      "sd_variance_weight": 1.0,
+      "unlabeled_ranking_loss": "contrastive",
+      "unlabeled_ratio": 1.0
+    },
+    "regularizer_weight": 1,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 25,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 0
+}

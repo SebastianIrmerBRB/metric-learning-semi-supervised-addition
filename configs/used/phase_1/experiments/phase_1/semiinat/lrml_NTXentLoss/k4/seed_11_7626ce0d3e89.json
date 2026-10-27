@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/lrml_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/lrml_NTXentLoss/k4/7626ce0d3e89",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/lrml_NTXentLoss/k4/seed_11_7626ce0d3e89.json",
+  "support_seed": 11
+}

@@ -1,0 +1,7 @@
+{
+  "description": "Start the semi-supervised objective at epoch 0 instead of after a supervised warm-up, to separate what the method contributes from what its warm-up contributes.",
+  "name": "no_warmup",
+  "overrides": {
+    "ssl_config.warmup_epochs": 0
+  }
+}

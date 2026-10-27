@@ -1,0 +1,27 @@
+{
+  "extends": [
+    "../cars.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.contrastive_margin": {
+      "high": 3,
+      "log": false,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "high": 100,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "in-shop"
+}

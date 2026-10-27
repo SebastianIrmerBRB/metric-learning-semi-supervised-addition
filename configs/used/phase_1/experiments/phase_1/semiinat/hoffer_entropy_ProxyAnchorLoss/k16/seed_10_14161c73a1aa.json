@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/hoffer_entropy_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/hoffer_entropy_ProxyAnchorLoss/k16/14161c73a1aa",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/hoffer_entropy_ProxyAnchorLoss/k16/seed_10_14161c73a1aa.json",
+  "support_seed": 10
+}

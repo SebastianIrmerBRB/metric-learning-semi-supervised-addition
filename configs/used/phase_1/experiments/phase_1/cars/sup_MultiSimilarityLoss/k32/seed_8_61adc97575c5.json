@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_MultiSimilarityLoss.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_MultiSimilarityLoss/k32/61adc97575c5",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_MultiSimilarityLoss/k32/seed_8_61adc97575c5.json",
+  "support_seed": 8
+}

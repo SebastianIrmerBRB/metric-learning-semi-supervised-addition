@@ -1,0 +1,72 @@
+{
+  "description": "Follow-up to cars_lrml_ms_weight_decay: at the tuned lr 7.4e-5 the head's ||W|| grew only 4% and decay changed nothing. Same replay of Phase-1 cars/lrml/lrml_ms trial 66 at lr 3e-4, 1e-3, 3e-3 (4-40x the tuned value), each with Adam wd=0 and AdamW wd in {1e-2,1e-1,1}, to test whether decay matters once ||W|| can grow. All runs log --log_head_dynamics.",
+  "name": "cars_lrml_ms_weight_decay_high_lr",
+  "variants": {
+    "lr_1em3_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.001
+    },
+    "lr_1em3_adamw_wd_1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.001,
+      "optim": "adamw",
+      "weight_decay": 1.0
+    },
+    "lr_1em3_adamw_wd_1em1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.001,
+      "optim": "adamw",
+      "weight_decay": 0.1
+    },
+    "lr_1em3_adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.001,
+      "optim": "adamw",
+      "weight_decay": 0.01
+    },
+    "lr_3em3_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.003
+    },
+    "lr_3em3_adamw_wd_1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.003,
+      "optim": "adamw",
+      "weight_decay": 1.0
+    },
+    "lr_3em3_adamw_wd_1em1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.003,
+      "optim": "adamw",
+      "weight_decay": 0.1
+    },
+    "lr_3em3_adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.003,
+      "optim": "adamw",
+      "weight_decay": 0.01
+    },
+    "lr_3em4_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.0003
+    },
+    "lr_3em4_adamw_wd_1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.0003,
+      "optim": "adamw",
+      "weight_decay": 1.0
+    },
+    "lr_3em4_adamw_wd_1em1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.0003,
+      "optim": "adamw",
+      "weight_decay": 0.1
+    },
+    "lr_3em4_adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.0003,
+      "optim": "adamw",
+      "weight_decay": 0.01
+    }
+  }
+}

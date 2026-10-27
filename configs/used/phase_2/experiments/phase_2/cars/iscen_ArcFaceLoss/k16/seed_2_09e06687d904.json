@@ -1,0 +1,42 @@
+{
+  "classifier_lr": 0.0009021639342406636,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/iscen_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "final_test_visualization": [
+    "none"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "margin": 38.59149418111065,
+    "scale": 2.9001616152522476
+  },
+  "lr": 0.8308332084865383,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/iscen_ArcFaceLoss/k16/09e06687d904",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/iscen_ArcFaceLoss/k16/seed_2_09e06687d904.json",
+  "support_seed": 2,
+  "test_recall_at_k": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 38.59149418111065,
+    "scale": 2.9001616152522476
+  }
+}

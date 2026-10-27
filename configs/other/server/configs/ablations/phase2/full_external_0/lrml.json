@@ -1,0 +1,12 @@
+{
+  "description": "M5 control for lrml at k=99999 (all labels): the external-data replay (cars_full_external / in_shop_full_external, 1000 epochs, patience 20, max-ratio cap as in those runs) with no external images. unlabeled_source='split' attaches no pool and the split leaves 0 unlabeled candidates. The tuned studies use graph_on='all' (global graph), so the LRML Laplacian term still runs, on a kNN graph over the labeled training images only; it is the external runs minus their external graph nodes, not an SSL-off run.",
+  "name": "full_external_0_lrml",
+  "variants": {
+    "external_0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "split"
+    }
+  }
+}

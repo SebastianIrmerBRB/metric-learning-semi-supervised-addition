@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/lrml_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/lrml_MultiSimilarityLoss/k100/1cea33dd43df",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/lrml_MultiSimilarityLoss/k100/seed_10_1cea33dd43df.json",
+  "support_seed": 10
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Ablation path from the supervised to the SSL configuration of in_shop/hoffer/cir: each variant sets shared parameters to the supervised study's best trial (/mnt/f/server_logs/final/in_shop/supervised/supervised_cir/class_subset_k_shot_label_1_k_2_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised). | Mechanism controls for in_shop/hoffer/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "in_shop_cir_2x2_hoffer_cir",
+  "variants": {
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "evaluation_embedding_residency": "gpu",
+      "loss.CircleLoss.gamma": 14.67,
+      "loss.CircleLoss.m": 0.02051,
+      "lr": 1.153e-05
+    }
+  }
+}

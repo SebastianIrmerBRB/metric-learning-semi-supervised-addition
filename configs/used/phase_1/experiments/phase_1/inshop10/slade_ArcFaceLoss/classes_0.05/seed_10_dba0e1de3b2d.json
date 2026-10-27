@@ -1,0 +1,12 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_ArcFaceLoss.json",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_ArcFaceLoss/classes_0.05/dba0e1de3b2d",
+  "save_epoch_head_interval": null,
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_ArcFaceLoss/classes_0.05/seed_10_dba0e1de3b2d.json",
+  "support_seed": 10,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

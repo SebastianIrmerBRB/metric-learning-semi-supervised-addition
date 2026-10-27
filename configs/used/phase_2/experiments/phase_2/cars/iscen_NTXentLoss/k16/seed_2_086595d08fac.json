@@ -1,0 +1,24 @@
+{
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/iscen_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.16756883876942139
+  },
+  "lr": 2.2134317905839245e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/iscen_NTXentLoss/k16/086595d08fac",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/iscen_NTXentLoss/k16/seed_2_086595d08fac.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss_params": {
+    "temperature": 0.16756883876942139
+  }
+}

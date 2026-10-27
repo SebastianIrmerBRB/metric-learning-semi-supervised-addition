@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_MultiSimilarityLoss.json",
+  "final_test_visualization": [
+    "pacmap",
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_MultiSimilarityLoss/k4/5a4eecc26529",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_MultiSimilarityLoss/k4/seed_10_5a4eecc26529.json",
+  "support_seed": 10
+}

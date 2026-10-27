@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/sup_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/sup_NTXentLoss/k4/da9c4d9c6e67",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/sup_NTXentLoss/k4/seed_10_da9c4d9c6e67.json",
+  "support_seed": 10
+}

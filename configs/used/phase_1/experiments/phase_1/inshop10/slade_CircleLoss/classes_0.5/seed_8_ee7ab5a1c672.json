@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_CircleLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_CircleLoss/classes_0.5/ee7ab5a1c672",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_CircleLoss/classes_0.5/seed_8_ee7ab5a1c672.json",
+  "support_seed": 8
+}

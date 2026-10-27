@@ -1,0 +1,30 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "cv_fold": 0,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 46172,
+    "length_before_new_iter_num_labeled": 1216,
+    "length_before_new_iter_num_unlabeled": 44956,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_ms/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-09-26_19-36-08/fold_00/2026-09-26_19-36-11",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_ms/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-09-26_19-36-08/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/iscen_ms/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/semiinat/iscen_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

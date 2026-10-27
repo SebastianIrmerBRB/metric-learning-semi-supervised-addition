@@ -1,0 +1,37 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1
+      }
+    },
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "cv_fold": 3,
+    "cv_parallel_folds": 1,
+    "length_before_new_iter": 19409,
+    "length_before_new_iter_num_labeled": 5987,
+    "length_before_new_iter_num_unlabeled": 13422,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_cir/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-15_09-48-38/fold_03/2026-10-15_11-19-50",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_cir/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-15_09-48-38/fold_03",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_cir/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop/lrml_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 29635,
+    "length_before_new_iter_num_unlabeled": 16537,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_ms/class_subset_k_shot_label_1_k_100_comparison_seed_9/final/ssl/cv_2026-10-12_13-56-01/fold_00/2026-10-12_13-56-05",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_ms/class_subset_k_shot_label_1_k_100_comparison_seed_9/final/ssl/cv_2026-10-12_13-56-01/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_ms/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_100_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 100,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/semiinat/lrml_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 100,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

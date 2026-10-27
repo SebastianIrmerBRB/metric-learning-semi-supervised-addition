@@ -1,0 +1,23 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 1.0,
+  "extends": "common.json",
+  "loss": "CircleLoss",
+  "loss_params": {
+    "gamma": 116.7799392107454,
+    "m": 0.3925210220103143
+  },
+  "lr": 2.042115536724567e-05,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "semi_inat_ood_fraction": 0.0,
+  "ssl_gradient_contribution_log_interval": 30,
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 116.7799392107454,
+    "m": 0.3925210220103143
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

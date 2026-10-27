@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 1,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_ProxyAnchorLoss/k32/194a30afe928",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_ProxyAnchorLoss/k32/seed_11_194a30afe928.json",
+  "support_seed": 11
+}

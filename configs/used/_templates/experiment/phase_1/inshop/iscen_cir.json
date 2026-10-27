@@ -1,0 +1,38 @@
+{
+  "batch_size": 16,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "data_split_seed",
+    "support_seed",
+    "hparam_seed"
+  ],
+  "compile_train_step": false,
+  "epochs": 600,
+  "evaluate_test": false,
+  "extends": "common.json",
+  "final_test_visualization": [
+    "pacmap"
+  ],
+  "hparam_config": "configs/used/phase_1/hpo/inshop/iscen_cir.json",
+  "length_before_new_iter": null,
+  "loss": "CircleLoss",
+  "loss_params": {},
+  "lr": 1e-06,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "sampler_m": 4,
+  "save_dir": "thesis/phase_1/hpo/inshop/iscen_cir",
+  "save_test_embeddings": false,
+  "seed": 7,
+  "skip_test_during_hpo": true,
+  "ssl_config": "configs/used/phase_1/hpo_ssl/inshop/iscen_cir.json",
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "train_val",
+  "support_seed": 7,
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {},
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

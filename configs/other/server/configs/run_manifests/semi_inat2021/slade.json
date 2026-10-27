@@ -1,0 +1,65 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0,
+    1
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/slade.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/slade/first/semi_inat_2021_initial.json",
+      "name": "nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/slade.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/slade/first/semi_inat_2021_initial.json",
+      "name": "ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/slade.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/slade/first/semi_inat_2021_initial.json",
+      "name": "circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner",
+        "--ssl_config",
+        "configs/other/server/configs/runs/ssl/slade/paper_contrastive.json"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/slade.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/slade/first/semi_inat_2021_initial.json",
+      "name": "slade_prx"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner",
+        "--ssl_config",
+        "configs/other/server/configs/runs/ssl/slade/paper_contrastive.json"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/slade.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/slade/first/semi_inat_2021_initial.json",
+      "name": "slade_arc"
+    }
+  ],
+  "save_dir_root": "phase_0/ssl/semi_inat/new/slade",
+  "scheduler_log_dir": "logs/run_scheduler/in_shop_four_losses",
+  "version": 1
+}

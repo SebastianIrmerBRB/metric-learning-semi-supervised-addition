@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_cir/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-09-27_14-34-12/fold_00/2026-09-27_14-34-15",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_cir/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-09-27_14-34-12/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cars/hoffer_cir/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/hoffer_entropy_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

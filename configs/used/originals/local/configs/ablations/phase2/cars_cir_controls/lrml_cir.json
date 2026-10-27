@@ -1,0 +1,46 @@
+{
+  "description": "LRML uncapped (regularizer_max_ratio = null). Mechanism controls for cars/lrml/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_cir_controls_lrml_cir",
+  "variants": {
+    "graph_once": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.update_mode": "once"
+    },
+    "graph_oracle_pruned": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "oracle_pruned",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "graph_random_pruned": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "random_pruned",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "graph_rewired": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "degree_rewired",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "no_warmup": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.warmup_epochs": 0
+    },
+    "zero_weight": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0
+    }
+  }
+}

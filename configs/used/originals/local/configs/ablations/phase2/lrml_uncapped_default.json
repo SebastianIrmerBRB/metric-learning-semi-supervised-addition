@@ -1,0 +1,10 @@
+{
+  "description": "Unmodified LRML replay without the regularizer max-ratio cap (regularizer_max_ratio = null).",
+  "name": "lrml_uncapped_default",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

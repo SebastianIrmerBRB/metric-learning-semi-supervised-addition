@@ -1,0 +1,130 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/audit_rerun/rerun_2_2026-10-23.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "compcars_strict_paper_counts": true,
+        "epochs": 1000,
+        "external_unlabeled_dir": "data/CompCars",
+        "external_unlabeled_filter": "compcars_slade_paper",
+        "external_unlabeled_fraction": 0.25,
+        "ssl_config.method_params.regularizer_params.cluster_ratio": null,
+        "ssl_config.method_params.regularizer_params.num_clusters": 400,
+        "unlabeled_source": "external"
+      },
+      "description": "Reruns from the run audit of 23 Oct 2026 (Thesis/review/audit_laeufe_2026-10-23). Each variant is the run's original resolved ablation variant plus its own epoch cap and patience. LRML/Proxy-Anchor sup_all_shared on Cars196 additionally sets batch_sampler 32:4 (the supervised value the original variant missed). Round 2: main results without delayed patience; runs with 10-50 % CompCars from before the pool was rebuilt (16 Oct) change nothing; former patience-40 runs use patience 20; *_verzoegert variants add patience_delay_epochs 20 for runs that meet criterion A.",
+      "name": "audit_rerun_2_2026-10-23",
+      "path": "/home/irmers/metric-learning/configs/ablations/audit_rerun/rerun_2_2026-10-23.json",
+      "variant": "slade_c__external_25_400"
+    },
+    "ablation_variant": "slade_c__external_25_400",
+    "appended_unlabeled_pool_size": 4134,
+    "batch_size": 256,
+    "classifier_lr": 0.0021904246875039356,
+    "compcars_strict_paper_counts": true,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": "data/CompCars",
+    "external_unlabeled_filter": "compcars_slade_paper",
+    "external_unlabeled_fraction": 0.25,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_excluded_unlabeled": 4134,
+    "length_before_new_iter_num_labeled": 6003,
+    "length_before_new_iter_num_unlabeled": 4134,
+    "log_dir": "logs/final/audit_rerun_2026-10-23/runde2/phase_2/cars_full/slade_arc_external_25_400/k99999_s2/slade_c__external_25_400/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-23_12-41-39/fold_00/2026-10-23_12-41-39",
+    "loss_params": {
+      "margin": 11.660590903103149,
+      "scale": 3.9390877490915535
+    },
+    "lr": 0.00014675501774168558,
+    "model_total_parameters": 87227136,
+    "model_trainable_parameters": 646656,
+    "patience_delay_epochs": 0,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/audit_rerun_2026-10-23/runde2/phase_2/cars_full/slade_arc_external_25_400/k99999_s2/slade_c__external_25_400/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-23_12-41-39/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/audit_rerun_2026-10-23/runde2/phase_2/cars_full/slade_arc_external_25_400/k99999_s2/slade_c__external_25_400/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 99999,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "basis_target_ratio": 1.4468878545263524,
+          "cluster_ratio": null,
+          "num_clusters": 400,
+          "sd_margin": 0.5904648844282594,
+          "unlabeled_batch_size": 512
+        },
+        "regularizer_target_ratio": 0.580263613525241,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "warmup_epochs": 15
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "external",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 11.660590903103149,
+      "scale": 3.9390877490915535
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/slade_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 99999,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "basis_target_ratio": 1.4468878545263524,
+        "cluster_ratio": null,
+        "num_clusters": 400,
+        "sd_margin": 0.5904648844282594,
+        "unlabeled_batch_size": 512
+      },
+      "regularizer_target_ratio": 0.580263613525241,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "warmup_epochs": 15
+  }
+}

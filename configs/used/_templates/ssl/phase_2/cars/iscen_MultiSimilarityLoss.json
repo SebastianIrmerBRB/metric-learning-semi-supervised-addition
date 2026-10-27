@@ -1,0 +1,18 @@
+{
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "pacmap",
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.6063051822676981,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 4,
+    "linear_solver": "torch_block_cg"
+  },
+  "restart_selection_after_warmup": true,
+  "seed": 2,
+  "support_seed": 2,
+  "update_interval_epochs": 1
+}

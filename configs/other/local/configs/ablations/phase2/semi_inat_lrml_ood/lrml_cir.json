@@ -1,0 +1,66 @@
+{
+  "description": "Semi-iNat 2021 (semi_inat_known_810) class mismatch for semi_inat/lrml/cir: ood_<pct> adds that share of the original out-of-class pool (u_train_out, nested, class-balanced over the 1,629 out-of-class species); ood_<pct>_nn200 additionally sets the LRML graph's n_neighbors to 200. Every cell: LRML uncapped, 600 epochs / patience 20, GPU eval residency.",
+  "name": "semi_inat_lrml_ood_lrml_cir",
+  "variants": {
+    "ood_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.1,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "ood_100": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 1.0,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "ood_100_nn200": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 1.0,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 200
+    },
+    "ood_10_nn200": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.1,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 200
+    },
+    "ood_25": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.25,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "ood_25_nn200": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.25,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 200
+    },
+    "ood_50": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.5,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "ood_50_nn200": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "semi_inat_ood_fraction": 0.5,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 200
+    }
+  }
+}

@@ -1,0 +1,93 @@
+       {
+      "name": "nt-xent_cars",
+      "experiment_config": "configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/runs/lrml/first/cars_initial.json",
+      "args": ["--loss_miner_grid", "NTXentLoss:no_miner"]
+    },
+     {
+      "name": "ms-loss_cars",
+      "experiment_config": "configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/runs/lrml/first/cars_initial.json",
+      "args": ["--loss_miner_grid", "MultiSimilarityLoss:MultiSimilarityMiner"]
+    },
+    {
+      "name": "circle_loss_cars",
+      "experiment_config": "configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/runs/lrml/first/cars_initial.json",
+      "args": ["--loss_miner_grid", "CircleLoss:no_miner"]
+    },
+     {
+      "name": "arc_loss_cars",
+      "experiment_config": "configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/runs/lrml/first/cars_initial.json",
+      "args": ["--loss_miner_grid", "ArcFaceLoss:no_miner"]
+    },
+    {
+      "name": "prx_loss_cars",
+      "experiment_config": "configs/phase_1/cars/lrml.json",
+      "hparam_config": "configs/runs/lrml/first/cars_initial.json",
+      "args": ["--loss_miner_grid", "ProxyAnchorLoss:no_miner"]
+    }
+
+
+
+            {
+      "name": "nt-xent_cub",
+      "experiment_config": "configs/phase_1/cub/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cub_initial.json",
+      "args": ["--loss_miner_grid", "NTXentLoss:no_miner"]
+    },
+     {
+      "name": "ms-loss_cub",
+      "experiment_config": "configs/phase_1/cub/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cub_initial.json",
+      "args": ["--loss_miner_grid", "MultiSimilarityLoss:MultiSimilarityMiner"]
+    },
+    {
+      "name": "circle_loss_cub",
+      "experiment_config": "configs/phase_1/cub/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cub_initial.json",
+      "args": ["--loss_miner_grid", "CircleLoss:no_miner"]
+    },
+     {
+      "name": "arc_loss_cub",
+      "experiment_config": "configs/phase_1/cub/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cub_initial.json",
+      "args": ["--loss_miner_grid", "ArcFaceLoss:no_miner"]
+    },
+    {
+      "name": "prx_loss_cub",
+      "experiment_config": "configs/phase_1/cub/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cub_initial.json",
+      "args": ["--loss_miner_grid", "ProxyAnchorLoss:no_miner"]
+    },
+         {
+      "name": "nt-xent_cars",
+      "experiment_config": "configs/phase_1/cars/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cars_initial.json",
+      "args": ["--loss_miner_grid", "NTXentLoss:no_miner"]
+    },
+     {
+      "name": "ms-loss_cars",
+      "experiment_config": "configs/phase_1/cars/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cars_initial.json",
+      "args": ["--loss_miner_grid", "MultiSimilarityLoss:MultiSimilarityMiner"]
+    },
+    {
+      "name": "circle_loss_cars",
+      "experiment_config": "configs/phase_1/cars/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cars_initial.json",
+      "args": ["--loss_miner_grid", "CircleLoss:no_miner"]
+    },
+     {
+      "name": "arc_loss_cars",
+      "experiment_config": "configs/phase_1/cars/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cars_initial.json",
+      "args": ["--loss_miner_grid", "ArcFaceLoss:no_miner"]
+    },
+    {
+      "name": "prx_loss_cars",
+      "experiment_config": "configs/phase_1/cars/ismlp.json",
+      "hparam_config": "configs/runs/ismlp/cars_initial.json",
+      "args": ["--loss_miner_grid", "ProxyAnchorLoss:no_miner"]
+    }

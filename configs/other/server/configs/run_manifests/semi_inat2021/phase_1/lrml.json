@@ -1,0 +1,60 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    3
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 20,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/semi_inat_2021.json",
+      "name": "nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/semi_inat_2021.json",
+      "name": "ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/semi_inat_2021.json",
+      "name": "circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/semi_inat_2021.json",
+      "name": "arc_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/semi_inat_2021/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/semi_inat_2021.json",
+      "name": "prx_loss"
+    }
+  ],
+  "save_dir_root": "semi_inat/lrml_higher_tr",
+  "scheduler_log_dir": "logs/run_scheduler/in_shop_four_losses",
+  "version": 1
+}

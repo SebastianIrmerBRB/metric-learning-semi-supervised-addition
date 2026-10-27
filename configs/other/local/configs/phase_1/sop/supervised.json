@@ -1,0 +1,27 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "StanfordOnlineProducts",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": null,
+  "k_shot_grid": [
+    2
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner"
+  ],
+  "mode": "supervised",
+  "patience": 10,
+  "save_dir": "ssl_methods/phase_1/iscen/in_shop/arc",
+  "ssl_config": "configs/used/originals/local/configs/ssl_methods/lrml.json",
+  "use_cache": true,
+  "val_mode": "all"
+}

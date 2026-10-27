@@ -1,0 +1,85 @@
+{
+  "extends": "../first_run_in_shop.json",
+  "spaces": {
+    "loss.CircleLoss.gamma": {
+      "high": 128.0,
+      "log": true,
+      "low": 32,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.5,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 1,
+      "log": true,
+      "low": 0.05,
+      "type": "float"
+    },
+    "ssl_config.method_params.grad_norm_alpha": {
+      "high": 3,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+      "choices": [
+        0,
+        0.05,
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        4.0
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.beta": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.3,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_margin": {
+      "high": 1.0,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+      "high": 10.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        5,
+        10,
+        25,
+        50
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "slade_in_shop_initial"
+}

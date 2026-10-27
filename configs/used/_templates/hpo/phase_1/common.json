@@ -1,0 +1,30 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_jobs": 1,
+  "n_trials": 80,
+  "per_loss": {},
+  "pruner": "none",
+  "pruner_params": {},
+  "retry_failed_trials": false,
+  "sampler": "tpe",
+  "sampler_params": {
+    "group": true,
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "type": "categorical"
+    },
+    "lr": {
+      "log": true,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "timeout": null,
+  "tpe_startup_trials": 40
+}

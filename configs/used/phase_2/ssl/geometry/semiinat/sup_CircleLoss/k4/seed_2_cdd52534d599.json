@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/semiinat/sup_CircleLoss.json",
+  "labeled_per_class": 4
+}

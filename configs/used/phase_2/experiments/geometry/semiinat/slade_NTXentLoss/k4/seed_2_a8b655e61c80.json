@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/slade_NTXentLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/slade_NTXentLoss/k4/a8b655e61c80",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/slade_NTXentLoss/k4/seed_2_a8b655e61c80.json"
+}

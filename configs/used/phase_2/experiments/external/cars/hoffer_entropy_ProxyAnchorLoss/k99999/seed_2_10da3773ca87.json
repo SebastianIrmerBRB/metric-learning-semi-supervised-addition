@@ -1,0 +1,37 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 0.0002053266784799968,
+  "compcars_strict_paper_counts": true,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/hoffer_entropy_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": "data/CompCars",
+  "external_unlabeled_filter": "compcars_slade_paper",
+  "external_unlabeled_fraction": 0.1,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "temporary",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "alpha": 0.6469217605071583,
+    "margin": 0.22445712604408888
+  },
+  "lr": 0.0001069731516770278,
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/cars/hoffer_entropy_ProxyAnchorLoss/k99999/10da3773ca87",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/cars/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_10da3773ca87.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "external",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 0.6469217605071583,
+    "margin": 0.22445712604408888
+  }
+}

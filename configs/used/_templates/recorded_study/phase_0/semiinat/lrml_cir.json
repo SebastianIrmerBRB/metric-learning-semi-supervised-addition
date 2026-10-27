@@ -1,0 +1,94 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/lrml.json",
+    "experiment_config_resolved": {
+      "hparam_config": null,
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/first/semi_inat_2021_initial.json",
+    "loss": "CircleLoss",
+    "loss_miner_grid": [
+      "CircleLoss:no_miner"
+    ],
+    "lr": 1e-06,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "save_dir": "phase_0/ssl/semi_inat/new/lrml/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo",
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config": "logs/phase_0/ssl/semi_inat/new/lrml/circle_loss/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "loss.CircleLoss.gamma": {
+        "high": 512.0,
+        "log": true,
+        "low": 32,
+        "type": "float"
+      },
+      "loss.CircleLoss.m": {
+        "high": 0.5,
+        "log": false,
+        "low": 0.01,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.graph_batch_size": {
+        "choices": [
+          16,
+          32,
+          64,
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_params.n_neighbors": {
+        "choices": [
+          5,
+          10,
+          50,
+          100,
+          200,
+          500
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_target_ratio": {
+        "high": 1.25,
+        "log": false,
+        "low": 0.25,
+        "type": "float"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 0,
+        "low": 0,
+        "step": 2,
+        "type": "int"
+      }
+    },
+    "study_name": "in_shop"
+  },
+  "in_flight_sampler_state_path": "logs/phase_0/ssl/semi_inat/new/lrml/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in_shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_0/ssl/semi_inat/new/lrml/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in_shop/optuna_study.db",
+  "resolved_study_name": "in_shop",
+  "sampler_state_path": "logs/phase_0/ssl/semi_inat/new/lrml/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in_shop/sampler.pkl"
+}

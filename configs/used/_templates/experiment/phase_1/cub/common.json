@@ -1,0 +1,9 @@
+{
+  "cv_k": 5,
+  "dataset": "CUB",
+  "dataset_protocol": "official",
+  "device": "cuda",
+  "extends": "../common.json",
+  "sampler_m": 4,
+  "semi_inat_ood_fraction": 0
+}

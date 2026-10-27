@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/slade_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/slade_ArcFaceLoss/k2/d4bd0f79e31d",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/slade_ArcFaceLoss/k2/seed_11_d4bd0f79e31d.json",
+  "support_seed": 11
+}

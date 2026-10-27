@@ -1,0 +1,24 @@
+{
+  "description": "2x2 of in_shop/slade/nt: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop/supervised/supervised_nt/class_subset_k_shot_label_1_k_2_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_2x2_slade_nt",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "loss.NTXentLoss.temperature": 0.127,
+      "lr": 1.949e-05,
+      "patience": 20
+    }
+  }
+}

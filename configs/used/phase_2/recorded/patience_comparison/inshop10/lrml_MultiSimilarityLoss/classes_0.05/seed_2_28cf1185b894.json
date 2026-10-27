@@ -1,0 +1,134 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600,
+        "patience_delay_epochs": 20,
+        "ssl_config.method_params.regularizer_max_ratio": null,
+        "track_epoch_max_samples": 0
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "uncapped_lrml__defaults"
+    },
+    "ablation_variant": "uncapped_lrml__defaults",
+    "batch_size": 256,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "comparison_seeds": [
+      2
+    ],
+    "configured_length_before_new_iter": 20706,
+    "cv_parallel_folds": 1,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 600,
+    "experiment_config_resolved": {
+      "length_before_new_iter": 20706
+    },
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "label_budget_grid",
+      "save_dir",
+      "ssl_device",
+      "ssl_label_sampling_modes",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "fold_test_embedding_storage": "file",
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config_resolved": {
+      "sampler_params": {}
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600,
+      "patience_delay_epochs": 20
+    },
+    "hparam_final_trial_number": 47,
+    "hparam_params": {
+      "batch_sampler": "256:8",
+      "loss.MultiSimilarityLoss.alpha": 0.4641834529887408,
+      "loss.MultiSimilarityLoss.base": 0.45217515293101784,
+      "loss.MultiSimilarityLoss.beta": 16.806022880884044,
+      "lr": 9.896151287232296e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.691224269141691,
+      "ssl_config.method_params.regularizer_target_ratio": 0.8996171309585244
+    },
+    "label_budget_grid": [
+      0.05
+    ],
+    "length_before_new_iter_num_labeled": 951,
+    "length_before_new_iter_num_unlabeled": 18670,
+    "log_dir": "logs/final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_ms_defaults/b0p05_s2/uncapped_lrml__defaults/class_subset_label_0p05_comparison_seed_2/final/ssl/cv_2026-10-20_07-07-37/fold_00/2026-10-20_07-07-37",
+    "loss_params": {
+      "alpha": 0.4641834529887408,
+      "base": 0.45217515293101784,
+      "beta": 16.806022880884044
+    },
+    "lr": 9.896151287232296e-05,
+    "miner_params": {
+      "epsilon": 0.691224269141691
+    },
+    "patience_delay_epochs": 20,
+    "save_dir": "final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_ms_defaults/b0p05_s2/uncapped_lrml__defaults/class_subset_label_0p05_comparison_seed_2/final/ssl/cv_2026-10-20_07-07-37/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 2,
+    "ssl_config": "logs/final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_ms_defaults/b0p05_s2/uncapped_lrml__defaults/study_replay_grid/ssl_configs/class_subset_label_0p05_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "pacmap",
+      "labeled_fraction": 0.05,
+      "method_params": {
+        "regularizer_max_ratio": null,
+        "regularizer_params": {
+          "oracle_same_class_edges": false
+        },
+        "regularizer_target_ratio": 0.8996171309585244
+      },
+      "seed": 2,
+      "support_seed": 2
+    },
+    "stml_g_dim": null,
+    "support_seed": 2,
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "warmup_loss_params": {
+      "alpha": 0.4641834529887408,
+      "base": 0.45217515293101784,
+      "beta": 16.806022880884044
+    },
+    "warmup_miner_params": {
+      "epsilon": 0.691224269141691
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop10/lrml_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "pacmap",
+    "labeled_fraction": 0.05,
+    "method_params": {
+      "regularizer_max_ratio": null,
+      "regularizer_params": {
+        "oracle_same_class_edges": false
+      },
+      "regularizer_target_ratio": 0.8996171309585244
+    },
+    "seed": 2,
+    "support_seed": 2
+  }
+}

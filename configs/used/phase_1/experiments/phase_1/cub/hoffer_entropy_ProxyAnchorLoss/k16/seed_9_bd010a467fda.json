@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/hoffer_entropy_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/hoffer_entropy_ProxyAnchorLoss/k16/bd010a467fda",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/hoffer_entropy_ProxyAnchorLoss/k16/seed_9_bd010a467fda.json",
+  "support_seed": 9
+}

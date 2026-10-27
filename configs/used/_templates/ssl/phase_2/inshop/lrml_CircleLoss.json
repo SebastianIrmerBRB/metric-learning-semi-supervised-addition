@@ -1,0 +1,26 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "labeled_batch_size": null,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "lrml",
+    "regularizer_params": {
+      "edge_weighting": "binary",
+      "graph_batch_size": 32,
+      "graph_on": "all",
+      "normalized_laplacian": true,
+      "reduction": "torch_sum"
+    },
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "restart_selection_after_warmup": true,
+  "seed": 2,
+  "support_seed": 2,
+  "update_interval_epochs": 1
+}

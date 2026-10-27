@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop/slade_ArcFaceLoss.json",
+  "labeled_per_class": 2,
+  "seed": 2,
+  "support_seed": 2
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Ablation path from the supervised to the SSL configuration of cars/lp/ms: each variant sets shared parameters to the supervised study's best trial (/mnt/f/server_logs/final/cars/supervised/supervised_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised). | Mechanism controls for cars/lp/ms. graph_*_pruned use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_ms_2x2_iscen_ms",
+  "variants": {
+    "pool_labeled": {
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "loss.MultiSimilarityLoss.alpha": 1.169,
+      "loss.MultiSimilarityLoss.base": 0.6141,
+      "loss.MultiSimilarityLoss.beta": 250.9,
+      "lr": 1.002e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.3773
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "extends": "common.json",
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+      "choices": [
+        0,
+        0.25,
+        0.5,
+        1.0,
+        5
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.beta": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_margin": {
+      "high": 1.0,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+      "high": 20.0,
+      "log": true,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        32,
+        64,
+        128,
+        256
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        1,
+        10,
+        50,
+        100
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "in_shop"
+}

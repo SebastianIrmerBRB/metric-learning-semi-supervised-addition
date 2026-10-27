@@ -1,0 +1,110 @@
+{
+  "args": {
+    "batch_size": 512,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "compile_train_step": false,
+    "configured_length_before_new_iter": null,
+    "cv_fold": 0,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/supervised.json",
+    "experiment_config_resolved": {
+      "final_test_after_hpo": true,
+      "loss_miner_grid": [
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "mode": "supervised",
+      "save_dir": "ssl_methods/phase_1/hoffer/in_shop/ms",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "tsne"
+    ],
+    "frozen_feature_batch_size_resolved": 512,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/in_shop.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "64:2",
+            "128:2",
+            "256:2",
+            "512:2"
+          ]
+        },
+        "loss.NTXentLoss.temperature": {
+          "high": 0.4,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 0.0005
+        }
+      },
+      "study_name": "tpe_run_supervised"
+    },
+    "hparam_final_from_study": "tpe_run_supervised",
+    "hparam_final_trial_number": 69,
+    "hparam_params": {
+      "batch_sampler": "512:2",
+      "loss.NTXentLoss.temperature": 0.12696173060944901,
+      "lr": 1.948701568530478e-05
+    },
+    "length_before_new_iter": 19621,
+    "loss": "NTXentLoss",
+    "loss_params": {
+      "temperature": 0.12696173060944901
+    },
+    "lr": 1.948701568530478e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "supervised",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 32,
+      "embedding_num_workers": 8,
+      "graph_diagnostics_layout": "pacmap",
+      "labeled_batch_size": null,
+      "method": "none",
+      "method_params": {},
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": false,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "warmup_loss": "NTXentLoss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 32,
+    "embedding_num_workers": 8,
+    "graph_diagnostics_layout": "pacmap",
+    "labeled_batch_size": null,
+    "method": "none",
+    "method_params": {},
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": false,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 0
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/hoffer_entropy_CircleLoss.json",
+  "external_unlabeled_dir": "data/Fashion200k",
+  "external_unlabeled_fraction": 0.5,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "temporary",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "gamma": 31.630919874171795,
+    "m": 0.033110470001406545
+  },
+  "lr": 5.250098712289284e-05,
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/inshop/hoffer_entropy_CircleLoss/k99999/70a9213f6b84",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_70a9213f6b84.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "external"
+}

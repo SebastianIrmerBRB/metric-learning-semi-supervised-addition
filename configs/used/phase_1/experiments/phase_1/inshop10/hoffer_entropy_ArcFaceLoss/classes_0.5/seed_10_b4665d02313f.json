@@ -1,0 +1,11 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_ArcFaceLoss.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "log_head_dynamics": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.5/b4665d02313f",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.5/seed_10_b4665d02313f.json",
+  "support_seed": 10
+}

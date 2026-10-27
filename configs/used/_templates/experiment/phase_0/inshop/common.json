@@ -1,0 +1,16 @@
+{
+  "batch_size": 16,
+  "cv_k": 4,
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../common.json",
+  "final_test_visualization": [
+    "pacmap"
+  ],
+  "measurements": [
+    "precision_at_1",
+    "mean_average_precision_at_r"
+  ],
+  "semi_inat_ood_fraction": 0
+}

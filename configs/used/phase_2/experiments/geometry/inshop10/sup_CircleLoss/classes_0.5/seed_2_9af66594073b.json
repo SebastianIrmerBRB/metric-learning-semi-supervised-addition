@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/sup_CircleLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "save_dir": "thesis/phase_2/geometry/inshop10/sup_CircleLoss/classes_0.5/9af66594073b",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/sup_CircleLoss/classes_0.5/seed_2_9af66594073b.json"
+}

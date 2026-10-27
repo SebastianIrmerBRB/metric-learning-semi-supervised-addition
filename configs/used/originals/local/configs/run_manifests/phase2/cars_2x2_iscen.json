@@ -1,0 +1,181 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 6,
+  "max_total_runs": 20,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_arc.json",
+      "ablation_variants": [
+        "defaults"
+      ],
+      "enabled": true,
+      "name": "iscen_arc",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_arc.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_arc",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_arc.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "iscen_arc",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_cir.json",
+      "ablation_variants": [
+        "defaults"
+      ],
+      "enabled": false,
+      "name": "iscen_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_cir.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": false,
+      "name": "iscen_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_cir.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": false,
+      "name": "iscen_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_ms.json",
+      "ablation_variants": [
+        "defaults"
+      ],
+      "enabled": true,
+      "name": "iscen_ms",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_ms.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_ms",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_ms.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "iscen_ms",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_nt.json",
+      "ablation_variants": [
+        "defaults"
+      ],
+      "enabled": true,
+      "name": "iscen_nt",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_nt.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_nt",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_nt.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "iscen_nt",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_prx.json",
+      "ablation_variants": [
+        "defaults"
+      ],
+      "enabled": true,
+      "name": "iscen_prx",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_prx.json",
+      "ablation_variants": [
+        "sup_all_shared"
+      ],
+      "enabled": true,
+      "name": "iscen_prx",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/local/configs/ablations/phase2/cars_2x2/iscen_prx.json",
+      "ablation_variants": [
+        "pool_labeled"
+      ],
+      "enabled": true,
+      "name": "iscen_prx",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    }
+  ],
+  "save_dir_root": "final/phase_2/cars",
+  "scheduler_log_dir": "final/phase_2/cars/_scheduler/cars_2x2_iscen",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "epoch_head_dtype": "bfloat16",
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "file",
+    "k_shot_grid": [
+      16
+    ],
+    "save_epoch_head_interval": 0,
+    "save_head_state": false,
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ]
+  },
+  "version": 1
+}

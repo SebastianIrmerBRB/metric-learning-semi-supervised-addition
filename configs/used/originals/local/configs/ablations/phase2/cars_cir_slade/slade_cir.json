@@ -1,0 +1,139 @@
+{
+  "description": "SLADE on Cars Circle k=16: controls, cluster ratio, update interval, eta extended below 0.5, and the pseudo-label sampling/mining variants of configs/ablations/slade_pseudo_label_sampling.json; 600 epochs / patience 20 as in every Phase-2 cell. Mechanism controls for cars/slade/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection. | One-at-a-time range sweep around the tuned cars/slade/cir configuration (best trial 67); every other parameter keeps its tuned value.",
+  "name": "cars_cir_slade_slade_cir",
+  "variants": {
+    "cluster_ratio_1": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 1
+    },
+    "cluster_ratio_3": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 3
+    },
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "no_warmup": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.warmup_epochs": 0
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "pseudo_label_mining_filter": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "mining_pseudo_label_filter": true
+          }
+        }
+      }
+    },
+    "pseudo_label_sampler": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "unlabeled_sampler": "pseudo_label_m_per_class",
+            "unlabeled_sampler_m": 4
+          }
+        }
+      }
+    },
+    "pseudo_label_sampler_and_filter": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "mining_pseudo_label_filter": true,
+            "unlabeled_sampler": "pseudo_label_m_per_class",
+            "unlabeled_sampler_m": 4
+          }
+        }
+      }
+    },
+    "regularizer_target_ratio_0p1": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.1
+    },
+    "regularizer_target_ratio_0p2": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.2
+    },
+    "regularizer_target_ratio_0p35": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.35
+    },
+    "regularizer_target_ratio_0p5": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.5
+    },
+    "regularizer_target_ratio_1p0": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 1.0
+    },
+    "regularizer_target_ratio_1p5": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 1.5
+    },
+    "update_interval_epochs_1": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 1
+    },
+    "update_interval_epochs_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 10
+    },
+    "zero_weight": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0
+    }
+  }
+}

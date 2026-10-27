@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/lrml_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/lrml_NTXentLoss/k4/89e2487f6bcc",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/lrml_NTXentLoss/k4/seed_10_89e2487f6bcc.json",
+  "support_seed": 10
+}

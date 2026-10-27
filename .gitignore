@@ -10,7 +10,6 @@ venv/
 /tests/
 
 # Local configuration and experiment manifests
-/configs/
 /check_config/
 /all_configs_/
 /save_configs/

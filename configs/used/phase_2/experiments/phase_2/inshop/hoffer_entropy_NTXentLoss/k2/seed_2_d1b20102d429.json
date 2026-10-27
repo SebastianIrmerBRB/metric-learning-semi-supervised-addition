@@ -1,0 +1,24 @@
+{
+  "batch_size": 64,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/hoffer_entropy_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "temperature": 0.23808912125621443
+  },
+  "lr": 2.84106647895727e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/hoffer_entropy_NTXentLoss/k2/d1b20102d429",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/hoffer_entropy_NTXentLoss/k2/seed_2_d1b20102d429.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.23808912125621443
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2,
+        "evaluation_embedding_residency": "gpu"
+      }
+    },
+    "cv_fold": 1,
+    "cv_parallel_folds": 2,
+    "evaluation_embedding_residency": "gpu",
+    "length_before_new_iter": 4712,
+    "length_before_new_iter_num_labeled": 640,
+    "length_before_new_iter_num_unlabeled": 4072,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_nt/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-09-23_13-14-37/fold_01/2026-09-23_13-14-40",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_nt/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-09-23_13-14-37/fold_01",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_nt/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cub/slade_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_ProxyAnchorLoss.json",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_ProxyAnchorLoss/classes_0.05/bfb38ea7aab0",
+  "save_epoch_head_interval": null,
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_ProxyAnchorLoss/classes_0.05/seed_10_bfb38ea7aab0.json",
+  "support_seed": 10,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

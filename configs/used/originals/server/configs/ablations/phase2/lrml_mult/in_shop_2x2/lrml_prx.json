@@ -1,0 +1,30 @@
+{
+  "description": "2x2 of in_shop/lrml/prx on the multivariate LRML study (checklist 1.1): tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, values as in the Phase-2 runs of variants.csv), SSL hyperparameters without genuinely unlabeled data (pool_labeled). LRML uncapped, 1000 epochs / patience 20.",
+  "name": "in_shop_2x2_lrml_mult_prx",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "128:2",
+      "classifier_lr": 6.226,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ProxyAnchorLoss.alpha": 2.221,
+      "loss.ProxyAnchorLoss.margin": 0.1208,
+      "lr": 1.905e-05,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    2
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 4,
+  "max_total_runs": 4,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "sup_arc",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/supervised/supervised_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lp.json",
+      "name": "iscen_arc",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lrml.json",
+      "name": "lrml_arc",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/lrml/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "hoffer_arc",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/hoffer/hoffer_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "slade_arc",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/slade/slade_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "slade_cir",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/slade/slade_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "sup_ms",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/supervised/supervised_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lp.json",
+      "name": "iscen_ms",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lrml.json",
+      "name": "lrml_ms",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/lrml/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "hoffer_ms",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/hoffer/hoffer_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "slade_ms",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/slade/slade_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "sup_nt",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/supervised/supervised_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lp.json",
+      "name": "iscen_nt",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lrml.json",
+      "name": "lrml_nt",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/lrml/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "hoffer_nt",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/hoffer/hoffer_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "slade_nt",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/slade/slade_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "sup_prx",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/supervised/supervised_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lp.json",
+      "name": "iscen_prx",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/lrml.json",
+      "name": "lrml_prx",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/lrml/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "hoffer_prx",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/hoffer/hoffer_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/other/server/configs/ablations/phase2/geometry/default.json",
+      "name": "slade_prx",
+      "study_dir": "/home/irmers/metric-learning/final/phase_2_studies/cars/slade/slade_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/slade_cars_initial"
+    }
+  ],
+  "save_dir_root": "final/phase_2/cars_geometry",
+  "scheduler_log_dir": "final/phase_2/cars_geometry/_scheduler/cars_geometry_all",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "file",
+    "k_shot_grid": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "track_epoch_artifacts": [
+      "geometry",
+      "embeddings",
+      "graph"
+    ],
+    "track_epoch_interval": 5,
+    "track_epoch_layout": "tsne"
+  },
+  "version": 1
+}

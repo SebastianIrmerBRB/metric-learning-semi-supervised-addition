@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 1,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_NTXentLoss/k4/20aa22b38ab5",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_NTXentLoss/k4/seed_11_20aa22b38ab5.json",
+  "support_seed": 11
+}

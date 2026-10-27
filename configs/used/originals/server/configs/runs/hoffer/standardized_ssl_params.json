@@ -1,0 +1,25 @@
+{
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.distance_scale": {
+      "high": 30,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 1.5,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    }
+  }
+}

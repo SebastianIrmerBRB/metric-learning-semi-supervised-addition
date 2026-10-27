@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/lrml_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/lrml_MultiSimilarityLoss/k4/7383d972ce08",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/lrml_MultiSimilarityLoss/k4/seed_9_7383d972ce08.json",
+  "support_seed": 9
+}

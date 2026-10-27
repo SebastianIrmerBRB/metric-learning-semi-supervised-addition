@@ -1,0 +1,21 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop/slade_MultiSimilarityLoss.json",
+  "labeled_per_class": 2,
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 1.1411416556674485,
+      "cluster_ratio": 1,
+      "sd_margin": 0.7487776547928521,
+      "unlabeled_batch_size": 64
+    },
+    "regularizer_target_ratio": 0.9597562844097658,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 5,
+  "warmup_epochs": 0
+}

@@ -1,0 +1,27 @@
+{
+  "classifier_lr": 0.038790217189191845,
+  "cv_parallel_folds": 1,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/lrml_ProxyAnchorLoss.json",
+  "fold_test_embedding_storage": "file",
+  "length_before_new_iter": 20706,
+  "loss_params": {
+    "alpha": 14.994845557611383,
+    "margin": 0.22246988135516035
+  },
+  "lr": 0.000506360498461473,
+  "save_dir": "thesis/phase_2/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.05/d23d3bf44511",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.05/seed_2_d23d3bf44511.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "warmup_loss_params": {
+    "alpha": 14.994845557611383,
+    "margin": 0.22246988135516035
+  }
+}

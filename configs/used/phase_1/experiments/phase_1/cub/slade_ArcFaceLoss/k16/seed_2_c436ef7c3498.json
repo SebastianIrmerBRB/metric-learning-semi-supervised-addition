@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_ArcFaceLoss/k16/c436ef7c3498",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_ArcFaceLoss/k16/seed_2_c436ef7c3498.json",
+  "support_seed": 2
+}

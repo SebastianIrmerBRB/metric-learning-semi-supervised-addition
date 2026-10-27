@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/slade_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/slade_CircleLoss/k4/7a95fc5c113b",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/slade_CircleLoss/k4/seed_8_7a95fc5c113b.json",
+  "support_seed": 8
+}

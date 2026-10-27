@@ -1,0 +1,20 @@
+{
+  "description": "2x2 of cars/hoffer/arc: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "cars_2x2_hoffer_arc",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "classifier_lr": 0.0002797,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ArcFaceLoss.margin": 42.11,
+      "loss.ArcFaceLoss.scale": 4.327,
+      "lr": 1.052e-05
+    }
+  }
+}

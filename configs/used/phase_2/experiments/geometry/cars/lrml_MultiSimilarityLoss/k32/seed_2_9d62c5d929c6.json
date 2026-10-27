@@ -1,0 +1,41 @@
+{
+  "batch_size": 64,
+  "compcars_strict_paper_counts": false,
+  "compile_train_step": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/lrml_MultiSimilarityLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "alpha": 8.667872484560196,
+    "base": 0.54160195257418,
+    "beta": 80.11590757499138
+  },
+  "lr": 7.403247167956276e-05,
+  "miner_params": {
+    "epsilon": 0.7211389431745283
+  },
+  "save_dir": "thesis/phase_2/geometry/cars/lrml_MultiSimilarityLoss/k32/9d62c5d929c6",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/cars/lrml_MultiSimilarityLoss/k32/seed_2_9d62c5d929c6.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "unlabeled_source": "split",
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 8.667872484560196,
+    "base": 0.54160195257418,
+    "beta": 80.11590757499138
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.7211389431745283
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "description": "2x2 of cars/hoffer/ms: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "cars_2x2_hoffer_ms",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "evaluation_embedding_residency": "gpu",
+      "loss.MultiSimilarityLoss.alpha": 1.169,
+      "loss.MultiSimilarityLoss.base": 0.6141,
+      "loss.MultiSimilarityLoss.beta": 250.9,
+      "lr": 1.002e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.3773
+    }
+  }
+}

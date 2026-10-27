@@ -1,0 +1,93 @@
+{
+  "extends": "../cars.json",
+  "per_loss": {
+    "ArcFaceLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 870.0,
+          "log": false,
+          "low": 87.0,
+          "type": "float"
+        }
+      }
+    },
+    "CircleLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 4000.0,
+          "log": false,
+          "low": 400.0,
+          "type": "float"
+        }
+      }
+    },
+    "MultiSimilarityLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 25.0,
+          "log": false,
+          "low": 2.5,
+          "type": "float"
+        }
+      }
+    },
+    "NTXentLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 290.0,
+          "log": false,
+          "low": 29.0,
+          "type": "float"
+        }
+      }
+    },
+    "ProxyAnchorLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 200.0,
+          "log": false,
+          "low": 20.0,
+          "type": "float"
+        }
+      }
+    }
+  },
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25,
+        50,
+        75
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 500,
+      "log": false,
+      "low": 10,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  }
+}

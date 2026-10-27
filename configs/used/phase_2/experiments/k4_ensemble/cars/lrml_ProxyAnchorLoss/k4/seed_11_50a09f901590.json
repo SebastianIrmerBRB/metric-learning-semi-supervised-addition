@@ -1,0 +1,34 @@
+{
+  "batch_size": 64,
+  "classifier_lr": 0.004347904745063254,
+  "compcars_strict_paper_counts": false,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/lrml_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "alpha": 9.824976328253602,
+    "margin": 0.012597149861422467
+  },
+  "lr": 2.538718646023269e-05,
+  "save_dir": "thesis/phase_2/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/50a09f901590",
+  "save_epoch_head_interval": null,
+  "seed": 11,
+  "ssl_config": "configs/used/phase_2/ssl/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_11_50a09f901590.json",
+  "support_seed": 11,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "labeled",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 9.824976328253602,
+    "margin": 0.012597149861422467
+  }
+}

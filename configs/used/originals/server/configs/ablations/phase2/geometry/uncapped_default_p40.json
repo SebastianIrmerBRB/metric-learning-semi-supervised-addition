@@ -1,0 +1,12 @@
+{
+  "description": "Geometry replay with the Phase-1 exception of patience 40 (Hoffer/NT-Xent on Cars196, Ü/Proxy-Anchor in the In-Shop series with labeled classes): 1000 epochs / patience 40. Uncapped epoch tracking (track_epoch_max_samples = 0) as in uncapped_default.json.",
+  "name": "geometry_default_uncapped_p40",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 40,
+      "track_epoch_max_samples": 0
+    }
+  }
+}

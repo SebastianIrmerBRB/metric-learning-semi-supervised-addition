@@ -1,0 +1,142 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1,
+        "epochs": 1000,
+        "patience_delay_epochs": 20
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "epochs__epochs__3"
+    },
+    "ablation_variant": "epochs__epochs__3",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 128,
+    "classifier_lr": 0.00010506319030005296,
+    "comparison_seeds": [
+      8
+    ],
+    "compcars_strict_paper_counts": false,
+    "compile_train_step": true,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 1
+    },
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config_resolved": {
+      "sampler_params": {
+        "group": true,
+        "multivariate": true
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "hparam_final_trial_number": 66,
+    "hparam_params": {
+      "batch_sampler": "128:4",
+      "classifier_lr": 0.00010506319030005296,
+      "loss.ArcFaceLoss.margin": 17.19968806500192,
+      "loss.ArcFaceLoss.scale": 12.7434491210522,
+      "lr": 0.0001781598939698584,
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 512,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 48,
+      "ssl_config.method_params.regularizer_target_ratio": 0.7529317350180248,
+      "ssl_config.warmup_epochs": 30
+    },
+    "k_shot_grid": [
+      32
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 2336,
+    "length_before_new_iter_num_unlabeled": 3667,
+    "log_dir": "logs/final/patience_delay/seeded_runs/cars/lrml_arc/k32_s8/epochs__epochs__3/class_subset_k_shot_label_1_k_32_comparison_seed_8/final/ssl/cv_2026-10-20_07-58-47/fold_00/2026-10-20_07-58-48",
+    "loss_params": {
+      "margin": 17.19968806500192,
+      "scale": 12.7434491210522
+    },
+    "lr": 0.0001781598939698584,
+    "patience_delay_epochs": 20,
+    "save_dir": "final/patience_delay/seeded_runs/cars/lrml_arc/k32_s8/epochs__epochs__3/class_subset_k_shot_label_1_k_32_comparison_seed_8/final/ssl/cv_2026-10-20_07-58-47/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 8,
+    "ssl_config": "logs/final/patience_delay/seeded_runs/cars/lrml_arc/k32_s8/epochs__epochs__3/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_32_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 32,
+      "method_params": {
+        "regularizer_params": {
+          "graph_batch_size": 512,
+          "n_neighbors": 48
+        },
+        "regularizer_target_ratio": 0.7529317350180248,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "seed": 8,
+      "support_seed": 8,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 30
+    },
+    "support_seed": 8,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 17.19968806500192,
+      "scale": 12.7434491210522
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/lrml_ArcFaceLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 32,
+    "method_params": {
+      "regularizer_params": {
+        "graph_batch_size": 512,
+        "n_neighbors": 48
+      },
+      "regularizer_target_ratio": 0.7529317350180248,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "seed": 8,
+    "support_seed": 8,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 30
+  }
+}

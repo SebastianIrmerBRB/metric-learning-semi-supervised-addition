@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/hoffer_entropy_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/hoffer_entropy_ArcFaceLoss/k32/4377ed3a1710",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/hoffer_entropy_ArcFaceLoss/k32/seed_11_4377ed3a1710.json",
+  "support_seed": 11
+}

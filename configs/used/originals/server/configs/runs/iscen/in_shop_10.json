@@ -1,0 +1,21 @@
+{
+  "extends": [
+    "../in_shop_10.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.n_neighbors": {
+      "high": 100,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "in-shop"
+}

@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/semiinat/iscen_NTXentLoss.json",
+  "labeled_per_class": 100
+}

@@ -1,0 +1,12 @@
+{
+  "description": "Missing points of the SLADE one-at-a-time sweep (configs/ablations/phase2/sweeps/slade.json): re-clustering every 5 epochs, defined exactly like update_interval_epochs_5 there (ssl_config.update_interval_epochs 5, evaluation embeddings on the GPU, 1000 epochs as a ceiling, patience 20); every other parameter keeps the tuned value of the replayed study. Needed only where the tuned interval is not 5: Cars196 k=16 NT-Xent (tuned 10) and Proxy-Anchor (tuned 1), In-Shop k=2 ArcFace and NT-Xent (both tuned 10). The variant name is kept, so the outputs are named slade_<loss>_update_interval_epochs_5 like the rest of the sweep.",
+  "name": "slade_interval5",
+  "variants": {
+    "update_interval_epochs_5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 5
+    }
+  }
+}

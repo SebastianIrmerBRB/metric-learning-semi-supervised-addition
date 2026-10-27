@@ -1,0 +1,53 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cv_k": 4,
+    "dataset": "DeepFashionInShop",
+    "dataset_protocol": "official",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "DeepFashionInShop",
+      "dataset_protocol": "official",
+      "evaluation_embedding_residency": "gpu",
+      "feat_dim": 768,
+      "final_test_after_hpo": true,
+      "hparam_config": null,
+      "k_shot_grid": [
+        2
+      ],
+      "label_budget_grid": [
+        1.0
+      ]
+    },
+    "final_test_after_hpo": true,
+    "k_shot_grid": [
+      2
+    ],
+    "label_budget_grid": [
+      1.0
+    ],
+    "measurements": [
+      "precision_at_1",
+      "mean_average_precision_at_r"
+    ],
+    "semi_inat_ood_fraction": 0,
+    "ssl_label_sampling_modes": [
+      "class_subset_k_shot"
+    ]
+  },
+  "extends": "../common.json",
+  "hparam_config": {
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "32:2",
+          "64:2",
+          "128:2",
+          "256:2",
+          "512:2"
+        ]
+      }
+    }
+  }
+}

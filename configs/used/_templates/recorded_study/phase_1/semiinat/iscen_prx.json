@@ -1,0 +1,110 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "cv_parallel_folds": 2,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/iscen.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/phase_0/cars_phase0.json",
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/iscen.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/iscen/semi_inat_2021.json",
+    "loss": "ProxyAnchorLoss",
+    "loss_miner_grid": [
+      "ProxyAnchorLoss:no_miner"
+    ],
+    "lr": 1e-06,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "projection_3d": true,
+    "save_dir": "semi_inat/iscen/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo",
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config": "logs/semi_inat/iscen/prx_loss/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "classifier_lr": {
+        "high": 100,
+        "log": true,
+        "low": 1e-05,
+        "type": "float"
+      },
+      "labeled_batch_fraction": {
+        "choices": [
+          0.125,
+          0.25,
+          0.5
+        ],
+        "type": "categorical"
+      },
+      "loss.ProxyAnchorLoss.alpha": {
+        "high": 80.0,
+        "log": true,
+        "low": 1,
+        "type": "float"
+      },
+      "loss.ProxyAnchorLoss.margin": {
+        "high": 1.0,
+        "log": false,
+        "low": 0.01,
+        "type": "float"
+      },
+      "ssl_config.confidence_threshold": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.alpha": {
+        "high": 0.99,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.gamma": {
+        "high": 10,
+        "log": false,
+        "low": 1,
+        "type": "int"
+      },
+      "ssl_config.method_params.n_neighbors": {
+        "high": 100,
+        "log": false,
+        "low": 2,
+        "type": "int"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 10,
+        "low": 0,
+        "step": 2,
+        "type": "int"
+      }
+    },
+    "study_name": "in-shop"
+  },
+  "in_flight_sampler_state_path": "logs/semi_inat/iscen/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/semi_inat/iscen/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/optuna_study.db",
+  "resolved_study_name": "in-shop",
+  "sampler_state_path": "logs/semi_inat/iscen/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler.pkl",
+  "tpe_transition_sampler_state_path": "logs/semi_inat/iscen/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_before_tpe.pkl"
+}

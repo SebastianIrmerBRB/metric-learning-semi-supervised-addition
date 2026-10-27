@@ -1,0 +1,26 @@
+{
+  "description": "2x2 of cars/slade/cir: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "cars_2x2_slade_cir",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "loss.CircleLoss.gamma": 22.68,
+      "loss.CircleLoss.m": 0.03954,
+      "lr": 3.717e-05,
+      "patience": 20
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "ablation_variant": null,
+  "batch_size": 32,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": false,
+  "device": "cuda",
+  "epochs": 600,
+  "evaluate_test": true,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": null,
+  "loss": "CircleLoss",
+  "loss_params": {
+    "gamma": 90.38342585155723,
+    "m": 0.11243360155386083
+  },
+  "lr": 1.3042994313551001e-05,
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 90.38342585155723,
+    "m": 0.11243360155386083
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

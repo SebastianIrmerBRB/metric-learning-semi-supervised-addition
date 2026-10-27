@@ -4102,8 +4102,9 @@ def load_ssl_config(config_path, default_seed=0, default_support_seed=None):
         return SemiSupervisedConfig(seed=default_seed, support_seed=default_support_seed)
 
     path = Path(config_path)
-    with path.open() as config_file:
-        raw_config = json.load(config_file)
+    from .config_inheritance import load_config
+
+    raw_config = load_config(path)
 
     if not isinstance(raw_config, dict):
         raise ValueError(f"SSL config must be a JSON object: {path}")

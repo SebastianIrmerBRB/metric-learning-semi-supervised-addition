@@ -1,0 +1,137 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs_semi_inat.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "evaluation_embedding_residency": "gpu",
+        "patience": 10
+      },
+      "description": "increasing Epochs and Patience",
+      "name": "increase_epochs",
+      "path": "configs/final_manifests/final/changes/epochs_semi_inat.json",
+      "variant": "epochs"
+    },
+    "ablation_variant": null,
+    "backbone_cache_dir": "data/iNat/backbone_cache/v3/dinov2_vitb14",
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "compile_train_step": true,
+    "configured_length_before_new_iter": null,
+    "cv_k": 4,
+    "cv_parallel_backend": "process",
+    "dataset": "iNat",
+    "dataset_protocol": "semi_inat_known_810",
+    "epochs": 1000,
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "iNat",
+      "dataset_protocol": "semi_inat_known_810",
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "final_test_after_hpo": true,
+      "k_shot_grid": [
+        16
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "patience": 10,
+      "ssl_label_sampling_modes": [
+        "class_subset_k_shot"
+      ]
+    },
+    "final_study_request_overrides": [
+      "ablation_config",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_config_resolved": {
+      "max_replaced_pruned_trials": null,
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "128:2",
+            "256:2",
+            "512:2"
+          ]
+        },
+        "lr": {
+          "high": 0.0001,
+          "low": 5e-06
+        }
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "cv_k": 4,
+      "max_training_epochs": 1000,
+      "patience": 10
+    },
+    "k_shot_grid": [
+      2,
+      4,
+      16,
+      100
+    ],
+    "label_budget_grid": null,
+    "patience": 10,
+    "report_test_metrics": true,
+    "sampler_m": 2,
+    "save_final_head_state": false,
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "graph_edge_ablation_seed": null,
+      "label_sampling_mode": "class_subset_k_shot",
+      "labeled_fraction": 1.0,
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method"
+    },
+    "ssl_label_sampling_modes": null,
+    "test_measurements": null,
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ],
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0
+  },
+  "extends": "../common.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "graph_edge_ablation_seed": null,
+    "label_sampling_mode": "class_subset_k_shot",
+    "labeled_fraction": 1.0,
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method"
+  }
+}

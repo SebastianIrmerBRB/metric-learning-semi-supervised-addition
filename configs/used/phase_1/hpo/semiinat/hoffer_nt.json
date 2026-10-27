@@ -1,0 +1,11 @@
+{
+  "extends": "../../../_templates/hpo/phase_1/semiinat/hoffer.json",
+  "spaces": {
+    "loss.NTXentLoss.temperature": {
+      "high": 0.15,
+      "log": true,
+      "low": 0.005,
+      "type": "float"
+    }
+  }
+}

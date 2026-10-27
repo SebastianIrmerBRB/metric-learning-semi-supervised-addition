@@ -1,0 +1,33 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 256,
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "SemiINaturalist2021",
+  "dataset_protocol": "semi_inat_known_810",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": null,
+  "k_shot_grid": [
+    8
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner"
+  ],
+  "lr": 1e-05,
+  "mode": "ssl",
+  "patience": 5,
+  "save_dir": "SemiINaturalist2021",
+  "ssl_config": "configs/used/originals/local/configs/ssl_methods/lrml.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

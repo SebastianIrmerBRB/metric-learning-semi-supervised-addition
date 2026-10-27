@@ -1,0 +1,31 @@
+{
+  "spaces": {
+    "labeled_batch_fraction": {
+      "choices": [
+        0.125,
+        0.25,
+        0.5
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.confidence_threshold": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.alpha": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.gamma": {
+      "high": 10,
+      "log": false,
+      "low": 1,
+      "type": "int"
+    }
+  },
+  "study_name": "in-shop"
+}

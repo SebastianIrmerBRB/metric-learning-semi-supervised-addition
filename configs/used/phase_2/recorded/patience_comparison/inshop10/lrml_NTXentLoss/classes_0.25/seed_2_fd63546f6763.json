@@ -1,0 +1,48 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "patience_delay_epochs": 20
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "uncapped_lrml__defaults"
+    },
+    "ablation_variant": "uncapped_lrml__defaults",
+    "epoch_head_dtype": "bfloat16",
+    "hparam_final_epoch_plan": {
+      "patience_delay_epochs": 20
+    },
+    "label_budget_grid": [
+      0.25
+    ],
+    "length_before_new_iter_num_labeled": 4867,
+    "length_before_new_iter_num_unlabeled": 14754,
+    "log_dir": "logs/final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_nt_defaults/b0p25_s2/uncapped_lrml__defaults/class_subset_label_0p25_comparison_seed_2/final/ssl/cv_2026-10-20_02-15-55/fold_00/2026-10-20_02-15-55",
+    "patience_delay_epochs": 20,
+    "save_dir": "final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_nt_defaults/b0p25_s2/uncapped_lrml__defaults/class_subset_label_0p25_comparison_seed_2/final/ssl/cv_2026-10-20_02-15-55/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/patience_delay/phase_2/in_shop_10_geometry_uncapped/lrml_nt_defaults/b0p25_s2/uncapped_lrml__defaults/study_replay_grid/ssl_configs/class_subset_label_0p25_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "pacmap",
+      "labeled_fraction": 0.25,
+      "method_params": {
+        "regularizer_params": {
+          "oracle_same_class_edges": false
+        }
+      }
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop10/lrml_NTXentLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "pacmap",
+    "labeled_fraction": 0.25,
+    "method_params": {
+      "regularizer_params": {
+        "oracle_same_class_edges": false
+      }
+    }
+  }
+}

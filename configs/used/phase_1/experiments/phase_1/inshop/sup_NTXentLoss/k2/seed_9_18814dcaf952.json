@@ -1,0 +1,8 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/sup_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/sup_NTXentLoss/k2/18814dcaf952",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/sup_NTXentLoss/k2/seed_9_18814dcaf952.json",
+  "support_seed": 9
+}

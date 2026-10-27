@@ -1,0 +1,45 @@
+{
+  "base_args": {
+    "batch_size": 16,
+    "cv_k": 5,
+    "dataset": "CUB",
+    "dataset_protocol": "official",
+    "device": "cuda",
+    "evaluation_embedding_residency": "cpu",
+    "experiment_config_resolved": {
+      "cv_k": 5,
+      "dataset": "CUB",
+      "dataset_protocol": "official",
+      "feat_dim": 768,
+      "final_test_after_hpo": false,
+      "hparam_config": null,
+      "k_shot_grid": [
+        16
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "loss_miner_grid": [
+        "NTXentLoss:no_miner"
+      ],
+      "patience": 20,
+      "ssl_label_sampling_modes": [
+        "class_subset_k_shot"
+      ]
+    },
+    "final_test_after_hpo": false,
+    "k_shot_grid": [
+      16
+    ],
+    "label_budget_grid": [
+      1.0
+    ],
+    "lr": 1e-06,
+    "patience": 20,
+    "semi_inat_ood_fraction": 0,
+    "ssl_label_sampling_modes": [
+      "class_subset_k_shot"
+    ]
+  },
+  "extends": "../common.json"
+}

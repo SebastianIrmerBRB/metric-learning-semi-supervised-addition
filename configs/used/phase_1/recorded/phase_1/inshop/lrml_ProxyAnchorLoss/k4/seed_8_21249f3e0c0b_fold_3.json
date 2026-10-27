@@ -1,0 +1,37 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "cv_fold": 3,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 19409,
+    "length_before_new_iter_num_labeled": 11630,
+    "length_before_new_iter_num_unlabeled": 7779,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_prx/class_subset_k_shot_label_1_k_4_comparison_seed_8/final/ssl/cv_2026-10-15_11-03-55/fold_03/2026-10-15_12-51-57",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_prx/class_subset_k_shot_label_1_k_4_comparison_seed_8/final/ssl/cv_2026-10-15_11-03-55/fold_03",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop/lrml_prx/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop/lrml_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

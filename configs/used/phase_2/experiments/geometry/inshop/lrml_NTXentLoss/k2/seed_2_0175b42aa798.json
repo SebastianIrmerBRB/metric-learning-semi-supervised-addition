@@ -1,0 +1,25 @@
+{
+  "batch_size": 128,
+  "compile_train_step": false,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.023803652909326255
+  },
+  "lr": 3.726643424600165e-05,
+  "save_dir": "thesis/phase_2/geometry/inshop/lrml_NTXentLoss/k2/0175b42aa798",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/lrml_NTXentLoss/k2/seed_2_0175b42aa798.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "unlabeled_source": "split",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.023803652909326255
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "description": "Supervised corner of the 2x2 for in_shop/sup/ms.",
+  "name": "in_shop_2x2_sup_ms",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

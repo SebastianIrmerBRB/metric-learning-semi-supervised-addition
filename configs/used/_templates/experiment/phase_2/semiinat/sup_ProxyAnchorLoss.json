@@ -1,0 +1,27 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 2.356952789460387e-05,
+  "cv_parallel_folds": 1,
+  "extends": "common.json",
+  "loss": "ProxyAnchorLoss",
+  "loss_params": {
+    "alpha": 10.167890216516346,
+    "margin": 0.733858141825368
+  },
+  "lr": 5.343479231987288e-06,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "supervised",
+  "semi_inat_ood_fraction": 0,
+  "ssl_gradient_contribution_log_interval": 0,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "warmup_loss": "same_as_loss",
+  "warmup_loss_params": {},
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

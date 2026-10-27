@@ -1,0 +1,28 @@
+{
+  "description": "2x2 of in_shop_10/lrml/nt (10 % fully labeled classes) on the multivariate LRML study (checklist 1.1): tuned SSL (defaults, LRML trial 65), supervised hyperparameters + SSL (sup_all_shared: every hyperparameter both studies tuned, from Ü trial 74 of final/phase_2_studies/geometry/in_shop_10/supervised/supervised_nt/class_subset_label_0p1_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled). LRML uncapped, 1000 epochs / patience 20.",
+  "name": "in_shop_10_2x2_lrml_mult_nt",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "512:8",
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.NTXentLoss.temperature": 0.13526306548670092,
+      "lr": 1.028206212721807e-05,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

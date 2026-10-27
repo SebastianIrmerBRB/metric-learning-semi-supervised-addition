@@ -1,0 +1,35 @@
+{
+  "batch_size": 256,
+  "compcars_strict_paper_counts": false,
+  "cv_parallel_folds": 2,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/slade_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.09456911346905028
+  },
+  "lr": 0.00016542923795715943,
+  "patience_delay_epochs": 20,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/patience_comparison/cars/slade_NTXentLoss/k4/703015545548",
+  "save_epoch_head_interval": null,
+  "seed": 9,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/cars/slade_NTXentLoss/k4/seed_9_703015545548.json",
+  "support_seed": 9,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.09456911346905028
+  }
+}

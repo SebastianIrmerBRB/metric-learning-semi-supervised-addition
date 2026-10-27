@@ -1,0 +1,22 @@
+{
+  "class_overlap": "independent",
+  "graph_batch_mode": "global",
+  "graph_diagnostics_class_context": true,
+  "graph_diagnostics_class_count": 6,
+  "graph_diagnostics_class_focus": "off",
+  "graph_diagnostics_classes": null,
+  "graph_diagnostics_max_edges": 2000,
+  "graph_diagnostics_max_labels": 80,
+  "graph_diagnostics_max_nodes": 400,
+  "graph_diagnostics_mode": "off",
+  "graph_edge_ablation_seed": null,
+  "graph_labeled_batch_size": null,
+  "graph_unlabeled_batch_size": null,
+  "max_unlabeled_samples": null,
+  "pseudo_label_rescue_confidence_floor": 0.0,
+  "pseudo_label_rescue_top_k": null,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_samples": null,
+  "warmup_checkpoint_mode": "keep_last"
+}

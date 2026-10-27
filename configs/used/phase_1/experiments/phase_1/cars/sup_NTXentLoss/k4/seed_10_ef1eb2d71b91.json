@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_NTXentLoss.json",
+  "final_test_visualization": [
+    "pacmap",
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_NTXentLoss/k4/ef1eb2d71b91",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_NTXentLoss/k4/seed_10_ef1eb2d71b91.json",
+  "support_seed": 10
+}

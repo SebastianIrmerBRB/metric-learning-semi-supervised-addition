@@ -1,0 +1,34 @@
+{
+  "description": "Hoffer distance scale, log ladder beyond the Phase 1 bound (sec:phase2:sensitivity-conclusions). One-at-a-time range sweep around the tuned cars/hoffer/cir configuration (best trial 37); every other parameter keeps its tuned value.",
+  "name": "cars_cir_sweeps_hoffer_cir",
+  "variants": {
+    "distance_scale_1": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 1.0
+    },
+    "distance_scale_128": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 128.0
+    },
+    "distance_scale_16": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 16.0
+    },
+    "distance_scale_2": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 2.0
+    },
+    "distance_scale_32": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 32.0
+    },
+    "distance_scale_64": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 64.0
+    },
+    "distance_scale_8": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_params.distance_scale": 8.0
+    }
+  }
+}

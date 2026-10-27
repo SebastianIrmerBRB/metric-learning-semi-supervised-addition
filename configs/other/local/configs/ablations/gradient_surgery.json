@@ -1,0 +1,20 @@
+{
+  "description": "Toggle projecting the regularizer gradient off the supervised gradient where the two conflict (training/ssl/gradient_surgery.py). 'on' is supervised_priority: the supervised gradient is left untouched and only the regularizer's opposing component is removed. Everything else, including the tuned regularizer weight and target ratio, keeps the study's values. Applies to the regularized SSL methods (hoffer_entropy, lrml).",
+  "name": "gradient_surgery",
+  "variants": {
+    "gradient_surgery_off": {
+      "ssl_config": {
+        "method_params": {
+          "gradient_surgery": null
+        }
+      }
+    },
+    "gradient_surgery_on": {
+      "ssl_config": {
+        "method_params": {
+          "gradient_surgery": "supervised_priority"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/audit_rerun/rerun_2_2026-10-23.json",
+    "ablation_config_resolved": {
+      "description": "Reruns from the run audit of 23 Oct 2026 (Thesis/review/audit_laeufe_2026-10-23). Each variant is the run's original resolved ablation variant plus its own epoch cap and patience. LRML/Proxy-Anchor sup_all_shared on Cars196 additionally sets batch_sampler 32:4 (the supervised value the original variant missed). Round 2: main results without delayed patience; runs with 10-50 % CompCars from before the pool was rebuilt (16 Oct) change nothing; former patience-40 runs use patience 20; *_verzoegert variants add patience_delay_epochs 20 for runs that meet criterion A.",
+      "name": "audit_rerun_2_2026-10-23",
+      "path": "/home/irmers/metric-learning/configs/ablations/audit_rerun/rerun_2_2026-10-23.json"
+    },
+    "comparison_seeds": [
+      10
+    ],
+    "label_budget_grid": [
+      0.05
+    ],
+    "length_before_new_iter_num_labeled": 924,
+    "length_before_new_iter_num_unlabeled": 18697,
+    "log_dir": "logs/final/audit_rerun_2026-10-23/runde2/seeded_runs/in_shop_10/supervised_prx/b0p05_s10/epochs_prx__epochs/class_subset_label_0p05_comparison_seed_10/final/supervised/cv_2026-10-23_15-06-56/fold_00/2026-10-23_15-06-56",
+    "patience_delay_epochs": 0,
+    "save_dir": "final/audit_rerun_2026-10-23/runde2/seeded_runs/in_shop_10/supervised_prx/b0p05_s10/epochs_prx__epochs/class_subset_label_0p05_comparison_seed_10/final/supervised/cv_2026-10-23_15-06-56/fold_00",
+    "seed": 10,
+    "ssl_config": "logs/final/audit_rerun_2026-10-23/runde2/seeded_runs/in_shop_10/supervised_prx/b0p05_s10/epochs_prx__epochs/study_replay_grid/ssl_configs/class_subset_label_0p05_comparison_seed_10.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.05,
+      "seed": 10,
+      "support_seed": 10
+    },
+    "support_seed": 10
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.05,
+    "seed": 10,
+    "support_seed": 10
+  }
+}

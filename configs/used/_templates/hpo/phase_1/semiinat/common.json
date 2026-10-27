@@ -1,0 +1,17 @@
+{
+  "extends": "../common.json",
+  "max_replaced_pruned_trials": null,
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "128:2",
+        "256:2",
+        "512:2"
+      ]
+    },
+    "lr": {
+      "high": 0.0001,
+      "low": 5e-06
+    }
+  }
+}

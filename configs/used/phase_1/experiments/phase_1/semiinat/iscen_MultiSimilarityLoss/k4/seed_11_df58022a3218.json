@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/iscen_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/iscen_MultiSimilarityLoss/k4/df58022a3218",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/iscen_MultiSimilarityLoss/k4/seed_11_df58022a3218.json",
+  "support_seed": 11
+}

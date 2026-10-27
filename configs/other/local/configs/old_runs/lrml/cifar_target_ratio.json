@@ -1,0 +1,44 @@
+{
+  "extends": "../cifar.json",
+  "n_trials": 100,
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25,
+        50
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 1.0,
+      "log": true,
+      "low": 0.02,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 15,
+      "low": 0,
+      "step": 3,
+      "type": "int"
+    }
+  },
+  "study_name": "cifar_target_ratio"
+}

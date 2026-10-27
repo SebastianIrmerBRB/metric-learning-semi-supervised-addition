@@ -1,0 +1,66 @@
+{
+  "ablation_variant": null,
+  "batch_size": 256,
+  "classifier_lr": 1.3331194877876744,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": true,
+  "cv_parallel_backend": "process",
+  "cv_parallel_folds": 2,
+  "epochs": 1000,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "final_test_visualization": [
+    "none"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": null,
+  "log_head_dynamics": false,
+  "loss": "ArcFaceLoss",
+  "loss_params": {
+    "margin": 11.807446740022835,
+    "scale": 7.707903084500293
+  },
+  "lr": 8.622639152080544e-05,
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "report_test_metrics": true,
+  "sampler_m": 8,
+  "save_final_head_state": false,
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 30,
+  "study_dir_mode": "final_train",
+  "test_measurements": null,
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_layout": "tsne",
+  "track_epoch_max_samples": 4000,
+  "tsne_backend": "exact",
+  "tsne_max_dense_gpu_gb": 3.0,
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 11.807446740022835,
+    "scale": 7.707903084500293
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

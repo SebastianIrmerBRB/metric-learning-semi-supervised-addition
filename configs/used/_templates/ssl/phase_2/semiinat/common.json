@@ -1,0 +1,11 @@
+{
+  "extends": "../common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 2,
+  "support_seed": 2
+}

@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/sup_ProxyAnchorLoss.json",
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.5/1296358b3c05",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_1296358b3c05.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/lrml_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/lrml_ProxyAnchorLoss/k16/47b4b349e5f5",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/lrml_ProxyAnchorLoss/k16/seed_2_47b4b349e5f5.json",
+  "support_seed": 2
+}

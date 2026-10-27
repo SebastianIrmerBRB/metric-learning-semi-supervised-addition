@@ -1,0 +1,41 @@
+{
+  "backbone_tuning": "frozen",
+  "compile_train_step": false,
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "cv_parallel_folds": 1,
+  "data_split_seed": 7,
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "epochs": 600,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "frozen_feature_residency": "mmap",
+  "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_slade_ms/hparam.json",
+  "hparam_seed": 7,
+  "k_shot_grid": [
+    16
+  ],
+  "label_budget_grid": [
+    1.0
+  ],
+  "loss_miner_grid": [
+    "MultiSimilarityLoss:MultiSimilarityMiner"
+  ],
+  "low_memory_mode": true,
+  "mode": "ssl",
+  "num_threads": 1,
+  "num_workers": 0,
+  "patience": 20,
+  "save_dir": "timing_hpo/ms/cars_slade_ms",
+  "seed": 7,
+  "skip_test_during_hpo": true,
+  "ssl_config": "configs/other/local/configs/timing_hpo/ms/cars_slade_ms/ssl.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

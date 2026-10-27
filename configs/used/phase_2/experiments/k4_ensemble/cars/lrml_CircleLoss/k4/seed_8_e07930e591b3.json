@@ -1,0 +1,33 @@
+{
+  "batch_size": 64,
+  "compcars_strict_paper_counts": false,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/lrml_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "gamma": 296.4602078274419,
+    "m": 0.010153920865244673
+  },
+  "lr": 3.7754971846108334e-05,
+  "save_dir": "thesis/phase_2/k4_ensemble/cars/lrml_CircleLoss/k4/e07930e591b3",
+  "save_epoch_head_interval": null,
+  "seed": 8,
+  "ssl_config": "configs/used/phase_2/ssl/k4_ensemble/cars/lrml_CircleLoss/k4/seed_8_e07930e591b3.json",
+  "support_seed": 8,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "labeled",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 296.4602078274419,
+    "m": 0.010153920865244673
+  }
+}

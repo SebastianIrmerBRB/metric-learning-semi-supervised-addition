@@ -1,0 +1,138 @@
+{
+  "base_args": {
+    "ablation_config": null,
+    "ablation_variant": null,
+    "compile_train_step": true,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/class_subset_10/slade.json",
+    "experiment_config_resolved": {
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/iscen/in_shop/class_subset_10",
+      "ssl_config": "configs/runs/ssl/slade/paper.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_config",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "pacmap"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "graph_projection": false,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/slade/first/in_shop_initial.json",
+    "loss": "ArcFaceLoss",
+    "loss_miner_grid": [
+      "ArcFaceLoss:no_miner"
+    ],
+    "max_unlabeled_samples": null,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "report_test_metrics": true,
+    "save_dir": "phase_0/slade/arc_loss_shop_10/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo",
+    "ssl_config": "logs/phase_0/slade/arc_loss_shop_10/experiment_grid/ssl_configs/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 0,
+    "test_measurements": null,
+    "test_recall_at_k": null,
+    "unlabeled_class_scope": null,
+    "unlabeled_fraction": null,
+    "warmup_loss": "same_as_loss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "classifier_lr": {
+        "high": 100.0,
+        "log": true,
+        "low": 0.0001,
+        "type": "float"
+      },
+      "loss.ArcFaceLoss.margin": {
+        "high": 75.0,
+        "log": false,
+        "low": 15,
+        "type": "float"
+      },
+      "loss.ArcFaceLoss.scale": {
+        "high": 250.0,
+        "log": true,
+        "low": 10,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+        "choices": [
+          0,
+          0.25,
+          0.5,
+          1.0,
+          5
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_params.beta": {
+        "high": 0.99,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.contrastive_neg_margin": {
+        "high": 2,
+        "log": false,
+        "low": 0.5,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.contrastive_pos_margin": {
+        "high": 0.5,
+        "log": false,
+        "low": 0,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.sd_margin": {
+        "high": 1.0,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+        "high": 20.0,
+        "log": true,
+        "low": 0.5,
+        "type": "float"
+      },
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+        "choices": [
+          32,
+          64,
+          128,
+          256
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.update_interval_epochs": {
+        "choices": [
+          1,
+          10,
+          50,
+          100
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 30,
+        "low": 0,
+        "step": 5,
+        "type": "int"
+      }
+    },
+    "study_name": "in_shop"
+  },
+  "in_flight_sampler_state_path": "logs/phase_0/slade/arc_loss_shop_10/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_0/slade/arc_loss_shop_10/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop/optuna_study.db",
+  "resolved_study_name": "in_shop",
+  "sampler_state_path": "logs/phase_0/slade/arc_loss_shop_10/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop/sampler.pkl"
+}

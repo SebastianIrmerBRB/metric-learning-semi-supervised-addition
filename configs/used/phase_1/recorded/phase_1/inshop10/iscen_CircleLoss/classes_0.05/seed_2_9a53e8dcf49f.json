@@ -1,0 +1,25 @@
+{
+  "args": {
+    "label_budget_grid": [
+      0.05
+    ],
+    "length_before_new_iter_num_labeled": 951,
+    "length_before_new_iter_num_unlabeled": 18670,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_cir/class_subset_label_0p05_comparison_seed_2/final/ssl/cv_2026-10-14_12-44-59/fold_00/2026-10-14_12-45-03",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_cir/class_subset_label_0p05_comparison_seed_2/final/ssl/cv_2026-10-14_12-44-59/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/iscen_cir/study_replay_grid/ssl_configs/class_subset_label_0p05_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.05,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/iscen_CircleLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.05,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

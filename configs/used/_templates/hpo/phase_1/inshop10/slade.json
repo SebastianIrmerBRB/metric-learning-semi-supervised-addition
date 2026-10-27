@@ -1,0 +1,90 @@
+{
+  "extends": "common.json",
+  "max_replaced_pruned_trials": null,
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "128:8",
+        "256:8",
+        "512:8"
+      ]
+    },
+    "lr": {
+      "high": 0.0005
+    },
+    "ssl_config.method_params.regularizer_params.basis_target_ratio": {
+      "high": 1.5,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+      "choices": [
+        0,
+        0.25,
+        0.5,
+        1.0,
+        5.0
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.beta": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.cluster_ratio": {
+      "choices": [
+        0.1,
+        0.5,
+        1,
+        2
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.sd_margin": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+      "high": 20.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 1.5,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        1,
+        5,
+        10
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "slade_cars_initial"
+}

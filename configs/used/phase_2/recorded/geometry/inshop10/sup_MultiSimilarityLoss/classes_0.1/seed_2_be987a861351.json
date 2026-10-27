@@ -1,0 +1,26 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600
+      }
+    },
+    "epochs": 600,
+    "fold_test_embedding_storage": "file",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "length_before_new_iter_num_labeled": 1647,
+    "length_before_new_iter_num_unlabeled": 17974,
+    "log_dir": "logs/final/phase_2/in_shop_10_geometry_uncapped/sup_ms_defaults/class_subset_label_0p1_comparison_seed_2/final/supervised/cv_2026-10-01_06-47-45/fold_00/2026-10-01_06-47-45",
+    "save_dir": "final/phase_2/in_shop_10_geometry_uncapped/sup_ms_defaults/class_subset_label_0p1_comparison_seed_2/final/supervised/cv_2026-10-01_06-47-45/fold_00",
+    "ssl_config": "logs/final/phase_2/in_shop_10_geometry_uncapped/sup_ms_defaults/study_replay_grid/ssl_configs/class_subset_label_0p1_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.1
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop10/sup_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.1
+  }
+}

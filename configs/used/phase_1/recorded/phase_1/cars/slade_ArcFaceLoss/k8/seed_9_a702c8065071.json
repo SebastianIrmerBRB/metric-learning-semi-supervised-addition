@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/slade_arc/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-09-27_16-43-10/fold_00/2026-09-27_16-43-13",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cars/slade_arc/class_subset_k_shot_label_1_k_8_comparison_seed_9/final/ssl/cv_2026-09-27_16-43-10/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cars/slade_arc/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/slade_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

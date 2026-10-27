@@ -1,0 +1,200 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 256,
+    "classifier_lr": 1.0,
+    "cv_fold": 0,
+    "cv_parallel_folds": 2,
+    "epoch_head_dtype": "bfloat16",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/hoffer.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/cars_lrml.json",
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/hoffer/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "loss.MultiSimilarityLoss.alpha": {
+          "high": 30,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "loss.MultiSimilarityLoss.base": {
+          "high": 0.7,
+          "log": false,
+          "low": 0.01,
+          "type": "float"
+        },
+        "loss.MultiSimilarityLoss.beta": {
+          "high": 280,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "miner.MultiSimilarityMiner.epsilon": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.distance_scale": {
+          "high": 256,
+          "log": true,
+          "low": 4,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.reference_sets": {
+          "choices": [
+            1
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.25,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 2,
+          "low": 0,
+          "step": 1,
+          "type": "int"
+        }
+      },
+      "study_name": "tpe_run"
+    },
+    "hparam_final_from_study": "tpe_run",
+    "hparam_final_trial_number": 74,
+    "hparam_params": {
+      "batch_sampler": "256:2",
+      "loss.MultiSimilarityLoss.alpha": 0.27166027621095556,
+      "loss.MultiSimilarityLoss.base": 0.40525058439366807,
+      "loss.MultiSimilarityLoss.beta": 12.142702787087563,
+      "lr": 5.119343452595096e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.9852370669303675,
+      "ssl_config.method_params.regularizer_params.distance_scale": 48.62908694600321,
+      "ssl_config.method_params.regularizer_params.reference_sets": 1,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 16,
+      "ssl_config.method_params.regularizer_target_ratio": 1.036390950589679,
+      "ssl_config.warmup_epochs": 0
+    },
+    "length_before_new_iter": 46172,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "log_head_dynamics": false,
+    "loss": "MultiSimilarityLoss",
+    "loss_params": {
+      "alpha": 0.27166027621095556,
+      "base": 0.40525058439366807,
+      "beta": 12.142702787087563
+    },
+    "lr": 5.119343452595096e-05,
+    "miner": "MultiSimilarityMiner",
+    "miner_params": {
+      "epsilon": 0.9852370669303675
+    },
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_epoch_head_interval": null,
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 32,
+      "embedding_num_workers": 8,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "hoffer_entropy",
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 48.62908694600321,
+          "reference_sets": 1,
+          "unlabeled_batch_size": 16
+        },
+        "regularizer_target_ratio": 1.036390950589679,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 32,
+    "embedding_num_workers": 8,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "hoffer_entropy",
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 48.62908694600321,
+        "reference_sets": 1,
+        "unlabeled_batch_size": 16
+      },
+      "regularizer_target_ratio": 1.036390950589679,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 0
+  }
+}

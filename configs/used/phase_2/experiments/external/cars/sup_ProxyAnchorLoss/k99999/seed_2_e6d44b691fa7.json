@@ -1,0 +1,17 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/sup_ProxyAnchorLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/cars/sup_ProxyAnchorLoss/k99999/e6d44b691fa7",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/cars/sup_ProxyAnchorLoss/k99999/seed_2_e6d44b691fa7.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

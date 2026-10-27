@@ -1,0 +1,63 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      },
+      "description": "increasing Epochs and Patience",
+      "name": "increase_epochs",
+      "path": "configs/final_manifests/final/changes/epochs.json",
+      "variant": "epochs"
+    },
+    "ablation_variant": null,
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "cv_parallel_folds": 2,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "label_budget_grid",
+      "save_dir",
+      "ssl_device",
+      "ssl_label_sampling_modes",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "label_budget_grid": [
+      0.05,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "length_before_new_iter_num_labeled": 10008,
+    "length_before_new_iter_num_unlabeled": 9613,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_ms/class_subset_label_0p5_comparison_seed_11/final/supervised/cv_2026-09-29_09-26-11/fold_00/2026-09-29_09-26-14",
+    "projection_3d": true,
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_ms/class_subset_label_0p5_comparison_seed_11/final/supervised/cv_2026-09-29_09-26-11/fold_00",
+    "seed": 11,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_ms/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_11.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5,
+      "seed": 11,
+      "support_seed": 11
+    },
+    "support_seed": 11
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5,
+    "seed": 11,
+    "support_seed": 11
+  }
+}

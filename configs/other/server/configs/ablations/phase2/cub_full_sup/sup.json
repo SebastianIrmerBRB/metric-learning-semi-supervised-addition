@@ -1,0 +1,11 @@
+{
+  "description": "Unmodified supervised replay of cub/sup/* (Phase-1 HPO at k=16, best trial) with all labels of the training classes (k_shot_grid 99999 in the manifest, no unlabeled pool), the fully labelled reference as in the external-images experiment (configs/ablations/phase2/in_shop_full_external_e1000/sup.json). Training settings of the CUB seeded runs (configs/final_manifests/changes/epochs.json as of 16.09.): 1000 epochs, patience 40, evaluation embeddings on the CPU; five folds from the study.",
+  "name": "cub_full_sup",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "cpu",
+      "patience": 40
+    }
+  }
+}

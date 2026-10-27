@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 2,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_MultiSimilarityLoss/k8/99038b315786",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_MultiSimilarityLoss/k8/seed_11_99038b315786.json",
+  "support_seed": 11
+}

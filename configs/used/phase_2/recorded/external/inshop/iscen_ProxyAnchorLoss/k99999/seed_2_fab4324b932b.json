@@ -1,0 +1,97 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/full_external_0/iscen.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "unlabeled_source": "split"
+      },
+      "description": "M5 control for lp at k=99999 (all labels): the external-data replay (cars_full_external / in_shop_full_external, 1000 epochs, patience 20) with no external images. unlabeled_source='split' attaches no pool, and at k=99999 the split leaves 0 unlabeled candidates, so LP's generate_pseudo_labels returns an empty result every epoch and each fold trains on the labeled set only with LP's tuned hyperparameters.",
+      "name": "full_external_0_iscen",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/full_external_0/iscen.json",
+      "variant": "external_0"
+    },
+    "ablation_variant": "external_0",
+    "appended_unlabeled_pool_size": 0,
+    "classifier_lr": 0.007334867663900393,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 19621,
+    "length_before_new_iter_num_unlabeled": 0,
+    "log_dir": "logs/final/phase_2/in_shop_full/iscen_prx_external_0/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_15-08-48/fold_00/2026-10-12_15-08-48",
+    "loss_params": {
+      "alpha": 4.478129298930762,
+      "margin": 0.05892560964759625
+    },
+    "lr": 5.646121545886887e-05,
+    "save_dir": "final/phase_2/in_shop_full/iscen_prx_external_0/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_15-08-48/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_full/iscen_prx_external_0/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.14524496956882355,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 99999,
+      "method_params": {
+        "n_neighbors": 2
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 25
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 4.478129298930762,
+      "margin": 0.05892560964759625
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.14524496956882355,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 99999,
+    "method_params": {
+      "n_neighbors": 2
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 25
+  }
+}

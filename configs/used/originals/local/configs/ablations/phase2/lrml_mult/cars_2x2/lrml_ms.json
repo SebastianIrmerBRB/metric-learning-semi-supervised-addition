@@ -1,0 +1,31 @@
+{
+  "description": "2x2 of cars/lrml/ms on the multivariate LRML study (checklist 1.1): tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, values as in the Phase-2 runs of variants.csv), SSL hyperparameters without genuinely unlabeled data (pool_labeled). LRML uncapped, 1000 epochs / patience 20.",
+  "name": "cars_2x2_lrml_mult_ms",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.MultiSimilarityLoss.alpha": 1.169,
+      "loss.MultiSimilarityLoss.base": 0.6141,
+      "loss.MultiSimilarityLoss.beta": 250.9,
+      "lr": 1.002e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.3773,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

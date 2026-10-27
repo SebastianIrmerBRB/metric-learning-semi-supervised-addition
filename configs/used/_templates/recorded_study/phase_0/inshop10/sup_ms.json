@@ -1,0 +1,68 @@
+{
+  "base_args": {
+    "compile_train_step": false,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/class_subset_10/supervised.json",
+    "experiment_config_resolved": {
+      "loss_miner_grid": [
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "mode": "supervised",
+      "save_dir": "ssl_methods/phase_1/supervised/in_shop/class_subset_10",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": "pacmap",
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/first/first_run_in_shop.json",
+    "loss": "MultiSimilarityLoss",
+    "loss_miner_grid": [
+      "MultiSimilarityLoss:MultiSimilarityMiner"
+    ],
+    "miner": "MultiSimilarityMiner",
+    "mode": "supervised",
+    "save_dir": "phase_0/supervised/in_shop/class_subset_10/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo",
+    "ssl_config": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_ms/experiment_grid/ssl_configs/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "warmup_loss": "NTXentLoss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "loss.MultiSimilarityLoss.alpha": {
+        "high": 25,
+        "log": false,
+        "low": 2,
+        "type": "float"
+      },
+      "loss.MultiSimilarityLoss.base": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.3,
+        "type": "float"
+      },
+      "loss.MultiSimilarityLoss.beta": {
+        "high": 160,
+        "log": true,
+        "low": 20,
+        "type": "float"
+      },
+      "miner.MultiSimilarityMiner.epsilon": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      }
+    },
+    "study_name": "in_shop_supervised"
+  },
+  "in_flight_sampler_state_path": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop_supervised/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_0/supervised/in_shop/class_subset_10/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop_supervised/optuna_study.db",
+  "resolved_study_name": "in_shop_supervised",
+  "sampler_state_path": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop_supervised/sampler.pkl"
+}

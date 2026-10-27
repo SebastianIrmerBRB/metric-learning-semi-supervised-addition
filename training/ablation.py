@@ -147,8 +147,9 @@ def load_ablation_config(path):
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Ablation config not found: {path}")
-    with path.open(encoding="utf-8") as config_file:
-        values = json.load(config_file)
+    from .config_inheritance import load_config
+
+    values = load_config(path)
     return parse_ablation_config(values, source=str(path), default_name=path.stem)
 
 

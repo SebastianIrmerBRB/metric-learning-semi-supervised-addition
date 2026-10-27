@@ -1,0 +1,29 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 256,
+  "cv_k": 1,
+  "cv_mode": "stratified_group_kfold",
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "epochs": 200,
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "hparam_config": null,
+  "k_shot_grid": [
+    2
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 20706,
+  "loss_miner_grid": [
+    "MultiSimilarityLoss:MultiSimilarityMiner"
+  ],
+  "mode": "ssl",
+  "patience": 15,
+  "sampler_m": 2,
+  "save_dir": "ssl_methods/phase_1/hoffer/in_shop/ms",
+  "ssl_config": "configs/used/originals/local/configs/ssl_methods/hoffer.json",
+  "use_cache": true,
+  "val_mode": "all"
+}

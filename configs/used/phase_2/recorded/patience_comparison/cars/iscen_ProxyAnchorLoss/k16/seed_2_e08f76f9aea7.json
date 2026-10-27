@@ -1,0 +1,112 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600,
+        "patience": 20,
+        "patience_delay_epochs": 20,
+        "ssl_config.pseudo_label_diagnostics_mode": "save",
+        "ssl_config.pseudo_label_oracle_noise": 0.6,
+        "ssl_config.pseudo_label_source": "oracle"
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "iscen_cir__oracle_noise_60"
+    },
+    "ablation_variant": "iscen_cir__oracle_noise_60",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "classifier_lr": 0.9809886015925092,
+    "compcars_strict_paper_counts": false,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/patience_delay/phase_2/cars/iscen_prx_controls_oracle_noise_60/k16_s2/iscen_cir__oracle_noise_60/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-20_03-54-16/fold_00/2026-10-20_03-54-16",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "alpha": 4.577802934164329,
+      "margin": 0.0323475083241839
+    },
+    "lr": 1.5444453286934094e-05,
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/patience_delay/phase_2/cars/iscen_prx_controls_oracle_noise_60/k16_s2/iscen_cir__oracle_noise_60/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-20_03-54-16/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/patience_delay/phase_2/cars/iscen_prx_controls_oracle_noise_60/k16_s2/iscen_cir__oracle_noise_60/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.6577798442225513,
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": 16,
+      "labeled_per_class": 16,
+      "method_params": {
+        "n_neighbors": 7
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.6,
+      "pseudo_label_source": "oracle",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 10
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 4.577802934164329,
+      "margin": 0.0323475083241839
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.6577798442225513,
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": 16,
+    "labeled_per_class": 16,
+    "method_params": {
+      "n_neighbors": 7
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.6,
+    "pseudo_label_source": "oracle",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 10
+  }
+}

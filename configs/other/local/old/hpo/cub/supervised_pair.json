@@ -1,0 +1,44 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 100,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4"
+      ],
+      "type": "categorical"
+    },
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 0.5,
+      "log": false,
+      "low": 0.001,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 5e-06,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_imb_search",
+  "timeout": null
+}

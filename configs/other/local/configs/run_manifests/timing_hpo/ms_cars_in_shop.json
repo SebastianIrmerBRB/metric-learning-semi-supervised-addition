@@ -1,0 +1,90 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "launch_delay_seconds": 5,
+  "max_concurrent_per_gpu": 1,
+  "max_total_runs": 4,
+  "poll_interval_seconds": 5,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/cars_sup_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_sup_ms/hparam.json",
+      "name": "cars_sup_ms",
+      "priority": 0
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/cars_iscen_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_iscen_ms/hparam.json",
+      "name": "cars_iscen_ms",
+      "priority": 0
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/cars_lrml_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_lrml_ms/hparam.json",
+      "name": "cars_lrml_ms",
+      "priority": 0
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/cars_hoffer_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_hoffer_ms/hparam.json",
+      "name": "cars_hoffer_ms",
+      "priority": 0
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/cars_slade_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/cars_slade_ms/hparam.json",
+      "name": "cars_slade_ms",
+      "priority": 0
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/in_shop_sup_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/in_shop_sup_ms/hparam.json",
+      "name": "in_shop_sup_ms",
+      "priority": 1
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/in_shop_iscen_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/in_shop_iscen_ms/hparam.json",
+      "name": "in_shop_iscen_ms",
+      "priority": 3
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/in_shop_lrml_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/in_shop_lrml_ms/hparam.json",
+      "name": "in_shop_lrml_ms",
+      "priority": 1
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/in_shop_hoffer_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/in_shop_hoffer_ms/hparam.json",
+      "name": "in_shop_hoffer_ms",
+      "priority": 3
+    },
+    {
+      "enabled": true,
+      "experiment_config": "configs/other/local/configs/timing_hpo/ms/in_shop_slade_ms/experiment.json",
+      "hparam_config": "configs/other/local/configs/timing_hpo/ms/in_shop_slade_ms/hparam.json",
+      "name": "in_shop_slade_ms",
+      "priority": 2
+    }
+  ],
+  "save_dir_root": "timing_hpo/ms",
+  "scheduler_log_dir": "logs/run_scheduler/timing_hpo_ms",
+  "version": 1
+}

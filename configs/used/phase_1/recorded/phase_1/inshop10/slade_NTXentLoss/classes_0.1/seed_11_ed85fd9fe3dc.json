@@ -1,0 +1,63 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs_1000_patience_20.json",
+    "ablation_config_resolved": {
+      "description": "Fixed copy of changes/epochs.json for the patience-20 rerun of the In-Shop 10 % class series (14.10.2026): 1000 epochs, patience 20, evaluation embeddings on the GPU as in the original runs. epochs.json itself was switched from patience 40 to 20 on 24.09. while the series ran, so 83 LP and 58 SLADE runs used 40.",
+      "name": "epochs_1000_patience_20",
+      "path": "configs/final_manifests/final/changes/epochs_1000_patience_20.json",
+      "variant": "epochs"
+    },
+    "ablation_variant": null,
+    "appended_unlabeled_pool_size": 0,
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "epoch_head_dtype": "bfloat16",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "label_budget_grid",
+      "save_dir",
+      "ssl_device",
+      "ssl_label_sampling_modes",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "label_budget_grid": [
+      0.1
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 1892,
+    "length_before_new_iter_num_unlabeled": 17729,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/slade_nt/class_subset_label_0p1_comparison_seed_11/final/ssl/cv_2026-10-14_21-31-59/fold_00/2026-10-14_21-32-02",
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/slade_nt/class_subset_label_0p1_comparison_seed_11/final/ssl/cv_2026-10-14_21-31-59/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 11,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10_p20/slade_nt/study_replay_grid/ssl_configs/class_subset_label_0p1_comparison_seed_11.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.1,
+      "seed": 11,
+      "support_seed": 11
+    },
+    "support_seed": 11,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/slade_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.1,
+    "seed": 11,
+    "support_seed": 11
+  }
+}

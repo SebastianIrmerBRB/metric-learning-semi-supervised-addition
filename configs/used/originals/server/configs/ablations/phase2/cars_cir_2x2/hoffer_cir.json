@@ -1,0 +1,15 @@
+{
+  "description": "Ablation path from the supervised to the SSL configuration of cars/hoffer/cir: each variant sets shared parameters to the supervised study's best trial (/mnt/f/server_logs/final/cars/supervised/supervised_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised). | Mechanism controls for cars/hoffer/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_cir_2x2_hoffer_cir",
+  "variants": {
+    "pool_labeled": {
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "loss.CircleLoss.gamma": 22.68,
+      "loss.CircleLoss.m": 0.03954,
+      "lr": 3.717e-05
+    }
+  }
+}

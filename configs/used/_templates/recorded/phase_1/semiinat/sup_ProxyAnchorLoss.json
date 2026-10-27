@@ -1,0 +1,117 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1
+      }
+    },
+    "batch_size": 256,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 2.356952789460387e-05,
+    "cv_fold": 0,
+    "cv_parallel_folds": 1,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/supervised.json",
+    "experiment_config_resolved": {
+      "batch_size": 256,
+      "feat_dim": 768,
+      "hparam_config": "configs/runs/first/first_run_semi_inat_2021.json",
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "lr": 5e-05,
+      "mode": "supervised",
+      "save_dir": "semi_inat",
+      "ssl_config": "configs/ssl_methods/lrml.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "classifier_lr": {
+          "high": 100,
+          "log": true,
+          "low": 1e-05,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.alpha": {
+          "high": 80.0,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.margin": {
+          "high": 1.0,
+          "log": false,
+          "low": 0.01,
+          "type": "float"
+        }
+      },
+      "study_name": "tpe_run_supervised"
+    },
+    "hparam_final_from_study": "tpe_run_supervised",
+    "hparam_final_trial_number": 76,
+    "hparam_params": {
+      "batch_sampler": "256:2",
+      "classifier_lr": 2.356952789460387e-05,
+      "loss.ProxyAnchorLoss.alpha": 10.167890216516346,
+      "loss.ProxyAnchorLoss.margin": 0.733858141825368,
+      "lr": 5.343479231987288e-06
+    },
+    "length_before_new_iter": 46172,
+    "loss": "ProxyAnchorLoss",
+    "loss_params": {
+      "alpha": 10.167890216516346,
+      "margin": 0.733858141825368
+    },
+    "lr": 5.343479231987288e-06,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "supervised",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": true,
+    "semi_inat_ood_fraction": 0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": null,
+      "method": "none",
+      "method_params": {},
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": false,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": null,
+    "method": "none",
+    "method_params": {},
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": false,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 0
+  }
+}

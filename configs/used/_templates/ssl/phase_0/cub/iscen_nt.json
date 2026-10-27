@@ -1,0 +1,19 @@
+{
+  "confidence_threshold": 0.5459972126573447,
+  "embedding_batch_size": 256,
+  "extends": "common.json",
+  "labeled_batch_size": 128,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.736591696935543,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 9.0,
+    "linear_solver": "torch_block_cg",
+    "n_neighbors": 50
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "update_interval_epochs": 1,
+  "update_mode": "every_epoch",
+  "warmup_epochs": 12
+}

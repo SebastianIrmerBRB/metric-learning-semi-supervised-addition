@@ -1,0 +1,103 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Mechanism controls for cars/lp/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+      "name": "cars_cir_controls_iscen_cir",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+      "variant": "diag"
+    },
+    "ablation_variant": "diag",
+    "batch_size": 64,
+    "compcars_strict_paper_counts": false,
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars/iscen_ms_controls_diag/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_18-49-09/fold_00/2026-09-25_18-49-09",
+    "loss_params": {
+      "alpha": 2.7309965443408464,
+      "base": 0.7380730776734609,
+      "beta": 57.56578612691184
+    },
+    "lr": 8.124568081881318e-05,
+    "miner_params": {
+      "epsilon": 0.36197077907036335
+    },
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/iscen_ms_controls_diag/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_18-49-09/fold_00",
+    "ssl_config": "logs/final/phase_2/cars/iscen_ms_controls_diag/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.38171464239395353,
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": 8,
+      "labeled_per_class": 16,
+      "method_params": {
+        "n_neighbors": 6
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 5
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "MultiSimilarityLoss",
+    "warmup_loss_params": {
+      "alpha": 2.7309965443408464,
+      "base": 0.7380730776734609,
+      "beta": 57.56578612691184
+    },
+    "warmup_miner": "MultiSimilarityMiner",
+    "warmup_miner_params": {
+      "epsilon": 0.36197077907036335
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.38171464239395353,
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": 8,
+    "labeled_per_class": 16,
+    "method_params": {
+      "n_neighbors": 6
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 5
+  }
+}

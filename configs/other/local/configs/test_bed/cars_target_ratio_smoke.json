@@ -1,0 +1,31 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 64,
+  "cv_k": 1,
+  "cv_mode": "group_kfold",
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "device": "cuda",
+  "epochs": 2,
+  "evaluate_test": false,
+  "feat_dim": 768,
+  "final_test_visualization": "none",
+  "hparam_config": null,
+  "loss_miner_grid": [
+    "ArcFaceLoss:no_miner",
+    "CircleLoss:no_miner",
+    "MultiSimilarityLoss:MultiSimilarityMiner",
+    "NTXentLoss:no_miner",
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "lr": 1e-05,
+  "mode": "ssl",
+  "num_workers": 0,
+  "patience": 3,
+  "sampler_m": 4,
+  "save_dir": "target_ratio_smoke/cars",
+  "ssl_config": "configs/other/local/configs/test_bed/lrml_target_ratio_smoke.json",
+  "ssl_device": "cuda",
+  "use_cache": true,
+  "val_mode": "all"
+}

@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 1216,
+    "length_before_new_iter_num_unlabeled": 44956,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_prx/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-12_12-18-38/fold_00/2026-10-12_12-18-41",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_prx/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-12_12-18-38/fold_00",
+    "seed": 2,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/semi_inat/lrml_prx/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 2,
+      "support_seed": 2
+    },
+    "support_seed": 2
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/semiinat/lrml_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 2,
+    "support_seed": 2
+  }
+}

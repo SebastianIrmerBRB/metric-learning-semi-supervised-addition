@@ -1,0 +1,32 @@
+{
+  "batch_size": 256,
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/iscen_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "temporary",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "gamma": 28.08535587245302,
+    "m": 0.3651657780269176
+  },
+  "lr": 2.1503161747225267e-05,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/iscen_CircleLoss/k2/f2611dac9f32",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/iscen_CircleLoss/k2/seed_2_f2611dac9f32.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 28.08535587245302,
+    "m": 0.3651657780269176
+  }
+}
