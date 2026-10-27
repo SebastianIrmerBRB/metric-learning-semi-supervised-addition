@@ -1,0 +1,13 @@
+{
+  "method": "none",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 4,
+  "max_unlabeled_samples": 128,
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 0,
+  "pseudo_label_diagnostics_mode": "off",
+  "graph_diagnostics_mode": "off",
+  "seed": 7,
+  "support_seed": 7
+}

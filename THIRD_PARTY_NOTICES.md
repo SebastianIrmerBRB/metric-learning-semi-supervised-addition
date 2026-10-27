@@ -85,3 +85,9 @@ The upstream repository is distributed under the following MIT License:
 > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
+
+## Thesis plotting fonts
+
+The compact figure-generation data in `thesis_generator/daten/details.zip`
+includes TeX Gyre Pagella fonts and their GUST Font License. The license is
+retained as `fonts/GUST-FONT-LICENSE.txt` inside that archive.

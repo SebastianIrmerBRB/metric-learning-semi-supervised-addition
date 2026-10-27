@@ -4,5 +4,7 @@
 *.ico binary
 *.ps1 text eol=crlf
 *.gz binary
+*.zip binary
 configs/other/** -text
 configs/used/originals/** -text
+thesis_generator/daten/** -text whitespace=cr-at-eol

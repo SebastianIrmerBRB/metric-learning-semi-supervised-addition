@@ -1,0 +1,15 @@
+{
+  "extends": "split.json",
+  "method": "regularized",
+  "warmup_epochs": 1,
+  "update_mode": "every_epoch",
+  "method_params": {
+    "regularizer": "lrml",
+    "supervised_weight": 1.0,
+    "regularizer_weight": 0.01,
+    "regularizer_params": {
+      "n_neighbors": 5,
+      "graph_batch_size": 32
+    }
+  }
+}

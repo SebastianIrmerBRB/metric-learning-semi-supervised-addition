@@ -40,6 +40,7 @@ used/
   originals/                  Referenced original config files and dependencies
   catalog/                    Source hashes, run identities, links and audits
 other/
+  quickstart/                 Small public-data examples for checking installation
   local/                      Other configs recovered from the local workspace
   server/                     Other configs recovered from dipa
 archive_catalog.jsonl         Original hashes, classification and path rewrites
@@ -87,6 +88,9 @@ the reconstructed executable files and recorded snapshots take precedence.
 Historical configs in `other/` remain archives and may need their original
 datasets, study directories or obsolete code paths. Moving them does not make
 those external dependencies available.
+
+`other/quickstart/` is the exception: these are new, runnable demonstration
+configs documented in the root README. They are not thesis experiments.
 
 ## Historical details retained
 

@@ -68,3 +68,5 @@ build/
 .codex/
 .claude/
 .mcp.json
+/server
+/thesis_generator/ausgabe/

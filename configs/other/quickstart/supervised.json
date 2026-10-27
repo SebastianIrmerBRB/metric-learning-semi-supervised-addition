@@ -1,0 +1,6 @@
+{
+  "extends": "common.json",
+  "mode": "supervised",
+  "ssl_config": "configs/other/quickstart/split.json",
+  "save_dir": "quickstart/supervised"
+}

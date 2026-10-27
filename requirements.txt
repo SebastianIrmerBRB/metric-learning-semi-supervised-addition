@@ -1,22 +1,7 @@
-# Runtime dependencies used by the training, evaluation, and analysis code.
-# GPU-specific optional backends must match the device's CUDA installation.
-faiss-cpu
-filelock
-kagglehub>=1.0.2
-loguru
-matplotlib
-numpy
-optuna
-pacmap
-pandas
-Pillow
-plotly
-pytorch-metric-learning>=2.8.1
-requests
-scikit-learn
-scipy
-tensorboard
-threadpoolctl
-torch
-torchvision
-tqdm
+# Default: CPU installation. NVIDIA GPUs use requirements-cuda.txt instead.
+--extra-index-url https://download.pytorch.org/whl/cpu
+-r requirements-base.txt
+torch==2.13.0+cpu; sys_platform != "darwin"
+torchvision==0.28.0+cpu; sys_platform != "darwin"
+torch==2.13.0; sys_platform == "darwin"
+torchvision==0.28.0; sys_platform == "darwin"
