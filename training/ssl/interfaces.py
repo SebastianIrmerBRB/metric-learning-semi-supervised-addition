@@ -2,11 +2,14 @@
 
 import math
 
+import numpy as np
+
 from loguru import logger
 
 import utils
 
 from . import grad_norm
+from .common import _positive
 from . import gradient_surgery as gradient_surgery_module
 
 
@@ -122,6 +125,10 @@ class BaseTrainingRegularizer:
     # See BaseSemiSupervisedMethod.supports_sample_scoped_refresh. A regularizer
     # that opts in must honor request_refresh in its own make_loader.
     supports_sample_scoped_refresh = False
+    # A regularizer that trains on pseudo-labels of its own can opt in to
+    # ``pseudo_label_source='oracle'``; it must then honor the setting and
+    # ``pseudo_label_oracle_noise`` wherever it builds those labels.
+    supports_oracle_pseudo_labels = False
 
     # Set from method_params.regularizer_target_ratio. When present, the trainer
     # replaces regularizer_weight with a value calibrated on sampled regularized
@@ -150,6 +157,14 @@ class BaseTrainingRegularizer:
     # direction, and the calibration probe measures the projected gradient so the
     # configured ratio is the one the objective realizes.
     gradient_surgery = gradient_surgery_module.DEFAULT_GRADIENT_SURGERY
+
+    # Set from method_params.regularizer_max_ratio. When present, the trainer
+    # measures both Euclidean gradient norms on every regularized step and scales
+    # the regularizer down whenever ||grad(w * L_reg)|| / ||grad(w_sup * L_sup)||
+    # would exceed it. Every extra term combine_losses adds (SLADE's basis, ...)
+    # is held to the same bound against the supervised gradient. The target
+    # ratio only balances the terms at its probes; this bounds every step between.
+    regularizer_max_ratio = None
 
     # Set from method_params.grad_norm_alpha. When present, both weights are
     # learned during training by GradNorm (arXiv:1711.02257) instead of being
@@ -503,6 +518,22 @@ class BaseTrainingRegularizer:
             )
         self.gradient_surgery = mode
 
+    def set_max_ratio(self, max_ratio):
+        """Never let a regularizer term's gradient exceed ``max_ratio`` x the supervised one.
+
+        ``None`` removes the cap. The ratio is Euclidean -- the one logged as
+        ``regularizer_to_supervised_ratio`` -- whatever statistic the target-ratio
+        calibration uses.
+        """
+
+        if max_ratio is None:
+            self.regularizer_max_ratio = None
+            return
+        max_ratio = float(max_ratio)
+        if not math.isfinite(max_ratio) or max_ratio <= 0:
+            raise ValueError("regularizer_max_ratio must be finite and positive")
+        self.regularizer_max_ratio = max_ratio
+
     def set_grad_norm(
         self,
         alpha,
@@ -652,6 +683,107 @@ class BaseTrainingRegularizer:
     def build_dataset(self, train_dataset, split, use_cache=False):
         raise NotImplementedError
 
+    def set_unlabeled_batch_sizing(self, unlabeled_batch_size, unlabeled_ratio, default_ratio=1.0):
+        """Size the unlabeled batch absolutely or relative to the labeled one.
+
+        ``unlabeled_batch_size`` is absolute and wins over ``unlabeled_ratio``,
+        which multiplies the labeled batch; with neither, ``default_ratio``.
+        """
+
+        self.unlabeled_batch_size = None if unlabeled_batch_size is None else int(unlabeled_batch_size)
+        if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
+            raise ValueError(f"{self.name} unlabeled_batch_size must be at least two")
+        self.unlabeled_ratio = (
+            None if unlabeled_ratio is None else _positive(self.name, "unlabeled_ratio", unlabeled_ratio)
+        )
+        if self.unlabeled_ratio is None and self.unlabeled_batch_size is None:
+            self.unlabeled_ratio = default_ratio
+        elif self.unlabeled_ratio is not None and self.unlabeled_batch_size is not None:
+            logger.warning(
+                f"{self.name} received both unlabeled_batch_size={self.unlabeled_batch_size} "
+                f"and unlabeled_ratio={self.unlabeled_ratio}; the absolute batch size "
+                "wins and the ratio is ignored"
+            )
+
+    def begin_unlabeled_pool(self, split):
+        """Close the previous fold's stream and return this fold's unlabeled positions.
+
+        Returns None, leaving no dataset, when ``regularizer_weight`` is zero.
+        """
+
+        utils.shutdown_dataloaders(self._regularizer_loader)
+        self._regularizer_loader = None
+        self._regularizer_loader_cache_key = None
+        if self.regularizer_weight == 0:
+            self.dataset = None
+            return None
+        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
+        if len(unlabeled_positions) < 2:
+            raise ValueError(f"{self.name} requires at least two unlabeled samples")
+        return unlabeled_positions
+
+    def resolve_unlabeled_batch_size(self, batch_size):
+        """The unlabeled stream's batch size and a description of how it was set.
+
+        ``unlabeled_batch_size`` wins over ``unlabeled_ratio`` x the labeled
+        batch. A pool smaller than the request shrinks the batch with a warning:
+        the batch size sets the batch statistics and pair counts these methods
+        read, so the change must not pass silently.
+        """
+
+        if self.unlabeled_batch_size is not None:
+            requested_batch_size = self.unlabeled_batch_size
+            sizing = f"unlabeled_batch_size={self.unlabeled_batch_size}"
+        else:
+            requested_batch_size = max(2, int(round(float(batch_size) * self.unlabeled_ratio)))
+            sizing = f"unlabeled_ratio={self.unlabeled_ratio} x labeled batch_size={batch_size}"
+        unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
+        if unlabeled_batch_size < 2:
+            raise ValueError(f"{self.name} needs at least two unlabeled samples per batch")
+        if unlabeled_batch_size < requested_batch_size:
+            logger.warning(
+                f"{self.name} requested {requested_batch_size} unlabeled samples per step "
+                f"({sizing}) but the unlabeled pool holds only {len(self.dataset)}; "
+                f"using {unlabeled_batch_size}"
+            )
+        return unlabeled_batch_size, sizing
+
+    def cache_unlabeled_stream_loader(
+        self,
+        supervised_loader,
+        batch_size,
+        seed,
+        num_workers,
+        start_method,
+        desc,
+        pin_memory=True,
+    ):
+        """Keep one drop-last unlabeled stream until its batch shape changes.
+
+        A ragged final batch would shift the batch statistics every regularizer
+        here reads, hence ``drop_last``. Returns whether the stream was rebuilt.
+        """
+
+        worker_count = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
+        cache_key = (id(self.dataset), int(batch_size), int(worker_count), str(start_method))
+        if self._regularizer_loader is not None and self._regularizer_loader_cache_key == cache_key:
+            return False
+        utils.shutdown_dataloaders(self._regularizer_loader)
+        self._regularizer_loader = utils.make_unlabeled_stream_loader(
+            self.dataset,
+            batch_size=batch_size,
+            seed=seed,
+            num_workers=worker_count,
+            start_method=start_method,
+            supervised_loader=supervised_loader,
+            drop_last=True,
+            persistent_workers=True,
+            pin_memory=pin_memory,
+            desc=desc,
+        )
+        self._regularizer_loader_cache_key = cache_key
+        return True
+
     def make_regularizer_source_dataset(self, train_dataset, use_cache=False):
         self.use_cache = bool(use_cache)
         if self.use_cache and not utils.dataset_has_precomputed_backbone_features(train_dataset):
@@ -740,5 +872,29 @@ class BaseTrainingRegularizer:
 
     def batch_diagnostics(self):
         """Return detached scalar diagnostics for the most recent batch."""
+
+        return {}
+
+    # Where a regularizer may write artifacts about its own training state, such
+    # as SLADE's pseudo-label clusters. None keeps it from writing anything.
+    artifact_dir = None
+
+    def set_artifact_dir(self, directory):
+        """Give the regularizer a run directory for artifacts about its own state."""
+
+        self.artifact_dir = None if directory is None else directory
+
+    def epoch_activity_diagnostics(self, epoch=None):
+        """Method-specific activity statistics for this epoch's ``metrics.csv`` row.
+
+        Called once at the end of every regularized epoch; an implementation
+        closes its epoch window here. The trainer's own gradient-contribution
+        summary does not depend on this.
+        """
+
+        return {}
+
+    def activity_summary(self):
+        """Run-level method-specific activity statistics for the training result."""
 
         return {}

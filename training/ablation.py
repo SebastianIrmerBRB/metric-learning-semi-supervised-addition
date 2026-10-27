@@ -460,14 +460,9 @@ def prepare_ablation(args):
 
 
 def load_run_ssl_config(args, path):
-    from . import semi_supervised
-    from .cli import get_support_seed
+    from .cli import load_args_ssl_config
 
-    return semi_supervised.load_ssl_config(
-        path,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    return load_args_ssl_config(args, path)
 
 
 def swap_ssl_config_file(args, resolved, replacement_path):

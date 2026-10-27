@@ -152,7 +152,7 @@ Deviations from the paper
        ``marginal_entropy_weight``.
    ``supervised_loss``
        ``Z`` is the proxy table of the run's supervised criterion
-       (ProxyAnchor, ProxyNCA, MixedLabelPropagationProxyLoss, SoftTriple).
+       (ProxyAnchor, ProxyNCA, SoftTriple).
        The supervised loss then plays the role of Eq 8 literally: one proxy set,
        aligned by labels on the labeled stream and sharpened by entropy on the
        unlabeled one, which is what Eq 11 optimizes jointly. ``m`` is whatever
@@ -227,14 +227,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
-from torch.utils.data import DataLoader
 
-import utils
 from .algorithms import faiss_gpu_flat_index, require_faiss
+from .common import cross_squared_distances, kmeans, parameter_validators
 from .config import should_rebuild_on_epoch
 from .data import CombinedTrainingLoader, UnlabeledSubset
 from .embeddings import extract_embeddings
 from .interfaces import BaseTrainingRegularizer
+
+_validate_positive, _validate_non_negative, _, _validate_positive_integer = parameter_validators("ismlp")
 
 
 # Where ``Z`` comes from; see deviation 6.
@@ -306,42 +307,6 @@ DEFAULT_PROXY_LR = 1.0
 # Restarts for the k-means path. The GMM path fixes its own at one; see the
 # warning in ``IsmlpRegularizer.__init__``.
 DEFAULT_CENTROID_N_INIT = 10
-
-
-def _validate_positive(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"ismlp {name} must be finite and positive")
-    return value
-
-
-def _validate_non_negative(name, value):
-    value = float(value)
-    if not math.isfinite(value) or value < 0:
-        raise ValueError(f"ismlp {name} must be finite and non-negative")
-    return value
-
-
-def _validate_positive_integer(name, value):
-    integer = int(value)
-    if integer <= 0:
-        raise ValueError(f"ismlp {name} must be a positive integer")
-    return integer
-
-
-def cross_squared_distances(rows, proxies):
-    """Return the ``[len(rows), len(proxies)]`` squared distances of Eq 6.
-
-    The Gram form keeps memory at ``O(n m)`` instead of ``O(n m d)``, which is
-    the whole point of scoring against proxies rather than against pairs.
-    Rounding can make the difference slightly negative, so the result is clamped
-    at zero before it reaches a softmax.
-    """
-
-    row_norms = rows.pow(2).sum(dim=1, keepdim=True)
-    proxy_norms = proxies.pow(2).sum(dim=1, keepdim=True)
-    distances = row_norms + proxy_norms.t() - 2.0 * (rows @ proxies.t())
-    return distances.clamp_min(0.0)
 
 
 def inverse_temperature(kappa, kappa_mode, squared_distances):
@@ -499,79 +464,21 @@ def proxy_centroids(
         record("sklearn-gmm")
         return np.ascontiguousarray(mixture.means_.astype(np.float32))
 
-    if backend != "sklearn":
-        try:
-            faiss = require_faiss("ismlp proxy initialization")
-        except ImportError:
-            if backend == "faiss":
-                raise
-            faiss = None
-        if faiss is not None:
-            purpose = "ismlp proxy initialization"
-            work = len(features) * num_proxies
-            prefer_gpu = (
-                work >= DEFAULT_KMEANS_GPU_MIN_WORK if use_gpu is None else bool(use_gpu)
-            )
-            # Held for as long as the index is: a GPU index does not own them.
-            gpu_resources = None
-            gpu_index = None
-            if prefer_gpu:
-                built = faiss_gpu_flat_index(faiss, features.shape[1], purpose)
-                if built is not None:
-                    gpu_index, gpu_resources = built
-
-            def make_clustering():
-                return faiss.Kmeans(
-                    d=features.shape[1],
-                    k=num_proxies,
-                    niter=int(iterations),
-                    seed=int(seed) % (2**31 - 1),
-                    # A single unlucky initialization can collapse proxies onto
-                    # each other, which the entropy term then cannot tell apart
-                    # from a genuinely dense region.
-                    nredo=max(1, int(n_init) // 5),
-                    verbose=False,
-                    spherical=False,
-                    # The GPU index is attached below instead: gpu=True would
-                    # build uncapped resources of its own.
-                    gpu=False,
-                )
-
-            if gpu_index is not None:
-                try:
-                    clustering = make_clustering()
-                    clustering.index = gpu_index
-                    clustering.train(features)
-                    record("faiss-gpu")
-                    return np.ascontiguousarray(
-                        np.asarray(clustering.centroids, dtype=np.float32)
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        f"{purpose}: FAISS GPU k-means failed ({exc}); retrying on CPU"
-                    )
-                finally:
-                    # Drop the index first, then the resources behind it.
-                    gpu_index = None
-                    clustering = None
-                    gpu_resources = None
-
-            clustering = make_clustering()
-            clustering.train(features)
-            record("faiss-cpu")
-            return np.ascontiguousarray(np.asarray(clustering.centroids, dtype=np.float32))
-
-    from sklearn.cluster import KMeans
-
-    estimator = KMeans(
-        n_clusters=num_proxies,
-        n_init=int(n_init),
-        max_iter=int(iterations),
-        random_state=int(seed) % (2**31 - 1),
+    return kmeans(
+        features,
+        num_proxies,
+        seed=seed,
+        iterations=iterations,
+        n_init=n_init,
+        backend=backend,
+        use_gpu=use_gpu,
+        min_gpu_work=DEFAULT_KMEANS_GPU_MIN_WORK,
+        purpose="ismlp proxy initialization",
+        require_faiss=require_faiss,
+        faiss_gpu_flat_index=faiss_gpu_flat_index,
+        record=record,
+        return_labels=False,
     )
-    estimator.fit(features)
-    record("sklearn")
-    return np.ascontiguousarray(estimator.cluster_centers_.astype(np.float32))
 
 
 class IsmlpProxyHead(nn.Module):
@@ -917,24 +824,7 @@ class IsmlpRegularizer(BaseTrainingRegularizer):
         # Two alternative ways to size the same unlabeled batch, matching the
         # sibling regularizers: ``unlabeled_batch_size`` is absolute,
         # ``unlabeled_ratio`` is relative to the labeled batch.
-        self.unlabeled_batch_size = (
-            None if unlabeled_batch_size is None else int(unlabeled_batch_size)
-        )
-        if self.unlabeled_batch_size is not None and self.unlabeled_batch_size < 2:
-            raise ValueError("ismlp unlabeled_batch_size must be at least two")
-        self.unlabeled_ratio = (
-            None
-            if unlabeled_ratio is None
-            else _validate_positive("unlabeled_ratio", unlabeled_ratio)
-        )
-        if self.unlabeled_ratio is None and self.unlabeled_batch_size is None:
-            self.unlabeled_ratio = DEFAULT_UNLABELED_RATIO
-        elif self.unlabeled_ratio is not None and self.unlabeled_batch_size is not None:
-            logger.warning(
-                f"ismlp received both unlabeled_batch_size={self.unlabeled_batch_size} "
-                f"and unlabeled_ratio={self.unlabeled_ratio}; the absolute batch size "
-                "wins and the ratio is ignored"
-            )
+        self.set_unlabeled_batch_sizing(unlabeled_batch_size, unlabeled_ratio, DEFAULT_UNLABELED_RATIO)
 
         # Only this mode needs the trainer to hand compute_loss the run's
         # criterion; the engine reads the flag off the instance. Eq 8 does not
@@ -1076,15 +966,9 @@ class IsmlpRegularizer(BaseTrainingRegularizer):
         return None
 
     def build_dataset(self, train_dataset, split, use_cache=False):
-        utils.shutdown_dataloaders(self._regularizer_loader)
-        self._regularizer_loader = None
-        self._regularizer_loader_cache_key = None
-        if self.regularizer_weight == 0:
-            self.dataset = None
+        unlabeled_positions = self.begin_unlabeled_pool(split)
+        if unlabeled_positions is None:
             return None
-        unlabeled_positions = np.asarray(split.unlabeled_positions, dtype=np.int64)
-        if len(unlabeled_positions) < 2:
-            raise ValueError("ismlp requires at least two unlabeled samples")
         self.unlabeled_pool_size = int(len(unlabeled_positions))
         self.labeled_pool_size = int(len(np.asarray(split.labeled_positions, dtype=np.int64)))
         if (
@@ -1285,50 +1169,12 @@ class IsmlpRegularizer(BaseTrainingRegularizer):
                 )
                 self._last_refresh_epoch = None if epoch is None else int(epoch)
 
-        if self.unlabeled_batch_size is not None:
-            requested_batch_size = self.unlabeled_batch_size
-            sizing = f"unlabeled_batch_size={self.unlabeled_batch_size}"
-        else:
-            requested_batch_size = max(2, int(round(float(batch_size) * self.unlabeled_ratio)))
-            sizing = (
-                f"unlabeled_ratio={self.unlabeled_ratio} x labeled batch_size={batch_size}"
-            )
-        unlabeled_batch_size = min(requested_batch_size, len(self.dataset))
-        if unlabeled_batch_size < 2:
-            raise ValueError("ismlp needs at least two unlabeled samples per batch")
-        if unlabeled_batch_size < requested_batch_size:
-            # The batch size sets both the ``batch_std`` temperature and how many
-            # rows the marginal term averages over, so silently shrinking it
-            # would move the objective with nothing in the log saying so.
-            logger.warning(
-                f"ismlp requested {requested_batch_size} unlabeled samples per step "
-                f"({sizing}) but the unlabeled pool holds only {len(self.dataset)}; "
-                f"using {unlabeled_batch_size}"
-            )
-        worker_count = utils.dataloader_num_workers_for_dataset(self.dataset, num_workers)
-        cache_key = (
-            id(self.dataset),
-            int(unlabeled_batch_size),
-            int(worker_count),
-            str(start_method),
-        )
-        if self._regularizer_loader is None or self._regularizer_loader_cache_key != cache_key:
-            utils.shutdown_dataloaders(self._regularizer_loader)
-            self._regularizer_loader = utils.make_unlabeled_stream_loader(
-                self.dataset,
-                batch_size=unlabeled_batch_size,
-                seed=seed,
-                num_workers=worker_count,
-                start_method=start_method,
-                supervised_loader=supervised_loader,
-                # A ragged final batch would shift both the ``batch_std``
-                # temperature and the marginal assignment the guard reads.
-                drop_last=True,
-                persistent_workers=True,
-                pin_memory=True,
-                desc="ismlp unlabeled",
-            )
-            self._regularizer_loader_cache_key = cache_key
+        # The batch size sets both the ``batch_std`` temperature and how many
+        # rows the marginal term averages over.
+        unlabeled_batch_size, sizing = self.resolve_unlabeled_batch_size(batch_size)
+        if self.cache_unlabeled_stream_loader(
+            supervised_loader, unlabeled_batch_size, seed, num_workers, start_method, "ismlp unlabeled"
+        ):
             logger.info(
                 "ISMLP unlabeled loader: "
                 f"pool={len(self.dataset)}, batch_size={unlabeled_batch_size} ({sizing}), "
@@ -1339,9 +1185,8 @@ class IsmlpRegularizer(BaseTrainingRegularizer):
     def _criterion_proxies(self, criterion):
         """Return the run's supervised criterion's proxy table as ``Z``.
 
-        ``proxies`` covers ProxyAnchor, ProxyNCA and this project's
-        MixedLabelPropagationProxyLoss, all of which store ``[num_classes,
-        embedding_size]``. SoftTriple keeps ``[embedding_size, num_classes *
+        ``proxies`` covers ProxyAnchor and ProxyNCA, both of which store
+        ``[num_classes, embedding_size]``. SoftTriple keeps ``[embedding_size, num_classes *
         centers_per_class]`` under ``fc`` instead, and it is worth supporting
         because its centers-per-class is literally the paper's ``m = k * #Class``.
         """
@@ -1360,8 +1205,7 @@ class IsmlpRegularizer(BaseTrainingRegularizer):
             raise ValueError(
                 "ismlp proxy_mode='supervised_loss' needs a proxy-based supervised "
                 f"loss, but {type(criterion).__name__} exposes no proxy table. Use "
-                "ProxyAnchorLoss, ProxyNCALoss, SoftTripleLoss or "
-                "MixedLabelPropagationProxyLoss, or set proxy_mode='centroids'"
+                "ProxyAnchorLoss, ProxyNCALoss or SoftTripleLoss, or set proxy_mode='centroids'"
             )
         if proxies.dim() != 2 or len(proxies) < 2:
             raise ValueError(

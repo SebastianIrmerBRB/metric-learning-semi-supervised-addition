@@ -42,11 +42,11 @@ import numpy as np
 from loguru import logger
 from scipy.io import loadmat
 from scipy.spatial import cKDTree
-from torch.utils.data import Dataset
-from torchvision.datasets.folder import default_loader
+
+from .image_dataset_base import ImageListDataset
 
 
-class _Pittsburgh(Dataset):
+class _Pittsburgh(ImageListDataset):
     """Shared loader for the Pitts30k and Pitts250k splits.
 
     ``split`` accepts the three official geographic splits, the pooled
@@ -564,19 +564,6 @@ class _Pittsburgh(Dataset):
             sorted(int(self.place_labels[position]) for position in neighbourhood)
             for neighbourhood in neighbourhoods
         ]
-
-    def __len__(self):
-        return len(self.records)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
 
 class Pittsburgh30k(_Pittsburgh):
     """Pitts30k: 30,000 database and 21,840 query crops over train/val/test."""

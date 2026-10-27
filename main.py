@@ -9,7 +9,7 @@ modules. Imports below preserve the historical ``main`` module API.
 import json
 import math
 import multiprocessing as mp
-import os
+from functools import partial
 
 # The BLAS backends read their thread counts when their shared libraries load,
 # so the budget has to be published before the first torch-dependent import —
@@ -117,6 +117,11 @@ def main():
     configure_threads(args)
     configure_float32_precision()
     utils.set_eval_autocast_enabled(args.eval_amp)
+    utils.set_tsne_backend(
+        args.tsne_backend,
+        device=args.device,
+        max_dense_gpu_bytes=int(float(args.tsne_max_dense_gpu_gb) * 1024**3),
+    )
     # The FAISS resource buffers are process-wide and outlive any single run, so
     # the policy is published once here rather than per evaluation.
     apply_low_memory_mode(args)
@@ -170,11 +175,7 @@ def main():
 
     # The mode may turn an enabled SSL config into a split-only supervised
     # config.  This keeps label selection identical between comparison methods.
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     ssl_config = resolve_mode_ssl_config(args, ssl_config)
     run_experiment(args, ssl_config)
 
@@ -183,11 +184,7 @@ def run_supervised_ssl_comparison(args, hparam_config):
 
     # This base config defines both the SSL algorithm and the common label
     # apportioning rules used by the supervised baseline.
-    base_ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    base_ssl_config = load_args_ssl_config(args)
     validate_comparison_setup(args, hparam_config, base_ssl_config)
 
     # Scenarios are concrete combinations of label budget, sampling mode,
@@ -197,11 +194,7 @@ def run_supervised_ssl_comparison(args, hparam_config):
     grid_results = []
     for scenario in scenarios:
         scenario_args = make_args_for_scenario(args, scenario)
-        scenario_ssl_config = semi_supervised.load_ssl_config(
-            scenario_args.ssl_config,
-            default_seed=scenario_args.seed,
-            default_support_seed=get_support_seed(scenario_args),
-        )
+        scenario_ssl_config = load_args_ssl_config(scenario_args)
         grid_results.append(
             run_single_supervised_ssl_comparison(
                 scenario_args,
@@ -215,111 +208,6 @@ def run_supervised_ssl_comparison(args, hparam_config):
         # The grid summary places all scenario-level metrics and deltas in one
         # CSV/JSON collection after every scenario has finished.
         write_comparison_grid_summary(Path("logs") / args.save_dir / "comparison_grid", grid_results)
-
-def run_supervised_ssl_frozen_hparam_group(args, hparam_config, base_ssl_config, scenario_group):
-    """Tune supervised and SSL once, then evaluate both with frozen params per seed."""
-
-    reference_scenario = scenario_group[0]
-    group_name, reference_ssl_config_path, reference_ssl_config = write_reference_ssl_config(
-        args=args,
-        base_ssl_config=base_ssl_config,
-        scenario=reference_scenario,
-        grid_dir_name="comparison_grid",
-    )
-    reference_args = make_reference_hpo_args(
-        args=args,
-        group_name=group_name,
-        reference_ssl_config_path=reference_ssl_config_path,
-        scenario=reference_scenario,
-    )
-    comparison_dir = Path("logs") / reference_args.save_dir / "supervised_ssl_comparison"
-    comparison_dir.mkdir(parents=True, exist_ok=True)
-
-    supervised_args = copy.deepcopy(reference_args)
-    supervised_args.mode = "supervised"
-    supervised_args.skip_test_during_hpo = True
-
-    ssl_args = copy.deepcopy(reference_args)
-    ssl_args.mode = "ssl"
-    ssl_args.skip_test_during_hpo = True
-
-    supervised_hparam_config = make_comparison_hparam_config(hparam_config, role="supervised")
-    ssl_hparam_config = make_comparison_hparam_config(hparam_config, role="ssl")
-
-    write_json(
-        comparison_dir / "comparison_setup.json",
-        {
-            "methodology": (
-                "supervised and SSL tune once on a reference support draw; "
-                "the selected hyperparameters are frozen and evaluated on each comparison seed. "
-                "Both methods use the same fixed D_val, D_test, support draws, objective metric, and HPO budget."
-            ),
-            "base_args": namespace_to_dict(reference_args),
-            "eval_seeds": [scenario.seed for scenario in scenario_group],
-            "reference_group": group_name,
-            "reference_ssl_config": reference_ssl_config.to_dict(),
-            "supervised_hparam_config": supervised_hparam_config.to_dict(),
-            "ssl_hparam_config": ssl_hparam_config.to_dict(),
-        },
-    )
-
-    supervised_study = run_hparam_search(supervised_args, supervised_hparam_config)
-    ssl_study = run_hparam_search(ssl_args, ssl_hparam_config)
-
-    group_results = []
-    for scenario in scenario_group:
-        eval_args = make_args_for_scenario(args, scenario)
-        scenario_ssl_config = semi_supervised.load_ssl_config(
-            scenario.ssl_config_path,
-            default_seed=eval_args.seed,
-            default_support_seed=get_support_seed(eval_args),
-        )
-
-        supervised_eval_args = copy.deepcopy(eval_args)
-        supervised_eval_args.mode = "supervised"
-        supervised_final = run_final_from_best_hparam(
-            supervised_eval_args,
-            supervised_hparam_config,
-            supervised_study,
-            role="supervised",
-            summary_stem=f"final_evaluation_{scenario.name}_supervised",
-        )
-
-        ssl_eval_args = copy.deepcopy(eval_args)
-        ssl_eval_args.mode = "ssl"
-        ssl_final = run_final_from_best_hparam(
-            ssl_eval_args,
-            ssl_hparam_config,
-            ssl_study,
-            role="ssl",
-            summary_stem=f"final_evaluation_{scenario.name}_ssl",
-        )
-
-        scenario_comparison_dir = Path("logs") / eval_args.save_dir / "supervised_ssl_comparison"
-        scenario_comparison_dir.mkdir(parents=True, exist_ok=True)
-        write_comparison_summary(
-            comparison_dir=scenario_comparison_dir,
-            args=eval_args,
-            scenario=scenario,
-            ssl_config=scenario_ssl_config,
-            supervised_study=supervised_study,
-            ssl_study=ssl_study,
-            supervised_final=supervised_final,
-            ssl_final=ssl_final,
-        )
-        group_results.append(
-            {
-                "scenario": scenario,
-                "comparison_dir": scenario_comparison_dir,
-                "ssl_config": scenario_ssl_config,
-                "supervised_study": supervised_study,
-                "ssl_study": ssl_study,
-                "supervised_final": supervised_final,
-                "ssl_final": ssl_final,
-                "deltas": make_comparison_deltas(supervised_final, ssl_final),
-            }
-        )
-    return group_results
 
 def run_single_supervised_ssl_comparison(args, hparam_config, ssl_config, scenario):
     """Tune and retrain both methods while keeping their data split fixed."""
@@ -471,6 +359,7 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                 label_budget=label_budget,
                 has_label_budget_grid=has_label_budget_grid,
                 base_ssl_config=base_ssl_config,
+                k_shot_grid=getattr(args, "k_shot_grid", None),
             )
             for scenario_labeled_per_class in get_k_shot_values(
                 label_sampling_mode=label_sampling_mode,
@@ -564,7 +453,9 @@ def make_comparison_scenarios(args, base_ssl_config, grid_dir_name="comparison_g
                         )
     return scenarios
 
-def resolve_scenario_label_budget(label_sampling_mode, label_budget, has_label_budget_grid, base_ssl_config):
+def resolve_scenario_label_budget(
+    label_sampling_mode, label_budget, has_label_budget_grid, base_ssl_config, *, k_shot_grid=None
+):
     # labeled_fraction has different semantics by mode: it can mean a fraction
     # of samples or a fraction of classes.  It is always constrained to (0, 1].
     labeled_fraction = float(label_budget)
@@ -576,7 +467,9 @@ def resolve_scenario_label_budget(label_sampling_mode, label_budget, has_label_b
         # fires precisely when nothing in the request mentions k, so the logs
         # record a 1-shot study that reads like whatever k the author assumed.
         labeled_per_class = base_ssl_config.labeled_per_class
-        if labeled_per_class is None:
+        # An explicit grid supplies each scenario's k in get_k_shot_values below;
+        # it does not need a default count in the base SSL config as well.
+        if labeled_per_class is None and k_shot_grid is None:
             raise ValueError(
                 "label_sampling_mode='class_subset_k_shot' needs a k per selected "
                 "class: set --k_shot_grid, or labeled_per_class in the SSL config"
@@ -662,8 +555,6 @@ def validate_loss_miner_pair(loss_name, miner_name, source="", require_effective
         raise ValueError(
             f"classification loss {loss_name} should be paired with no_miner because miners are ignored{source}"
         )
-    if loss_name == "STMLLoss" and miner_name != "no_miner":
-        raise ValueError(f"STMLLoss must be paired with no_miner because it does not consume labels{source}")
 
 def make_label_budget_name(label_sampling_mode, labeled_fraction, labeled_per_class):
     if label_sampling_mode == "class_subset_k_shot":
@@ -815,11 +706,7 @@ def format_float_token(value):
 def run_single_method_grid(args, hparam_config):
     """Run an outer experiment grid for only the selected training method."""
 
-    base_ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    base_ssl_config = load_args_ssl_config(args)
     validate_single_method_grid_setup(args, hparam_config, base_ssl_config)
 
     scenarios = make_comparison_scenarios(args, base_ssl_config, grid_dir_name="experiment_grid")
@@ -912,11 +799,7 @@ def run_single_method_scenario(args, hparam_config, scenario):
 
     if hparam_config is not None:
         args.hparam_config_resolved = hparam_config.to_dict()
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     ssl_config = resolve_mode_ssl_config(args, ssl_config)
     result = run_experiment(args, ssl_config)
     return {
@@ -1030,9 +913,6 @@ FINAL_STUDY_DIR_IGNORED_REQUEST_OVERRIDES = {
 }
 
 FINAL_STUDY_DIR_HPO_VALIDATION_CONFIG_ARGS = {
-    "cifar_imbalance_factor",
-    "cifar_test_fraction",
-    "cifar_train_fraction",
     "cv_k",
     "cv_mode",
     "data_split_seed",
@@ -1114,9 +994,26 @@ def copy_final_test_request_args(source_args, target_args):
         "final_test_trial_numbers",
         "final_test_visualization",
         "study_dir_mode",
+        # A tuned study says nothing about what its replay should record, so the
+        # current request always decides how the replay tracks structure.
+        "track_epoch_artifacts",
+        "track_epoch_interval",
+        "track_epoch_layout",
+        "track_epoch_max_samples",
+        "track_epoch_pool_sampling",
+        "track_epoch_workers",
+        # Likewise whether it keeps a head every few epochs, and in what precision.
+        "save_epoch_head_interval",
+        "epoch_head_dtype",
+        # Studies saved while 3-D was the default recorded it as on; whether a
+        # replay writes 3-D projections is likewise the current request's call.
+        "projection_3d",
         # Studies saved before resume existed carry no value for it, so the
         # current request always decides whether a replay continues.
         "resume_interrupted_runs",
+        # How the folds share the machine changes no result a study recorded.
+        "cv_parallel_folds",
+        "cv_parallel_backend",
     ):
         if hasattr(source_args, name):
             setattr(target_args, name, getattr(source_args, name))
@@ -1152,11 +1049,7 @@ def reset_unrequested_final_study_grid_args(args, request_override_names):
 def run_final_study_dir_grid(base_args, hparam_config, study_result):
     """Evaluate one existing HPO study's params across requested data settings."""
 
-    base_ssl_config = semi_supervised.load_ssl_config(
-        base_args.ssl_config,
-        default_seed=base_args.seed,
-        default_support_seed=get_support_seed(base_args),
-    )
+    base_ssl_config = load_args_ssl_config(base_args)
     scenarios = make_comparison_scenarios(base_args, base_ssl_config, grid_dir_name="study_replay_grid")
     if get_study_dir_mode(base_args) == STUDY_DIR_MODE_CROSS_SEED_TRAIN_VAL:
         return run_cross_seed_train_val_study_dir_grid(
@@ -1733,75 +1626,49 @@ def should_run_final_hparam_evaluation(args):
 def run_final_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="final_evaluation"):
     """Train selected HPO configuration(s) on all development data and test them."""
 
-    trial_numbers = get_final_test_trial_numbers(base_args)
-    if trial_numbers is not None:
-        return run_final_from_selected_hparams(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            trial_numbers=trial_numbers,
-            summary_stem=summary_stem,
-        )
-
-    top_n = get_final_test_top_n(base_args)
-    if top_n > 1:
-        return run_final_from_top_hparams(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            top_n=top_n,
-            summary_stem=summary_stem,
-        )
-
-    return run_single_final_from_hparam(
-        base_args,
-        hparam_config,
-        study_result,
-        role,
-        summary_stem=summary_stem,
-    )
+    requested = get_requested_hparam_trials(base_args, study_result, role, summary_stem, "final-test")
+    if requested is None:
+        return run_single_final_from_hparam(base_args, hparam_config, study_result, role, summary_stem=summary_stem)
+    candidates, write_summary = requested
+    evaluated = [
+        {
+            "trial": trial,
+            "summary_stem": trial_summary_stem,
+            "final_result": run_single_final_from_hparam(
+                base_args,
+                hparam_config,
+                make_study_result_for_completed_trial(study_result, trial),
+                role,
+                summary_stem=trial_summary_stem,
+            ),
+        }
+        for trial, trial_summary_stem in candidates
+    ]
+    write_summary(study_result=study_result, evaluated=evaluated, role=role, summary_stem=summary_stem)
+    return evaluated[0]["final_result"]
 
 def run_train_val_from_best_hparam(base_args, hparam_config, study_result, role, summary_stem="train_val_evaluation"):
     """Run selected HPO configuration(s) with validation selection and final testing."""
 
-    trial_numbers = get_final_test_trial_numbers(base_args)
-    if trial_numbers is not None:
-        return run_train_val_from_selected_hparams(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            trial_numbers=trial_numbers,
-            summary_stem=summary_stem,
-        )
-
-    top_n = get_final_test_top_n(base_args)
-    if top_n > 1:
-        return run_train_val_from_top_hparams(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            top_n=top_n,
-            summary_stem=summary_stem,
-        )
-
-    best_trial = {
-        "trial_number": study_result.best_trial_number,
-        "value": study_result.best_value,
-        "params": study_result.best_params,
-        "user_attrs": study_result.best_user_attrs or {},
-    }
-    _, final_result = run_train_val_candidates(
-        base_args,
-        hparam_config,
-        study_result,
-        role,
-        [(best_trial, summary_stem)],
+    maximize = getattr(hparam_config, "direction", "maximize") == "maximize"
+    requested = get_requested_hparam_trials(
+        base_args, study_result, role, summary_stem, "train/validation", maximize=maximize
     )
-    return final_result
+    if requested is None:
+        best_trial = {
+            "trial_number": study_result.best_trial_number,
+            "value": study_result.best_value,
+            "params": study_result.best_params,
+            "user_attrs": study_result.best_user_attrs or {},
+        }
+        _, final_result = run_train_val_candidates(
+            base_args, hparam_config, study_result, role, [(best_trial, summary_stem)]
+        )
+        return final_result
+    candidates, write_summary = requested
+    evaluated, best_result = run_train_val_candidates(base_args, hparam_config, study_result, role, candidates)
+    write_summary(study_result=study_result, evaluated=evaluated, role=role, summary_stem=summary_stem)
+    return best_result
 
 def get_completed_hparam_trials(study_result, role):
     completed_trials = list(getattr(study_result, "completed_trials", None) or [])
@@ -1818,90 +1685,49 @@ def get_completed_hparam_trials(study_result, role):
         raise ValueError(f"No completed {role or 'model'} HPO trial is available for final retraining")
     return completed_trials
 
-def run_train_val_from_selected_hparams(
-    base_args,
-    hparam_config,
-    study_result,
-    role,
-    trial_numbers,
-    summary_stem="train_val_evaluation",
-):
-    """Rank selected trials on validation and fully retrain/test the winner."""
+def get_requested_hparam_trials(base_args, study_result, role, summary_stem, purpose, maximize=True):
+    """The candidates that --final_test_trial_numbers or --final_test_top_n request.
 
-    completed_trials = get_completed_hparam_trials(study_result, role)
-    trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
-    missing_trials = [trial_number for trial_number in trial_numbers if trial_number not in trials_by_number]
-    if missing_trials:
-        available_trials = sorted(trials_by_number)
-        raise ValueError(
-            f"Selected train/validation trial(s) are not completed in study {study_result.study_name!r}: "
-            f"{missing_trials}. Available completed trial numbers: {available_trials}"
-        )
+    Returns the ``(trial, summary stem)`` pairs and the writer of their joint
+    summary, or None when only the study's best trial is requested.
+    """
 
-    selected_trials = []
-    for trial_number in trial_numbers:
-        trial = trials_by_number[int(trial_number)]
-        trial_summary_stem = f"{summary_stem}_trial_{int(trial_number):04d}"
-        selected_trials.append((trial, trial_summary_stem))
+    trial_numbers = get_final_test_trial_numbers(base_args)
+    if trial_numbers is not None:
+        trials_by_number = {
+            int(trial["trial_number"]): trial for trial in get_completed_hparam_trials(study_result, role)
+        }
+        missing_trials = [trial_number for trial_number in trial_numbers if trial_number not in trials_by_number]
+        if missing_trials:
+            raise ValueError(
+                f"Selected {purpose} trial(s) are not completed in study {study_result.study_name!r}: "
+                f"{missing_trials}. Available completed trial numbers: {sorted(trials_by_number)}"
+            )
+        candidates = [
+            (trials_by_number[int(trial_number)], f"{summary_stem}_trial_{int(trial_number):04d}")
+            for trial_number in trial_numbers
+        ]
+        return candidates, partial(write_hparam_selected_final_evaluation_summary, trial_numbers=trial_numbers)
 
-    evaluated, best_result = run_train_val_candidates(
-        base_args,
-        hparam_config,
-        study_result,
-        role,
-        selected_trials,
-    )
-
-    write_hparam_selected_final_evaluation_summary(
-        study_result=study_result,
-        evaluated=evaluated,
-        role=role,
-        trial_numbers=trial_numbers,
-        summary_stem=summary_stem,
-    )
-    return best_result
-
-def run_train_val_from_top_hparams(base_args, hparam_config, study_result, role, top_n, summary_stem="train_val_evaluation"):
-    """Rank the top-N trials on validation and fully retrain/test the winner."""
-
-    completed_trials = get_completed_hparam_trials(study_result, role)
-    maximize = getattr(hparam_config, "direction", "maximize") == "maximize"
-    completed_trials = sorted(
-        completed_trials,
+    top_n = get_final_test_top_n(base_args)
+    if top_n <= 1:
+        return None
+    selected_trials = sorted(
+        get_completed_hparam_trials(study_result, role),
         key=lambda trial: (
             -float(trial["value"]) if maximize else float(trial["value"]),
             int(trial["trial_number"]),
         ),
-    )
-    selected_trials = completed_trials[:top_n]
+    )[:top_n]
     if len(selected_trials) < top_n:
         logger.warning(
             f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
         )
-
-    trials_with_summary_stems = []
-    for trial_index, trial in enumerate(selected_trials):
-        trial_number = trial["trial_number"]
-        trial_summary_stem = summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial_number:04d}"
-        trials_with_summary_stems.append((trial, trial_summary_stem))
-
-    evaluated, best_result = run_train_val_candidates(
-        base_args,
-        hparam_config,
-        study_result,
-        role,
-        trials_with_summary_stems,
-    )
-
-    write_hparam_top_final_evaluation_summary(
-        study_result=study_result,
-        evaluated=evaluated,
-        role=role,
-        requested_top_n=top_n,
-        summary_stem=summary_stem,
-    )
-    return best_result
-
+    candidates = [
+        (trial, summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial['trial_number']:04d}")
+        for trial_index, trial in enumerate(selected_trials)
+    ]
+    return candidates, partial(write_hparam_top_final_evaluation_summary, requested_top_n=top_n)
 
 def run_train_val_candidates(base_args, hparam_config, study_result, role, trials_with_summary_stems):
     """Rank candidates on validation, then fully retrain/test only the winner."""
@@ -2033,97 +1859,6 @@ def make_validation_selected_study_result(
         best_user_attrs=best_user_attrs,
     )
 
-def run_final_from_selected_hparams(
-    base_args,
-    hparam_config,
-    study_result,
-    role,
-    trial_numbers,
-    summary_stem="final_evaluation",
-):
-    """Run final-test evaluation for explicitly selected completed HPO trial numbers."""
-
-    completed_trials = get_completed_hparam_trials(study_result, role)
-    trials_by_number = {int(trial["trial_number"]): trial for trial in completed_trials}
-    missing_trials = [trial_number for trial_number in trial_numbers if trial_number not in trials_by_number]
-    if missing_trials:
-        available_trials = sorted(trials_by_number)
-        raise ValueError(
-            f"Selected final-test trial(s) are not completed in study {study_result.study_name!r}: "
-            f"{missing_trials}. Available completed trial numbers: {available_trials}"
-        )
-
-    evaluated = []
-    for trial_number in trial_numbers:
-        trial = trials_by_number[int(trial_number)]
-        trial_summary_stem = f"{summary_stem}_trial_{int(trial_number):04d}"
-        final_result = run_single_final_from_hparam(
-            base_args,
-            hparam_config,
-            make_study_result_for_completed_trial(study_result, trial),
-            role,
-            summary_stem=trial_summary_stem,
-        )
-        evaluated.append(
-            {
-                "trial": trial,
-                "summary_stem": trial_summary_stem,
-                "final_result": final_result,
-            }
-        )
-
-    write_hparam_selected_final_evaluation_summary(
-        study_result=study_result,
-        evaluated=evaluated,
-        role=role,
-        trial_numbers=trial_numbers,
-        summary_stem=summary_stem,
-    )
-    return evaluated[0]["final_result"]
-
-def run_final_from_top_hparams(base_args, hparam_config, study_result, role, top_n, summary_stem="final_evaluation"):
-    """Run final-test evaluation for the top-N completed HPO trials by objective value."""
-
-    completed_trials = get_completed_hparam_trials(study_result, role)
-    completed_trials = sorted(
-        completed_trials,
-        key=lambda trial: (-float(trial["value"]), int(trial["trial_number"])),
-    )
-    selected_trials = completed_trials[:top_n]
-    if len(selected_trials) < top_n:
-        logger.warning(
-            f"Requested final_test_top_n={top_n}, but only {len(selected_trials)} completed HPO trial(s) exist."
-        )
-
-    evaluated = []
-    for trial_index, trial in enumerate(selected_trials):
-        trial_study_result = make_study_result_for_completed_trial(study_result, trial)
-        trial_number = trial["trial_number"]
-        trial_summary_stem = summary_stem if trial_index == 0 else f"{summary_stem}_trial_{trial_number:04d}"
-        final_result = run_single_final_from_hparam(
-            base_args,
-            hparam_config,
-            trial_study_result,
-            role,
-            summary_stem=trial_summary_stem,
-        )
-        evaluated.append(
-            {
-                "trial": trial,
-                "summary_stem": trial_summary_stem,
-                "final_result": final_result,
-            }
-        )
-
-    write_hparam_top_final_evaluation_summary(
-        study_result=study_result,
-        evaluated=evaluated,
-        role=role,
-        requested_top_n=top_n,
-        summary_stem=summary_stem,
-    )
-    return evaluated[0]["final_result"]
-
 def make_study_result_for_completed_trial(study_result, trial):
     return replace(
         study_result,
@@ -2133,8 +1868,56 @@ def make_study_result_for_completed_trial(study_result, trial):
         best_user_attrs=trial.get("user_attrs") or {},
     )
 
+def make_replay_args(base_args, hparam_config, study_result, kind, **plan):
+    """Args and SSL config that rerun the study's best trial as a ``kind`` replay."""
+
+    args, ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
+    args.hparam_config_resolved = hparam_config.to_dict()
+    args.hparam_params = study_result.best_params
+    setattr(args, f"hparam_{kind}_from_study", study_result.study_name)
+    setattr(args, f"hparam_{kind}_trial_number", study_result.best_trial_number)
+    for name, value in plan.items():
+        setattr(args, name, value)
+    args.validation_retrieval_backend = get_hpo_validation_retrieval_backend(study_result)
+    return args, ssl_config
+
+
+def reuse_completed_final(base_args, study_result, role, epoch_plan, summary_stem, description):
+    """The completed final run a previous attempt left for this plan, if any."""
+
+    reused_result = load_reusable_final_result(base_args, study_result, role, epoch_plan, summary_stem=summary_stem)
+    if reused_result is not None:
+        logger.info(
+            f"Reusing the completed {role} {description} for trial "
+            f"{study_result.best_trial_number} from {reused_result.log_dir}"
+        )
+    return reused_result
+
+
+def with_study_validation_metrics(result, study_result):
+    """Report the study's validation evidence on a run that had no validation."""
+
+    best_attrs = study_result.best_user_attrs or {}
+    return replace(
+        result,
+        best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
+        best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
+        best_valid_measurements=best_attrs.get("best_valid_measurements"),
+    )
+
+
 def run_single_final_from_hparam(base_args, hparam_config, study_result, role, summary_stem="final_evaluation"):
     """Train one HPO configuration on all development data and test it."""
+
+    # This flag is deliberately promoted only inside the final-fit funnel. A
+    # config can therefore keep every test-producing fold for the embedding
+    # viewer without writing hundreds of heads for the HPO trials that precede
+    # it in the same process.
+    if getattr(base_args, "save_final_head_state", False) and not getattr(
+        base_args, "save_head_state", False
+    ):
+        base_args = copy.deepcopy(base_args)
+        base_args.save_head_state = True
 
     role = role or "model"
     if study_result.best_params is None:
@@ -2143,47 +1926,23 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
     final_fit_mode = get_final_fit_mode(base_args)
     if final_fit_mode == FINAL_FIT_MODE_EARLY_STOP_HOLDOUT:
         return run_single_final_early_stop_from_hparam(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            summary_stem=summary_stem,
+            base_args, hparam_config, study_result, role, summary_stem=summary_stem
         )
     if final_fit_mode == FINAL_FIT_MODE_CROSS_VALIDATION_FOLDS:
         return run_single_final_cross_validation_from_hparam(
-            base_args,
-            hparam_config,
-            study_result,
-            role,
-            summary_stem=summary_stem,
+            base_args, hparam_config, study_result, role, summary_stem=summary_stem
         )
 
     epoch_plan = make_final_epoch_plan(
         study_result,
         aggregation=get_final_epoch_aggregation(base_args),
     )
-    reused_result = load_reusable_final_result(
-        base_args,
-        study_result,
-        role,
-        epoch_plan,
-        summary_stem=summary_stem,
-    )
+    reused_result = reuse_completed_final(base_args, study_result, role, epoch_plan, summary_stem, "final test run")
     if reused_result is not None:
-        logger.info(
-            f"Reusing the completed {role} final test run for trial "
-            f"{study_result.best_trial_number} from {reused_result.log_dir}"
-        )
         return reused_result
 
-    final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
-    final_args.hparam_config_resolved = hparam_config.to_dict()
-    final_args.hparam_params = study_result.best_params
-    final_args.hparam_final_from_study = study_result.study_name
-    final_args.hparam_final_trial_number = study_result.best_trial_number
-    final_args.hparam_final_epoch_plan = epoch_plan
-    final_args.validation_retrieval_backend = (
-        get_hpo_validation_retrieval_backend(study_result)
+    final_args, final_ssl_config = make_replay_args(
+        base_args, hparam_config, study_result, "final", hparam_final_epoch_plan=epoch_plan
     )
     final_args.final_full_train = True
     final_args.cv_k = 1
@@ -2198,14 +1957,7 @@ def run_single_final_from_hparam(base_args, hparam_config, study_result, role, s
         f"{epoch_plan['training_epoch_counts']} from {epoch_plan['source']})"
     )
 
-    final_result = run_experiment(final_args, final_ssl_config)
-    best_attrs = study_result.best_user_attrs or {}
-    final_result = replace(
-        final_result,
-        best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
-        best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
-        best_valid_measurements=best_attrs.get("best_valid_measurements"),
-    )
+    final_result = with_study_validation_metrics(run_experiment(final_args, final_ssl_config), study_result)
     write_hparam_final_evaluation_summary(study_result, final_result, epoch_plan, role, summary_stem=summary_stem)
     return final_result
 
@@ -2224,14 +1976,7 @@ def run_single_final_early_stop_from_hparam(
     D_test exactly once. The cost is the training data inside the slice.
     """
 
-    final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
-    final_args.hparam_config_resolved = hparam_config.to_dict()
-    final_args.hparam_params = study_result.best_params
-    final_args.hparam_final_from_study = study_result.study_name
-    final_args.hparam_final_trial_number = study_result.best_trial_number
-    final_args.validation_retrieval_backend = (
-        get_hpo_validation_retrieval_backend(study_result)
-    )
+    final_args, final_ssl_config = make_replay_args(base_args, hparam_config, study_result, "final")
     # Validation stays in this fit, so it is not a full-development train. One
     # model is trained against one holdout rather than the study's CV folds, and
     # args.epochs stays the search budget that early stopping may cut short.
@@ -2243,18 +1988,10 @@ def run_single_final_early_stop_from_hparam(
 
     epoch_plan = make_final_early_stopping_plan(final_args)
     final_args.hparam_final_epoch_plan = epoch_plan
-    reused_result = load_reusable_final_result(
-        base_args,
-        study_result,
-        role,
-        epoch_plan,
-        summary_stem=summary_stem,
+    reused_result = reuse_completed_final(
+        base_args, study_result, role, epoch_plan, summary_stem, "early-stopped final test run"
     )
     if reused_result is not None:
-        logger.info(
-            f"Reusing the completed {role} early-stopped final test run for trial "
-            f"{study_result.best_trial_number} from {reused_result.log_dir}"
-        )
         return reused_result
 
     holdout_val_ratio = epoch_plan["holdout_val_ratio"]
@@ -2287,19 +2024,12 @@ def run_single_final_cross_validation_from_hparam(
     joined per sample for one combined evaluation.
     """
 
-    final_args, final_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
+    final_args, final_ssl_config = make_replay_args(base_args, hparam_config, study_result, "final")
     if final_args.cv_k < 2:
         raise ValueError(
             "final_fit_mode='cross_validation_folds' tests one model per fold and "
             f"requires cv_k > 1, got cv_k={final_args.cv_k}"
         )
-    final_args.hparam_config_resolved = hparam_config.to_dict()
-    final_args.hparam_params = study_result.best_params
-    final_args.hparam_final_from_study = study_result.study_name
-    final_args.hparam_final_trial_number = study_result.best_trial_number
-    final_args.validation_retrieval_backend = (
-        get_hpo_validation_retrieval_backend(study_result)
-    )
     # The study's cv_k, cv_mode, val_mode, and split seeds are preserved so the
     # tested models are the same ones its validation objective ranked. No
     # separate final fit exists, so this is not a full-development train.
@@ -2313,24 +2043,23 @@ def run_single_final_cross_validation_from_hparam(
 
     epoch_plan = make_final_cross_validation_plan(final_args)
     final_args.hparam_final_epoch_plan = epoch_plan
-    reused_result = load_reusable_final_result(
-        base_args,
-        study_result,
-        role,
-        epoch_plan,
-        summary_stem=summary_stem,
+    reused_result = reuse_completed_final(
+        base_args, study_result, role, epoch_plan, summary_stem, "per-fold final test run"
     )
     if reused_result is not None:
-        logger.info(
-            f"Reusing the completed {role} per-fold final test run for trial "
-            f"{study_result.best_trial_number} from {reused_result.log_dir}"
-        )
         return reused_result
 
+    patience_delay_clause = (
+        f", patience counting from {final_args.patience_delay_epochs} epochs after the warm-up "
+        "against the last delay epoch's value"
+        if getattr(final_args, "patience_delay_epochs", 0)
+        else ""
+    )
     logger.info(
         f"Final {role} evaluation tests each of the {final_args.cv_k} "
         f"{final_args.cv_mode} folds' validation-selected checkpoints on D_test "
         f"(patience={final_args.patience}, at most {final_args.epochs} epochs per fold"
+        f"{patience_delay_clause}"
         f"{FOLD_TEST_EMBEDDING_LOG_CLAUSES[get_fold_test_embedding_storage(final_args)] if final_args.save_test_embeddings else ''}); "
         "no separate final model is trained"
     )
@@ -2368,14 +2097,7 @@ def run_single_train_val_from_hparam(
         )
         return reused_result
 
-    train_args, train_ssl_config = make_args_and_ssl_config_from_params(base_args, study_result.best_params)
-    train_args.hparam_config_resolved = hparam_config.to_dict()
-    train_args.hparam_params = study_result.best_params
-    train_args.hparam_replay_from_study = study_result.study_name
-    train_args.hparam_replay_trial_number = study_result.best_trial_number
-    train_args.validation_retrieval_backend = (
-        get_hpo_validation_retrieval_backend(study_result)
-    )
+    train_args, train_ssl_config = make_replay_args(base_args, hparam_config, study_result, "replay")
     train_args.final_full_train = False
     # Preserve the study/trial's cv_k, cv_mode, val_mode, and split settings so
     # this validation evidence is directly comparable with the HPO objective.
@@ -2443,6 +2165,20 @@ def load_reusable_final_result(base_args, study_result, role, epoch_plan, summar
     )
     if final_result is None:
         return None
+    if getattr(base_args, "save_head_state", False):
+        head_path = getattr(final_result, "head_state_path", None)
+        if head_path is None or not Path(head_path).is_file():
+            logger.info(
+                f"Not reusing the completed {role} final run in {final_result.log_dir}: "
+                "this replay requests a saved head and the old run has none"
+            )
+            return None
+    if resume.lacks_requested_epoch_heads(final_result.log_dir, base_args):
+        logger.info(
+            f"Not reusing the completed {role} final run in {final_result.log_dir}: "
+            "this replay saves epoch heads and the old run has none"
+        )
+        return None
     # Held to the test table this run reports, Recall@K rungs included, and
     # judged by what the finished run measured rather than what it was asked.
     missing = resume.missing_test_metrics(final_result, base_args)
@@ -2473,13 +2209,7 @@ def load_reusable_final_result(base_args, study_result, role, epoch_plan, summar
             if recorded_plan.get(field) != epoch_plan[field]:
                 return None
         return final_result
-    best_attrs = study_result.best_user_attrs or {}
-    return replace(
-        final_result,
-        best_valid_precision_at_1=best_attrs.get("best_valid_precision_at_1"),
-        best_valid_mean_average_precision_at_r=best_attrs.get("best_valid_mean_average_precision_at_r"),
-        best_valid_measurements=best_attrs.get("best_valid_measurements"),
-    )
+    return with_study_validation_metrics(final_result, study_result)
 
 
 if __name__ == "__main__":

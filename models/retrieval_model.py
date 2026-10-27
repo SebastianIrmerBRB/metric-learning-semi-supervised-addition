@@ -55,15 +55,6 @@ def build_projection_head(input_dim, output_dim, num_layers=DEFAULT_PROJECTION_L
     return nn.Sequential(*layers)
 
 
-def initialize_orthogonal_linears(head):
-    """Apply STML's orthogonal init to every linear layer of one head."""
-
-    for layer in head.modules():
-        if isinstance(layer, nn.Linear):
-            nn.init.orthogonal_(layer.weight)
-            nn.init.zeros_(layer.bias)
-
-
 @contextmanager
 def _exclusive_cache_file_lock(path):
     """Serialize mmap creation/commits across local processes."""
@@ -323,7 +314,6 @@ def load_dinov2_with_retry(dino_size, max_attempts=DINOV2_HUB_MAX_ATTEMPTS):
             time.sleep(delay)
 
 
-
 class DinoWrapper(nn.Module):
     """Same as the original DINO model, but with a linear layer on top and a resize to multiple of 14 in the forward pass."""
 
@@ -334,9 +324,6 @@ class DinoWrapper(nn.Module):
         backbone_tuning=BACKBONE_TUNING_FULL,
         use_cache=False,
         cache_dir=None,
-        stml=False,
-        stml_g_dim=None,
-        stml_normalize_student=False,
         projection_layers=DEFAULT_PROJECTION_LAYERS,
         projection_hidden_dim=None,
     ):
@@ -349,8 +336,6 @@ class DinoWrapper(nn.Module):
         self.dino_size = dino_size
         self.backbone_tuning = backbone_tuning
         self.use_cache = bool(use_cache)
-        self.stml_enabled = bool(stml)
-        self.stml_normalize_student = bool(stml_normalize_student)
         backbone_dim = DINOV2_ARCHS[dino_size]
         self.backbone_dim = backbone_dim
         self.projection_layers = int(projection_layers)
@@ -361,16 +346,14 @@ class DinoWrapper(nn.Module):
         )
         if self.projection_hidden_dim is not None and self.projection_hidden_dim <= 0:
             raise ValueError("projection_hidden_dim must be positive")
-        if feat_dim is not None or self.stml_enabled:
-            self.feat_dim = backbone_dim if feat_dim is None else feat_dim
+        if feat_dim is not None:
+            self.feat_dim = feat_dim
             self.fc = build_projection_head(
                 backbone_dim,
                 self.feat_dim,
                 num_layers=self.projection_layers,
                 hidden_dim=self.projection_hidden_dim,
             )
-            if self.stml_enabled:
-                initialize_orthogonal_linears(self.fc)
         else:
             if self.projection_layers > 1:
                 raise ValueError(
@@ -378,15 +361,6 @@ class DinoWrapper(nn.Module):
                 )
             self.fc = nn.Identity()
             self.feat_dim = backbone_dim
-        if self.stml_enabled:
-            self.stml_g_dim = backbone_dim if stml_g_dim is None else int(stml_g_dim)
-            if self.stml_g_dim <= 0:
-                raise ValueError("stml_g_dim must be positive")
-            self.embedding_g = nn.Linear(backbone_dim, self.stml_g_dim)
-            nn.init.orthogonal_(self.embedding_g.weight)
-            nn.init.zeros_(self.embedding_g.bias)
-        else:
-            self.stml_g_dim = None
         self.cache_dir = None
         self._cache_stats_lock = threading.Lock()
         self._cache_stats = {
@@ -550,31 +524,10 @@ class DinoWrapper(nn.Module):
             hidden = [features, *hidden]
         return embedding, pre_norm, hidden
 
-    def project_stml_features(self, features):
-        """Return the STML background head g and retrieval head f."""
-
-        if not self.stml_enabled:
-            raise RuntimeError("STML heads are not enabled for this model")
-        retrieval_features = self.fc(features)
-        if self.stml_normalize_student:
-            retrieval_features = F.normalize(retrieval_features, p=2.0, dim=1)
-        return self.embedding_g(features), retrieval_features
-
-    def project_stml_teacher_features(self, features):
-        """Return only the teacher background head g used by STML."""
-
-        if not self.stml_enabled:
-            raise RuntimeError("STML heads are not enabled for this model")
-        return self.embedding_g(features)
 
     def forward(self, images):
         return self.project_features(self.forward_backbone(images))
 
-    def forward_stml(self, images):
-        return self.project_stml_features(self.forward_backbone(images))
-
-    def forward_stml_teacher(self, images):
-        return self.project_stml_teacher_features(self.forward_backbone(images))
 
     def forward_cached(
         self,
@@ -645,72 +598,11 @@ class DinoWrapper(nn.Module):
             cache_size=cache_size,
         )
 
-    def forward_stml_cached(
-        self,
-        images,
-        device,
-        *,
-        cache_key=None,
-        cache_indices=None,
-        cache_size=None,
-    ):
-        """Return both STML heads, optionally from cached backbone features."""
 
-        if torch.is_tensor(images) and images.ndim == 2:
-            return self.project_stml_features(images.to(device, non_blocking=True))
-        if not self.use_cache:
-            return self.forward_stml(images.to(device, non_blocking=True))
-        features = self._load_or_compute_cached_backbone_features(
-            images,
-            device,
-            cache_key=cache_key,
-            cache_indices=cache_indices,
-            cache_size=cache_size,
-        )
-        return self.project_stml_features(features)
+    def forward_eval(self, images, device, **cache_kwargs):
+        """Compatibility alias of :meth:`forward_cached` used by evaluation callers."""
 
-    def forward_stml_teacher_cached(
-        self,
-        images,
-        device,
-        *,
-        cache_key=None,
-        cache_indices=None,
-        cache_size=None,
-    ):
-        """Return teacher g, optionally from cached backbone features."""
-
-        if torch.is_tensor(images) and images.ndim == 2:
-            return self.project_stml_teacher_features(images.to(device, non_blocking=True))
-        if not self.use_cache:
-            return self.forward_stml_teacher(images.to(device, non_blocking=True))
-        features = self._load_or_compute_cached_backbone_features(
-            images,
-            device,
-            cache_key=cache_key,
-            cache_indices=cache_indices,
-            cache_size=cache_size,
-        )
-        return self.project_stml_teacher_features(features)
-
-    def forward_eval(
-        self,
-        images,
-        device,
-        *,
-        cache_key=None,
-        cache_indices=None,
-        cache_size=None,
-    ):
-        """Compatibility alias used by existing evaluation callers."""
-
-        return self.forward_cached(
-            images,
-            device,
-            cache_key=cache_key,
-            cache_indices=cache_indices,
-            cache_size=cache_size,
-        )
+        return self.forward_cached(images, device, **cache_kwargs)
 
     def cache_stats(self):
         with self._cache_stats_lock:

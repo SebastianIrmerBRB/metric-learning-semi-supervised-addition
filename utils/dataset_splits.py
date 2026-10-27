@@ -9,14 +9,10 @@ from torch.utils.data import Subset
 
 from .dataset_composition import CombinedDataset
 from .dataset_constants import (
-    CIFAR100_FINE_CLASS_TO_SUPERCLASS,
-    CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD,
-    CV_MODE_SUPERCLASS_GROUP_KFOLD,
     CV_MODES,
     GROUPED_CV_MODES,
     POST_APPORTION_VAL_RATIO,
     QUERY_GALLERY_EVALUATION,
-    SUPERCLASS_AWARE_CV_MODES,
     VAL_MODE_ALL,
     VAL_MODE_MATCH_TRAIN,
     VAL_MODE_SPLIT_AFTER_APPORTION,
@@ -35,73 +31,6 @@ def subset_dataset_by_classes(dataset, selected_classes):
     # later splitting/sampling code expects one aligned with subset positions.
     subset.labels = labels[np.asarray(indices, dtype=np.int64)].astype(np.int64).tolist()
     return subset
-
-
-def split_cifar_balanced_by_fraction(
-    development_source,
-    test_source,
-    train_fraction,
-    test_fraction,
-    seed,
-):
-    """Select disjoint balanced per-class development and test subsets."""
-
-    labels = np.asarray(development_source.labels, dtype=np.int64)
-    test_labels = np.asarray(test_source.labels, dtype=np.int64)
-    if (
-        len(labels) == 0
-        or len(labels) != len(development_source)
-        or len(test_source) != len(development_source)
-        or not np.array_equal(labels, test_labels)
-    ):
-        raise ValueError("Balanced CIFAR splitting requires aligned non-empty source datasets and labels")
-
-    class_labels, available_counts = np.unique(labels, return_counts=True)
-    balanced_source_per_class = int(np.min(available_counts))
-    train_per_class = int(np.floor(balanced_source_per_class * train_fraction))
-    test_per_class = int(np.floor(balanced_source_per_class * test_fraction))
-    if train_per_class < 1:
-        raise ValueError("cifar_train_fraction is too small to select at least one sample per class")
-    if test_per_class < 1:
-        raise ValueError("cifar_test_fraction is too small to select at least one sample per class")
-    if train_per_class + test_per_class > balanced_source_per_class:
-        raise ValueError("CIFAR balanced train and test selections exceed the available samples per class")
-
-    rng = np.random.default_rng(seed)
-    train_indices = []
-    test_indices = []
-    for class_label in class_labels:
-        class_indices = np.flatnonzero(labels == class_label)
-        class_indices = rng.permutation(class_indices)
-        train_indices.extend(int(index) for index in class_indices[:train_per_class])
-        test_indices.extend(
-            int(index)
-            for index in class_indices[train_per_class : train_per_class + test_per_class]
-        )
-
-    train_indices = sorted(train_indices)
-    test_indices = sorted(test_indices)
-    if set(train_indices) & set(test_indices):
-        raise RuntimeError("Balanced CIFAR train and test sample selections overlap")
-
-    train_val_dataset = subset_dataset_by_indices(development_source, train_indices)
-    test_dataset = subset_dataset_by_indices(test_source, test_indices)
-    return (
-        train_val_dataset,
-        test_dataset,
-        {
-            "requested_train_fraction": float(train_fraction),
-            "requested_test_fraction": float(test_fraction),
-            "realized_train_fraction": float(len(train_val_dataset) / len(development_source)),
-            "realized_test_fraction": float(len(test_dataset) / len(development_source)),
-            "num_classes": int(len(class_labels)),
-            "balanced_source_samples_per_class": balanced_source_per_class,
-            "train_samples_per_class": train_per_class,
-            "test_samples_per_class": test_per_class,
-            "unused_size": int(len(development_source) - len(train_val_dataset) - len(test_dataset)),
-            "seed": int(seed),
-        },
-    )
 
 
 def subset_dataset_by_indices(dataset, indices):
@@ -150,56 +79,6 @@ def split_dataset_by_classes(train_val_dataset, split_ratio=0.8, seed=0):
     assert max(train_dataset.labels) == len(set(train_dataset.orig_labels)) - 1
 
     return train_dataset, val_dataset, train_labels_mapper
-
-
-def split_dataset_by_fixed_classes(train_val_dataset, train_classes, valid_classes):
-    """Create a deterministic class-disjoint split from explicit class IDs."""
-
-    train_classes = set(int(label) for label in train_classes)
-    valid_classes = set(int(label) for label in valid_classes)
-    overlapping_classes = train_classes & valid_classes
-    if overlapping_classes:
-        raise ValueError(
-            "Fixed train and validation class sets overlap: "
-            f"{sorted(overlapping_classes)}"
-        )
-
-    source_classes = set(int(label) for label in train_val_dataset.labels)
-    assigned_classes = train_classes | valid_classes
-    missing_classes = source_classes - assigned_classes
-    unavailable_classes = assigned_classes - source_classes
-    if missing_classes or unavailable_classes:
-        raise ValueError(
-            "Fixed train/validation classes must partition the source classes; "
-            f"unassigned source classes={sorted(missing_classes)}, "
-            f"unavailable requested classes={sorted(unavailable_classes)}"
-        )
-
-    train_indices = [
-        index
-        for index, label in enumerate(train_val_dataset.labels)
-        if int(label) in train_classes
-    ]
-    valid_indices = [
-        index
-        for index, label in enumerate(train_val_dataset.labels)
-        if int(label) in valid_classes
-    ]
-    return make_train_valid_subsets(train_val_dataset, train_indices, valid_indices)
-
-
-def split_dataset_by_classes_superclass_balanced(train_val_dataset, split_ratio=0.8, seed=0):
-    """Create a CIFAR-100 class holdout that keeps every superclass in train."""
-
-    labels = np.asarray(train_val_dataset.labels, dtype=np.int64)
-    superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
-    train_indices, val_indices = split_positions_superclass_balanced_holdout(
-        labels=labels,
-        superclass_labels=superclass_labels,
-        split_ratio=split_ratio,
-        seed=seed,
-    )
-    return make_train_valid_subsets(train_val_dataset, train_indices, val_indices)
 
 
 def derive_query_gallery_indices(labels, gallery_fraction, seed):
@@ -325,6 +204,48 @@ def apply_validation_mode(dataset_bundle, val_mode, target_train_size, target_tr
     return dataset_bundle
 
 
+def rebuild_train_valid_subsets(
+    dataset_bundle,
+    original_train_dataset,
+    old_indices,
+    remaining_train_positions,
+    valid_positions,
+    train_labeled_positions,
+    train_unlabeled_positions,
+):
+    """Replace the bundle's train/validation subsets cut from old-subset positions.
+
+    Returns the SSL split remapped onto the rebuilt train subset, which is what
+    callers must address from now on.
+    """
+
+    old_to_new_position = {
+        int(old_position): int(new_position)
+        for new_position, old_position in enumerate(remaining_train_positions)
+    }
+    # Stable source-dataset indices, not old-subset positions, define the subsets.
+    train_dataset, valid_dataset, train_labels_mapper = make_train_valid_subsets(
+        original_train_dataset.dataset,
+        old_indices[remaining_train_positions].tolist(),
+        old_indices[valid_positions].tolist(),
+    )
+    # Reattach deterministic feature extraction behavior that is not provided
+    # automatically by torch Subset.
+    feature_transform = getattr(original_train_dataset, "feature_transform", None)
+    if feature_transform is not None:
+        train_dataset.feature_transform = feature_transform
+        set_nested_transform(valid_dataset, feature_transform)
+    # Replace the bundle as one unit so its datasets and dense label mapping
+    # remain consistent.
+    dataset_bundle.train_dataset = train_dataset
+    dataset_bundle.valid_dataset = valid_dataset
+    dataset_bundle.train_labels_mapper = train_labels_mapper
+    return (
+        remap_positions(train_labeled_positions, old_to_new_position),
+        remap_positions(train_unlabeled_positions, old_to_new_position),
+    )
+
+
 def apply_post_apportion_validation_split(
     dataset_bundle,
     labeled_positions=None,
@@ -402,40 +323,15 @@ def apply_post_apportion_validation_split(
             "Post-apportion validation split produced overlapping train/validation classes: "
             f"{sorted(overlapping_labels)}"
         )
-    # remaining_train_positions address the old subset.  Build a translation
-    # table before replacing it so callers can keep using their split arrays.
-    old_to_new_position = {
-        int(old_position): int(new_position)
-        for new_position, old_position in enumerate(remaining_train_positions)
-    }
-
-    # Convert old-subset positions to stable source-dataset indices before
-    # constructing replacement train/validation subsets.
-    train_indices = old_indices[remaining_train_positions].tolist()
-    valid_indices = old_indices[valid_positions].tolist()
-    train_dataset, valid_dataset, train_labels_mapper = make_train_valid_subsets(
-        original_train_dataset.dataset,
-        train_indices,
-        valid_indices,
+    remapped_labeled_positions, remapped_unlabeled_positions = rebuild_train_valid_subsets(
+        dataset_bundle,
+        original_train_dataset,
+        old_indices,
+        remaining_train_positions,
+        valid_positions,
+        train_labeled_positions,
+        train_unlabeled_positions,
     )
-
-    # Reattach deterministic feature extraction behavior that is not provided
-    # automatically by torch Subset.
-    feature_transform = getattr(original_train_dataset, "feature_transform", None)
-    if feature_transform is not None:
-        train_dataset.feature_transform = feature_transform
-        set_nested_transform(valid_dataset, feature_transform)
-
-    # Replace the bundle as one unit so its datasets and dense label mapping
-    # remain consistent.
-    dataset_bundle.train_dataset = train_dataset
-    dataset_bundle.valid_dataset = valid_dataset
-    dataset_bundle.train_labels_mapper = train_labels_mapper
-
-    # The caller's SSL split must now address the rebuilt train subset, not the
-    # old positions used to create validation.
-    remapped_labeled_positions = remap_positions(train_labeled_positions, old_to_new_position)
-    remapped_unlabeled_positions = remap_positions(train_unlabeled_positions, old_to_new_position)
     update_post_apportion_validation_info(
         dataset_bundle=dataset_bundle,
         val_ratio=val_ratio,
@@ -478,8 +374,8 @@ def apply_apportioned_cross_validation_split(
 ):
     """Apply CV to the labeled budget, exclude leakage, and remap positions.
 
-    Grouped modes hold out entire classes (or superclasses), so matching
-    unlabeled samples must also be excluded. Non-grouped modes only exclude the
+    Grouped modes hold out entire classes, so matching unlabeled samples must
+    also be excluded. Non-grouped modes only exclude the
     exact validation positions.
     """
 
@@ -488,16 +384,6 @@ def apply_apportioned_cross_validation_split(
     original_train_dataset = dataset_bundle.train_dataset
     labels = np.asarray(original_train_dataset.labels, dtype=np.int64)
     old_indices = np.asarray(original_train_dataset.indices, dtype=np.int64)
-    if cv_mode in SUPERCLASS_AWARE_CV_MODES:
-        original_labels = getattr(original_train_dataset, "orig_labels", None)
-        if original_labels is None:
-            raise ValueError(
-                f"{cv_mode} requires original CIFAR-100 "
-                "fine labels on the training subset"
-            )
-        superclass_labels = cifar100_superclass_labels_for_fine_labels(original_labels)
-    else:
-        superclass_labels = None
 
     if labeled_positions is None:
         # Without a label budget, every training position participates in CV.
@@ -518,27 +404,10 @@ def apply_apportioned_cross_validation_split(
         cv_fold=cv_fold,
         cv_mode=cv_mode,
         seed=seed,
-        superclass_labels=superclass_labels,
     )
     valid_position_set = set(int(position) for position in valid_positions)
     valid_labels = set(int(label) for label in labels[valid_positions])
-    if cv_mode == CV_MODE_SUPERCLASS_GROUP_KFOLD:
-        valid_superclasses = set(
-            int(superclass)
-            for superclass in superclass_labels[valid_positions]
-        )
-        # Reserve complete superclasses even when the labeled support omitted
-        # some fine classes from a held-out superclass.
-        train_unlabeled_positions = np.asarray(
-            [
-                int(position)
-                for position in unlabeled_positions
-                if int(superclass_labels[int(position)]) not in valid_superclasses
-            ],
-            dtype=np.int64,
-        )
-    elif cv_mode in GROUPED_CV_MODES:
-        valid_superclasses = None
+    if cv_mode in GROUPED_CV_MODES:
         # Keeping unlabeled samples from a held-out class would leak validation
         # class information into SSL training.
         train_unlabeled_positions = np.asarray(
@@ -550,7 +419,6 @@ def apply_apportioned_cross_validation_split(
             dtype=np.int64,
         )
     else:
-        valid_superclasses = None
         # Sample-level CV permits other samples from a validation sample's class
         # in training, but the exact held-out positions must still be excluded.
         train_unlabeled_positions = np.asarray(
@@ -578,45 +446,15 @@ def apply_apportioned_cross_validation_split(
                 "Grouped cross-validation produced overlapping train/validation classes: "
                 f"{sorted(overlapping_labels)}"
             )
-        if valid_superclasses is not None:
-            train_superclasses = set(
-                int(superclass)
-                for superclass in superclass_labels[remaining_train_positions]
-            )
-            overlapping_superclasses = train_superclasses & valid_superclasses
-            if overlapping_superclasses:
-                raise RuntimeError(
-                    "Superclass-grouped cross-validation produced overlapping "
-                    "train/validation superclasses: "
-                    f"{sorted(overlapping_superclasses)}"
-                )
-    # Translate old-subset positions into positions in the rebuilt train set.
-    old_to_new_position = {
-        int(old_position): int(new_position)
-        for new_position, old_position in enumerate(remaining_train_positions)
-    }
-
-    # Convert old-subset positions to source indices before making new subsets.
-    train_indices = old_indices[remaining_train_positions].tolist()
-    valid_indices = old_indices[valid_positions].tolist()
-    train_dataset, valid_dataset, train_labels_mapper = make_train_valid_subsets(
-        original_train_dataset.dataset,
-        train_indices,
-        valid_indices,
+    remapped_labeled_positions, remapped_unlabeled_positions = rebuild_train_valid_subsets(
+        dataset_bundle,
+        original_train_dataset,
+        old_indices,
+        remaining_train_positions,
+        valid_positions,
+        train_labeled_positions,
+        train_unlabeled_positions,
     )
-
-    feature_transform = getattr(original_train_dataset, "feature_transform", None)
-    if feature_transform is not None:
-        train_dataset.feature_transform = feature_transform
-        set_nested_transform(valid_dataset, feature_transform)
-
-    dataset_bundle.train_dataset = train_dataset
-    dataset_bundle.valid_dataset = valid_dataset
-    dataset_bundle.train_labels_mapper = train_labels_mapper
-
-    # Return positions aligned to the newly rebuilt training subset.
-    remapped_labeled_positions = remap_positions(train_labeled_positions, old_to_new_position)
-    remapped_unlabeled_positions = remap_positions(train_unlabeled_positions, old_to_new_position)
     update_apportioned_cross_validation_info(
         dataset_bundle=dataset_bundle,
         cv_k=cv_k,
@@ -633,12 +471,7 @@ def apply_apportioned_cross_validation_split(
         valid_size=len(valid_positions),
         valid_num_classes=count_labels_at_positions(labels, valid_positions),
     )
-    if cv_mode == CV_MODE_SUPERCLASS_GROUP_KFOLD:
-        validation_exclusion_unit = "superclasses"
-    elif cv_mode in GROUPED_CV_MODES:
-        validation_exclusion_unit = "classes"
-    else:
-        validation_exclusion_unit = "positions"
+    validation_exclusion_unit = "classes" if cv_mode in GROUPED_CV_MODES else "positions"
     logger.info(
         "Validation mode split_after_apportion with CV: "
         f"split {len(apportioned_positions)} apportioned labeled samples across "
@@ -714,249 +547,7 @@ def split_positions_stratified_by_label(positions, labels, val_ratio, seed):
     )
 
 
-def cifar100_superclass_labels_for_fine_labels(fine_labels):
-    fine_labels = np.asarray(fine_labels, dtype=np.int64)
-    unknown_labels = sorted(set(int(label) for label in fine_labels) - set(CIFAR100_FINE_CLASS_TO_SUPERCLASS))
-    if unknown_labels:
-        raise ValueError(
-            "Superclass-aware splitting requires CIFAR-100 fine class labels; "
-            f"got unknown labels {unknown_labels[:10]}"
-        )
-    return np.asarray(
-        [CIFAR100_FINE_CLASS_TO_SUPERCLASS[int(label)] for label in fine_labels],
-        dtype=np.int64,
-    )
-
-
-def build_class_groups_by_superclass(labels, superclass_labels):
-    labels = np.asarray(labels, dtype=np.int64)
-    superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
-    if len(labels) != len(superclass_labels):
-        raise ValueError("labels and superclass_labels must have the same length")
-
-    group_positions = {}
-    group_to_superclass = {}
-    for position, (label, superclass) in enumerate(zip(labels, superclass_labels)):
-        label = int(label)
-        superclass = int(superclass)
-        group_positions.setdefault(label, []).append(position)
-        previous_superclass = group_to_superclass.setdefault(label, superclass)
-        if previous_superclass != superclass:
-            raise ValueError(
-                "Superclass-aware splitting requires each class group to belong "
-                f"to exactly one superclass; class {label} maps to both "
-                f"{previous_superclass} and {superclass}"
-            )
-    return group_positions, group_to_superclass
-
-
-def split_positions_superclass_balanced_holdout(
-    labels,
-    superclass_labels,
-    split_ratio=0.8,
-    seed=0,
-    max_attempts=1000,
-):
-    """Class-disjoint holdout that leaves each represented superclass in train."""
-
-    if not 0 < split_ratio < 1:
-        raise ValueError(f"split_ratio must be in (0, 1), got {split_ratio}")
-
-    labels = np.asarray(labels, dtype=np.int64)
-    group_positions, group_to_superclass = build_class_groups_by_superclass(labels, superclass_labels)
-    total_groups = len(group_positions)
-    target_train_groups = int(total_groups * split_ratio)
-    target_val_groups = total_groups - target_train_groups
-    if target_train_groups <= 0 or target_val_groups <= 0:
-        raise ValueError(
-            "class holdout requires at least one training class and one validation class; "
-            f"got {target_train_groups} train and {target_val_groups} validation classes"
-        )
-
-    groups_by_superclass = {}
-    for group, superclass in group_to_superclass.items():
-        groups_by_superclass.setdefault(int(superclass), []).append(int(group))
-    max_val_groups_by_superclass = {
-        int(superclass): max(0, len(groups) - 1)
-        for superclass, groups in groups_by_superclass.items()
-    }
-    max_total_val_groups = sum(max_val_groups_by_superclass.values())
-    if target_val_groups > max_total_val_groups:
-        raise ValueError(
-            "Cannot build a superclass-balanced holdout with the requested split_ratio: "
-            f"need {target_val_groups} validation classes but can hold out at most "
-            f"{max_total_val_groups} while preserving every represented superclass in training"
-        )
-
-    group_items = [
-        (int(group), int(group_to_superclass[group]), len(group_positions[group]))
-        for group in sorted(group_positions)
-    ]
-    for attempt in range(max_attempts):
-        rng = np.random.default_rng(seed + attempt)
-        val_groups = set()
-        val_superclass_counts = {}
-        shuffled_items = [group_items[int(index)] for index in rng.permutation(len(group_items))]
-
-        for group, superclass, _group_size in shuffled_items:
-            if len(val_groups) >= target_val_groups:
-                break
-            superclass_count = val_superclass_counts.get(superclass, 0)
-            if superclass_count >= max_val_groups_by_superclass[superclass]:
-                continue
-            val_groups.add(group)
-            val_superclass_counts[superclass] = superclass_count + 1
-
-        if len(val_groups) == target_val_groups:
-            break
-    else:
-        raise RuntimeError(
-            "Could not build superclass-balanced class holdout after "
-            f"{max_attempts} attempts"
-        )
-
-    val_positions = []
-    for group in sorted(val_groups):
-        val_positions.extend(group_positions[int(group)])
-    val_positions = np.asarray(sorted(val_positions), dtype=np.int64)
-    val_position_set = set(int(position) for position in val_positions)
-    all_positions = np.arange(len(labels), dtype=np.int64)
-    train_positions = np.asarray(
-        [int(position) for position in all_positions if int(position) not in val_position_set],
-        dtype=np.int64,
-    )
-
-    train_superclasses = set(int(superclass) for superclass in np.asarray(superclass_labels)[train_positions])
-    missing_superclasses = set(groups_by_superclass) - train_superclasses
-    if missing_superclasses:
-        raise RuntimeError(
-            "Superclass-balanced holdout failed to preserve training superclasses: "
-            f"{sorted(missing_superclasses)}"
-        )
-    return train_positions, val_positions
-
-
-def make_superclass_balanced_group_folds(labels, superclass_labels, cv_k, seed=0, max_attempts=1000):
-    """Grouped folds that preserve at least one fine class per superclass in train."""
-
-    labels = np.asarray(labels, dtype=np.int64)
-    superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
-    if cv_k <= 1:
-        raise ValueError("cv_k must be greater than 1 for cross-validation")
-
-    group_positions, group_to_superclass = build_class_groups_by_superclass(labels, superclass_labels)
-
-    if cv_k > len(group_positions):
-        raise ValueError(
-            f"grouped cross-validation requires cv_k <= number of groups/classes ({len(group_positions)})"
-        )
-
-    groups_by_superclass = {}
-    for group, superclass in group_to_superclass.items():
-        groups_by_superclass.setdefault(int(superclass), []).append(int(group))
-
-    max_val_groups_by_superclass = {}
-    for superclass, groups in groups_by_superclass.items():
-        if len(groups) < 2:
-            raise ValueError(
-                f"{CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD} requires at least two selected "
-                f"fine classes per superclass; superclass {superclass} has {len(groups)}"
-            )
-        max_val_groups_by_superclass[int(superclass)] = len(groups) - 1
-
-    group_items = [
-        (int(group), int(group_to_superclass[group]), len(group_positions[group]))
-        for group in sorted(group_positions)
-    ]
-    total_groups = len(group_items)
-    base_fold_groups = total_groups // cv_k
-    fold_group_remainder = total_groups % cv_k
-    target_group_counts = [
-        base_fold_groups + (1 if fold < fold_group_remainder else 0)
-        for fold in range(cv_k)
-    ]
-
-    for attempt in range(max_attempts):
-        rng = np.random.default_rng(seed + attempt)
-        val_groups_by_fold = [set() for _ in range(cv_k)]
-        fold_group_counts = [0 for _ in range(cv_k)]
-        fold_sample_counts = [0 for _ in range(cv_k)]
-        fold_superclass_counts = [dict() for _ in range(cv_k)]
-        shuffled_items = [group_items[int(index)] for index in rng.permutation(len(group_items))]
-
-        for group, superclass, group_size in shuffled_items:
-            eligible_folds = []
-            for fold in range(cv_k):
-                superclass_count = fold_superclass_counts[fold].get(superclass, 0)
-                if (
-                    fold_group_counts[fold] < target_group_counts[fold]
-                    and superclass_count < max_val_groups_by_superclass[superclass]
-                ):
-                    eligible_folds.append(fold)
-            if not eligible_folds:
-                break
-
-            fold_tiebreakers = rng.random(len(eligible_folds))
-            selected_fold = min(
-                zip(eligible_folds, fold_tiebreakers),
-                key=lambda item: (
-                    fold_sample_counts[item[0]],
-                    fold_group_counts[item[0]],
-                    item[1],
-                ),
-            )[0]
-            val_groups_by_fold[selected_fold].add(group)
-            fold_group_counts[selected_fold] += 1
-            fold_sample_counts[selected_fold] += group_size
-            fold_superclass_counts[selected_fold][superclass] = (
-                fold_superclass_counts[selected_fold].get(superclass, 0) + 1
-            )
-        else:
-            if fold_group_counts == target_group_counts:
-                break
-    else:
-        raise RuntimeError(
-            f"Could not build {CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD} folds after "
-            f"{max_attempts} attempts"
-        )
-
-    all_positions = np.arange(len(labels), dtype=np.int64)
-    folds = []
-    for val_groups in val_groups_by_fold:
-        val_positions = []
-        for group in sorted(val_groups):
-            val_positions.extend(group_positions[int(group)])
-        val_positions = np.asarray(sorted(val_positions), dtype=np.int64)
-        val_position_set = set(int(position) for position in val_positions)
-        train_positions = np.asarray(
-            [int(position) for position in all_positions if int(position) not in val_position_set],
-            dtype=np.int64,
-        )
-        folds.append((train_positions, val_positions))
-    return folds
-
-
-def make_superclass_group_folds(labels, superclass_labels, cv_k, seed=0):
-    """Create GroupKFold splits whose groups are complete superclasses."""
-
-    labels = np.asarray(labels, dtype=np.int64)
-    superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
-    if len(labels) != len(superclass_labels):
-        raise ValueError("labels and superclass_labels must have the same length")
-
-    # Guard against accidentally supplying inconsistent fine-to-coarse labels.
-    build_class_groups_by_superclass(labels, superclass_labels)
-    validate_group_cv(superclass_labels, cv_k)
-    indices = np.arange(len(labels), dtype=np.int64)
-    # Shuffling rotates which superclasses are held out per seed; the canonical
-    # FC100 holdout is built from fixed class constants and is unaffected.
-    splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-    return list(splitter.split(indices, labels, groups=superclass_labels))
-
-
-def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, seed=0, superclass_labels=None):
-    """Split only the supplied subset positions using the requested CV policy."""
-
+def validate_cross_validation_request(cv_k, cv_fold, cv_mode):
     if cv_mode not in CV_MODES:
         raise ValueError(f"cv_mode must be one of {CV_MODES}: {cv_mode}")
     if cv_k <= 1:
@@ -966,6 +557,38 @@ def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, 
     if not 0 <= cv_fold < cv_k:
         raise ValueError(f"cv_fold must be in [0, {cv_k - 1}], got {cv_fold}")
 
+
+def select_cross_validation_fold(indices, labels, cv_k, cv_fold, cv_mode, seed):
+    """Return the ``cv_fold``-th (train, validation) offsets into ``indices``.
+
+    Class IDs serve as the groups of the grouped modes, so those hold out entire
+    classes. Every mode shuffles, so the class-to-fold assignment follows the
+    seed rather than being identical for every seed.
+    """
+
+    if cv_mode == "kfold":
+        # Plain KFold balances sample counts without considering class labels.
+        folds = KFold(n_splits=cv_k, shuffle=True, random_state=seed).split(indices)
+    elif cv_mode == "stratified_kfold":
+        # Preserve class proportions, while allowing each class on both sides.
+        validate_stratified_cv(labels, cv_k)
+        folds = StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed).split(indices, labels)
+    elif cv_mode in ("group_kfold", "stratified_group_kfold"):
+        # Every class appears in exactly one validation fold; the stratified
+        # variant also tries to balance fold sample counts.
+        validate_group_cv(labels, cv_k)
+        splitter_class = GroupKFold if cv_mode == "group_kfold" else StratifiedGroupKFold
+        splitter = splitter_class(n_splits=cv_k, shuffle=True, random_state=seed)
+        folds = splitter.split(indices, labels, groups=labels)
+    else:
+        raise ValueError(f"Unsupported cv_mode: {cv_mode}")
+    return list(folds)[cv_fold]
+
+
+def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, seed=0):
+    """Split only the supplied subset positions using the requested CV policy."""
+
+    validate_cross_validation_request(cv_k, cv_fold, cv_mode)
     positions = np.asarray(positions, dtype=np.int64)
     if len(positions) < cv_k:
         raise ValueError(
@@ -974,71 +597,12 @@ def split_positions_cross_validation(positions, labels, cv_k, cv_fold, cv_mode, 
         )
 
     # sklearn splitters return offsets into this local positions array, not
-    # positions in the original training subset.
-    selected_labels = np.asarray(labels, dtype=np.int64)[positions]
-    if superclass_labels is None:
-        selected_superclass_labels = None
-    else:
-        superclass_labels = np.asarray(superclass_labels, dtype=np.int64)
-        if len(superclass_labels) != len(labels):
-            raise ValueError("superclass_labels must be aligned with labels")
-        selected_superclass_labels = superclass_labels[positions]
-    local_indices = np.arange(len(positions))
-    # Using labels as groups makes GroupKFold variants hold out entire classes.
-    groups = selected_labels
-
-    if cv_mode == "kfold":
-        # Plain KFold balances sample counts without considering class labels.
-        splitter = KFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(local_indices)
-    elif cv_mode == "group_kfold":
-        # Every class appears in exactly one validation fold. Shuffling makes the
-        # class-to-fold assignment depend on the seed; without it the split is
-        # identical for every seed.
-        validate_group_cv(selected_labels, cv_k)
-        splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(local_indices, selected_labels, groups=groups)
-    elif cv_mode == "stratified_kfold":
-        # Preserve class proportions, while allowing each class on both sides.
-        validate_stratified_cv(selected_labels, cv_k)
-        splitter = StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(local_indices, selected_labels)
-    elif cv_mode == "stratified_group_kfold":
-        # Hold out entire classes while trying to balance fold sample counts.
-        validate_group_cv(selected_labels, cv_k)
-        splitter = StratifiedGroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(local_indices, selected_labels, groups=groups)
-    elif cv_mode == CV_MODE_SUPERCLASS_GROUP_KFOLD:
-        if selected_superclass_labels is None:
-            raise ValueError(
-                f"{CV_MODE_SUPERCLASS_GROUP_KFOLD} requires superclass_labels "
-                "aligned with labels"
-            )
-        folds = make_superclass_group_folds(
-            labels=selected_labels,
-            superclass_labels=selected_superclass_labels,
-            cv_k=cv_k,
-            seed=seed,
-        )
-    elif cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
-        if selected_superclass_labels is None:
-            raise ValueError(
-                f"{CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD} requires superclass_labels "
-                "aligned with labels"
-            )
-        validate_group_cv(selected_labels, cv_k)
-        folds = make_superclass_balanced_group_folds(
-            labels=selected_labels,
-            superclass_labels=selected_superclass_labels,
-            cv_k=cv_k,
-            seed=seed,
-        )
-    else:
-        raise ValueError(f"Unsupported cv_mode: {cv_mode}")
-
-    # Select the requested fold, then map local splitter offsets back through
+    # positions in the original training subset; they are mapped back through
     # positions into the original training-subset coordinate system.
-    train_local_positions, valid_local_positions = list(folds)[cv_fold]
+    selected_labels = np.asarray(labels, dtype=np.int64)[positions]
+    train_local_positions, valid_local_positions = select_cross_validation_fold(
+        np.arange(len(positions)), selected_labels, cv_k, cv_fold, cv_mode, seed
+    )
     return (
         np.asarray(sorted(int(position) for position in positions[train_local_positions]), dtype=np.int64),
         np.asarray(sorted(int(position) for position in positions[valid_local_positions]), dtype=np.int64),
@@ -1265,11 +829,7 @@ def update_apportioned_cross_validation_info(
         "train_unlabeled_size": int(train_unlabeled_size),
         "excluded_unlabeled_size": int(excluded_unlabeled_size),
         "unlabeled_exclusion_scope": (
-            "validation_superclasses"
-            if cv_mode == CV_MODE_SUPERCLASS_GROUP_KFOLD
-            else "validation_classes"
-            if cv_mode in GROUPED_CV_MODES
-            else "validation_positions"
+            "validation_classes" if cv_mode in GROUPED_CV_MODES else "validation_positions"
         ),
         "valid_size": int(valid_size),
         "valid_num_classes": int(valid_num_classes),
@@ -1296,63 +856,19 @@ def make_holdout_split_info(train_val_dataset, train_dataset, valid_dataset, val
 def split_dataset_cross_validation(train_val_dataset, cv_k, cv_fold, cv_mode, seed=0):
     """Create one train/validation fold from the complete development dataset."""
 
-    if cv_mode not in CV_MODES:
-        raise ValueError(f"cv_mode must be one of {CV_MODES}: {cv_mode}")
-    if cv_k <= 1:
-        raise ValueError("cv_k must be greater than 1 for cross-validation")
-    if cv_fold is None:
-        raise ValueError("cv_fold must be set for cross-validation")
-    if not 0 <= cv_fold < cv_k:
-        raise ValueError(f"cv_fold must be in [0, {cv_k - 1}], got {cv_fold}")
-
+    validate_cross_validation_request(cv_k, cv_fold, cv_mode)
     # Here indices and positions are identical because splitting begins from the
     # complete development dataset rather than an existing Subset.
     labels = np.asarray(train_val_dataset.labels)
     indices = np.arange(len(labels))
-    # Treat class IDs as groups for class-disjoint CV modes.
-    groups = labels
-
-    if cv_mode == "kfold":
-        splitter = KFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(indices)
-    elif cv_mode == "group_kfold":
-        validate_group_cv(labels, cv_k)
-        splitter = GroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(indices, labels, groups=groups)
-    elif cv_mode == "stratified_kfold":
-        validate_stratified_cv(labels, cv_k)
-        splitter = StratifiedKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(indices, labels)
-    elif cv_mode == "stratified_group_kfold":
-        validate_group_cv(labels, cv_k)
-        splitter = StratifiedGroupKFold(n_splits=cv_k, shuffle=True, random_state=seed)
-        folds = splitter.split(indices, labels, groups=groups)
-    elif cv_mode == CV_MODE_SUPERCLASS_GROUP_KFOLD:
-        superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
-        folds = make_superclass_group_folds(
-            labels=labels,
-            superclass_labels=superclass_labels,
-            cv_k=cv_k,
-            seed=seed,
-        )
-    elif cv_mode == CV_MODE_SUPERCLASS_BALANCED_GROUP_KFOLD:
-        validate_group_cv(labels, cv_k)
-        superclass_labels = cifar100_superclass_labels_for_fine_labels(labels)
-        folds = make_superclass_balanced_group_folds(
-            labels=labels,
-            superclass_labels=superclass_labels,
-            cv_k=cv_k,
-            seed=seed,
-        )
-    else:
-        raise ValueError(f"Unsupported cv_mode: {cv_mode}")
-
-    # sklearn yields offsets; map them through indices for consistency with
-    # helper functions that may eventually operate on nontrivial index arrays.
-    train_positions, val_positions = list(folds)[cv_fold]
-    train_indices = indices[train_positions].tolist()
-    val_indices = indices[val_positions].tolist()
-    return make_train_valid_subsets(train_val_dataset, train_indices, val_indices)
+    train_positions, val_positions = select_cross_validation_fold(
+        indices, labels, cv_k, cv_fold, cv_mode, seed
+    )
+    return make_train_valid_subsets(
+        train_val_dataset,
+        indices[train_positions].tolist(),
+        indices[val_positions].tolist(),
+    )
 
 
 def validate_group_cv(labels, cv_k):

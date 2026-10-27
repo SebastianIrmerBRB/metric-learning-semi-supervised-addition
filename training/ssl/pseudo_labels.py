@@ -10,6 +10,9 @@ from .config import PSEUDO_LABEL_DIAGNOSTICS_MODES, PseudoLabelResult
 from .data import RelabeledSubset
 
 
+PSEUDO_LABEL_ARRAY_DIR = "pseudo_labels"
+
+
 class PseudoLabelDiagnosticsTracker:
     """Track pseudo-label quality, distribution, and stability diagnostics."""
 
@@ -20,6 +23,8 @@ class PseudoLabelDiagnosticsTracker:
             )
         self.mode = mode
         self.path = Path(log_dir) / "pseudo_label_diagnostics.jsonl" if mode == "save" else None
+        # Every generation's labels as arrays, for the embedding viewer.
+        self.array_dir = Path(log_dir) / PSEUDO_LABEL_ARRAY_DIR if mode == "save" else None
         self.previous_raw = None
         self.previous_accepted = None
         self.generation_index = 0
@@ -28,6 +33,8 @@ class PseudoLabelDiagnosticsTracker:
         true_labels = np.asarray(train_dataset.labels, dtype=np.int64)
         raw_summary = summarize_pseudo_label_result(raw_pseudo_labels, true_labels)
         accepted_summary = summarize_pseudo_label_result(accepted_pseudo_labels, true_labels)
+        raw_summary["pairs"] = pseudo_label_pair_statistics(raw_pseudo_labels, true_labels)
+        accepted_summary["pairs"] = pseudo_label_pair_statistics(accepted_pseudo_labels, true_labels)
         raw_changes = summarize_pseudo_label_changes(self.previous_raw, raw_pseudo_labels)
         accepted_changes = summarize_pseudo_label_changes(self.previous_accepted, accepted_pseudo_labels)
 
@@ -49,6 +56,11 @@ class PseudoLabelDiagnosticsTracker:
         if self.path is not None:
             with self.path.open("a") as jsonl_file:
                 jsonl_file.write(json.dumps(record, sort_keys=True) + "\n")
+        if self.array_dir is not None:
+            try:
+                self._save_arrays(raw_pseudo_labels, accepted_pseudo_labels, epoch, true_labels)
+            except Exception as exc:  # pragma: no cover - diagnostics must not stop training
+                logger.warning(f"Pseudo-label arrays were not saved: {exc}")
 
         accepted_correctness = accepted_summary.get("confidence_correctness")
         accepted_auc = (
@@ -67,6 +79,74 @@ class PseudoLabelDiagnosticsTracker:
         self.previous_raw = pseudo_labels_to_position_map(raw_pseudo_labels)
         self.previous_accepted = pseudo_labels_to_position_map(accepted_pseudo_labels)
         self.generation_index += 1
+
+    def _save_arrays(self, raw_pseudo_labels, accepted_pseudo_labels, epoch, true_labels=None):
+        """``generation_<n>_epoch_<e>.npz``: every raw prediction and which of them were accepted.
+
+        Positions index the training subset, labels are mapped labels, and the
+        accepted confidences are the ones filtering kept (before any
+        method-specific training weight).
+        """
+
+        self.array_dir.mkdir(parents=True, exist_ok=True)
+        epoch_text = "none" if epoch is None else f"{int(epoch):04d}"
+        np.savez_compressed(
+            self.array_dir / f"generation_{self.generation_index:03d}_epoch_{epoch_text}.npz",
+            positions=np.asarray(raw_pseudo_labels.positions, dtype=np.int64),
+            labels=np.asarray(raw_pseudo_labels.mapped_labels, dtype=np.int64),
+            confidences=_optional_confidences(raw_pseudo_labels),
+            accepted_positions=np.asarray(accepted_pseudo_labels.positions, dtype=np.int64),
+            accepted_labels=np.asarray(accepted_pseudo_labels.mapped_labels, dtype=np.int64),
+            accepted_confidences=_optional_confidences(accepted_pseudo_labels),
+            generation=np.int64(self.generation_index),
+            epoch=np.int64(-1 if epoch is None else int(epoch)),
+            # Hidden labels of the same positions, for offline audits only.
+            **({} if true_labels is None else {
+                "true_labels": true_labels[np.asarray(raw_pseudo_labels.positions, dtype=np.int64)],
+                "accepted_true_labels": true_labels[np.asarray(accepted_pseudo_labels.positions, dtype=np.int64)],
+            }),
+        )
+
+
+def pseudo_label_pair_statistics(pseudo_labels, true_labels):
+    """What the pseudo-labels do to the pairs a metric loss trains on.
+
+    Among the pseudo-labeled samples, a pair is pseudo-positive when both carry the
+    same pseudo-label. ``pair_precision`` is the share of pseudo-positive pairs that
+    are truly same-class, ``pair_recall`` the share of truly same-class pairs that
+    became pseudo-positive, and ``positive_pair_share`` the share of all pairs that
+    are pseudo-positive. Counted exactly from the (pseudo, true) confusion counts.
+    """
+
+    positions = np.asarray(pseudo_labels.positions, dtype=np.int64)
+    if len(positions) < 2:
+        return {"count": int(len(positions))}
+    predicted = np.asarray(pseudo_labels.mapped_labels, dtype=np.int64)
+    truth = np.asarray(true_labels, dtype=np.int64)[positions]
+
+    def pairs(counts):
+        counts = np.asarray(counts, dtype=np.float64)
+        return float(np.sum(counts * (counts - 1.0) / 2.0))
+
+    _, joint = np.unique(np.stack([predicted, truth], axis=1), axis=0, return_counts=True)
+    _, predicted_counts = np.unique(predicted, return_counts=True)
+    _, true_counts = np.unique(truth, return_counts=True)
+    true_positive, pseudo_positive, truly_positive = pairs(joint), pairs(predicted_counts), pairs(true_counts)
+    total = len(positions) * (len(positions) - 1) / 2.0
+    return {
+        "count": int(len(positions)),
+        "pseudo_positive_pairs": pseudo_positive,
+        "true_positive_pairs": true_positive,
+        "pair_precision": true_positive / pseudo_positive if pseudo_positive else None,
+        "pair_recall": true_positive / truly_positive if truly_positive else None,
+        "positive_pair_share": pseudo_positive / total,
+    }
+
+
+def _optional_confidences(result):
+    if result.confidences is None:
+        return np.full(len(result.positions), np.nan, dtype=np.float32)
+    return np.asarray(result.confidences, dtype=np.float32)
 
 
 def filter_pseudo_labels(
@@ -446,29 +526,9 @@ def count_values(values):
 
 
 def summarize_numeric_values(values):
-    if values is None:
-        return {
-            "count": 0,
-            "min": None,
-            "p25": None,
-            "median": None,
-            "p75": None,
-            "max": None,
-            "mean": None,
-            "std": None,
-        }
-    values = np.asarray(values, dtype=np.float64)
+    values = np.asarray([] if values is None else values, dtype=np.float64)
     if len(values) == 0:
-        return {
-            "count": 0,
-            "min": None,
-            "p25": None,
-            "median": None,
-            "p75": None,
-            "max": None,
-            "mean": None,
-            "std": None,
-        }
+        return {"count": 0, **dict.fromkeys(("min", "p25", "median", "p75", "max", "mean", "std"))}
     return {
         "count": int(len(values)),
         "min": float(np.min(values)),

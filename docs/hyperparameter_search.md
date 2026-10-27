@@ -68,8 +68,9 @@ Search-wide Optuna settings live at the top level, while tuned parameters live u
 Top-level fields:
 
 - `enabled`: if `false`, the config is loaded but the script runs a normal single training job.
-- `n_trials`: total number of finished trials desired for the study.
-- `timeout`: optional wall-clock timeout in seconds for the Optuna optimization call.
+- `n_trials`: total number of completed trials desired for the study. Pruned trials are replaced (see `max_replaced_pruned_trials`); failed trials are rerun on resume.
+- `max_replaced_pruned_trials`: how many pruned trials are replaced instead of consuming `n_trials`. `null` (the default) means `n_trials`; pruned trials beyond the limit count toward `n_trials` again, so a region that always prunes cannot draw replacements forever. `0` restores the old budget, in which complete and pruned trials both count. Grid studies always use `0`: a pruned grid point is visited, and a replacement would rerun another point.
+- `timeout`: optional wall-clock timeout in seconds for the whole study run, including rounds that replace pruned trials.
 - `direction`: `maximize` or `minimize`.
 - `metric`: objective metric returned to Optuna.
 - `study_name`: stable Optuna study name and default output folder name.
@@ -113,7 +114,47 @@ Use the reserved `batch_sampler` key when `batch_size` and `sampler_m` must be s
 Its choices are strings formatted as `"batch_size:sampler_m"`, for example `"32:16"`.
 Do not include `batch_size` or `sampler_m` separately when using `batch_sampler`.
 
-For Iscen's `TwoStreamMPerClassBatchSampler`, the top-level
+`ArcFaceLoss` and `ProxyAnchorLoss` can search their two optimizer learning
+rates along an inverse-LR ridge with the HPO-only `base_lr` and `lr_ratio`
+keys. The ratio is model/projection LR divided by classification-loss LR. For
+each trial the runner reconstructs the ordinary training arguments as
+
+```text
+lr            = base_lr * sqrt(lr_ratio)
+classifier_lr = base_lr / sqrt(lr_ratio)
+```
+
+Put these spaces in `per_loss` so other losses retain their ordinary `lr`
+space:
+
+```json
+{
+  "per_loss": {
+    "ArcFaceLoss": {
+      "spaces": {
+        "base_lr": {"type": "float", "low": 5e-4, "high": 2e-2, "log": true},
+        "lr_ratio": {"type": "float", "low": 1e-4, "high": 1e4, "log": true}
+      }
+    },
+    "ProxyAnchorLoss": {
+      "spaces": {
+        "base_lr": {"type": "float", "low": 5e-4, "high": 2e-2, "log": true},
+        "lr_ratio": {"type": "float", "low": 1e-4, "high": 1e4, "log": true}
+      }
+    }
+  }
+}
+```
+
+When this pair is active, inherited independent `lr` and `classifier_lr`
+spaces are removed from the resolved study. The raw `base_lr` and `lr_ratio`
+coordinates remain in Optuna summaries, while each run's resolved arguments
+record the reconstructed optimizer learning rates. A point is pruned before
+training if `lr` falls outside `[1e-5, 0.3]` or `classifier_lr` falls outside
+`[1e-5, 0.5]`. These spaces are removed from studies using other losses.
+
+For `TwoStreamMPerClassBatchSampler` — available to the whole-pool
+`iscen_label_spreading` and `stml_threshold` methods — the top-level
 `labeled_batch_size` HPO key is a convenience alias for
 `ssl_config.labeled_batch_size`. When both it and `batch_sampler` use
 categorical choices, the runner automatically turns their Cartesian product
@@ -140,6 +181,50 @@ With these choices, Optuna sees only the 14 valid pairs. Trial summaries and
 replay parameters expose the expanded `batch_sampler` and
 `labeled_batch_size` values even though the study stores the valid pair as one
 internal categorical parameter.
+
+`ssl_config.class_overlap` is an ordinary categorical SSL key needing no joint
+handling, because both `"independent"` (the default) and `"disjoint"` are valid
+at every sampler size:
+
+```json
+{
+  "ssl_config.class_overlap": {
+    "type": "categorical",
+    "choices": ["independent", "disjoint"]
+  }
+}
+```
+
+It only takes effect once `labeled_batch_size` selects the two-stream sampler.
+See [Iscen / LP-DeepSSL label propagation](iscen_label_spreading.md) for what
+the two modes change.
+
+Crossing the two dimensions this way makes the marginal over batch sizes
+proportional to how many labeled sizes each one can host, which starves the
+small batches. Search the labeled *share* instead with the top-level
+`labeled_batch_fraction` key: a fraction stays valid at every batch size, so it
+is never crossed with `batch_sampler` and every sampler choice keeps the same
+sampling probability.
+
+```json
+{
+  "batch_sampler": {
+    "type": "categorical",
+    "choices": ["32:4", "128:4", "512:8"]
+  },
+  "labeled_batch_fraction": {
+    "type": "categorical",
+    "choices": [0.125, 0.25, 0.5]
+  }
+}
+```
+
+Each trial rounds the fraction to whole `sampler_m` groups of the sampled batch
+size and clamps it so the labeled stream never exceeds the unlabeled one — at
+`batch_size=256, sampler_m=4`, `0.5` gives 128 labeled plus 128 pseudo-labeled.
+Fractions above `0.5` all land on that same half-batch cap, so searching them
+spends trials on duplicate splits. The two keys are aliases for one setting and
+cannot be searched together.
 
 Examples:
 
@@ -219,8 +304,10 @@ For TPE studies, `sampler_before_tpe.pkl` is also written once, immediately afte
 
 For `n_jobs > 1`, model training still runs in Optuna's worker threads, but parameter suggestion is serialized through one shared sampler. Optuna's per-thread sampler reseeding is suppressed, and `sampler.pkl` is atomically refreshed immediately after each trial's complete parameter set has been written to Optuna storage. This makes an interrupted parallel run continue from the saved sampler state instead of starting a newly reseeded sequence.
 
-`n_trials` is interpreted as a total target, not as "run this many more".
-For example, if the database already contains 7 complete or pruned trials and `n_trials` is 20, the next run schedules 13 more trials.
+`n_trials` is interpreted as a total target of completed trials, not as "run this many more".
+For example, if the database already contains 7 complete and 2 pruned trials and `n_trials` is 20, the next run schedules 13 more trials; if any of those are pruned, the same run schedules replacements until 20 trials have completed or `max_replaced_pruned_trials` pruned trials have been replaced.
+A study that finished under the old complete-or-pruned budget is topped up the same way on its next launch. The replacements continue from `sampler.pkl`, so they are the draws an uninterrupted run would have made; nothing already in the study is rerun.
+The TPE startup boundary is unaffected: Optuna counts complete and pruned trials toward `n_startup_trials`, and so does `sampler_before_tpe.pkl`.
 
 Interrupted trials are not resumed from the middle of training.
 If a process stops during an epoch, the next run resets any unfinished Optuna `RUNNING` trials to `WAITING`.
@@ -260,7 +347,7 @@ This command:
 - atomically writes a `sampler.pkl` whose random RNG continues from the old boundary with the new threshold; and
 - removes the old `sampler_before_tpe.pkl` name so the runner can create a new checkpoint at trial 60.
 
-The utility does not edit the source experiment/HPO configuration. Set `tpe_startup_trials` to the reported target before resuming; the runner rejects a loaded TPE sampler whose stored startup threshold disagrees with the current configuration. Because `n_trials` is the total complete/pruned budget, it must be greater than the startup target to run any model-based TPE trials; for 60 random plus 60 TPE trials, use `n_trials: 120`.
+The utility does not edit the source experiment/HPO configuration. Set `tpe_startup_trials` to the reported target before resuming; the runner rejects a loaded TPE sampler whose stored startup threshold disagrees with the current configuration. Because `n_trials` counts completed trials and the startup target counts complete and pruned trials, `n_trials` must be greater than the startup target to run any model-based TPE trials; for 60 random plus 60 TPE trials, use `n_trials: 120` (random-phase pruned trials hand their replacements to TPE).
 
 ## Output Layout
 
@@ -297,7 +384,10 @@ Trial-level files follow the standard training output format:
 
 - `metrics.csv`: batch losses, epoch losses, validation metrics, and test metrics.
 - `run_config.json`: resolved argparse values and resolved SSL config used for that trial.
-- `info.log` and `debug.log`: loguru logs.
+- `info.log`: loguru log. `debug.log` is written only with `--debug_log`.
+- `diagnostics.csv`: written only when a diagnostic category is enabled. The epoch/eval
+  categories need `--log_epoch_diagnostics`; per-batch rows need `--log_batch_diagnostics`
+  or `--ssl_gradient_contribution_log_interval`.
 - `tensorboard/`: TensorBoard event files, including global-step training and
   validation curves plus the epoch-indexed validation analysis dashboard under
   `epoch/valid/`.
@@ -684,19 +774,68 @@ runner:
 
 1. selects the best Optuna trial using the configured validation objective;
 2. reads the validation-selected checkpoint epoch from each fold;
-3. averages the corresponding training epoch counts and rounds to the nearest
-   integer;
+3. aggregates the corresponding training epoch counts into one duration using
+   `--final_epoch_aggregation`;
 4. evaluates the freshly initialized epoch-0 model once on the held-out test
    set, before any optimizer step;
 5. trains one fresh model with the best hyperparameters on the complete
    development/training pool, without validation or early stopping;
 6. evaluates that final model once on the held-out test set.
 
+`--final_epoch_aggregation` accepts `mean` (default; rounded half up), `median`
+(rounded half up on an even fold count, and unaffected by one fold that stopped
+far earlier or later than the rest), or `max` (the longest fold's duration). For
+fold durations `[3, 5, 5, 20]` these give 8, 5, and 20 epochs. The choice, the
+per-fold durations, and the resulting count are recorded in the `epoch_plan`.
+
 For `train_val`, the winning replay's selected epoch supplies the final
 duration. For `cross_seed_train_val`, the winner's selected epoch counts are
-averaged across seed replays and rounded with the same policy as fold CV. Older
-resumed studies that do not contain `selected_epoch` metadata fall back to their
+aggregated across seed replays with the same setting as fold CV. Older resumed
+studies that do not contain `selected_epoch` metadata fall back to their
 recorded `last_epoch` when using direct `final_train`.
+
+#### Skipping the epoch transfer entirely
+
+`--final_fit_mode early_stop_holdout` replaces steps 3, 5, and 6 above: instead
+of transferring a duration, the final fit keeps a class-disjoint validation
+slice out of the development pool, early-stops on it with `--patience`, restores
+the checkpoint that slice selected, and evaluates D_test once. `--epochs` is
+only an upper bound, and `--final_epoch_aggregation` is ignored.
+
+`--holdout_val_ratio` sizes the slice (for example `0.1` instead of the built-in
+`0.2`); leaving it unset keeps the 80/20 split. Those classes are excluded from
+training, so the final model sees less data than a `full_train` fit — that is
+the price of not having to guess an epoch count. The run reports validation
+metrics from its own holdout rather than inheriting the study's, and its
+`epoch_plan` records `fit_mode: early_stop_holdout` with no fixed
+`final_training_epochs`; the realized duration comes from the run's own last
+epoch. A finished run in one fit mode is never reused for a request in the
+other.
+
+#### Testing the folds instead of a final model
+
+`--final_fit_mode cross_validation_folds` replaces steps 3–6 entirely and trains
+no separate final model. It re-runs the winner's folds with test evaluation
+enabled, so each fold early-stops on its own validation partition and that
+fold's selected checkpoint is evaluated on D_test. This reproduces the protocol
+of *A Metric Learning Reality Check* / powerful-benchmarker, and requires
+`cv_k > 1`.
+
+The summary then carries both of the paper's numbers, computed from the same
+`k` models:
+
+- `test_precision_at_1` / `test_mean_average_precision_at_r` are the **mean over
+  folds**, with `test_precision_at_1_std` and
+  `test_mean_average_precision_at_r_std` giving the spread ("Separated").
+- `concatenated_test_precision_at_1` /
+  `concatenated_test_mean_average_precision_at_r` come from joining each test
+  sample's `k` embeddings into one `concatenated_test_embedding_dim` vector and
+  evaluating once ("Concatenated"). Disable with `--no-concatenated_fold_test`,
+  which also stops each fold from writing its `test_embeddings.npz`.
+
+Read `test_precision_at_1` from this mode as an average of `k` models, not as
+one model's score — it is not directly comparable to the single-model number the
+other two modes report.
 
 Each study directory receives:
 
@@ -714,10 +853,39 @@ When `final_test_trial_numbers` is set, each selected trial writes
 `final_evaluation_trial_XXXX.*`, and the combined table is written to
 `final_evaluation_selected_trials.*`.
 
-These files record the best trial and parameters, fold epoch counts, mean and
-rounded final epoch count, final run directory, final train loss, optimizer
-steps, test Precision@1, and test MAP@R. The final run's `diagnostics.csv`
-contains per-class test metrics.
+These files record the best trial and parameters, fold epoch counts, the fit
+mode and epoch aggregation, the aggregated and final epoch count, final run
+directory, final train loss, optimizer steps, test Precision@1, and test MAP@R.
+The final run's `diagnostics.csv` contains per-class test metrics.
+
+### Resuming an Interrupted Replay
+
+A stopped study-directory replay continues where it left off when the same
+command (or the same run manifest) is started again. Nothing needs to be
+prepared for this: the replay reads back the artifacts it already wrote, so
+replays that were started before this behavior existed resume as well.
+
+Two things are reused:
+
+- A validation or final run whose summary already exists in the study directory
+  is not trained again. Its recorded metrics feed selection directly, so a
+  restart re-selects the same winner.
+- A run that was interrupted in the middle of cross-validation continues inside
+  its own `cv_<timestamp>` directory, keeping the folds listed in that
+  directory's `cv_summary.json` and training the remaining ones. The fold that
+  was interrupted is trained again, because a fold keeps no resumable state of
+  its own.
+
+Reuse requires the recorded run directory to still exist below the current
+`--save_dir` and the recorded trial number and parameters to match, so
+replaying the same study into a different `--save_dir`, or after deleting a
+run's logs, trains again instead of adopting old numbers. Continuing a
+cross-validation run additionally requires the fold settings, epoch count,
+seeds, loss/miner, and replayed trial parameters to be unchanged.
+
+Pass `--no-resume_interrupted_runs` (or `"resume_interrupted_runs": false` in an
+experiment config, or as an extra manifest `args` entry) to train every run of
+the replay again.
 
 Example smoke test:
 

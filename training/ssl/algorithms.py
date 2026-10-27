@@ -4,7 +4,6 @@ import time
 import warnings
 from contextlib import contextmanager
 from contextvars import ContextVar
-from functools import wraps
 
 import numpy as np
 import torch
@@ -12,7 +11,7 @@ from loguru import logger
 from scipy import sparse, special
 from scipy.sparse import linalg as sparse_linalg
 
-from .config import UNLABELED_TARGET
+from .config import GRAPH_EDGE_ABLATION_MODES, UNLABELED_TARGET
 from .graph_diagnostics import (
     maybe_save_graph_diagnostics,
     maybe_update_graph_propagation_diagnostics,
@@ -43,6 +42,260 @@ LINEAR_SOLVER_ALIASES = {
 LINEAR_SOLVER_OPTIONS = frozenset(
     (*LINEAR_SOLVERS, *LINEAR_SOLVER_ALIASES)
 )
+
+
+def apply_graph_edge_ablation(
+    adjacency,
+    labels,
+    *,
+    mode="off",
+    seed=0,
+):
+    """Audit or prune a symmetric graph using hidden true labels.
+
+    This helper exists only for oracle ablations. The pruning modes never add
+    or reweight an edge. ``random_pruned`` removes exactly as many undirected
+    edges as ``oracle_pruned`` would remove, making it the graph-density
+    control. ``degree_rewired`` keeps every edge and its weight but randomizes
+    which nodes it joins (:func:`degree_preserving_rewire`), so the pool, the
+    edge count, the weight multiset and every node's degree stay while the
+    neighborhood structure the embedding produced is destroyed.
+    """
+
+    mode = str(mode)
+    if mode not in GRAPH_EDGE_ABLATION_MODES:
+        raise ValueError(
+            "graph_edge_ablation must be one of "
+            f"{sorted(GRAPH_EDGE_ABLATION_MODES)}"
+        )
+    if mode == "off":
+        return adjacency, None
+    if isinstance(seed, (bool, np.bool_)) or not isinstance(
+        seed,
+        (int, np.integer),
+    ):
+        raise ValueError("graph edge ablation seed must be an integer")
+    if int(seed) < 0:
+        raise ValueError("graph edge ablation seed must be non-negative")
+
+    adjacency = sparse.csr_matrix(adjacency)
+    if adjacency.shape[0] != adjacency.shape[1]:
+        raise ValueError("graph edge ablation requires a square adjacency")
+    labels = np.asarray(labels, dtype=np.int64)
+    if labels.ndim != 1 or len(labels) != adjacency.shape[0]:
+        raise ValueError("graph edge ablation labels must align with graph nodes")
+    if np.any(labels < 0):
+        raise ValueError("graph edge ablation requires hidden true labels for every node")
+
+    asymmetry = adjacency - adjacency.T
+    if asymmetry.nnz and float(np.max(np.abs(asymmetry.data))) > 1e-12:
+        raise ValueError("graph edge ablation requires a symmetric adjacency")
+
+    upper = sparse.triu(adjacency, k=1, format="coo")
+    edge_count = int(upper.nnz)
+    if edge_count == 0:
+        raise ValueError("graph edge ablation requires at least one edge")
+    same_class = labels[upper.row] == labels[upper.col]
+    same_class_count = int(same_class.sum())
+    cross_class_count = edge_count - same_class_count
+
+    keep = np.ones(edge_count, dtype=bool)
+    if mode == "oracle_pruned":
+        keep = same_class
+    elif mode == "random_pruned" and cross_class_count:
+        generator = np.random.default_rng(int(seed))
+        removed = generator.choice(
+            edge_count,
+            size=cross_class_count,
+            replace=False,
+        )
+        keep[removed] = False
+
+    retained_count = int(keep.sum())
+    if retained_count == 0:
+        raise ValueError(
+            f"graph edge ablation mode={mode!r} removed every graph edge"
+        )
+
+    retained_rows = upper.row[keep]
+    retained_cols = upper.col[keep]
+    retained_weights = upper.data[keep]
+    rewire_stats = None
+    if mode == "degree_rewired":
+        retained_rows, retained_cols, rewire_stats = degree_preserving_rewire(
+            retained_rows,
+            retained_cols,
+            adjacency.shape[0],
+            seed=int(seed),
+        )
+    filtered = sparse.coo_matrix(
+        (
+            np.concatenate([retained_weights, retained_weights]),
+            (
+                np.concatenate([retained_rows, retained_cols]),
+                np.concatenate([retained_cols, retained_rows]),
+            ),
+        ),
+        shape=adjacency.shape,
+        dtype=adjacency.dtype,
+    ).tocsr()
+    filtered.eliminate_zeros()
+
+    edge_weight = np.asarray(upper.data, dtype=np.float64)
+    original_weight = float(edge_weight.sum())
+    same_class_weight = float(edge_weight[same_class].sum())
+    # Audit the edges the graph ends up with: for the pruning modes these are
+    # the kept originals, for ``degree_rewired`` the rewired ones.
+    retained_same = labels[retained_rows] == labels[retained_cols]
+    retained_edge_weight = np.asarray(retained_weights, dtype=np.float64)
+    retained_same_class = int(retained_same.sum())
+    retained_cross_class = retained_count - retained_same_class
+    retained_weight = float(retained_edge_weight.sum())
+    retained_same_class_weight = float(retained_edge_weight[retained_same].sum())
+    degrees = np.asarray(filtered.sum(axis=1), dtype=np.float64).ravel()
+    stats = {
+        "mode": mode,
+        "seed": int(seed) if mode in ("random_pruned", "degree_rewired") else None,
+        "original_undirected_edges": edge_count,
+        "same_class_undirected_edges": same_class_count,
+        "cross_class_undirected_edges": cross_class_count,
+        "edge_purity": same_class_count / float(edge_count),
+        "cross_class_edge_rate": cross_class_count / float(edge_count),
+        "original_undirected_weight": original_weight,
+        "weighted_edge_purity": (
+            same_class_weight / original_weight if original_weight > 0.0 else 0.0
+        ),
+        "retained_undirected_edges": retained_count,
+        "removed_undirected_edges": edge_count - retained_count,
+        "retained_edge_fraction": retained_count / float(edge_count),
+        "retained_same_class_undirected_edges": retained_same_class,
+        "retained_cross_class_undirected_edges": retained_cross_class,
+        "retained_edge_purity": retained_same_class / float(retained_count),
+        "retained_undirected_weight": retained_weight,
+        "retained_weight_fraction": (
+            retained_weight / original_weight if original_weight > 0.0 else 0.0
+        ),
+        "retained_weighted_edge_purity": (
+            retained_same_class_weight / retained_weight
+            if retained_weight > 0.0
+            else 0.0
+        ),
+        "isolated_nodes": int(np.sum(degrees == 0.0)),
+    }
+    if rewire_stats is not None:
+        stats.update(rewire_stats)
+    return filtered, stats
+
+
+# Double-edge swaps per undirected edge. A few times the edge count is the usual
+# budget for a degree-preserving null model; the achieved count and the share of
+# original edges that survived are reported so an under-mixed graph is visible.
+DEGREE_REWIRE_SWAPS_PER_EDGE = 10
+DEGREE_REWIRE_MAX_ROUNDS = 400
+DEGREE_REWIRE_MAX_OCCUPANCY_BYTES = 64 * 1024 * 1024
+
+
+def degree_preserving_rewire(
+    rows,
+    cols,
+    num_nodes,
+    *,
+    seed=0,
+    swaps_per_edge=DEGREE_REWIRE_SWAPS_PER_EDGE,
+    max_rounds=DEGREE_REWIRE_MAX_ROUNDS,
+):
+    """Randomize a simple undirected graph by double-edge swaps.
+
+    Each swap takes two edges ``(a, b)`` and ``(c, d)`` and replaces them with
+    ``(a, d)`` and ``(c, b)`` (Maslov & Sneppen, 2002), rejecting self-loops and
+    multi-edges, so every node keeps its exact degree and the graph stays
+    simple. Edge ``i`` keeps its weight through every swap, so the weight
+    multiset is unchanged too; a weighted degree is not, unless the weights are
+    uniform (LRML's binary graph).
+
+    Swaps run in vectorized rounds: each round pairs every edge with at most one
+    partner and applies the proposals that collide neither with the current
+    edge set nor with each other.
+
+    Returns ``(rows, cols, stats)`` with ``rows[i], cols[i]`` the new endpoints
+    of input edge ``i``.
+    """
+
+    u = np.asarray(rows, dtype=np.int64).copy()
+    v = np.asarray(cols, dtype=np.int64).copy()
+    edge_count = len(u)
+    num_nodes = int(num_nodes)
+
+    def keys(a, b):
+        return np.minimum(a, b) * num_nodes + np.maximum(a, b)
+
+    original_keys = keys(u, v)
+    original_degrees = np.bincount(np.concatenate([u, v]), minlength=num_nodes)
+    # Membership of a proposed edge in the current graph is the hot path. A flat
+    # occupancy map answers it in O(1) (one byte per node pair, ~36 MB for the
+    # 6k-node Cars pool); a larger graph falls back to a sorted search.
+    occupied = None
+    if num_nodes * num_nodes <= DEGREE_REWIRE_MAX_OCCUPANCY_BYTES:
+        occupied = np.zeros(num_nodes * num_nodes, dtype=bool)
+        occupied[original_keys] = True
+    generator = np.random.default_rng(int(seed))
+    target = int(swaps_per_edge) * edge_count
+    swaps = 0
+    rounds = 0
+    idle_rounds = 0
+    half = edge_count // 2
+    while half and swaps < target and rounds < int(max_rounds) and idle_rounds < 3:
+        rounds += 1
+        order = generator.permutation(edge_count)
+        first, second = order[:half], order[half : 2 * half]
+        a, b = u[first], v[first]
+        # A random orientation of the partner edge makes both rewirings of a
+        # pair reachable: (a, d)(c, b) and (a, c)(d, b).
+        flip = generator.random(half) < 0.5
+        c = np.where(flip, v[second], u[second])
+        d = np.where(flip, u[second], v[second])
+        new_first, new_second = keys(a, d), keys(c, b)
+        if occupied is not None:
+            taken_first, taken_second = occupied[new_first], occupied[new_second]
+        else:
+            current = keys(u, v)
+            taken_first, taken_second = np.isin(new_first, current), np.isin(new_second, current)
+        accept = (a != d) & (c != b) & (new_first != new_second) & ~taken_first & ~taken_second
+        proposed = np.concatenate([new_first[accept], new_second[accept]])
+        values, counts = np.unique(proposed, return_counts=True)
+        clashing = values[counts > 1]
+        if clashing.size:
+            accept &= ~np.isin(new_first, clashing) & ~np.isin(new_second, clashing)
+        accepted = int(accept.sum())
+        if accepted == 0:
+            idle_rounds += 1
+            continue
+        idle_rounds = 0
+        if occupied is not None:
+            occupied[keys(a[accept], b[accept])] = False
+            occupied[keys(c[accept], d[accept])] = False
+            occupied[new_first[accept]] = True
+            occupied[new_second[accept]] = True
+        u[first[accept]], v[first[accept]] = a[accept], d[accept]
+        u[second[accept]], v[second[accept]] = c[accept], b[accept]
+        swaps += accepted
+
+    degrees = np.bincount(np.concatenate([u, v]), minlength=num_nodes)
+    if not np.array_equal(degrees, original_degrees):
+        raise RuntimeError("degree-preserving rewiring changed a node degree")
+    final_keys = keys(u, v)
+    if len(np.unique(final_keys)) != edge_count or np.any(u == v):
+        raise RuntimeError("degree-preserving rewiring produced a non-simple graph")
+    stats = {
+        "rewire_swaps": int(swaps),
+        "rewire_swaps_per_edge": swaps / float(edge_count) if edge_count else 0.0,
+        "rewire_target_swaps_per_edge": int(swaps_per_edge),
+        "rewire_rounds": int(rounds),
+        "rewire_original_edge_share": (
+            float(np.isin(final_keys, original_keys).mean()) if edge_count else 0.0
+        ),
+    }
+    return u, v, stats
 
 
 def normalize_linear_solver(linear_solver):
@@ -146,20 +399,6 @@ def suppress_ssl_timing_logs():
         _SSL_TIMING_LOGS_ENABLED.reset(token)
 
 
-def _debug_timed(function):
-    """Log total wall time for an algorithm helper, including failed calls."""
-
-    @wraps(function)
-    def timed_function(*args, **kwargs):
-        started_at = time.perf_counter()
-        try:
-            return function(*args, **kwargs)
-        finally:
-            _log_debug_timing(function.__name__, started_at)
-
-    return timed_function
-
-
 def _dependency(overrides, name, default):
     """Resolve a helper supplied by the orchestration façade, if any."""
 
@@ -175,8 +414,12 @@ def _make_affinity_with_graph_diagnostics(
     gamma,
     graph_diagnostics,
     dependencies,
+    graph_edge_ablation="off",
+    graph_edge_ablation_labels=None,
+    graph_edge_ablation_seed=0,
+    graph_edge_ablation_name="graph",
 ):
-    """Build an affinity and retain kNN construction details when enabled."""
+    """Build an affinity and retain kNN/ablation details when enabled."""
 
     request = (
         None
@@ -188,7 +431,13 @@ def _make_affinity_with_graph_diagnostics(
         "make_mixed_label_affinity",
         make_mixed_label_affinity,
     )
-    if request is None:
+    graph_edge_ablation = str(graph_edge_ablation)
+    if graph_edge_ablation not in GRAPH_EDGE_ABLATION_MODES:
+        raise ValueError(
+            "graph_edge_ablation must be one of "
+            f"{sorted(GRAPH_EDGE_ABLATION_MODES)}"
+        )
+    if request is None and graph_edge_ablation == "off":
         return (
             builder(
                 features,
@@ -220,19 +469,38 @@ def _make_affinity_with_graph_diagnostics(
             ),
             "gamma": float(gamma),
         }
-    _dependency(
-        dependencies,
-        "maybe_save_graph_diagnostics",
-        maybe_save_graph_diagnostics,
-    )(
-        request=request,
-        embeddings=features,
-        adjacency=affinity,
-        positions=graph_diagnostics.get("positions"),
-        labels=graph_diagnostics.get("labels"),
-        known_mask=graph_diagnostics.get("known_mask"),
-        graph_metadata=construction_metadata,
+    affinity, ablation_stats = apply_graph_edge_ablation(
+        affinity,
+        graph_edge_ablation_labels,
+        mode=graph_edge_ablation,
+        seed=graph_edge_ablation_seed,
     )
+    if ablation_stats is not None:
+        construction_metadata = dict(construction_metadata)
+        construction_metadata["graph_edge_ablation"] = ablation_stats
+        logger.warning(
+            f"{graph_edge_ablation_name} ORACLE ABLATION uses hidden true labels: "
+            f"mode={graph_edge_ablation}, "
+            f"raw_edge_purity={ablation_stats['edge_purity']:.3%}, "
+            f"retained={ablation_stats['retained_undirected_edges']} / "
+            f"{ablation_stats['original_undirected_edges']} edges, "
+            f"retained_edge_purity={ablation_stats['retained_edge_purity']:.3%}, "
+            f"isolated_nodes={ablation_stats['isolated_nodes']}"
+        )
+    if request is not None:
+        _dependency(
+            dependencies,
+            "maybe_save_graph_diagnostics",
+            maybe_save_graph_diagnostics,
+        )(
+            request=request,
+            embeddings=features,
+            adjacency=affinity,
+            positions=graph_diagnostics.get("positions"),
+            labels=graph_diagnostics.get("labels"),
+            known_mask=graph_diagnostics.get("known_mask"),
+            graph_metadata=construction_metadata,
+        )
     return affinity, construction_metadata, request
 
 
@@ -244,8 +512,6 @@ def _record_graph_propagation_diagnostics(
     confidences,
     method,
     dependencies,
-    initial_scores=None,
-    dissimilarity=None,
     solver_diagnostics=None,
     extra=None,
 ):
@@ -264,8 +530,6 @@ def _record_graph_propagation_diagnostics(
         known_mask=graph_diagnostics.get("known_mask"),
         method=method,
         confidence_threshold=graph_diagnostics.get("confidence_threshold"),
-        initial_scores=initial_scores,
-        dissimilarity=dissimilarity,
         solver_diagnostics=solver_diagnostics,
         extra=extra,
     )
@@ -443,16 +707,8 @@ def faiss_gpu_flat_index(faiss, dim, purpose, *, spherical=False):
         return None
 
 
-def faiss_flat_ip_search(
-    database,
-    queries,
-    k,
-    purpose,
-    faiss_module=None,
-    *,
-    prefer_gpu=True,
-):
-    """Run exact inner-product search on GPU whenever FAISS supports it.
+def _faiss_flat_search(database, queries, k, purpose, faiss_module, prefer_gpu, index_type):
+    """Exact flat-index search on GPU whenever FAISS supports it, else on CPU.
 
     ``faiss-gpu-cu12`` contains the CPU indexes too, which makes the CPU retry
     usable when CUDA is unavailable or a GPU allocation/search fails. GPU FAISS
@@ -470,12 +726,8 @@ def faiss_flat_ip_search(
         raise ValueError("FAISS k must be positive and no larger than the database")
 
     faiss = require_faiss(purpose) if faiss_module is None else faiss_module
-    cpu_index = faiss.IndexFlatIP(database.shape[1])
-    gpu_device_id = (
-        _faiss_gpu_device_id(faiss, purpose)
-        if prefer_gpu
-        else None
-    )
+    cpu_index = getattr(faiss, index_type)(database.shape[1])
+    gpu_device_id = _faiss_gpu_device_id(faiss, purpose) if prefer_gpu else None
     if gpu_device_id is not None and k <= FAISS_GPU_MAX_K:
         gpu_started_at = time.perf_counter()
         try:
@@ -485,8 +737,7 @@ def faiss_flat_ip_search(
             _apply_ssl_faiss_resource_policy(gpu_resources)
             gpu_index = faiss.index_cpu_to_gpu(gpu_resources, gpu_device_id, cpu_index)
             gpu_index.add(database)
-            results = gpu_index.search(queries, k)
-            return results
+            return gpu_index.search(queries, k)
         except Exception as exc:
             _log_debug_timing(
                 "faiss_flat_ip_search.backend",
@@ -509,8 +760,13 @@ def faiss_flat_ip_search(
         )
 
     cpu_index.add(database)
-    results = cpu_index.search(queries, k)
-    return results
+    return cpu_index.search(queries, k)
+
+
+def faiss_flat_ip_search(database, queries, k, purpose, faiss_module=None, *, prefer_gpu=True):
+    """Run exact inner-product search, on GPU whenever FAISS supports it."""
+
+    return _faiss_flat_search(database, queries, k, purpose, faiss_module, prefer_gpu, "IndexFlatIP")
 
 
 def select_self_training_candidates(
@@ -583,6 +839,16 @@ def select_self_training_candidates(
     return np.concatenate(selected).astype(np.int64, copy=False)
 
 
+def symmetric_normalized_affinity(affinity, degrees):
+    """``D^-1/2 W D^-1/2``; an isolated node keeps an all-zero row and column."""
+
+    inverse_sqrt_degrees = np.zeros_like(degrees, dtype=np.float64)
+    positive_degree = degrees > 0.0
+    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(degrees[positive_degree])
+    degree_scaling = sparse.diags(inverse_sqrt_degrees)
+    return (degree_scaling @ affinity @ degree_scaling).tocsr()
+
+
 def faiss_label_spreading(
     features,
     targets,
@@ -594,6 +860,9 @@ def faiss_label_spreading(
     cg_max_iter=1000,
     linear_solver="cg",
     graph_diagnostics=None,
+    graph_edge_ablation="off",
+    graph_edge_ablation_labels=None,
+    graph_edge_ablation_seed=0,
     _dependencies=None,
 ):
     """Solve Zhou et al.'s label-spreading fixed point on a FAISS kNN graph."""
@@ -618,15 +887,14 @@ def faiss_label_spreading(
         gamma=gamma,
         graph_diagnostics=graph_diagnostics,
         dependencies=_dependencies,
+        graph_edge_ablation=graph_edge_ablation,
+        graph_edge_ablation_labels=graph_edge_ablation_labels,
+        graph_edge_ablation_seed=graph_edge_ablation_seed,
+        graph_edge_ablation_name="faiss_label_spreading",
     )
 
-    system_started_at = time.perf_counter()
     degrees = np.asarray(affinity.sum(axis=1)).ravel()
-    inverse_sqrt_degrees = np.zeros_like(degrees, dtype=np.float64)
-    positive_degree = degrees > 0.0
-    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(degrees[positive_degree])
-    degree_scaling = sparse.diags(inverse_sqrt_degrees)
-    normalized_affinity = (degree_scaling @ affinity @ degree_scaling).tocsr()
+    normalized_affinity = symmetric_normalized_affinity(affinity, degrees)
 
     alpha = float(alpha)
     system = (
@@ -686,6 +954,9 @@ def iscen_label_spreading(
     cg_max_iter=20,
     linear_solver="cg",
     graph_diagnostics=None,
+    graph_edge_ablation="off",
+    graph_edge_ablation_labels=None,
+    graph_edge_ablation_seed=0,
     _dependencies=None,
 ):
     """Run the LP-DeepSSL diffusion and entropy-certainty calculation.
@@ -733,6 +1004,10 @@ def iscen_label_spreading(
         gamma=float(gamma),
         graph_diagnostics=graph_diagnostics,
         dependencies=_dependencies,
+        graph_edge_ablation=graph_edge_ablation,
+        graph_edge_ablation_labels=graph_edge_ablation_labels,
+        graph_edge_ablation_seed=graph_edge_ablation_seed,
+        graph_edge_ablation_name="iscen_label_spreading",
     )
 
     # A disconnected component without a labeled node has no source term in
@@ -765,12 +1040,7 @@ def iscen_label_spreading(
         )
 
     active_affinity = affinity[active_indices][:, active_indices].tocsr()
-    active_degrees = degrees[active_indices]
-    inverse_sqrt_degrees = np.zeros_like(active_degrees)
-    positive_degree = active_degrees > 0.0
-    inverse_sqrt_degrees[positive_degree] = 1.0 / np.sqrt(active_degrees[positive_degree])
-    degree_scaling = sparse.diags(inverse_sqrt_degrees)
-    normalized_affinity = (degree_scaling @ active_affinity @ degree_scaling).tocsr()
+    normalized_affinity = symmetric_normalized_affinity(active_affinity, degrees[active_indices])
     system = (
         sparse.eye(len(active_indices), format="csr", dtype=np.float64)
         - float(alpha) * normalized_affinity
@@ -908,166 +1178,6 @@ def iscen_label_spreading(
     return probabilities.astype(np.float32), confidences.astype(np.float32)
 
 
-def mixed_label_propagation(
-    features,
-    targets,
-    num_classes,
-    n_neighbors=50,
-    gamma=3.0,
-    temperature=4.0,
-    beta=1.0,
-    mu=1.0 / 99.0,
-    cg_rtol=1e-5,
-    cg_max_iter=1000,
-    edge_batch_size=65536,
-    linear_solver="cg",
-    graph_diagnostics=None,
-    _dependencies=None,
-):
-    """Run equations (14)-(24) and return mixed-LP scores/confidences."""
-
-    features = np.asarray(features, dtype=np.float32)
-    targets = np.asarray(targets, dtype=np.int64)
-    if features.ndim != 2 or len(features) != len(targets):
-        raise ValueError("features must be a matrix aligned with targets")
-    if len(features) < 2:
-        raise ValueError("mixed_label_propagation requires at least two samples")
-    if num_classes <= 0:
-        raise ValueError("num_classes must be positive")
-    labeled = targets != UNLABELED_TARGET
-    if not np.any(labeled):
-        raise ValueError("mixed_label_propagation requires at least one labeled target")
-    if np.any((targets[labeled] < 0) | (targets[labeled] >= num_classes)):
-        raise ValueError("labeled targets must be in [0, num_classes)")
-
-    affinity, _, diagnostic_request = _make_affinity_with_graph_diagnostics(
-        features=features,
-        n_neighbors=n_neighbors,
-        gamma=gamma,
-        graph_diagnostics=graph_diagnostics,
-        dependencies=_dependencies,
-    )
-    initial_system_started_at = time.perf_counter()
-    degrees = np.asarray(affinity.sum(axis=1)).ravel()
-    laplacian = sparse.diags(degrees) - affinity
-    anchors = sparse.diags(np.where(labeled, float(mu), 0.0))
-
-    one_hot_targets = np.zeros((len(features), num_classes), dtype=np.float64)
-    one_hot_targets[np.flatnonzero(labeled), targets[labeled]] = 1.0
-    right_hand_side = anchors @ one_hot_targets
-    initial_system = (laplacian + anchors).tocsr()
-
-    solve_system = _dependency(
-        _dependencies,
-        "solve_sparse_label_system",
-        solve_sparse_label_system,
-    )
-    try:
-        linear_solver = normalize_linear_solver(linear_solver)
-    except ValueError as exc:
-        raise ValueError(f"mixed_label_propagation {exc}") from exc
-    # Both mixed-LP matrices have the affinity graph's sparsity pattern. Keep
-    # one CHOLMOD factor cache so the second numeric factorization can reuse
-    # the first solve's symbolic analysis and fill-reducing permutation.
-    cholmod_solve_kwargs = (
-        {"cholmod_factor_cache": {}}
-        if linear_solver == "cholmod"
-        else {}
-    )
-    initial_solver_diagnostics = (
-        {} if diagnostic_request is not None else None
-    )
-    initial_solve_kwargs = dict(cholmod_solve_kwargs)
-    if initial_solver_diagnostics is not None:
-        initial_solve_kwargs["diagnostics"] = initial_solver_diagnostics
-    initial_labels = solve_system(
-        initial_system,
-        right_hand_side,
-        rtol=float(cg_rtol),
-        max_iter=int(cg_max_iter),
-        name="initial label propagation",
-        linear_solver=linear_solver,
-        **initial_solve_kwargs,
-    )
-
-    dissimilarity = _dependency(
-        _dependencies,
-        "make_dissimilarity_affinity",
-        make_dissimilarity_affinity,
-    )(
-        affinity=affinity,
-        degrees=degrees,
-        propagated_labels=initial_labels,
-        temperature=float(temperature),
-        edge_batch_size=int(edge_batch_size),
-    )
-    mixed_system_started_at = time.perf_counter()
-    dissimilarity_degrees = np.asarray(dissimilarity.sum(axis=1)).ravel()
-    signless_laplacian = sparse.diags(dissimilarity_degrees) + dissimilarity
-    # Equation (24) sums both directions of each symmetric edge, yielding the
-    # factor 2 in the derivative of beta/2 * D(G).
-    mixed_system = (
-        laplacian
-        + anchors
-        + 2.0 * float(beta) * signless_laplacian
-    ).tocsr()
-
-    mixed_solver_diagnostics = (
-        {} if diagnostic_request is not None else None
-    )
-    mixed_solve_kwargs = dict(cholmod_solve_kwargs)
-    if mixed_solver_diagnostics is not None:
-        mixed_solve_kwargs["diagnostics"] = mixed_solver_diagnostics
-    mixed_labels = solve_system(
-        mixed_system,
-        right_hand_side,
-        rtol=float(cg_rtol),
-        max_iter=int(cg_max_iter),
-        name="mixed label propagation",
-        linear_solver=linear_solver,
-        # Warm start from the initial-LP solution: the mixed system differs only
-        # by the signless-Laplacian term, so CG typically converges in a
-        # handful of iterations from here.
-        warm_start=initial_labels,
-        **mixed_solve_kwargs,
-    )
-    normalized_scores = _dependency(
-        _dependencies,
-        "normalize_mixed_label_rows",
-        normalize_mixed_label_rows,
-    )(mixed_labels)
-    # Section 3.3 applies Eq. (21) directly to G*_i / ||G*_i||_1.  The
-    # temperature-scaled softmax in Eq. (20) is only for the earlier
-    # leave-one-edge scores used to construct dissimilarity weights.
-    confidences = _dependency(
-        _dependencies,
-        "entropy_confidence",
-        entropy_confidence,
-    )(normalized_scores)
-    _record_graph_propagation_diagnostics(
-        request=diagnostic_request,
-        graph_diagnostics=graph_diagnostics,
-        scores=normalized_scores,
-        confidences=confidences,
-        method="mixed_label_propagation",
-        dependencies=_dependencies,
-        initial_scores=initial_labels,
-        dissimilarity=dissimilarity,
-        solver_diagnostics={
-            "initial_label_propagation": initial_solver_diagnostics,
-            "mixed_label_propagation": mixed_solver_diagnostics,
-        },
-        extra={
-            "temperature": float(temperature),
-            "beta": float(beta),
-            "mu": float(mu),
-            "initial_system_nnz": int(initial_system.nnz),
-            "mixed_system_nnz": int(mixed_system.nnz),
-        },
-    )
-    return normalized_scores.astype(np.float32), confidences.astype(np.float32)
-
-
 def _find_lrml_knn_neighbors(
     embeddings,
     n_neighbors,
@@ -1151,114 +1261,6 @@ def _find_lrml_knn_neighbors(
     if neighbor_similarities is not None:
         return neighbor_indices, neighbor_similarities
     return neighbor_indices
-
-
-def _lrml_pyg_utils():
-    """Load the PyG graph utilities only when the LRML edge path is used."""
-
-    try:
-        from torch_geometric.utils import degree, get_laplacian, to_undirected
-    except ImportError as exc:
-        raise ImportError(
-            "lrml edge-index regularization requires torch-geometric; "
-            "install the project requirements"
-        ) from exc
-    return to_undirected, degree, get_laplacian
-
-
-def build_lrml_knn_edge_index(embeddings, n_neighbors):
-    """Build LRML's binary symmetric kNN graph as a PyG ``edge_index``.
-
-    The returned ``edge_index`` has shape ``[2, 2M]`` and contains both
-    directions of every one of the ``M`` undirected edges. Degrees are computed
-    directly from its source row with :func:`torch_geometric.utils.degree`.
-
-    This models ``edge_weighting='binary'`` only. An ``edge_index`` carries no
-    weights and the degrees here are neighbor counts, so under the cosine
-    affinity this describes a different graph than the one being trained on.
-    """
-
-    to_undirected, pyg_degree, _ = _lrml_pyg_utils()
-    neighbor_indices = _find_lrml_knn_neighbors(embeddings, n_neighbors)
-    num_nodes, k = neighbor_indices.shape
-    source = torch.arange(num_nodes, dtype=torch.long).repeat_interleave(k)
-    target = torch.from_numpy(neighbor_indices.reshape(-1))
-    directed_edge_index = torch.stack((source, target), dim=0)
-    edge_index = to_undirected(directed_edge_index, num_nodes=num_nodes).contiguous()
-    degrees = pyg_degree(
-        edge_index[0],
-        num_nodes=num_nodes,
-        dtype=torch.float64,
-    )
-    if torch.any(degrees <= 0):
-        raise RuntimeError("lrml kNN graph contains an isolated node")
-    return neighbor_indices, edge_index, degrees
-
-
-def validate_lrml_laplacian(edge_index, embeddings, normalized_laplacian):
-    """Materialize a PyG Laplacian and verify its quadratic graph energy.
-
-    This is intended for opt-in graph-build validation, not for the stochastic
-    training hot path. The returned tensors make the validated sparse
-    Laplacian available to callers for debugging and inspection.
-
-    Like :func:`build_lrml_knn_edge_index`, this validates the binary graph:
-    ``edge_index`` has no weights, so it cannot express the cosine affinity.
-    """
-
-    _, pyg_degree, get_laplacian = _lrml_pyg_utils()
-    edge_index = torch.as_tensor(edge_index, dtype=torch.long, device="cpu")
-    features = torch.as_tensor(embeddings, dtype=torch.float64, device="cpu")
-    if edge_index.ndim != 2 or edge_index.shape[0] != 2:
-        raise ValueError("lrml edge_index must have shape [2, num_directed_edges]")
-    if features.ndim != 2 or len(features) == 0:
-        raise ValueError("lrml validation embeddings must be a non-empty matrix")
-    if edge_index.numel() == 0:
-        raise ValueError("lrml edge_index must contain at least one edge")
-    num_nodes = len(features)
-    if int(edge_index.min()) < 0 or int(edge_index.max()) >= num_nodes:
-        raise ValueError("lrml edge_index refers to a node outside the embeddings")
-    if not torch.isfinite(features).all():
-        raise ValueError("lrml validation embeddings must be finite")
-
-    normalization = "sym" if normalized_laplacian else None
-    laplacian_edge_index, laplacian_edge_weight = get_laplacian(
-        edge_index,
-        normalization=normalization,
-        dtype=features.dtype,
-        num_nodes=num_nodes,
-    )
-    laplacian_source, laplacian_target = laplacian_edge_index
-    laplacian_energy = (
-        laplacian_edge_weight[:, None]
-        * features[laplacian_source]
-        * features[laplacian_target]
-    ).sum()
-
-    degrees = pyg_degree(
-        edge_index[0],
-        num_nodes=num_nodes,
-        dtype=features.dtype,
-    )
-    if torch.any(degrees <= 0):
-        raise ValueError("lrml Laplacian validation requires positive node degrees")
-    scaled = features / degrees.sqrt()[:, None] if normalized_laplacian else features
-    unique_edge_mask = edge_index[0] < edge_index[1]
-    left = edge_index[0, unique_edge_mask]
-    right = edge_index[1, unique_edge_mask]
-    pairwise_energy = ((scaled[left] - scaled[right]) ** 2).sum()
-    try:
-        torch.testing.assert_close(
-            laplacian_energy,
-            pairwise_energy,
-            rtol=1e-6,
-            atol=1e-8,
-        )
-    except AssertionError as exc:
-        raise RuntimeError(
-            "LRML pairwise energy does not match the PyG Laplacian quadratic form"
-        ) from exc
-    return laplacian_edge_index, laplacian_edge_weight
 
 
 def build_lrml_knn_graph(embeddings, n_neighbors, *, prefer_gpu=True):
@@ -1478,25 +1480,394 @@ def build_manifold_preserving_graph(
     return neighbor_indices, adjacency, degrees, metadata
 
 
-def make_slrml_graph_labels(train_dataset, graph_positions, labeled_positions):
-    """Return SLRML graph-node labels with unlabeled nodes masked as unknown."""
+# --------------------------------------------------------------------------
+# Locally linear reconstruction, Soleymani Baghshah and Bagheri Shouraki
+# (IJCAI 2009), "Semi-Supervised Metric Learning Using Pairwise Constraints".
+# --------------------------------------------------------------------------
 
-    dataset_labels = np.asarray(train_dataset.labels, dtype=np.int64)
-    graph_positions = np.asarray(graph_positions, dtype=np.int64)
-    labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
-    if len(dataset_labels) < len(train_dataset):
-        raise ValueError("SLRML requires train_dataset.labels to align with train_dataset")
-    graph_labels = np.full(len(graph_positions), UNLABELED_TARGET, dtype=np.int64)
-    if len(labeled_positions) == 0:
-        return graph_labels
+LLE_RECONSTRUCTION_METRICS = ("euclidean", "cosine")
 
-    graph_order = {int(position): index for index, position in enumerate(graph_positions.tolist())}
-    for position in labeled_positions.tolist():
-        graph_index = graph_order.get(int(position))
-        if graph_index is None:
-            continue
-        graph_labels[graph_index] = int(dataset_labels[int(position)])
-    return graph_labels
+# Roweis and Saul's conditioner for eq. (5)'s local Gram matrix: C <- C +
+# delta^2 * trace(C) * I / k. It only binds when the k local difference vectors
+# do not span their own space, which for k > d is always, and it is the
+# regularization the LLE paper prescribes rather than a numerical afterthought.
+DEFAULT_LLE_RECONSTRUCTION_REGULARIZATION = 1e-3
+
+
+def faiss_flat_l2_search(database, queries, k, purpose, faiss_module=None, *, prefer_gpu=True):
+    """Exact squared-Euclidean search, mirroring :func:`faiss_flat_ip_search`.
+
+    Locally linear reconstruction fits each point by least squares in the input
+    space, so the neighborhood eq. (5) selects is the Euclidean one. On
+    unit-norm rows this ranks identically to the inner-product search, because
+    ``||a - b||^2 = 2 - 2 cos`` is monotone in the cosine; it exists for the
+    rows that are *not* normalized, which is exactly the case the paper's ``X``
+    is in and which raw backbone features are in.
+    """
+
+    return _faiss_flat_search(database, queries, k, purpose, faiss_module, prefer_gpu, "IndexFlatL2")
+
+
+def find_reconstruction_neighbors(
+    features,
+    n_neighbors,
+    *,
+    metric="euclidean",
+    prefer_gpu=True,
+):
+    """Return the ``k`` non-self neighbors of eq. (5)'s ``N_k(x_i)``.
+
+    ``euclidean`` is LLE's own metric and the default. ``cosine`` reuses the
+    ranking :func:`_find_lrml_knn_neighbors` builds, so a study can hold the
+    neighborhoods fixed across this regularizer and the Laplacian ones and vary
+    only what is written on them.
+    """
+
+    metric = str(metric)
+    if metric not in LLE_RECONSTRUCTION_METRICS:
+        raise ValueError(
+            "reconstruction neighbor metric must be one of "
+            f"{list(LLE_RECONSTRUCTION_METRICS)}"
+        )
+    if metric == "cosine":
+        return _find_lrml_knn_neighbors(
+            features,
+            n_neighbors,
+            prefer_gpu=prefer_gpu,
+        )
+
+    features = np.ascontiguousarray(features, dtype=np.float32)
+    if features.ndim != 2 or features.shape[1] == 0:
+        raise ValueError("reconstruction features must be a non-empty matrix")
+    if not np.all(np.isfinite(features)):
+        raise ValueError("reconstruction features must be finite")
+    num_nodes = len(features)
+    k = min(int(n_neighbors), num_nodes - 1)
+    if k <= 0:
+        raise ValueError(
+            "locally linear reconstruction needs at least two samples "
+            "and one neighbor"
+        )
+    # Query k + 1 because the database contains each query itself, and filter by
+    # node id rather than assuming ties leave self in column zero.
+    _, neighbors = faiss_flat_l2_search(
+        database=features,
+        queries=features,
+        k=k + 1,
+        purpose="locally linear reconstruction",
+        prefer_gpu=prefer_gpu,
+    )
+    neighbors = np.asarray(neighbors, dtype=np.int64)
+    self_ids = np.arange(num_nodes, dtype=np.int64)[:, None]
+    keep = neighbors != self_ids
+    # Every row has at most one self-match, so dropping it leaves at least k
+    # columns; the extra column of a row that never matched itself is trimmed.
+    ordered = np.argsort(~keep, axis=1, kind="stable")
+    neighbors = np.take_along_axis(neighbors, ordered, axis=1)[:, :k]
+    if np.any(neighbors == self_ids):
+        raise RuntimeError(
+            "locally linear reconstruction neighbor search kept a self-match"
+        )
+    return np.ascontiguousarray(neighbors, dtype=np.int64)
+
+
+def solve_lle_reconstruction_weights(
+    features,
+    neighbor_indices,
+    *,
+    neighbor_mask=None,
+    regularization=DEFAULT_LLE_RECONSTRUCTION_REGULARIZATION,
+    chunk_size=4096,
+):
+    """Equation (5): the weights that reconstruct each row from its neighbors.
+
+        min_S sum_i || x_i - sum_{j in N_k(x_i)} s_ij x_j ||^2
+        s.t.  s_ij = 0 for x_j not in N_k(x_i),  sum_j s_ij = 1
+
+    The sum-to-one constraint makes the residual a difference of differences:
+    ``x_i - sum_j s_ij x_j = sum_j s_ij (x_i - x_j)``, so the problem is the
+    constrained least squares of Roweis and Saul (2000) with local Gram matrix
+    ``C_jl = (x_i - x_j) . (x_i - x_l)``, solved as ``C w = 1`` followed by a
+    rescaling to ``sum_j w_j = 1``.
+
+    ``neighbor_mask`` marks which columns of ``neighbor_indices`` are real. A
+    masked-out column is returned with weight zero, which keeps the weights
+    rectangular while leaving the constraint satisfied over the columns that
+    remain. It is what lets the oracle ablation drop neighbors and still hand
+    back a valid eq. (5) solution, rather than one whose weights no longer sum
+    to one.
+
+    Returns ``(weights, metadata)`` where ``weights`` has the shape of
+    ``neighbor_indices``. Rows with no usable neighbor get all-zero weights and
+    are reported in ``metadata['isolated_nodes']``; the caller is expected to
+    keep them out of the anchor pool, because an all-zero row's residual is
+    ``z_i`` itself and would pull that embedding toward the origin instead of
+    toward its neighborhood.
+    """
+
+    features = np.ascontiguousarray(features, dtype=np.float64)
+    neighbor_indices = np.asarray(neighbor_indices, dtype=np.int64)
+    if features.ndim != 2 or len(features) == 0:
+        raise ValueError("reconstruction features must be a non-empty matrix")
+    if neighbor_indices.ndim != 2 or len(neighbor_indices) != len(features):
+        raise ValueError(
+            "neighbor_indices must have one row of neighbors per feature row"
+        )
+    num_nodes, k = neighbor_indices.shape
+    if k == 0:
+        raise ValueError("locally linear reconstruction needs at least one neighbor")
+    if neighbor_indices.min() < 0 or neighbor_indices.max() >= num_nodes:
+        raise ValueError("neighbor_indices refer to a row outside the feature matrix")
+    if neighbor_mask is None:
+        neighbor_mask = np.ones((num_nodes, k), dtype=bool)
+    else:
+        neighbor_mask = np.asarray(neighbor_mask, dtype=bool)
+        if neighbor_mask.shape != neighbor_indices.shape:
+            raise ValueError("neighbor_mask must match neighbor_indices")
+    regularization = float(regularization)
+    if not np.isfinite(regularization) or regularization < 0:
+        raise ValueError("reconstruction regularization must be finite and non-negative")
+    chunk_size = max(1, int(chunk_size))
+
+    weights = np.zeros((num_nodes, k), dtype=np.float64)
+    identity = np.eye(k, dtype=np.float64)
+    singular_rows = 0
+    degenerate_rows = 0
+    for start in range(0, num_nodes, chunk_size):
+        stop = min(start + chunk_size, num_nodes)
+        rows = np.arange(start, stop)
+        mask = neighbor_mask[start:stop]
+        # (m, k, d): x_i - x_j for each of row i's neighbors j.
+        differences = features[rows][:, None, :] - features[neighbor_indices[start:stop]]
+        # A masked column must not reach the Gram matrix at all; zeroing its
+        # difference makes its row and column vanish, and the conditioner below
+        # puts a positive value on its diagonal so the solve stays well posed.
+        differences = differences * mask[:, :, None]
+        gram = differences @ np.swapaxes(differences, 1, 2)
+        trace = np.trace(gram, axis1=1, axis2=2)
+        # trace == 0 means every usable neighbor coincides with the anchor, so
+        # the fit is exact for any weights and only the constraint decides.
+        conditioner = np.where(trace > 0.0, regularization * trace / k, regularization)
+        gram = gram + conditioner[:, None, None] * identity
+        targets = mask.astype(np.float64)
+        try:
+            solved = np.linalg.solve(gram, targets[:, :, None])[:, :, 0]
+        except np.linalg.LinAlgError:
+            # One singular block would fail the whole batch, so fall back per
+            # row rather than losing the chunk.
+            singular_rows += len(rows)
+            solved = np.empty_like(targets)
+            for offset in range(len(rows)):
+                solved[offset] = np.linalg.lstsq(
+                    gram[offset],
+                    targets[offset],
+                    rcond=None,
+                )[0]
+        solved = solved * mask
+        totals = solved.sum(axis=1)
+        usable = mask.any(axis=1)
+        # A vanishing total cannot be rescaled to one. Uniform weights over the
+        # usable columns satisfy the constraint and are the least-committal fit.
+        degenerate = usable & (np.abs(totals) <= 1e-12)
+        degenerate_rows += int(degenerate.sum())
+        counts = mask.sum(axis=1)
+        uniform = np.divide(
+            mask.astype(np.float64),
+            np.maximum(counts, 1)[:, None],
+            dtype=np.float64,
+        )
+        normalized = np.divide(
+            solved,
+            np.where(np.abs(totals) <= 1e-12, 1.0, totals)[:, None],
+        )
+        normalized = np.where(degenerate[:, None], uniform, normalized)
+        weights[start:stop] = np.where(usable[:, None], normalized, 0.0)
+
+    usable_rows = neighbor_mask.any(axis=1)
+    sums = weights.sum(axis=1)
+    if usable_rows.any():
+        worst_deviation = float(np.max(np.abs(sums[usable_rows] - 1.0)))
+    else:
+        worst_deviation = 0.0
+    if worst_deviation > 1e-6:
+        raise RuntimeError(
+            "locally linear reconstruction weights violate the sum-to-one "
+            f"constraint of eq. (5) by {worst_deviation:.3e}"
+        )
+    metadata = {
+        "nodes": int(num_nodes),
+        "n_neighbors": int(k),
+        "regularization": regularization,
+        "isolated_nodes": int((~usable_rows).sum()),
+        "mean_used_neighbors": float(neighbor_mask.sum(axis=1).mean()),
+        "singular_gram_rows": int(singular_rows),
+        "degenerate_weight_rows": int(degenerate_rows),
+        "weight_min": float(weights[usable_rows].min()) if usable_rows.any() else 0.0,
+        "weight_max": float(weights[usable_rows].max()) if usable_rows.any() else 0.0,
+        "negative_weight_fraction": (
+            float((weights[usable_rows] < 0.0).mean()) if usable_rows.any() else 0.0
+        ),
+        "worst_weight_sum_deviation": worst_deviation,
+    }
+    return weights, metadata
+
+
+def apply_reconstruction_neighbor_ablation(
+    neighbor_indices,
+    labels,
+    *,
+    mode="off",
+    seed=0,
+):
+    """Audit or prune reconstruction neighborhoods using hidden true labels.
+
+    The counterpart of :func:`apply_graph_edge_ablation` for eq. (5)'s
+    neighborhoods. It cannot be that helper: the shared one prunes a symmetric
+    adjacency whose weights carry no constraint, whereas eq. (5)'s weights must
+    sum to one over the neighbors that remain. So this returns a *mask* and the
+    weights are solved afterwards on the retained columns, rather than a pruned
+    weight matrix whose rows no longer sum to one.
+
+    ``normal`` only measures purity. ``oracle_pruned`` keeps same-class
+    neighbors. ``random_pruned`` drops the same total number of neighbors
+    uniformly at random, which makes it the neighborhood-size control for the
+    oracle arm. A row is never emptied by ``random_pruned``: it keeps at least
+    the neighbor the oracle would have kept it, or its first column, so the
+    anchor pool stays comparable between the two arms.
+
+    Returns ``(neighbor_mask, stats)``.
+    """
+
+    mode = str(mode)
+    if mode not in GRAPH_EDGE_ABLATION_MODES:
+        raise ValueError(
+            "graph_edge_ablation must be one of "
+            f"{sorted(GRAPH_EDGE_ABLATION_MODES)}"
+        )
+    if mode == "degree_rewired":
+        raise ValueError(
+            "graph_edge_ablation='degree_rewired' rewires a symmetric adjacency; "
+            "eq. (5) reconstruction neighborhoods have no such graph to rewire"
+        )
+    neighbor_indices = np.asarray(neighbor_indices, dtype=np.int64)
+    keep_all = np.ones(neighbor_indices.shape, dtype=bool)
+    if mode == "off":
+        return keep_all, None
+
+    labels = np.asarray(labels, dtype=np.int64)
+    if labels.ndim != 1 or len(labels) != len(neighbor_indices):
+        raise ValueError(
+            "reconstruction neighbor ablation labels must align with graph nodes"
+        )
+    if np.any(labels < 0):
+        raise ValueError(
+            "reconstruction neighbor ablation requires a hidden true label for "
+            "every node"
+        )
+    if isinstance(seed, (bool, np.bool_)) or not isinstance(seed, (int, np.integer)):
+        raise ValueError("reconstruction neighbor ablation seed must be an integer")
+    if int(seed) < 0:
+        raise ValueError("reconstruction neighbor ablation seed must be non-negative")
+
+    same_class = labels[neighbor_indices] == labels[:, None]
+    purity = float(same_class.mean())
+    total = int(same_class.size)
+    oracle_removed = int((~same_class).sum())
+
+    if mode == "normal":
+        neighbor_mask = keep_all
+    elif mode == "oracle_pruned":
+        neighbor_mask = same_class
+    else:
+        # Remove the same count the oracle would, chosen uniformly, but never
+        # the column that keeps a row non-empty.
+        generator = np.random.default_rng(int(seed))
+        neighbor_mask = keep_all.copy()
+        protected = np.argmax(same_class, axis=1)
+        protected = np.where(same_class.any(axis=1), protected, 0)
+        removable = keep_all.copy()
+        removable[np.arange(len(neighbor_indices)), protected] = False
+        candidates = np.flatnonzero(removable.reshape(-1))
+        drop = min(oracle_removed, len(candidates))
+        if drop:
+            chosen = generator.choice(candidates, size=drop, replace=False)
+            flat = neighbor_mask.reshape(-1)
+            flat[chosen] = False
+            neighbor_mask = flat.reshape(neighbor_indices.shape)
+
+    if not neighbor_mask.any():
+        raise ValueError(
+            f"graph_edge_ablation={mode!r} removed every reconstruction neighbor"
+        )
+    retained = int(neighbor_mask.sum())
+    retained_purity = (
+        float(same_class[neighbor_mask].mean()) if retained else 0.0
+    )
+    stats = {
+        "mode": mode,
+        "neighbor_purity": purity,
+        "original_neighbors": total,
+        "retained_neighbors": retained,
+        "removed_neighbors": total - retained,
+        "retained_neighbor_fraction": retained / float(total),
+        "retained_neighbor_purity": retained_purity,
+        "isolated_nodes": int((~neighbor_mask.any(axis=1)).sum()),
+    }
+    return neighbor_mask, stats
+
+
+def build_lle_reconstruction_graph(
+    features,
+    n_neighbors,
+    *,
+    metric="euclidean",
+    regularization=DEFAULT_LLE_RECONSTRUCTION_REGULARIZATION,
+    ablation_mode="off",
+    ablation_labels=None,
+    ablation_seed=0,
+    prefer_gpu=True,
+):
+    """Build eq. (5)'s neighborhoods and weights in one call.
+
+    ``ablation_mode`` runs :func:`apply_reconstruction_neighbor_ablation` before
+    the weights are solved, so a pruned neighborhood is re-fitted and its
+    weights still satisfy eq. (5)'s sum-to-one constraint.
+
+    Returns ``(neighbor_indices, neighbor_mask, weights, metadata)``.
+    """
+
+    neighbor_indices = find_reconstruction_neighbors(
+        features,
+        n_neighbors,
+        metric=metric,
+        prefer_gpu=prefer_gpu,
+    )
+    if str(ablation_mode) != "off" and ablation_labels is None:
+        raise ValueError(
+            f"graph_edge_ablation={ablation_mode!r} needs hidden true labels"
+        )
+    neighbor_mask, ablation_stats = apply_reconstruction_neighbor_ablation(
+        neighbor_indices,
+        ablation_labels,
+        mode=ablation_mode,
+        seed=ablation_seed,
+    )
+    weights, metadata = solve_lle_reconstruction_weights(
+        features,
+        neighbor_indices,
+        neighbor_mask=neighbor_mask,
+        regularization=regularization,
+    )
+    metadata = {
+        **metadata,
+        "neighbor_metric": str(metric),
+        "graph_edge_ablation": str(ablation_mode),
+        "ablation": ablation_stats,
+        "raw_neighbor_purity": (
+            None if ablation_stats is None else ablation_stats["neighbor_purity"]
+        ),
+    }
+    return neighbor_indices, neighbor_mask, weights, metadata
 
 
 def build_slrml_supervised_graph(labels):
@@ -1585,19 +1956,6 @@ def build_slrml_graph(
     return neighbor_indices, graph, degrees, positive_pair_count
 
 
-def induced_subgraph_edges(adjacency, node_ids):
-    """Upper-triangular edges of the sub-graph induced on ``node_ids``.
-
-    Row/column indices are local (into the batch order given by ``node_ids``) so
-    they index straight into the batch embedding matrix. Taking only the upper
-    triangle counts each undirected edge of the symmetric graph exactly once.
-    """
-
-    sub = adjacency[node_ids][:, node_ids].tocoo()
-    upper = sub.row < sub.col
-    return sub.row[upper], sub.col[upper], sub.data[upper]
-
-
 def make_mixed_label_affinity(
     features,
     n_neighbors,
@@ -1677,59 +2035,6 @@ def make_mixed_label_affinity(
         "search_seconds": float(search_seconds),
         "construction_seconds": float(construction_seconds),
     }
-
-
-def make_dissimilarity_affinity(
-    affinity,
-    degrees,
-    propagated_labels,
-    temperature,
-    edge_batch_size,
-):
-    """Compute first-order-neighbor hard-negative weights from equations (20)-(22)."""
-
-    upper = sparse.triu(affinity, k=1).tocoo()
-    if upper.nnz == 0:
-        return sparse.csr_matrix(affinity.shape, dtype=np.float64)
-
-    left = upper.row
-    right = upper.col
-    edge_weights = upper.data
-    weights = np.empty(upper.nnz, dtype=np.float64)
-    # Chunk edge/class computations to retain the paper's O(Nk + NC) memory
-    # bound instead of materializing one O(NkC) tensor for the whole graph.
-    for start in range(0, upper.nnz, int(edge_batch_size)):
-        stop = min(start + int(edge_batch_size), upper.nnz)
-        chunk_left = left[start:stop]
-        chunk_right = right[start:stop]
-        chunk_edge_weights = edge_weights[start:stop]
-        left_logits = float(temperature) * (
-            degrees[chunk_left, None] * propagated_labels[chunk_left]
-            - chunk_edge_weights[:, None] * propagated_labels[chunk_right]
-        )
-        right_logits = float(temperature) * (
-            degrees[chunk_right, None] * propagated_labels[chunk_right]
-            - chunk_edge_weights[:, None] * propagated_labels[chunk_left]
-        )
-        left_probabilities = stable_softmax(left_logits)
-        right_probabilities = stable_softmax(right_logits)
-        dissimilarity_probability = 1.0 - np.sum(left_probabilities * right_probabilities, axis=1)
-        weights[start:stop] = (
-            entropy_confidence(left_probabilities)
-            * entropy_confidence(right_probabilities)
-            * dissimilarity_probability
-        )
-
-    dissimilarity = sparse.coo_matrix(
-        (
-            np.concatenate([weights, weights]),
-            (np.concatenate([left, right]), np.concatenate([right, left])),
-        ),
-        shape=affinity.shape,
-        dtype=np.float64,
-    ).tocsr()
-    dissimilarity.eliminate_zeros()
-    return dissimilarity
 
 
 @torch.no_grad()
@@ -2076,6 +2381,53 @@ def _solve_cupy_cg_right_hand_side_batch(
     return solution, solver_info, iteration_counts
 
 
+def _solve_in_adaptive_batches(column_count, batch_size, solve_batch, store, *, oom_error, can_retry, on_oom, label):
+    """Solve ``[start, stop)`` column batches, halving the batch on out-of-memory.
+
+    Sparse SpMM workspace needs vary by CUDA/cuSPARSE version, so the
+    free-memory estimate behind ``batch_size`` can still be too optimistic;
+    the same columns are then retried at half width. Returns the batching
+    metadata the solver diagnostics report.
+    """
+
+    batch_count = 0
+    oom_retry_count = 0
+    largest_batch_size = 0
+    smallest_batch_size = None
+    batch_start = 0
+    while batch_start < column_count:
+        batch_stop = min(batch_start + batch_size, column_count)
+        try:
+            result = solve_batch(batch_start, batch_stop)
+        except oom_error:
+            if not can_retry or batch_size <= 1:
+                raise
+            batch_size = max(1, batch_size // 2)
+            oom_retry_count += 1
+            on_oom()
+            logger.warning(
+                f"{label} ran out of memory; retrying "
+                f"with {batch_size} right-hand sides per batch"
+            )
+            continue
+        store(batch_start, batch_stop, result)
+        completed_batch_size = batch_stop - batch_start
+        largest_batch_size = max(largest_batch_size, completed_batch_size)
+        smallest_batch_size = (
+            completed_batch_size
+            if smallest_batch_size is None
+            else min(smallest_batch_size, completed_batch_size)
+        )
+        batch_count += 1
+        batch_start = batch_stop
+    return {
+        "right_hand_side_batch_size": int(largest_batch_size),
+        "smallest_right_hand_side_batch_size": int(smallest_batch_size or 0),
+        "right_hand_side_batch_count": int(batch_count),
+        "oom_retry_count": int(oom_retry_count),
+    }
+
+
 def _solve_sparse_label_system_cupy_cg(
     matrix,
     right_hand_side,
@@ -2143,88 +2495,50 @@ def _solve_sparse_label_system_cupy_cg(
             f"(estimated dense CUDA working set "
             f"{estimated_dense_working_set_bytes / (1024 ** 3):.2f} GiB)"
         )
-        batch_count = 0
-        oom_retry_count = 0
-        largest_batch_size = 0
-        smallest_batch_size = None
-
-        batch_start = 0
-        while batch_start < right_hand_side.shape[1]:
-            batch_stop = min(
-                batch_start + batch_size,
-                right_hand_side.shape[1],
+        def solve_batch(batch_start, batch_stop):
+            return _solve_cupy_cg_right_hand_side_batch(
+                cupy,
+                gpu_matrix,
+                right_hand_side[:, batch_start:batch_stop],
+                rtol=rtol,
+                max_iter=max_iter,
+                warm_start=(
+                    None
+                    if warm_start is None
+                    else warm_start[:, batch_start:batch_stop]
+                ),
+                collect_iterations=collect_iterations,
+                column_dot=column_dot,
             )
-            try:
-                (
-                    batch_solutions,
-                    batch_solver_info,
-                    batch_iteration_counts,
-                ) = _solve_cupy_cg_right_hand_side_batch(
-                    cupy,
-                    gpu_matrix,
-                    right_hand_side[:, batch_start:batch_stop],
-                    rtol=rtol,
-                    max_iter=max_iter,
-                    warm_start=(
-                        None
-                        if warm_start is None
-                        else warm_start[:, batch_start:batch_stop]
-                    ),
-                    collect_iterations=collect_iterations,
-                    column_dot=column_dot,
-                )
-            except cupy.cuda.memory.OutOfMemoryError:
-                # Sparse SpMM workspace needs vary by CUDA/cuSPARSE version.
-                # Retry the same columns at half width if the conservative
-                # free-memory estimate was still too optimistic.
-                if batch_size <= 1:
-                    raise
-                batch_size = max(1, batch_size // 2)
-                oom_retry_count += 1
-                cupy.get_default_memory_pool().free_all_blocks()
-                logger.warning(
-                    f"{name}: CuPy batched CG ran out of memory; retrying "
-                    f"with {batch_size} right-hand sides per batch"
-                )
-                continue
 
+        def store(batch_start, batch_stop, result):
+            batch_solutions, batch_solver_info, batch_iteration_counts = result
             solutions[:, batch_start:batch_stop] = batch_solutions
             solver_info[batch_start:batch_stop] = batch_solver_info
-            iteration_counts[batch_start:batch_stop] = (
-                batch_iteration_counts
-            )
+            iteration_counts[batch_start:batch_stop] = batch_iteration_counts
             # All CUDA arrays owned by the completed helper call are now out
             # of scope. Do not let allocator fragmentation or version-specific
             # sparse-matmul workspaces accumulate across thousands of RHS.
             cupy.get_default_memory_pool().free_all_blocks()
             cupy.get_default_pinned_memory_pool().free_all_blocks()
-            completed_batch_size = batch_stop - batch_start
-            largest_batch_size = max(
-                largest_batch_size,
-                completed_batch_size,
-            )
-            smallest_batch_size = (
-                completed_batch_size
-                if smallest_batch_size is None
-                else min(smallest_batch_size, completed_batch_size)
-            )
-            batch_count += 1
-            batch_start = batch_stop
 
+        batching = _solve_in_adaptive_batches(
+            right_hand_side.shape[1],
+            batch_size,
+            solve_batch,
+            store,
+            oom_error=cupy.cuda.memory.OutOfMemoryError,
+            can_retry=True,
+            on_oom=lambda: cupy.get_default_memory_pool().free_all_blocks(),
+            label=f"{name}: CuPy batched CG",
+        )
         cupy.cuda.get_current_stream().synchronize()
         if metadata is not None:
             metadata.update(
                 {
                     "algorithm": "batched_independent_cg",
-                    "right_hand_side_batch_size": int(largest_batch_size),
-                    "smallest_right_hand_side_batch_size": int(
-                        smallest_batch_size or 0
-                    ),
-                    "right_hand_side_batch_count": int(batch_count),
-                    "oom_retry_count": int(oom_retry_count),
-                    "estimated_dense_working_set_bytes": (
-                        estimated_dense_working_set_bytes
-                    ),
+                    **batching,
+                    "estimated_dense_working_set_bytes": estimated_dense_working_set_bytes,
                 }
             )
         return solutions, solver_info, iteration_counts
@@ -2405,71 +2719,34 @@ def _solve_sparse_label_system_torch_block_cg(
             torch_iteration_counts.cpu().numpy(),
         )
 
-    batch_count = 0
-    oom_retry_count = 0
-    largest_batch_size = 0
-    smallest_batch_size = None
-    batch_start = 0
-    # Freed blocks from a completed batch intentionally stay in PyTorch's
-    # CUDA cache. Every full batch has the same shapes, so the next batch can
-    # reuse the scratch pool instead of returning it to CUDA and immediately
-    # allocating it again. OOM recovery and final cleanup still purge it.
-    while batch_start < right_hand_side.shape[1]:
-        batch_stop = min(
-            batch_start + batch_size,
-            right_hand_side.shape[1],
-        )
-        try:
-            (
-                batch_solution,
-                batch_active,
-                batch_converged,
-                batch_breakdown,
-                batch_iteration_counts,
-            ) = solve_batch(batch_start, batch_stop)
-        except torch.OutOfMemoryError:
-            if device.type != "cuda" or batch_size <= 1:
-                raise
-            batch_size = max(1, batch_size // 2)
-            oom_retry_count += 1
-            torch.cuda.empty_cache()
-            logger.warning(
-                f"{name}: Torch block CG ran out of memory; retrying "
-                f"with {batch_size} right-hand sides per batch"
-            )
-            continue
-
+    def store(batch_start, batch_stop, result):
+        batch_solution, batch_active, batch_converged, batch_breakdown, batch_iteration_counts = result
         solutions[:, batch_start:batch_stop] = batch_solution
         active[batch_start:batch_stop] = batch_active
         converged[batch_start:batch_stop] = batch_converged
         breakdown[batch_start:batch_stop] = batch_breakdown
         iteration_counts[batch_start:batch_stop] = batch_iteration_counts
-        completed_batch_size = batch_stop - batch_start
-        largest_batch_size = max(
-            largest_batch_size,
-            completed_batch_size,
-        )
-        smallest_batch_size = (
-            completed_batch_size
-            if smallest_batch_size is None
-            else min(smallest_batch_size, completed_batch_size)
-        )
-        batch_count += 1
-        batch_start = batch_stop
 
+    # Freed blocks from a completed batch intentionally stay in PyTorch's
+    # CUDA cache. Every full batch has the same shapes, so the next batch can
+    # reuse the scratch pool instead of returning it to CUDA and immediately
+    # allocating it again. OOM recovery and final cleanup still purge it.
+    batching = _solve_in_adaptive_batches(
+        right_hand_side.shape[1],
+        batch_size,
+        solve_batch,
+        store,
+        oom_error=torch.OutOfMemoryError,
+        can_retry=device.type == "cuda",
+        on_oom=torch.cuda.empty_cache,
+        label=f"{name}: Torch block CG",
+    )
     if metadata is not None:
         metadata.update(
             {
                 "algorithm": "chunked_block_cg",
-                "right_hand_side_batch_size": int(largest_batch_size),
-                "smallest_right_hand_side_batch_size": int(
-                    smallest_batch_size or 0
-                ),
-                "right_hand_side_batch_count": int(batch_count),
-                "oom_retry_count": int(oom_retry_count),
-                "estimated_dense_working_set_bytes": (
-                    estimated_dense_working_set_bytes
-                ),
+                **batching,
+                "estimated_dense_working_set_bytes": estimated_dense_working_set_bytes,
             }
         )
 
@@ -2593,7 +2870,6 @@ def solve_sparse_label_system(
     solutions = None
     iteration_counts = np.zeros(right_hand_side.shape[1], dtype=np.int64)
     solver_info = np.zeros(right_hand_side.shape[1], dtype=np.int64)
-    cg_started_at = time.perf_counter()
     solver_device = None
     solver_backend_metadata = {}
 
@@ -2613,7 +2889,6 @@ def solve_sparse_label_system(
             collect_iterations=diagnostics is not None,
             metadata=solver_backend_metadata,
         )
-        operation = "cupy.batched_cg"
         solver_description = "CuPy batched conjugate gradient"
     elif linear_solver == "torch_block_cg":
         (
@@ -2638,7 +2913,6 @@ def solve_sparse_label_system(
             block_unconverged
         ]
         solver_info[block_breakdown] = -1
-        operation = "torch.block_cg"
         solver_description = "Torch block conjugate gradient"
     else:
         solutions = np.zeros_like(right_hand_side)
@@ -2675,7 +2949,6 @@ def solve_sparse_label_system(
             solutions[:, class_index] = solution
             solver_info[class_index] = int(info)
 
-        operation = "scipy.sparse.linalg.cg"
         solver_description = "SciPy conjugate gradient"
 
     failed = np.flatnonzero(solver_info < 0).tolist()
@@ -2862,12 +3135,6 @@ def solve_sparse_label_system_cholmod(
     return solution
 
 
-def stable_softmax(values):
-    shifted = values - np.max(values, axis=1, keepdims=True)
-    exponentials = np.exp(shifted)
-    return exponentials / exponentials.sum(axis=1, keepdims=True)
-
-
 def normalize_label_spreading_rows(values):
     """Convert nonnegative fixed-point scores into per-row class probabilities."""
 
@@ -2910,19 +3177,6 @@ def normalize_label_spreading_rows(values):
             )
         np.divide(chunk, row_sums, out=chunk)
     return probabilities
-
-
-def normalize_mixed_label_rows(values):
-    """Convert propagated scores to the paper's L1-normalized class scores."""
-
-    l1_norms = np.linalg.norm(values, ord=1, axis=1, keepdims=True)
-    zero_rows = np.flatnonzero(l1_norms.ravel() == 0)
-    if len(zero_rows) > 0:
-        raise RuntimeError(
-            "Mixed label propagation produced zero-L1-norm rows, which cannot be normalized "
-            f"as specified by the paper: {zero_rows[:10].tolist()}"
-        )
-    return values / l1_norms
 
 
 def _dense_row_chunk_size(values, target_bytes):

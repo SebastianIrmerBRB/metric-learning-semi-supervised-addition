@@ -28,11 +28,9 @@ import utils
 
 # Regularizers the debugger knows how to draw a single step for.  Any other
 # regularizer trains normally and simply produces no per-step artifacts.
-VISUALIZED_REGULARIZERS = ("seraph", "simmatch_v2", "stml")
-
-# Regularizers whose artifacts name the true class behind an unlabeled sample.
-# They are debugger-style diagnostics: the regularizer itself never reads them.
-LABEL_READING_REGULARIZERS = ("seraph", "simmatch_v2")
+# Their artifacts name the true class behind an unlabeled sample: debugger-style
+# diagnostics the regularizer itself never reads.
+VISUALIZED_REGULARIZERS = ("seraph",)
 
 VISUALIZATION_LAYOUTS = ("pca", "pacmap", "tsne")
 DEFAULT_VISUALIZATION_LAYOUT = "tsne"
@@ -301,7 +299,7 @@ class StepVisualizer:
         )
         self._disabled = False
         self._drawings = None
-        if self.name in LABEL_READING_REGULARIZERS and not hasattr(train_dataset, "labels"):
+        if not hasattr(train_dataset, "labels"):
             self._disable(
                 f"the {self.name} artifacts report the true class behind each "
                 "unlabeled sample, which this training dataset does not expose"
@@ -364,41 +362,11 @@ class StepVisualizer:
             # stop drawing instead of repeating the same traceback every N steps.
             self._disable(f"{description} failed:\n{traceback.format_exc()}")
 
-    def before_regularizer_loss(
-        self,
-        *,
-        step,
-        state,
-        supervised_inputs,
-        regularizer_batch,
-    ):
-        """Draw what this step reads before its own update overwrites it."""
-
-        if self.name != "simmatch_v2":
-            return
-        with self._guarded("the labeled-memory propagation graph"):
-            reading = self._visualization.read_simmatch_batch_graph(
-                self.context,
-                self.regularizer,
-                state,
-                supervised_inputs,
-                regularizer_batch,
-            )
-            self._submit(
-                "labeled-memory propagation graph",
-                lambda: self._visualization.save_simmatch_batch_graph_from_reading(
-                    self.context,
-                    self.regularizer,
-                    reading,
-                    step=step,
-                ),
-            )
 
     def after_regularizer_loss(
         self,
         *,
         step,
-        state,
         diagnostics,
         supervised_inputs,
         supervised_embeddings,
@@ -409,25 +377,17 @@ class StepVisualizer:
     ):
         """Draw what the step's own loss computed, from that loss's diagnostics."""
 
-        if self.name == "seraph":
-            with self._guarded("the SERAPH comparison trace"):
-                self._save_seraph_comparisons(
-                    step=step,
-                    diagnostics=diagnostics,
-                    supervised_inputs=supervised_inputs,
-                    supervised_embeddings=supervised_embeddings,
-                    supervised_labels=supervised_labels,
-                    supervised_indices=supervised_indices,
-                    regularizer_batch=regularizer_batch,
-                    regularizer_embeddings=regularizer_embeddings,
-                )
-        elif self.name == "stml":
-            with self._guarded("the STML batch embedding spaces"):
-                self._save_stml_batch_spaces(
-                    step=step,
-                    state=state,
-                    regularizer_batch=regularizer_batch,
-                )
+        with self._guarded("the SERAPH comparison trace"):
+            self._save_seraph_comparisons(
+                step=step,
+                diagnostics=diagnostics,
+                supervised_inputs=supervised_inputs,
+                supervised_embeddings=supervised_embeddings,
+                supervised_labels=supervised_labels,
+                supervised_indices=supervised_indices,
+                regularizer_batch=regularizer_batch,
+                regularizer_embeddings=regularizer_embeddings,
+            )
 
     def _save_seraph_comparisons(
         self,
@@ -488,37 +448,6 @@ class StepVisualizer:
                 supervised_inputs=supervised_images,
                 regularizer_inputs=regularizer_images,
                 step=step,
-            ),
-        )
-
-    def _save_stml_batch_spaces(self, *, step, state, regularizer_batch):
-        views, _, instance_ids = regularizer_batch
-        inputs = torch.cat(list(views), dim=0)
-        visualization_ids = instance_ids.repeat(self.regularizer.num_views).to(
-            self.context.device
-        )
-        with torch.no_grad():
-            student_g, student_f = self.context.model.forward_stml_cached(
-                inputs,
-                self.context.device,
-            )
-            teacher_g = state.forward_stml_teacher_cached(inputs, self.context.device)
-        # The student and teacher both move on after this step, so the plot gets
-        # the three spaces as they were when the loss read them.
-        student_f, student_g, teacher_g, visualization_ids = _snapshot(
-            (student_f, student_g, teacher_g, visualization_ids)
-        )
-        self._submit(
-            "STML batch embedding spaces",
-            lambda: self._visualization.save_stml_batch_visualizations(
-                context=self.context,
-                scenario=self.name,
-                criterion=self.regularizer.criterion,
-                student_f=student_f,
-                student_g=student_g,
-                teacher_g=teacher_g,
-                instance_ids=visualization_ids,
-                output_stem=f"step_{step:03d}_batch_embedding_spaces",
             ),
         )
 

@@ -3,7 +3,9 @@
 import copy
 import csv
 import gc
+import math
 import time
+import types
 from collections import OrderedDict, defaultdict, deque
 from dataclasses import replace
 from datetime import datetime
@@ -27,7 +29,8 @@ from models.retrieval_model import (
     DinoWrapper,
 )
 
-from . import ablation, gpu_feature_loader, resume, semi_supervised
+from . import ablation, epoch_head_pack, epoch_tracking, gpu_feature_loader, resume, semi_supervised
+from . import parallel_folds as parallel_folds_module
 from .ssl import algorithms as ssl_algorithms
 from .ssl import grad_norm
 from .ssl import gradient_surgery
@@ -55,7 +58,7 @@ from .frozen_feature_cache import (
     make_frozen_feature_cache_key,
     make_frozen_feature_index_spec,
 )
-from .io import namespace_to_dict, result_to_dict, write_json
+from .io import namespace_to_dict, result_to_dict, write_csv, write_json
 from .types import (
     ALL_LOSSES,
     ALL_MINERS,
@@ -75,6 +78,8 @@ BATCH_EASY_HARD_RANGE_PARAMS = ("allowed_pos_range", "allowed_neg_range")
 FROZEN_BACKBONE_STATE_PREFIX = "dinov2."
 
 HEAD_STATE_FILENAME = "head_state.pt"
+# --save_epoch_head_interval keeps one head per saved epoch here, in head_state.pt's format.
+EPOCH_HEADS_DIRNAME = resume.EPOCH_HEADS_DIRNAME
 # Default cross-trial frozen-feature budget under --low_memory_mode. Large
 # enough to keep a study's active folds resident, small enough that a sweep over
 # seeds or label budgets cannot grow without bound.
@@ -87,13 +92,8 @@ class TrainingLossComponents(NamedTuple):
     miner: object | None
     optimizer: torch.optim.Optimizer | None
 
-    @property
-    def requires_float32_loss(self) -> bool:
-        return isinstance(self.criterion, losses.ArcFaceLoss)
-
 class _EpochPhase(NamedTuple):
     objective: TrainingLossComponents
-    standalone_stml: bool
     regularization_active: bool
     regularizer_disabled: bool
     description: str
@@ -137,28 +137,11 @@ class GradientContributionNorms(NamedTuple):
     supervised_regularizer_sum: float = None
 
 
-# A component gradient this far below the supervised one carries no usable
-# calibration signal. The implied weight is target_ratio / ratio, so one denormal
-# measurement freezes a weight of 1e15 and the next batch that does produce a
-# gradient blows the model up. Measured on SLADE + NTXent at temperature 0.0023,
-# where Eq 7's mining leaves the ranking term exactly zero on the pairs it
-# separated and enormous on the occasional loose one: a median ratio of 2.2e16
-# froze regularizer_weight=4.6e15 and training went non-finite three epochs later.
 # How a gradient is summarized before the two terms are compared. "l2" is the
 # Euclidean norm; "max_mean" is Wang et al.'s statistic (doi:10.1137/20M1318043).
 TARGET_RATIO_STATISTIC_L2 = "l2"
 TARGET_RATIO_STATISTIC_MAX_MEAN = "max_mean"
 TARGET_RATIO_STATISTICS = (TARGET_RATIO_STATISTIC_L2, TARGET_RATIO_STATISTIC_MAX_MEAN)
-
-MINIMUM_CALIBRATION_NORM_RATIO = 1e-6
-
-# Consecutive unusable batches before a term is declared dead. A single one is
-# ordinary -- a regularizer whose objective starts up in stages produces them --
-# so the budget has to be long enough to outlast a transient and short enough to
-# fail in the epoch that caused it rather than the one that goes non-finite.
-# Counted in eligible probes, so a wider sample update interval stretches the
-# same budget over proportionally more training batches.
-MAXIMUM_UNUSABLE_CALIBRATION_BATCHES = 50
 
 # Backward-compatible default window. Individual regularizers may override it
 # through regularizer_target_ratio_recalibration_interval_samples.
@@ -215,6 +198,11 @@ def measure_gradient_component_norms(
             tuple((name, 0.0) for name in extra_components),
         )
 
+    # Queue scalar summaries on the device, then transfer them together. Reading
+    # each component with item() stalls the host between backward passes, which
+    # is especially costly when several frozen-head jobs share a GPU.
+    summaries = []
+
     def component_norm(*weighted_terms, reduction=TARGET_RATIO_STATISTIC_L2):
         weighted_loss = None
         for loss, weight in weighted_terms:
@@ -224,7 +212,9 @@ def measure_gradient_component_norms(
             term = weight * loss
             weighted_loss = term if weighted_loss is None else weighted_loss + term
         if weighted_loss is None:
-            return 0.0
+            zero = torch.zeros((), dtype=torch.float32, device=parameters[0].device)
+            summaries.append((zero, reduction, 0))
+            return
         gradients = torch.autograd.grad(
             weighted_loss,
             parameters,
@@ -232,9 +222,7 @@ def measure_gradient_component_norms(
             retain_graph=True,
         )
         device = parameters[0].device
-        squared_norm = torch.zeros((), dtype=torch.float32, device=device)
-        absolute_sum = torch.zeros((), dtype=torch.float32, device=device)
-        absolute_max = torch.zeros((), dtype=torch.float32, device=device)
+        summary = torch.zeros((), dtype=torch.float32, device=device)
         counted = 0
         for gradient in gradients:
             if gradient is None:
@@ -244,19 +232,17 @@ def measure_gradient_component_norms(
                 gradient = gradient.coalesce().values()
             gradient = gradient.float()
             if reduction == "l2":
-                squared_norm.add_(gradient.square().sum())
+                summary.add_(gradient.square().sum())
                 continue
             magnitude = gradient.abs()
-            absolute_sum.add_(magnitude.sum())
-            absolute_max = torch.maximum(absolute_max, magnitude.max())
-            counted += magnitude.numel()
-        if reduction == "l2":
-            return max(float(squared_norm.item()), 0.0) ** 0.5
-        if reduction == "max":
-            return max(float(absolute_max.item()), 0.0)
-        if reduction == "mean":
-            return max(float(absolute_sum.item()), 0.0) / counted if counted else 0.0
-        raise ValueError(f"unknown gradient reduction {reduction!r}")
+            if reduction == "max":
+                summary = torch.maximum(summary, magnitude.max())
+            elif reduction == "mean":
+                summary.add_(magnitude.sum())
+                counted += magnitude.numel()
+            else:
+                raise ValueError(f"unknown gradient reduction {reduction!r}")
+        summaries.append((summary, reduction, counted))
 
     if statistic == TARGET_RATIO_STATISTIC_MAX_MEAN:
         # Wang et al., Algorithm 1: max over the primary gradient, mean over each
@@ -267,36 +253,42 @@ def measure_gradient_component_norms(
         supervised_reduction = regularizer_reduction = "l2"
 
     # Do not keep several model-sized component gradient tuples alive together.
-    supervised_norm = component_norm(
+    component_norm(
         (supervised_loss, supervised_weight),
         reduction=supervised_reduction,
     )
-    regularizer_norm = component_norm(
+    component_norm(
         (regularization_loss, regularizer_weight),
         reduction=regularizer_reduction,
     )
-    extra = tuple(
-        (name, component_norm((loss, weight), reduction=regularizer_reduction))
-        for name, (loss, weight) in extra_components.items()
-    )
+    for loss, weight in extra_components.values():
+        component_norm((loss, weight), reduction=regularizer_reduction)
     # The caller's combined norm is taken over the whole model, so it only
     # stands in for ``||grad(sup) + grad(reg)||`` when nothing else contributes
     # and nothing was excluded from ``parameters``. A regularizer declaring extra
     # components is exactly the case where both of those can fail, including on
     # the batches where the extra term happens to measure zero.
-    supervised_regularizer_sum = (
+    if extra_components and include_pair_norm:
         component_norm(
             (supervised_loss, supervised_weight),
             (regularization_loss, regularizer_weight),
         )
-        if extra and include_pair_norm
-        else None
-    )
+    values = torch.stack([summary for summary, _, _ in summaries]).tolist()
+    norms = []
+    for value, (_, reduction, counted) in zip(values, summaries):
+        value = max(float(value), 0.0)
+        # Keep the original Python sqrt/division and FP32 accumulation order.
+        if reduction == "l2":
+            value = value ** 0.5
+        elif reduction == "mean":
+            value = value / counted if counted else 0.0
+        norms.append(value)
+    extra = tuple(zip(extra_components, norms[2:2 + len(extra_components)]))
     return GradientContributionNorms(
-        supervised_norm,
-        regularizer_norm,
+        norms[0],
+        norms[1],
         extra,
-        supervised_regularizer_sum,
+        norms[-1] if extra_components and include_pair_norm else None,
     )
 
 
@@ -381,6 +373,60 @@ def make_gradient_contribution_diagnostics(
     return diagnostics
 
 
+class RegularizerActivityTracker:
+    """How much each regularizer term actually acted, over a whole run.
+
+    A flat SSL result reads the same whether the regularizer trained against the
+    supervised loss at its intended strength or contributed nothing on most
+    batches. This summarizes the gradient-contribution samples the trainer
+    already logs every ``ssl_gradient_contribution_log_interval`` regularized
+    batches -- no extra backward pass -- into, per term (``regularizer`` and each
+    extra term such as ``slade_basis``): the share of sampled batches whose
+    gradient was exactly zero, and the achieved gradient ratio to the supervised
+    loss, averaged over all samples and over the non-zero ones.
+
+    Samples taken before the regularizer reports its steady state (a basis
+    warm-up, a closed mining gate) are left out, so the start-up stages do not
+    count as dead batches.
+    """
+
+    PREFIX = "train/gradient_contribution/"
+    SUFFIX = "_to_supervised_ratio"
+
+    def __init__(self):
+        self.ratios = defaultdict(list)
+
+    def record(self, diagnostics):
+        for key, value in diagnostics.items():
+            if not (key.startswith(self.PREFIX) and key.endswith(self.SUFFIX)):
+                continue
+            name = key[len(self.PREFIX):-len(self.SUFFIX)]
+            if name == "unit_regularizer":
+                continue
+            self.ratios[name].append(float(value))
+
+    def summary(self):
+        summary = {}
+        for name, values in sorted(self.ratios.items()):
+            ratios = np.asarray(values, dtype=np.float64)
+            if not len(ratios):
+                continue
+            active = ratios[ratios > 0.0]
+            summary[f"{name}_gradient_samples"] = float(len(ratios))
+            summary[f"{name}_zero_gradient_fraction"] = float(np.mean(ratios == 0.0))
+            summary[f"{name}_ratio_mean"] = float(ratios.mean())
+            summary[f"{name}_ratio_median"] = float(np.median(ratios))
+            if len(active):
+                summary[f"{name}_nonzero_ratio_median"] = float(np.median(active))
+        return summary
+
+
+def _l2_norm(vectors):
+    """Euclidean norm over a sequence of gradient tensors."""
+
+    return float(sum(float(v.float().square().sum()) for v in vectors)) ** 0.5
+
+
 def concatenate_joint_forward_inputs(supervised_inputs, regularizer_batch):
     """Concatenate labeled and regularizer inputs without changing either stream."""
 
@@ -455,7 +501,6 @@ def make_graphed_projection(model, sample_features):
 
 def should_precompute_frozen_features(args, ssl_config):
     regularized_ssl = is_cacheable_regularized_ssl(ssl_config)
-    loss_driven_ssl = ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS
     # Every registered pseudo-label method consumes the common deterministic
     # embedding-extraction path. Materializing the raw frozen-backbone matrix is
     # therefore method-agnostic: Iscen, mixed propagation, sklearn, and FAISS
@@ -467,7 +512,7 @@ def should_precompute_frozen_features(args, ssl_config):
         and args.backbone_tuning == BACKBONE_TUNING_FROZEN
         and (
             (supervised and not ssl_config.enabled)
-            or (not supervised and (loss_driven_ssl or regularized_ssl or pseudo_label_ssl))
+            or (not supervised and (regularized_ssl or pseudo_label_ssl))
         )
     )
 
@@ -670,6 +715,31 @@ def _make_train_loader(
     )
 
 
+class _BackboneFeatureView(torch.nn.Module):
+    """The model seen from the head's input: what the frozen backbone hands it.
+
+    Epoch tracking's geometry measures the backbone features as the untrained
+    reference. This view goes through the same three input paths as the model
+    (precomputed feature batches, the indexed feature cache, raw images) and
+    returns the features instead of projecting them.
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def project_features(self, features):
+        return features
+
+    def forward_cached(self, images, device, **cache_kwargs):
+        return self.model.forward_backbone_cached(images, device, **cache_kwargs)
+
+    def forward(self, images):
+        if torch.is_tensor(images) and images.ndim == 2:
+            return images
+        return self.model.forward_backbone(images)
+
+
 def _pseudo_label_labeled_batch_size(ssl_config):
     """Return the optional two-stream quota for post-warmup loaders."""
 
@@ -835,10 +905,6 @@ def resolve_warmup_objective(args, ssl_config):
     configured run silently warmed up with whatever ``--warmup_loss`` defaulted
     to, at stock parameters, no matter which loss the run was about. Both
     entry points now converge here.
-
-    STML is the exception it has always been: an unsupervised multi-view
-    objective cannot run on labeled-only warm-up batches, so it falls back to a
-    standard pair loss.
     """
 
     if not uses_ssl_warmup_objective(ssl_config):
@@ -847,17 +913,6 @@ def resolve_warmup_objective(args, ssl_config):
         return args
 
     resolved = copy.deepcopy(args)
-    if args.loss == "STMLLoss":
-        resolved.warmup_loss = "NTXentLoss"
-        resolved.warmup_loss_params = {}
-        resolved.warmup_miner = "no_miner"
-        resolved.warmup_miner_params = {}
-        logger.info(
-            "warmup_loss=same_as_loss cannot use STMLLoss on labeled-only "
-            "warm-up batches; warming up with NTXentLoss instead"
-        )
-        return resolved
-
     resolved.warmup_loss = resolved.loss
     resolved.warmup_loss_params = copy.deepcopy(resolved.loss_params)
     resolved.warmup_miner = resolved.miner
@@ -881,7 +936,6 @@ def run_experiment(
     """Run either one holdout training job or all requested CV folds."""
 
     args = resolve_warmup_objective(args, ssl_config)
-    args = resolve_loss_driven_supervised_args(args)
     resolve_scheduler_batch_device(args, ssl_config)
     args, ssl_config = resolve_platform_dataloader_workers(args, ssl_config)
     if (
@@ -940,19 +994,6 @@ def is_supervised_mode(args):
     return getattr(args, "mode", "supervised") == "supervised"
 
 
-def resolve_loss_driven_supervised_args(args):
-    """Use the configured warm-up objective for an STML supervised baseline."""
-
-    if not is_supervised_mode(args) or getattr(args, "loss", None) != "STMLLoss":
-        return args
-    resolved = copy.deepcopy(args)
-    resolved.loss = resolved.warmup_loss
-    resolved.loss_params = dict(resolved.warmup_loss_params)
-    resolved.miner = resolved.warmup_miner
-    resolved.miner_params = dict(resolved.warmup_miner_params)
-    return resolved
-
-
 def resolve_mode_ssl_config(args, ssl_config):
     """Resolve the config a run actually trains with, from its mode and its args.
 
@@ -1004,33 +1045,6 @@ def apply_unlabeled_pool_args(args, ssl_config):
     resolved = replace(ssl_config, **overrides)
     semi_supervised.validate_ssl_config(resolved)
     return resolved
-
-
-def restarts_selection_after_warmup(ssl_config, regularizer):
-    """Whether this run discards its warm-up validation history at some point.
-
-    Two settings ask for it, and they fire at different epochs. SLADE's
-    ``within_fold_teacher_student`` has no choice and no latitude: its warm-up
-    model is the teacher, a training input rather than a candidate student, so a
-    teacher checkpoint must never win selection for a run whose output promises a
-    student. That restart is pinned to ``warmup_epochs``.
-
-    ``restart_selection_after_warmup`` asks for it deliberately, so that
-    ``best_valid_*`` and the patience budget both describe the SSL phase alone --
-    without it a warm-up that already peaks makes the SSL phase unmeasurable,
-    since the objective is then a warm-up epoch's score no matter what the
-    method's own hyperparameters do. That restart waits for
-    ``selection_restart_is_due`` below, because ``warmup_epochs`` is not
-    necessarily where the method starts being itself.
-    """
-
-    return bool(
-        (
-            regularizer is not None
-            and getattr(regularizer, "within_fold_teacher_student", False)
-        )
-        or ssl_config.restart_selection_after_warmup
-    )
 
 
 def selection_restart_is_due(ssl_config, regularizer, num_epoch):
@@ -1151,15 +1165,7 @@ def make_run_model(args, ssl_config, regularizer=None):
     :func:`run_training`.
     """
 
-    if ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS:
-        stml_params = dict(getattr(args, "loss_params", {}))
-        head_kwargs = {
-            "stml": True,
-            "stml_g_dim": getattr(args, "stml_g_dim", None),
-            "stml_normalize_student": bool(stml_params.get("normalize_student", False)),
-        }
-    else:
-        head_kwargs = {} if regularizer is None else regularizer.model_kwargs(args)
+    head_kwargs = {} if regularizer is None else regularizer.model_kwargs(args)
     return DinoWrapper(
         dino_size=args.dino_size,
         feat_dim=args.feat_dim,
@@ -1181,7 +1187,51 @@ def save_head_state(model, args, ssl_config, selected_epoch, cv_fold, output_dir
     reads embeddings, and proxies or class weights produce none.
     """
 
-    payload = {
+    payload = head_state_payload(model, args, ssl_config, selected_epoch, cv_fold)
+    output_path = Path(output_dir) / HEAD_STATE_FILENAME
+    torch.save(payload, output_path)
+    logger.info(
+        f"Saved the projection head selected at epoch {selected_epoch} to {output_path}"
+    )
+    return output_path
+
+
+def get_epoch_head_interval(args):
+    """Epochs between two saved epoch heads, or None when none are saved."""
+
+    interval = getattr(args, "save_epoch_head_interval", None)
+    return int(interval) if interval else None
+
+
+def save_epoch_head_state(model, args, ssl_config, epoch, cv_fold, output_dir):
+    """Write the head as it is at ``epoch`` to ``epoch_heads/<epoch slug>.pt``.
+
+    Same format as ``head_state.pt``, with ``selected_epoch`` naming the epoch the
+    head was taken at, so every reader of a saved head reads these too; float32
+    tensors are stored as ``--epoch_head_dtype`` (``metadata.stored_dtype``). Not
+    logged per file: an interval of 1 would add a line to info.log every epoch.
+    """
+
+    payload = head_state_payload(model, args, ssl_config, epoch, cv_fold)
+    # Rounded once, here, so packing stays bit-exact against what was saved;
+    # load_state_dict casts the values back into the model's float32 parameters.
+    stored_dtype = getattr(torch, getattr(args, "epoch_head_dtype", None) or "float32")
+    state = payload["state_dict"]
+    for name, value in state.items():
+        if torch.is_tensor(value) and value.dtype == torch.float32:
+            state[name] = value.to(stored_dtype)
+    payload["metadata"]["stored_dtype"] = str(stored_dtype).removeprefix("torch.")
+    directory = Path(output_dir) / EPOCH_HEADS_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    output_path = directory / f"{epoch_tracking.epoch_slug(epoch)}.pt"
+    torch.save(payload, output_path)
+    return output_path
+
+
+def head_state_payload(model, args, ssl_config, selected_epoch, cv_fold):
+    """The saved-head file's contents: the non-backbone state and how to rebuild it."""
+
+    return {
         "format_version": 1,
         "state_dict": capture_non_backbone_model_state(model),
         "metadata": {
@@ -1203,12 +1253,6 @@ def save_head_state(model, args, ssl_config, selected_epoch, cv_fold, output_dir
             "log_dir": str(args.log_dir),
         },
     }
-    output_path = Path(output_dir) / HEAD_STATE_FILENAME
-    torch.save(payload, output_path)
-    logger.info(
-        f"Saved the projection head selected at epoch {selected_epoch} to {output_path}"
-    )
-    return output_path
 
 
 def load_head_state(path):
@@ -1340,21 +1384,9 @@ def uses_ssl_warmup_objective(ssl_config):
     return ssl_config.enabled and ssl_config.warmup_epochs > 0
 
 
-def uses_shared_mixed_lp_proxy_warmup(args, ssl_config):
-    """Whether labeled warmup must continue the final method's proxy state."""
-
-    return (
-        uses_ssl_warmup_objective(ssl_config)
-        and ssl_config.method == "mixed_label_propagation"
-        and args.loss == "MixedLabelPropagationProxyLoss"
-    )
-
-
 def uses_main_objective_for_warmup(args, ssl_config):
     """Whether warmup and main training use one objective instance."""
 
-    if uses_shared_mixed_lp_proxy_warmup(args, ssl_config):
-        return True
     if not uses_ssl_warmup_objective(ssl_config):
         return False
     return (
@@ -1544,11 +1576,8 @@ NATIVE_UNLABELED_POOLS = {
         "default_fraction": utils.SEMI_AVES_DEFAULT_OOD_FRACTION,
         "default_seed": utils.SEMI_AVES_DEFAULT_OOD_SEED,
         "source": "semi_aves_original_u_train_out",
-        "append": lambda *call_args, **call_kwargs: (
-            utils.append_semi_aves_native_unlabeled_dataset(
-                *call_args, **call_kwargs
-            )
-        ),
+        # Looked up on utils at call time, so tests can patch it there.
+        "append": "append_semi_aves_native_unlabeled_dataset",
     },
     utils.NATIVE_UNLABELED_SEMI_INAT: {
         "label": "Semi-iNat",
@@ -1557,11 +1586,7 @@ NATIVE_UNLABELED_POOLS = {
         "default_fraction": utils.SEMI_INAT_DEFAULT_OOD_FRACTION,
         "default_seed": utils.SEMI_INAT_DEFAULT_OOD_SEED,
         "source": "semi_inat_original_u_train_out",
-        "append": lambda *call_args, **call_kwargs: (
-            utils.append_semi_inat_native_unlabeled_dataset(
-                *call_args, **call_kwargs
-            )
-        ),
+        "append": "append_semi_inat_native_unlabeled_dataset",
     },
 }
 
@@ -1613,12 +1638,42 @@ def _apply_labeled_unlabeled_pool(args, dataset_bundle, ssl_split):
     return dataset_bundle, ssl_split
 
 
+def _attach_unlabeled_pool(args, dataset_bundle, ssl_split, combined_dataset, pool, keep_split_unlabeled):
+    """Train on ``combined_dataset``, whose rows past the split's own are ``pool``.
+
+    Returns the split's own size, the split candidates that stay unlabeled
+    candidates, and the split with the pool's positions appended to them.
+    """
+
+    internal_train_size = len(dataset_bundle.train_dataset)
+    pool_positions = np.arange(internal_train_size, internal_train_size + len(pool), dtype=np.int64)
+    internal_unlabeled_positions = (
+        np.asarray(ssl_split.unlabeled_positions, dtype=np.int64)
+        if keep_split_unlabeled
+        else np.array([], dtype=np.int64)
+    )
+    dataset_bundle.train_dataset = combined_dataset
+    args.appended_unlabeled_pool_size = int(len(pool))
+    split = semi_supervised.SemiSupervisedSplit(
+        labeled_positions=np.asarray(ssl_split.labeled_positions, dtype=np.int64),
+        unlabeled_positions=np.concatenate([internal_unlabeled_positions, pool_positions]),
+    )
+    return internal_train_size, internal_unlabeled_positions, split
+
+
 def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
     """Optionally replace or extend split-derived unlabeled candidates."""
 
     source = getattr(args, "unlabeled_source", "split")
     external_dir = getattr(args, "external_unlabeled_dir", None)
     external_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
+    # Images attached from outside the split (an out-of-class pool, or an
+    # external pool) stay out of the sampler budget, and split candidates an
+    # external pool replaces stay in it, so an epoch keeps the in-class run's
+    # length: attaching a pool changes what the regularizer sees, not how many
+    # updates it gets.
+    args.appended_unlabeled_pool_size = 0
+    args.replaced_split_unlabeled_size = 0
     if source == "labeled":
         return _apply_labeled_unlabeled_pool(args, dataset_bundle, ssl_split)
     protocol_info = (
@@ -1663,31 +1718,14 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
                 f"The {pool_label} native unlabeled pool requires a "
                 "semi-supervised split"
             )
-        internal_train_size = len(dataset_bundle.train_dataset)
-        combined_dataset, native_dataset = pool_spec["append"](
+        combined_dataset, native_dataset = getattr(utils, pool_spec["append"])(
             dataset_bundle.train_dataset,
             protocol_info["dataset_root"],
             out_of_class_fraction=out_of_class_fraction,
             out_of_class_seed=out_of_class_seed,
         )
-        native_positions = np.arange(
-            internal_train_size,
-            internal_train_size + len(native_dataset),
-            dtype=np.int64,
-        )
-        internal_unlabeled_positions = np.asarray(
-            ssl_split.unlabeled_positions,
-            dtype=np.int64,
-        )
-        dataset_bundle.train_dataset = combined_dataset
-        ssl_split = semi_supervised.SemiSupervisedSplit(
-            labeled_positions=np.asarray(
-                ssl_split.labeled_positions,
-                dtype=np.int64,
-            ),
-            unlabeled_positions=np.concatenate(
-                [internal_unlabeled_positions, native_positions]
-            ),
+        internal_train_size, internal_unlabeled_positions, ssl_split = _attach_unlabeled_pool(
+            args, dataset_bundle, ssl_split, combined_dataset, native_dataset, keep_split_unlabeled=True
         )
         filter_info = dict(native_dataset.filter_info)
         dataset_bundle.split_info["native_unlabeled_pool"] = {
@@ -1712,7 +1750,7 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
     if ssl_split is None:
         raise ValueError(f"unlabeled_source={source!r} requires a semi-supervised split")
 
-    internal_train_size = len(dataset_bundle.train_dataset)
+    replaced_split_unlabeled_positions = np.asarray(ssl_split.unlabeled_positions, dtype=np.int64)
     combined_dataset, external_dataset = utils.append_external_unlabeled_dataset(
         dataset_bundle.train_dataset,
         external_dir,
@@ -1724,22 +1762,19 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
             "compcars_paper_threshold_calibration",
             utils.COMPCARS_PAPER_THRESHOLD_CALIBRATION_AUTO,
         ),
+        fraction=getattr(args, "external_unlabeled_fraction", None),
+        fraction_seed=getattr(args, "external_unlabeled_seed", None),
     )
-    external_positions = np.arange(
-        internal_train_size,
-        internal_train_size + len(external_dataset),
-        dtype=np.int64,
+    internal_train_size, internal_unlabeled_positions, ssl_split = _attach_unlabeled_pool(
+        args,
+        dataset_bundle,
+        ssl_split,
+        combined_dataset,
+        external_dataset,
+        keep_split_unlabeled=source == "split_and_external",
     )
-    internal_unlabeled_positions = (
-        np.asarray(ssl_split.unlabeled_positions, dtype=np.int64)
-        if source == "split_and_external"
-        else np.array([], dtype=np.int64)
-    )
-    dataset_bundle.train_dataset = combined_dataset
-    ssl_split = semi_supervised.SemiSupervisedSplit(
-        labeled_positions=np.asarray(ssl_split.labeled_positions, dtype=np.int64),
-        unlabeled_positions=np.concatenate([internal_unlabeled_positions, external_positions]),
-    )
+    if source == "external":
+        args.replaced_split_unlabeled_size = int(len(replaced_split_unlabeled_positions))
     if dataset_bundle.split_info is None:
         dataset_bundle.split_info = {}
     dataset_bundle.split_info["external_unlabeled_pool"] = {
@@ -1748,6 +1783,11 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
         "internal_train_size": int(internal_train_size),
         "internal_unlabeled_size": int(len(internal_unlabeled_positions)),
         "external_unlabeled_size": int(len(external_dataset)),
+        "external_unlabeled_available_size": int(
+            getattr(external_dataset, "available_images", len(external_dataset))
+        ),
+        "external_unlabeled_fraction": getattr(external_dataset, "selection_fraction", None),
+        "external_unlabeled_seed": getattr(external_dataset, "selection_seed", None),
         "external_dataset_type": type(external_dataset).__name__,
         "external_unlabeled_filter": external_filter,
     }
@@ -1770,25 +1810,25 @@ def configure_external_unlabeled_pool(args, dataset_bundle, ssl_split):
                 f"{filter_info.get('requested_min_images_per_model')} to "
                 f"{filter_info.get('min_images_per_model')} to reproduce the published "
                 f"{filter_info.get('expected_images')} images / "
-                f"{filter_info.get('expected_model_classes')} model classes"
+                f"{filter_info.get('expected_model_classes')} {category_unit}"
             )
         if filter_info.get("matches_expected_candidate_pool") is False:
             logger.warning(
-                "CompCars candidate pool before filtering does not match the official "
-                "classification split: "
+                "CompCars candidate pool before filtering does not match the full release's "
+                "whole-car web-nature images: "
                 f"expected={filter_info.get('expected_candidate_images')} images / "
-                f"{filter_info.get('expected_candidate_model_classes')} model classes, "
+                f"{filter_info.get('expected_candidate_model_classes')} {category_unit}, "
                 f"got={filter_info.get('discovered_images')} images / "
-                f"{filter_info.get('discovered_model_classes')} model classes"
+                f"{filter_info.get('discovered_model_classes')} {category_unit}"
             )
         if filter_info.get("matches_expected_counts") is False:
             paper_label = filter_info.get("paper_label") or "paper"
             logger.warning(
                 f"External unlabeled filter did not match documented {paper_label} CompCars counts: "
                 f"expected={filter_info.get('expected_images')} images / "
-                f"{filter_info.get('expected_model_classes')} model classes, "
+                f"{filter_info.get('expected_model_classes')} {category_unit}, "
                 f"got={filter_info.get('kept_images')} images / "
-                f"{filter_info.get('kept_model_classes')} model classes. "
+                f"{filter_info.get('kept_model_classes')} {category_unit}. "
                 f"Nearest thresholds={filter_info.get('nearest_count_thresholds')}"
             )
     logger.info(
@@ -2058,9 +2098,6 @@ def _prepare_datasets(
         cv_mode=args.cv_mode,
         val_mode=args.val_mode,
         dataset_protocol=args.dataset_protocol,
-        cifar_imbalance_factor=args.cifar_imbalance_factor,
-        cifar_train_fraction=args.cifar_train_fraction,
-        cifar_test_fraction=args.cifar_test_fraction,
         full_train=bool(getattr(args, "final_full_train", False)),
         holdout_val_ratio=get_holdout_val_ratio(args),
         image_resize_mode=get_image_resize_mode(args),
@@ -2136,6 +2173,18 @@ def override_length_before_new_iter_from_fold(args, train_dataset, ssl_split):
         replaced_unlabeled = getattr(args, "labeled_pool_replaced_unlabeled_size", None)
         if replaced_unlabeled is not None:
             fold_training_length = int(num_labeled + int(replaced_unlabeled))
+    appended_unlabeled = 0
+    replaced_unlabeled = 0
+    if ssl_split is not None and not pools_are_the_same_samples:
+        # Attached pools (Semi-iNat/Semi-Aves U-out, external) sit at the end
+        # of the unlabeled positions; the epoch is sized as if they were absent
+        # and any split candidates they replaced were still there, so every
+        # pool setting runs the in-class updates per epoch it was tuned with.
+        appended_unlabeled = int(getattr(args, "appended_unlabeled_pool_size", 0) or 0)
+        replaced_unlabeled = int(getattr(args, "replaced_split_unlabeled_size", 0) or 0)
+        if appended_unlabeled > num_unlabeled:
+            raise ValueError("The appended unlabeled pool is larger than the fold's unlabeled positions")
+        fold_training_length += replaced_unlabeled - appended_unlabeled
     if fold_training_length <= 0:
         raise ValueError("The labeled + unlabeled fold training pool must not be empty")
 
@@ -2154,6 +2203,7 @@ def override_length_before_new_iter_from_fold(args, train_dataset, ssl_split):
     args.length_before_new_iter_source = source
     args.length_before_new_iter_num_labeled = int(num_labeled)
     args.length_before_new_iter_num_unlabeled = int(num_unlabeled)
+    args.length_before_new_iter_excluded_unlabeled = int(appended_unlabeled)
     if explicit_override is None:
         if ssl_split is not None and pools_are_the_same_samples:
             logger.info(
@@ -2163,6 +2213,15 @@ def override_length_before_new_iter_from_fold(args, train_dataset, ssl_split):
                 f"offered, while unlabeled_source='labeled' applies the unlabeled objective to the "
                 f"same {num_unlabeled} labeled samples "
                 f"(configured value {configured_length!r} was overridden)"
+            )
+        elif appended_unlabeled:
+            logger.info(
+                "Resolved length_before_new_iter from the fold training pool without the attached "
+                f"unlabeled pool: {fold_training_length} = {num_labeled} labeled + "
+                f"{fold_training_length - num_labeled} split unlabeled"
+                + (f" ({replaced_unlabeled} replaced by the external pool)" if replaced_unlabeled else "")
+                + f"; {appended_unlabeled} attached candidates stay drawable but do not set the epoch "
+                f"length (configured value {configured_length!r} was overridden)"
             )
         else:
             logger.info(
@@ -2229,6 +2288,10 @@ class _EpochTrainer:
                 "cosine are not defined"
             )
             self.gradient_contribution_log_interval = 0
+        self.regularizer_activity = RegularizerActivityTracker()
+        # Latched like model selection's restart: steady_state_active may switch
+        # back off, and a start-up stage must not count as a dead batch.
+        self._regularizer_activity_latched = False
         if self.gradient_contribution_log_interval > 0 and regularizer is not None:
             logger.info(
                 "SSL gradient contribution logging enabled: "
@@ -2239,17 +2302,21 @@ class _EpochTrainer:
             getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
             == LR_SCHEDULER_COSINE_WARM_RESTARTS
         )
-        self._lr_schedulers = {}
+        # Every distinct optimizer once, in a fixed order: the warm-up objective
+        # may share the main objective's.
+        all_optimizers = {}
         for optimizer in (
             model_optimizer,
             main_objective.optimizer,
             None if warmup_objective is None else warmup_objective.optimizer,
         ):
-            if optimizer is None or id(optimizer) in self._lr_schedulers:
-                continue
+            if optimizer is not None:
+                all_optimizers.setdefault(id(optimizer), optimizer)
+        self._lr_schedulers = {}
+        for optimizer_id, optimizer in all_optimizers.items():
             scheduler = make_lr_scheduler(args, optimizer)
             if scheduler is not None:
-                self._lr_schedulers[id(optimizer)] = scheduler
+                self._lr_schedulers[optimizer_id] = scheduler
         self._lr_scheduler_active_epochs = {
             optimizer_id: 0 for optimizer_id in self._lr_schedulers
         }
@@ -2263,14 +2330,6 @@ class _EpochTrainer:
         # partly consumed learning-rate schedule. Capture the pristine state
         # after scheduler construction (which may add ``initial_lr`` fields) so
         # the transition can reset every optimizer exactly once.
-        all_optimizers = {}
-        for optimizer in (
-            model_optimizer,
-            main_objective.optimizer,
-            None if warmup_objective is None else warmup_objective.optimizer,
-        ):
-            if optimizer is not None:
-                all_optimizers.setdefault(id(optimizer), optimizer)
         self._student_stage_optimizers = all_optimizers
         self._student_stage_optimizer_states = {
             optimizer_id: copy.deepcopy(optimizer.state_dict())
@@ -2295,21 +2354,17 @@ class _EpochTrainer:
                 device=args.device,
             )
             grad_norm.log_grad_norm_configuration(regularizer)
-        self.target_ratio_statistic = (
-            TARGET_RATIO_STATISTIC_L2
-            if regularizer is None
-            else getattr(
-                regularizer,
-                "regularizer_target_ratio_statistic",
-                TARGET_RATIO_STATISTIC_L2,
-            )
+
+        def setting(name, default=None):
+            """A regularizer attribute, or ``default`` for a run without one."""
+
+            return default if regularizer is None else getattr(regularizer, name, default)
+
+        self.target_ratio_statistic = setting(
+            "regularizer_target_ratio_statistic", TARGET_RATIO_STATISTIC_L2
         )
-        self.target_ratio_statistic_anchor = (
-            True
-            if regularizer is None
-            else bool(
-                getattr(regularizer, "regularizer_target_ratio_statistic_anchor", True)
-            )
+        self.target_ratio_statistic_anchor = bool(
+            setting("regularizer_target_ratio_statistic_anchor", True)
         )
         # Measured once, at the first usable probe, then held for the run.
         self._statistic_anchor_scale = (
@@ -2318,9 +2373,7 @@ class _EpochTrainer:
             or not self.target_ratio_statistic_anchor
             else None
         )
-        self.gradient_surgery = (
-            None if regularizer is None else getattr(regularizer, "gradient_surgery", None)
-        )
+        self.gradient_surgery = setting("gradient_surgery")
         if self.gradient_surgery is not None:
             if regularizer.uses_separate_optimizer_steps:
                 raise ValueError(
@@ -2335,43 +2388,27 @@ class _EpochTrainer:
                     "beyond the two weighted losses, and the projection is defined "
                     "here for the supervised/regularizer pair only"
                 )
-
-        self.target_ratio = (
-            None if regularizer is None else regularizer.regularizer_target_ratio
-        )
-        self.target_ratio_configured_batches = (
-            0 if regularizer is None else regularizer.regularizer_target_ratio_batches
-        )
-        self.target_ratio_batches = self.target_ratio_configured_batches
-        self.target_ratio_recalibration_interval_samples = (
-            TARGET_RATIO_RECALIBRATION_INTERVAL_SAMPLES
-            if regularizer is None
-            else regularizer.regularizer_target_ratio_recalibration_interval_samples
-        )
-        self.target_ratio_update_interval_samples = (
-            None
-            if regularizer is None
-            else regularizer.regularizer_target_ratio_update_interval_samples
-        )
-        self.target_ratio_probe_memory = (
-            None
-            if regularizer is None
-            else getattr(regularizer, "regularizer_target_ratio_probe_memory", None)
-        )
-        self.target_ratio_ema_alpha = (
-            None
-            if regularizer is None
-            else getattr(regularizer, "regularizer_target_ratio_ema_alpha", None)
-        )
-        self.target_ratio_aggregation = (
-            "median"
-            if regularizer is None
-            else getattr(
-                regularizer,
-                "regularizer_target_ratio_aggregation",
-                "median",
+        self.regularizer_max_ratio = setting("regularizer_max_ratio")
+        if self.regularizer_max_ratio is not None and regularizer.uses_separate_optimizer_steps:
+            raise ValueError(
+                f"regularizer_max_ratio is not supported for {regularizer.name}: it "
+                "steps the optimizer between its own ordered losses, so there is no "
+                "single regularizer gradient to hold against the supervised one"
             )
+
+        self.target_ratio = setting("regularizer_target_ratio")
+        self.target_ratio_configured_batches = setting("regularizer_target_ratio_batches", 0)
+        self.target_ratio_batches = self.target_ratio_configured_batches
+        self.target_ratio_recalibration_interval_samples = setting(
+            "regularizer_target_ratio_recalibration_interval_samples",
+            TARGET_RATIO_RECALIBRATION_INTERVAL_SAMPLES,
         )
+        self.target_ratio_update_interval_samples = setting(
+            "regularizer_target_ratio_update_interval_samples"
+        )
+        self.target_ratio_probe_memory = setting("regularizer_target_ratio_probe_memory")
+        self.target_ratio_ema_alpha = setting("regularizer_target_ratio_ema_alpha")
+        self.target_ratio_aggregation = setting("regularizer_target_ratio_aggregation", "median")
         # The sliding schedule keeps the last ``probe_memory`` measurements and
         # probes forever, so there is no window to reset, nothing to freeze once
         # a window's probes are spent, and the lookback stays constant instead of
@@ -2406,8 +2443,6 @@ class _EpochTrainer:
             for name in self._extra_target_ratios
         }
         self._extra_ratio_frozen = set()
-        # Consecutive eligible probes whose gradient was too small to invert.
-        self._unusable_calibration_batches = {}
         target_ratio_enabled = bool(
             self.target_ratio is not None or self._extra_target_ratios
         )
@@ -2422,6 +2457,8 @@ class _EpochTrainer:
         self._target_ratio_measurement_samples = self._new_calibration_buffer()
         self._target_ratio_probe_samples = []
         self._target_ratio_probe_diagnostics = {}
+        # Per-step caps on fixed extra-term weights; see _cap_regularizer_ratio.
+        self._step_extra_weight_scales = {}
         self._next_target_ratio_measurement_sample = None
         self._next_target_ratio_recalibration_sample = None
         if target_ratio_enabled:
@@ -2516,7 +2553,6 @@ class _EpochTrainer:
                 logger.info(
                     f"{name} weight calibration enabled: target gradient ratio {ratio:g}"
                 )
-        self.teacher_model = None
         self.regularizer_state = None
         self.global_step = 0
         self.regularization_step = 0
@@ -2550,7 +2586,6 @@ class _EpochTrainer:
         if (
             self.device_type != "cuda"
             or self.train_amp_enabled
-            or phase.standalone_stml
             or phase.regularization_active
             or phase.regularizer_disabled
             or getattr(objective.criterion, "supports_sample_weights", False)
@@ -2692,6 +2727,8 @@ class _EpochTrainer:
             return "GradNorm measures per-component gradients"
         if self.target_ratio is not None or self._extra_target_ratios:
             return "regularizer weight calibration measures per-component gradients"
+        if self.regularizer_max_ratio is not None:
+            return "regularizer_max_ratio measures per-component gradients"
         if self.gradient_contribution_log_interval > 0:
             return "gradient-contribution diagnostics measure per-component gradients"
         if not hasattr(self.model, "project_features"):
@@ -2757,7 +2794,6 @@ class _EpochTrainer:
 
     def _resolve_phase(self, epoch):
         warmup_active = self.ssl_config.enabled and epoch < self.ssl_config.warmup_epochs
-        standalone_stml = self.ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS and not warmup_active
         regularized_phase = self.regularizer is not None and not warmup_active
         regularization_active = regularized_phase and self.regularizer.regularizer_weight > 0
         regularizer_disabled = regularized_phase and self.regularizer.regularizer_weight == 0
@@ -2778,7 +2814,6 @@ class _EpochTrainer:
             description = self.args.loss
         return _EpochPhase(
             objective,
-            standalone_stml,
             regularization_active,
             regularizer_disabled,
             description,
@@ -2820,16 +2855,7 @@ class _EpochTrainer:
 
         if self._slade_student_stage_started:
             raise RuntimeError("SLADE student stage has already started")
-        for optimizer_id, optimizer in self._student_stage_optimizers.items():
-            optimizer.load_state_dict(
-                copy.deepcopy(self._student_stage_optimizer_states[optimizer_id])
-            )
-            optimizer.zero_grad(set_to_none=True)
-        for optimizer_id, scheduler in self._lr_schedulers.items():
-            scheduler.load_state_dict(
-                copy.deepcopy(self._student_stage_scheduler_states[optimizer_id])
-            )
-            self._lr_scheduler_active_epochs[optimizer_id] = 0
+        self._reset_optimizers_to_initial_state()
         self._slade_student_stage_started = True
         logger.info(
             "SLADE teacher -> student boundary: retained the teacher embedding "
@@ -2840,8 +2866,8 @@ class _EpochTrainer:
         """Every trained module whose state does not live inside ``model``.
 
         ``model.state_dict()`` is not the whole of what a run trains. A proxy
-        loss owns the class centers the embedding is pulled toward, STML owns a
-        student head, and a regularizer can own modules of its own -- all of them
+        loss owns the class centers the embedding is pulled toward, and a
+        regularizer can own modules of its own -- all of them
         nn.Modules held beside the model rather than inside it. This is
         deliberately keyed by role and typed by ``isinstance`` rather than by a
         list of loss names: whether a criterion carries state is a property of
@@ -2933,6 +2959,10 @@ class _EpochTrainer:
         reset is the same one.
         """
 
+        self._reset_optimizers_to_initial_state()
+        logger.info(f"Reset optimizer/scheduler state: {reason}")
+
+    def _reset_optimizers_to_initial_state(self):
         for optimizer_id, optimizer in self._student_stage_optimizers.items():
             optimizer.load_state_dict(
                 copy.deepcopy(self._student_stage_optimizer_states[optimizer_id])
@@ -2943,31 +2973,18 @@ class _EpochTrainer:
                 copy.deepcopy(self._student_stage_scheduler_states[optimizer_id])
             )
             self._lr_scheduler_active_epochs[optimizer_id] = 0
-        logger.info(f"Reset optimizer/scheduler state: {reason}")
 
     def _compute_batch_loss(self, batch, phase, timer, data_ready_time):
         objective = phase.objective
-        if phase.standalone_stml:
-            images, _, instance_ids = batch
-            if not isinstance(images, (list, tuple)) or len(images) != objective.criterion.num_views:
-                raise ValueError(
-                    f"STML batches must contain {objective.criterion.num_views} augmented views per sample"
-                )
-            images = torch.cat(images, dim=0)
-            instance_ids = instance_ids.repeat(objective.criterion.num_views).to(
-                self.args.device,
-                non_blocking=True,
-            )
-        else:
-            supervised_batch, regularizer_batch = batch if phase.regularization_active else (batch, None)
-            images, labels, sample_weights, supervised_indices = unpack_training_batch(supervised_batch)
-            supervised_inputs = images
-            supervised_batch_size = len(labels)
-            joint_forward_active = bool(
-                phase.regularization_active and self.regularizer.uses_joint_forward
-            )
-            if joint_forward_active:
-                images = concatenate_joint_forward_inputs(images, regularizer_batch)
+        supervised_batch, regularizer_batch = batch if phase.regularization_active else (batch, None)
+        images, labels, sample_weights, supervised_indices = unpack_training_batch(supervised_batch)
+        supervised_inputs = images
+        supervised_batch_size = len(labels)
+        joint_forward_active = bool(
+            phase.regularization_active and self.regularizer.uses_joint_forward
+        )
+        if joint_forward_active:
+            images = concatenate_joint_forward_inputs(images, regularizer_batch)
         timer.stop("unpack_batch", data_ready_time)
 
         miner_outputs = None
@@ -2978,18 +2995,6 @@ class _EpochTrainer:
             dtype=torch.bfloat16,
             enabled=self.train_amp_enabled,
         ):
-            if phase.standalone_stml:
-                started = timer.start()
-                student_g, student_f = self.model.forward_stml_cached(images, self.args.device)
-                with torch.no_grad():
-                    teacher_g = self.teacher_model.forward_stml_teacher_cached(images, self.args.device)
-                timer.stop("forward", started)
-
-                started = timer.start()
-                loss = objective.criterion(student_f, student_g, teacher_g, instance_ids)
-                timer.stop("loss", started)
-                return loss, supervised_loss, regularization_loss, miner_outputs
-
             started = timer.start()
             fused = self._fused_forward_loss(phase, images, sample_weights)
             if fused is not None:
@@ -3100,15 +3105,6 @@ class _EpochTrainer:
                     self.step_visualizer is not None
                     and self.step_visualizer.is_due(self.regularization_step)
                 )
-                if visualize_step:
-                    # Some artifacts describe state this step is about to
-                    # overwrite, so they are drawn before the loss runs.
-                    self.step_visualizer.before_regularizer_loss(
-                        step=self.global_step,
-                        state=self.regularizer_state,
-                        supervised_inputs=supervised_inputs,
-                        regularizer_batch=regularizer_batch,
-                    )
                 started = timer.start()
                 if self.regularizer.uses_separate_optimizer_steps:
                     # This is the first of an ordered sequence of updates. The
@@ -3149,11 +3145,10 @@ class _EpochTrainer:
                     )
                 timer.stop("regularization_loss", started)
                 if visualize_step and not self.regularizer.uses_separate_optimizer_steps:
-                    # The remaining artifacts are read back out of the step's own
+                    # The artifacts are read back out of the step's own
                     # diagnostics, so they are drawn once the loss has produced them.
                     self.step_visualizer.after_regularizer_loss(
                         step=self.global_step,
-                        state=self.regularizer_state,
                         diagnostics=self.regularizer.batch_diagnostics(),
                         supervised_inputs=supervised_inputs,
                         supervised_embeddings=embeddings,
@@ -3183,7 +3178,6 @@ class _EpochTrainer:
             "train/gradient_norm/model": utils.gradient_l2_norm(self.model.parameters()),
             **utils.optimizer_learning_rates(self.model_optimizer, "model"),
             **miner_diagnostics,
-            "train/stml_active": float(phase.standalone_stml),
             "train/regularization_active": float(phase.regularization_active),
         }
         if phase.objective.is_classification:
@@ -3427,16 +3421,13 @@ class _EpochTrainer:
             regularizer,
             self.gradient_surgery,
         )
-        norm = lambda vectors: float(
-            sum(float(v.float().square().sum()) for v in vectors)
-        ) ** 0.5
         # Both sides must be the gradients the objective applies. Under
         # supervised_priority the supervised one is returned unchanged, so this
         # is only a difference under pcgrad -- where projecting the denominator
         # but not the numerator would miscalibrate by 1 / sqrt(1 - cos^2).
         return GradientContributionNorms(
-            norm(projected_supervised),
-            norm(projected_regularizer),
+            _l2_norm(projected_supervised),
+            _l2_norm(projected_regularizer),
             (),
         )
 
@@ -3468,10 +3459,7 @@ class _EpochTrainer:
             self.gradient_surgery,
         )
         gradient_surgery.accumulate(parameters, (supervised, 1.0), (regularizer, 1.0))
-        norm = lambda vectors: float(
-            sum(float(v.float().square().sum()) for v in vectors)
-        ) ** 0.5
-        supervised_norm = norm(supervised)
+        supervised_norm = _l2_norm(supervised)
         surgical = {
             "train/gradient_surgery/cosine_before": diagnostics["cosine_before"],
             "train/gradient_surgery/fired": float(diagnostics["fired"]),
@@ -3487,9 +3475,141 @@ class _EpochTrainer:
             # so it overstates the ratio by 1 / regularizer_length_kept. This is
             # the ratio the objective actually applies.
             surgical["train/gradient_surgery/applied_ratio"] = (
-                norm(regularizer) / supervised_norm
+                _l2_norm(regularizer) / supervised_norm
             )
         return surgical
+
+    def _cap_regularizer_ratio(self, supervised_loss, regularization_loss):
+        """Hold every regularizer term's gradient to ``regularizer_max_ratio``.
+
+        A calibrated weight is measured on its probe and then trained with on
+        every batch until the next one. A probe on a nearly flat term -- SLADE's
+        NT-Xent on well-separated mined pairs measures ~1e-12 at unit weight --
+        calibrates a weight near 1e9, and the next ordinary batch applies it. No
+        bound on the weight alone prevents that, because the overshoot depends on
+        the batch it lands on, so the Euclidean norms are measured here on every
+        regularized step and each term is scaled down whenever
+        ``||grad(w L)|| > max_ratio * ||grad(w_sup L_sup)||``. That holds for
+        ``regularizer_weight * L_reg`` and, separately, for every term
+        ``combine_losses`` adds itself (SLADE's basis, ISMLP's side terms,
+        SERAPH's trace and fairness terms) -- each against the supervised
+        gradient, as their own target ratios are.
+
+        A calibrated weight is lowered for good and its EMA estimate is pulled
+        down with it; otherwise one outlying probe would hold the run at the cap
+        for the many probes its EMA share takes to decay. A fixed configured
+        weight is left alone and only this step's term shrinks: the regularizer
+        loss is returned scaled, and extra terms are recorded in
+        ``_step_extra_weight_scales`` for ``_combine_capped_losses``.
+
+        Returns the regularization loss this step should train with, and whether
+        any cap fired -- in which case the caller has to recombine the loss.
+        """
+
+        present = self.regularizer.extra_loss_components()
+        extras = {
+            name: float(weight)
+            for name, (loss, weight) in present.items()
+            if loss is not None and loss.requires_grad and float(weight) > 0.0
+        }
+        component_norms = measure_gradient_component_norms(
+            supervised_loss,
+            regularization_loss,
+            self._shared_trunk_parameters(),
+            supervised_weight=self.regularizer.supervised_weight,
+            regularizer_weight=1.0,
+            extra_components={name: (present[name][0], 1.0) for name in extras},
+            include_pair_norm=False,
+        )
+        supervised_norm = component_norms.supervised
+        if not math.isfinite(supervised_norm) or supervised_norm <= 0.0:
+            # No ratio to bound. A non-finite norm is the divergence guards' job.
+            return regularization_loss, False
+
+        def cap_scale(label, weight, unit_norm):
+            """The factor that brings this term down to the cap, or ``None``."""
+
+            if not math.isfinite(unit_norm) or unit_norm <= 0.0 or weight <= 0.0:
+                return None
+            ratio = weight * unit_norm / supervised_norm
+            if ratio <= self.regularizer_max_ratio:
+                return None
+            scale = self.regularizer_max_ratio / ratio
+            self._target_ratio_probe_diagnostics.update(
+                {
+                    f"train/regularizer_max_ratio/{label}uncapped_ratio": ratio,
+                    f"train/regularizer_max_ratio/{label}scale": scale,
+                }
+            )
+            return scale
+
+        capped = False
+        weight = float(self.regularizer.regularizer_weight)
+        scale = cap_scale("", weight, component_norms.regularizer)
+        if scale is not None:
+            capped = True
+            if self.target_ratio is None:
+                regularization_loss = regularization_loss * scale
+            else:
+                self._set_regularizer_weight(weight * scale)
+                if None in self._ratio_ema:
+                    self._ratio_ema[None] = weight * scale / self.target_ratio
+
+        for name, unit_norm in component_norms.extra:
+            weight = extras[name]
+            scale = cap_scale(f"{name}/", weight, float(unit_norm))
+            if scale is None:
+                continue
+            capped = True
+            if name in self._extra_target_ratios:
+                self.regularizer.apply_calibrated_component_weight(name, weight * scale)
+                if name in self._ratio_ema:
+                    self._ratio_ema[name] = weight * scale / self._extra_target_ratios[name]
+            else:
+                self._step_extra_weight_scales[name] = scale
+        return regularization_loss, capped
+
+    def _combine_capped_losses(self, supervised_loss, regularization_loss):
+        """``combine_losses`` with this step's caps on fixed extra-term weights.
+
+        The weight is swapped in for the one call, so the term's own graph node
+        carries the capped scalar. A term whose regularizer exposes no weight
+        setter has its excess subtracted instead, which is the same gradient up
+        to float32 cancellation when the scale is very small.
+        """
+
+        restore = {}
+        subtract = {}
+        for name, scale in self._step_extra_weight_scales.items():
+            try:
+                weight = self.regularizer.calibrated_component_weight(name)
+                self.regularizer.apply_calibrated_component_weight(name, weight * scale)
+            except (AttributeError, KeyError, NotImplementedError):
+                subtract[name] = scale
+            else:
+                restore[name] = weight
+        try:
+            loss = self.regularizer.combine_losses(supervised_loss, regularization_loss)
+        finally:
+            for name, weight in restore.items():
+                self.regularizer.apply_calibrated_component_weight(name, weight)
+        if subtract:
+            components = self.regularizer.extra_loss_components()
+            for name, scale in subtract.items():
+                extra_loss, weight = components[name]
+                loss = loss - (1.0 - scale) * float(weight) * extra_loss
+        return loss
+
+    def _extra_loss_components_for_step(self):
+        """``extra_loss_components`` with the weights this step actually trains with."""
+
+        components = self.regularizer.extra_loss_components()
+        if not self._step_extra_weight_scales:
+            return components
+        return {
+            name: (loss, float(weight) * self._step_extra_weight_scales.get(name, 1.0))
+            for name, (loss, weight) in components.items()
+        }
 
     def _calibrate_regularizer_weight(self, phase, supervised_loss, regularization_loss):
         """Rescale ``regularizer_weight`` to hit the configured gradient ratio.
@@ -3578,14 +3698,17 @@ class _EpochTrainer:
                 regularizer_weight=1.0,
                 extra_components=pending_extras,
                 statistic=self.target_ratio_statistic,
+                # Calibration reads only individual component norms. The pair
+                # norm exists for cosine diagnostics and costs another backward.
+                include_pair_norm=False,
             )
-        if component_norms.supervised <= 0.0:
+        if not math.isfinite(component_norms.supervised) or component_norms.supervised <= 0.0:
             logger.debug(
-                "Skipping weight calibration on a batch with no supervised gradient"
+                "Skipping weight calibration on a batch without a finite positive supervised norm"
             )
             return False
 
-        if component_norms.regularizer <= 0.0:
+        if not math.isfinite(component_norms.regularizer) or component_norms.regularizer <= 0.0:
             # A ratio needs a non-zero denominator, and every consumer below --
             # the statistic anchor, the target-ratio measurement, and GradNorm --
             # divides by this norm. It reaches exactly zero when a weighted graph
@@ -3594,7 +3717,7 @@ class _EpochTrainer:
             # float32. Wait for a batch that carries gradient rather than
             # dividing by it.
             logger.debug(
-                "Skipping weight calibration on a batch with no regularizer gradient"
+                "Skipping weight calibration on a batch without a finite positive regularizer norm"
             )
             return False
 
@@ -3673,14 +3796,6 @@ class _EpochTrainer:
                         ),
                     }
                 )
-            # A batch that produced no usable gradient for one side says nothing
-            # about their relative scale; wait for one that does.
-            self._count_unusable_calibration_batch(
-                self.regularizer.name,
-                recorded,
-                component_norms.supervised,
-                component_norms.regularizer,
-            )
 
         for name, norm in component_norms.extra:
             recorded = self._record_calibration_measurement(
@@ -3717,12 +3832,6 @@ class _EpochTrainer:
                         ),
                     }
                 )
-            self._count_unusable_calibration_batch(
-                name,
-                recorded,
-                component_norms.supervised,
-                float(norm),
-            )
         if measured:
             self._target_ratio_measurement_events += 1
             self._target_ratio_measurement_samples.append(
@@ -3778,7 +3887,6 @@ class _EpochTrainer:
             name: [] for name in self._extra_target_ratios
         }
         self._extra_ratio_frozen = set()
-        self._unusable_calibration_batches = {}
         # Keep the nominal sample boundary as the window origin. The first
         # batch can only observe that boundary after overshooting it, but
         # anchoring the next window to ``due_sample + interval`` prevents this
@@ -3823,38 +3931,6 @@ class _EpochTrainer:
         if getattr(self.args, "log_dir", None) is not None:
             write_run_config(self.args, self.ssl_config)
 
-    def _count_unusable_calibration_batch(
-        self,
-        label,
-        recorded,
-        supervised_norm,
-        component_norm,
-    ):
-        """Give up on a term whose gradient never rises above the noise floor.
-
-        Without this the run continues with the configured probe weight, or
-        worse, a weight inverted from a denormal ratio, and only fails once the
-        model has already gone non-finite -- several epochs from the cause.
-        """
-
-        if recorded:
-            self._unusable_calibration_batches[label] = 0
-            return
-        seen = self._unusable_calibration_batches.get(label, 0) + 1
-        self._unusable_calibration_batches[label] = seen
-        budget = max(MAXIMUM_UNUSABLE_CALIBRATION_BATCHES, self.target_ratio_batches)
-        if seen < budget:
-            return
-        ratio = component_norm / supervised_norm if supervised_norm > 0 else 0.0
-        raise FloatingPointError(
-            f"{label} produced no usable gradient in {seen} consecutive calibration "
-            f"batches (last component/supervised gradient norm ratio {ratio:g}, "
-            f"floor {MINIMUM_CALIBRATION_NORM_RATIO:g}). Calibrating a weight from "
-            "this would invert a denormal ratio into an enormous weight. The term "
-            "is not reaching the model: check that its loss is not saturated, e.g. "
-            "NTXentLoss below temperature ~0.05 is exactly zero on mined pairs."
-        )
-
     def _target_ratio_calibration_pending(self):
         """Whether any weight still has measurements to collect."""
 
@@ -3895,13 +3971,21 @@ class _EpochTrainer:
         ``measurements`` only carries the last raw ratio. ``key`` names the
         component so each keeps its own average.
 
-        Returns whether the measurement was usable; a component gradient far
-        below the supervised one is rejected rather than inverted into a weight.
+        Any finite positive component norm is eligible, even if its ratio to
+        supervision is tiny and the resulting weight is large. Zero/non-finite
+        norms defer calibration without consuming a probe or ending the run.
         """
 
-        if component_norm < MINIMUM_CALIBRATION_NORM_RATIO * supervised_norm:
+        if (
+            not math.isfinite(supervised_norm)
+            or not math.isfinite(component_norm)
+            or supervised_norm <= 0.0
+            or component_norm <= 0.0
+        ):
             return False
         ratio = supervised_norm / component_norm * self._statistic_anchor_scale
+        if not math.isfinite(ratio) or not math.isfinite(target_ratio * ratio):
+            return False
         measurements.append(ratio)
         if self._ema_calibration:
             previous = self._ratio_ema.get(key)
@@ -3950,6 +4034,7 @@ class _EpochTrainer:
             return
         weight = self.regularizer.regularizer_weight
         self._target_ratio_calibrations_completed += 1
+        '''
         logger.info(
             f"Calibrated regularizer_weight={weight:g} for target gradient ratio "
             f"{self.target_ratio:g} from "
@@ -3960,6 +4045,7 @@ class _EpochTrainer:
             f"{'moving average' if self._ema_calibration else 'sliding window'}"
             f", probes={self._target_ratio_measurement_events})"
         )
+        '''
         self.args.regularizer_weight_calibrated = weight
         self.args.regularizer_target_ratio_resolved = self.target_ratio
         self.args.regularizer_target_ratio_calibrations_completed = (
@@ -4167,12 +4253,6 @@ class _EpochTrainer:
     def train_epoch(self, train_loader, epoch, refresh=None):
         phase = self._resolve_phase(epoch)
         logger.info(f"Epoch {epoch}: training with {phase.description}")
-        self.teacher_model = initialize_stml_teacher_for_phase(
-            teacher_model=self.teacher_model,
-            student_model=self.model,
-            active_criterion=phase.objective.criterion,
-            device=self.args.device,
-        )
         if phase.regularization_active and self.regularizer_state is None:
             self.regularizer_state = self.regularizer.initialize_state(self.model, self.args.device)
         if phase.regularization_active:
@@ -4181,8 +4261,9 @@ class _EpochTrainer:
             self._apply_pending_regularizer_optimizer_resets()
 
         self.model.train()
-        if self.teacher_model is not None:
-            self.teacher_model.eval()
+        head_dynamics = self._head_dynamics_tracker()
+        if head_dynamics is not None:
+            head_dynamics.begin_epoch()
         epoch_losses = []
         num_batches = 0
         epoch_miner_totals = defaultdict(float)
@@ -4211,6 +4292,7 @@ class _EpochTrainer:
                 data_ready_time = timer.start()
                 timer.stop("data_wait", next_batch_wait_start, data_ready_time)
                 self._target_ratio_probe_diagnostics = {}
+                self._step_extra_weight_scales = {}
                 separate_optimizer_steps = bool(
                     phase.regularization_active
                     and self.regularizer.uses_separate_optimizer_steps
@@ -4241,6 +4323,26 @@ class _EpochTrainer:
                             regularization_loss,
                         )
                     timer.stop("regularizer_weight_calibration", started)
+                if (
+                    self.regularizer_max_ratio is not None
+                    and phase.regularization_active
+                    and supervised_loss is not None
+                    and regularization_loss is not None
+                    and regularization_loss.requires_grad
+                ):
+                    # After calibration, so the weight a probe just set is bounded
+                    # on the very batch it was measured on too.
+                    started = timer.start()
+                    regularization_loss, capped = self._cap_regularizer_ratio(
+                        supervised_loss,
+                        regularization_loss,
+                    )
+                    if capped:
+                        loss = self._combine_capped_losses(
+                            supervised_loss,
+                            regularization_loss,
+                        )
+                    timer.stop("regularizer_max_ratio", started)
                 detached_loss = loss.detach()
                 if id(phase.objective.criterion) in self._compiled_forward_loss:
                     # CUDA-graph outputs reuse static storage on the next replay.
@@ -4258,7 +4360,7 @@ class _EpochTrainer:
                         self._shared_trunk_parameters(),
                         supervised_weight=self.regularizer.supervised_weight,
                         regularizer_weight=self.regularizer.regularizer_weight,
-                        extra_components=self.regularizer.extra_loss_components(),
+                        extra_components=self._extra_loss_components_for_step(),
                     )
                     timer.stop("gradient_contribution_diagnostics", started)
 
@@ -4328,6 +4430,12 @@ class _EpochTrainer:
                             regularizer_weight=self.regularizer.regularizer_weight,
                         )
                     )
+                    if not self._regularizer_activity_latched:
+                        self._regularizer_activity_latched = bool(
+                            self.regularizer.steady_state_active()
+                        )
+                    if self._regularizer_activity_latched:
+                        self.regularizer_activity.record(gradient_contribution_diagnostics)
                 if gradient_contribution_diagnostics:
                     batch_diagnostics = {
                         **(batch_diagnostics or {}),
@@ -4395,14 +4503,6 @@ class _EpochTrainer:
                 timer.stop("optimizer_step", started)
 
                 started = timer.start()
-                if phase.standalone_stml:
-                    update_ema_teacher(
-                        self.teacher_model,
-                        self.model,
-                        momentum=phase.objective.criterion.teacher_momentum,
-                        excluded_parameter_prefixes=("fc.",),
-                        only_trainable_parameters=True,
-                    )
                 if phase.regularization_active:
                     self.regularizer.after_optimizer_step(self.model, self.regularizer_state)
                 timer.stop("post_step_hooks", started)
@@ -4485,6 +4585,8 @@ class _EpochTrainer:
         for name, total in epoch_miner_totals.items():
             epoch_diagnostics[f"{name}_total"] = total
             epoch_diagnostics[f"{name}_mean_per_batch"] = total / num_batches
+        if phase.regularization_active:
+            epoch_diagnostics.update(self.regularizer.epoch_activity_diagnostics(epoch=epoch))
         if self.grad_norm_weights is not None and self.grad_norm_weights.updates:
             # The weights move all run long, so the epoch series is the record of
             # what the objective actually was.
@@ -4503,6 +4605,17 @@ class _EpochTrainer:
                 f"Epoch {epoch} GradNorm weights: {learned} "
                 f"({self.grad_norm_weights.updates} updates)"
             )
+        if head_dynamics is not None:
+            dynamics = head_dynamics.end_epoch(num_batches)
+            self.metrics_logger.log_diagnostics(
+                dynamics, self.global_step, epoch, category="head_dynamics"
+            )
+            if dynamics:
+                logger.info(
+                    f"Epoch {epoch} head: ||W||={dynamics['head_dynamics/weight_norm']:.4g}, "
+                    f"||dW||/||W||={dynamics.get('head_dynamics/relative_update', float('nan')):.4g} "
+                    f"over {num_batches} steps"
+                )
         self.metrics_logger.log_train_epoch(
             mean_loss,
             epoch,
@@ -4513,6 +4626,37 @@ class _EpochTrainer:
         # after each batch; only their active-epoch counters need advancing.
         self._finish_lr_scheduler_epoch(phase)
         return mean_loss
+
+    def _head_dynamics_tracker(self):
+        """The --log_head_dynamics tracker for the projection head, or ``None``."""
+
+        if not getattr(self.args, "log_head_dynamics", False):
+            return None
+        tracker = getattr(self, "_head_dynamics", None)
+        if tracker is None:
+            from training.head_dynamics import HeadDynamicsTracker
+
+            head_getter = getattr(self.model, "projection_head", None)
+            head = head_getter() if callable(head_getter) else None
+            if head is None:
+                return None
+            tracker = HeadDynamicsTracker(head)
+            self._head_dynamics = tracker
+        return tracker
+
+    def regularizer_activity_summary(self):
+        """Run-level activity of the regularizer, or ``None`` without one."""
+
+        if self.regularizer is None:
+            return None
+        summary = self.regularizer_activity.summary()
+        summary.update(self.regularizer.activity_summary())
+        if summary:
+            logger.info(
+                "Regularizer activity (SSL phase): "
+                + ", ".join(f"{name}={value:.4g}" for name, value in summary.items())
+            )
+        return summary or None
 
     def close_progress_bar(self):
         if self.progress_bar is not None:
@@ -4531,8 +4675,7 @@ def run_training(
     """Build the data/model, train one fold, and return its best metrics.
 
     Training can use labeled warmup, static or periodically rebuilt pseudo
-    labels, STML neighbor batches, or supervised batches paired with a
-    regularizer. Validation selects the checkpoint and can trigger early
+    labels, or supervised batches paired with a regularizer. Validation selects the checkpoint and can trigger early
     stopping; a final HPO fit instead trains for a fixed duration.
     """
 
@@ -4560,7 +4703,6 @@ def run_training(
     validate_run_args(args, ssl_config)
     utils.seed_everything(args.seed, device=args.device)
     batch_diagnostics_enabled = bool(getattr(args, "log_batch_diagnostics", False))
-    loss_driven_ssl = ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS
     # Pseudo-label methods may own run-local state (Algorithm 1 accumulates
     # promoted examples), so each fold gets an isolated registry instance.
     ssl_method = semi_supervised.create_method(ssl_config)
@@ -4588,7 +4730,6 @@ def run_training(
         regularizer.set_batch_diagnostics_enabled(
             batch_diagnostics_enabled or step_visualization_enabled
         )
-    stml_params = dict(getattr(args, "loss_params", {})) if loss_driven_ssl else {}
     supervised_mode = is_supervised_mode(args)
     precompute_frozen_features = should_precompute_frozen_features(args, ssl_config)
     ssl_frozen_feature_precompute = bool(
@@ -4775,13 +4916,7 @@ def run_training(
             args.seed,
             pin_memory,
         )
-    if loss_driven_ssl:
-        loss_driven_train_dataset = semi_supervised.build_loss_driven_training_dataset(
-            dataset_bundle.train_dataset,
-            ssl_split,
-            num_views=int(stml_params.get("num_views", 2)),
-        )
-    elif regularized_ssl:
+    if regularized_ssl:
         regularizer.build_dataset(
             dataset_bundle.train_dataset,
             ssl_split,
@@ -4939,6 +5074,146 @@ def run_training(
     # per-epoch validation without costing anything per epoch.
     test_measurements_requested = utils.resolve_test_measurements(args)
     test_recall_at_k_values = utils.resolve_test_recall_at_k(args)
+    # Structure tracking sits entirely off the selection path: it reads the
+    # model, writes its own artifacts, and nothing in training, early stopping
+    # or Optuna reads them back.
+    def embed_tracked_test(num_epoch):
+        """D_test embeddings for tracking's conditional entropy, never for selection."""
+
+        if not evaluate_test or test_loader is None:
+            return None
+        embeddings, labels = utils.extract_eval_embeddings(
+            model,
+            test_loader,
+            name=f"tracked test embeddings - epoch {num_epoch}",
+            device=args.device,
+        )
+        return to_numpy_embeddings(embeddings), np.asarray(to_numpy_embeddings(labels)).reshape(-1)
+
+    def embed_tracked_split(split, representation, num_epoch):
+        """Validation or test embeddings for tracking's geometry, never for selection."""
+
+        loader = {"validation": valid_loader, "test": test_loader if evaluate_test else None}.get(split)
+        if loader is None:
+            return None
+        source = model if representation == "head" else _BackboneFeatureView(model)
+        embeddings, labels = utils.extract_eval_embeddings(
+            source,
+            loader,
+            name=f"tracked {split} {representation} - epoch {num_epoch}",
+            device=args.device,
+        )
+        return to_numpy_embeddings(embeddings), np.asarray(to_numpy_embeddings(labels)).reshape(-1)
+
+    tracking_train_dataset = dataset_bundle.train_dataset
+    if (
+        precompute_frozen_features
+        and epoch_tracking.tracks_pool(args)
+        and not utils.dataset_has_precomputed_backbone_features(tracking_train_dataset)
+    ):
+        # An SSL run has already replaced the fold's training set by its feature
+        # rows; a supervised run precomputes only the labeled samples it trains on.
+        # The tracker embeds the whole pool every tracked epoch, which over images
+        # means decoding every unlabeled image again, so it gets the same rows the
+        # SSL runs track from.
+        tracking_train_dataset = _precompute_backbone_features(
+            args,
+            model,
+            dataset_bundle.train_dataset,
+            "precompute frozen tracking pool features",
+            pin_memory,
+            require_feature_transform=True,
+            use_feature_transform=True,
+            frozen_feature_cache=frozen_feature_cache,
+        )
+    epoch_tracker = epoch_tracking.make_epoch_tracker(
+        args,
+        ssl_config,
+        train_dataset=tracking_train_dataset,
+        split=ssl_split,
+        log_dir=args.log_dir,
+        test_embedder=embed_tracked_test,
+        split_embedder=embed_tracked_split,
+        backbone_model=_BackboneFeatureView(model),
+    )
+    if regularizer is not None and (epoch_tracker is not None or getattr(args, "save_head_state", False)):
+        # A tracked or head-saving run is one someone will inspect afterwards, so a
+        # regularizer may leave its own state there too (SLADE: its clusters).
+        regularizer.set_artifact_dir(args.log_dir)
+
+    # The per-epoch test curve leaves out the clustering scores: NMI and AMI run
+    # a GPU k-means whose faiss resources take a 1.5 GB scratch buffer on every
+    # call, which every tracked epoch of every run on a shared GPU then competes
+    # for. The run's single end-of-fold test evaluation still reports them.
+    tracked_test_measurements = [
+        name for name in test_measurements_requested
+        if name not in (utils.MEASUREMENT_NMI, utils.MEASUREMENT_AMI)
+    ]
+
+    def evaluate_test_split(name, logged_split, step, epoch, measurements):
+        """Score the current model on D_test and log it under ``logged_split``."""
+
+        outcome = utils.evaluate_split(
+            model,
+            test_loader,
+            name,
+            device=args.device,
+            return_per_class=False,
+            retrieval_device=test_retrieval_device,
+            allow_cpu_fallback=False,
+            embedding_residency=evaluation_embedding_residency,
+            recall_at_k=test_recall_at_k_values,
+            measurements=measurements,
+        )
+        metrics_logger.log_eval(
+            logged_split,
+            outcome.precision_at_1,
+            outcome.mean_average_precision_at_r,
+            step=step,
+            epoch=epoch,
+            recall_at_k=outcome.recall_at_k,
+            measurements=outcome.measurements,
+        )
+        return outcome
+
+    def evaluate_tracked_test(num_epoch):
+        """Evaluate D_test for the epoch curve only, never for selection."""
+
+        if not evaluate_test or test_loader is None:
+            return None
+        # Its own split name: this curve must never be mistaken for the single
+        # end-of-run test evaluation the run is actually reported on.
+        return evaluate_test_split(
+            f"test - epoch {num_epoch}",
+            "tracked_test",
+            step=epoch_trainer.global_step,
+            epoch=num_epoch,
+            measurements=tracked_test_measurements,
+        )
+
+    epoch_head_interval = get_epoch_head_interval(args)
+    if epoch_head_interval is not None:
+        logger.info(
+            f"Saving the projection head at epoch {epoch_tracking.BASELINE_EPOCH}, every "
+            f"{epoch_head_interval} epochs and the last epoch to "
+            f"{Path(args.log_dir) / EPOCH_HEADS_DIRNAME}"
+        )
+
+    def track_epoch(num_epoch, test_outcome=None):
+        """Write one epoch's structure bundle and head when that epoch is due."""
+
+        # The same schedule as the tracker's (baseline, every interval-th epoch,
+        # last epoch), with its own interval, so heads need no tracking at all.
+        if epoch_head_interval is not None and epoch_tracking.is_tracked_epoch(
+            num_epoch, epoch_head_interval, args.epochs
+        ):
+            save_epoch_head_state(model, args, ssl_config, num_epoch, cv_fold, args.log_dir)
+        if epoch_tracker is None or not epoch_tracker.is_due(num_epoch):
+            return
+        if test_outcome is None and epoch_tracker.tracks_test:
+            test_outcome = evaluate_tracked_test(num_epoch)
+        epoch_tracker.track(num_epoch, model=model, test_outcome=test_outcome)
+
     final_train_loss = None
     test_precision = None
     test_map = None
@@ -4948,10 +5223,7 @@ def run_training(
     test_measurement_values = {}
     epoch0_test_measurement_values = {}
     best_measurement_values = {}
-    test_pacmap_coordinates = None
-    test_pacmap_plot = None
-    test_tsne_coordinates = None
-    test_tsne_plot = None
+    test_projections = {}
     test_embeddings_path = None
     test_embedding_set = None
     head_state_path = None
@@ -4977,41 +5249,54 @@ def run_training(
     warmup_selected_epoch = None
     warmup_restored_epoch = None
     train_loader = None
-    loss_driven_train_loader = None
-    loss_driven_sampling_rebuild_epoch = None
+
+    def evaluate_validation(name, step, epoch):
+        """Score the current model on validation and log it to the metrics."""
+
+        outcome = utils.evaluate_split(
+            model,
+            valid_loader,
+            name,
+            device=args.device,
+            return_per_class=False,
+            return_diagnostics=True,
+            retrieval_device=validation_retrieval_device,
+            allow_cpu_fallback=False,
+            embedding_residency=evaluation_embedding_residency,
+            recall_at_k=recall_at_k,
+            measurements=requested_measurements,
+        )
+        metrics_logger.log_eval(
+            "valid",
+            outcome.precision_at_1,
+            outcome.mean_average_precision_at_r,
+            step=step,
+            epoch=epoch,
+            per_class_metrics=None,
+            diagnostics=outcome.diagnostics,
+            recall_at_k=outcome.recall_at_k,
+            measurements=outcome.measurements,
+        )
+        return outcome
 
     try:
         last_epoch = -1
+        # --patience_delay_epochs: selectable epochs seen since the SSL phase
+        # (training, without warm-up) started; patience counts only after them.
+        patience_delay = int(getattr(args, "patience_delay_epochs", 0) or 0)
+        patience_delay_seen = 0
+        # Once the delay is over, patience measures progress against its own
+        # reference: the last delay epoch's value, then every higher value after
+        # it. Selection keeps the global best, which may stay inside the delay.
+        # None (no delay, or the delay still running) leaves patience on the
+        # selected best, as without the delay.
+        patience_reference_value = None
         if not final_full_train:
             # Epoch -1 measures the pretrained/off-the-shelf embedding before
             # task-specific updates. It is also a valid initial checkpoint.
-            valid_outcome = utils.evaluate_split(
-                model,
-                valid_loader,
-                "valid",
-                device=args.device,
-                return_per_class=False,
-                return_diagnostics=True,
-                retrieval_device=validation_retrieval_device,
-                allow_cpu_fallback=False,
-                embedding_residency=evaluation_embedding_residency,
-                recall_at_k=recall_at_k,
-                measurements=requested_measurements,
-            )
+            valid_outcome = evaluate_validation("valid", step=0, epoch=-1)
             valid_precision = valid_outcome.precision_at_1
             valid_map = valid_outcome.mean_average_precision_at_r
-            valid_per_class = None
-            metrics_logger.log_eval(
-                "valid",
-                valid_precision,
-                valid_map,
-                step=0,
-                epoch=-1,
-                per_class_metrics=valid_per_class,
-                diagnostics=valid_outcome.diagnostics,
-                recall_at_k=valid_outcome.recall_at_k,
-                measurements=valid_outcome.measurements,
-            )
 
             # Track both metrics for reporting, but only selection_metric decides
             # which model state is checkpointed and when patience is reset.
@@ -5032,34 +5317,25 @@ def run_training(
         else:
             logger.info(f"Training final full-development model for exactly {args.epochs} epochs")
 
+        epoch0_outcome = None
         if evaluate_test and final_full_train:
-            epoch0_outcome = utils.evaluate_split(
-                model,
-                test_loader,
+            epoch0_outcome = evaluate_test_split(
                 "test epoch 0 - no optimization",
-                device=args.device,
-                return_per_class=False,
-                retrieval_device=test_retrieval_device,
-                allow_cpu_fallback=False,
-                embedding_residency=evaluation_embedding_residency,
-                recall_at_k=test_recall_at_k_values,
+                "epoch0_test",
+                step=0,
+                epoch=0,
                 measurements=test_measurements_requested,
             )
             epoch0_test_precision = epoch0_outcome.precision_at_1
             epoch0_test_map = epoch0_outcome.mean_average_precision_at_r
             epoch0_test_recall = dict(epoch0_outcome.recall_at_k)
             epoch0_test_measurement_values = dict(epoch0_outcome.measurements)
-            epoch0_test_per_class = None
-            metrics_logger.log_eval(
-                "epoch0_test",
-                epoch0_test_precision,
-                epoch0_test_map,
-                step=0,
-                epoch=0,
-                per_class_metrics=epoch0_test_per_class,
-                recall_at_k=epoch0_outcome.recall_at_k,
-                measurements=epoch0_outcome.measurements,
-            )
+
+        # The pre-training baseline. Without it a curve cannot separate
+        # structure the SSL phase built from structure the pretrained backbone
+        # already had. The final fit has just measured this same untrained model
+        # above, so that outcome is reused rather than paid for twice.
+        track_epoch(epoch_tracking.BASELINE_EPOCH, test_outcome=epoch0_outcome)
 
         def build_regularized_train_loader(num_epoch, seed, rebuild_graph):
             """Pair the labeled stream with the regularizer's unlabeled stream."""
@@ -5135,7 +5411,6 @@ def run_training(
                     previous_loader,
                     warmup_train_loader,
                     static_train_loader,
-                    loss_driven_train_loader,
                 )
                 rebuilt_loader = build_regularized_train_loader(
                     num_epoch,
@@ -5280,40 +5555,6 @@ def run_training(
             if ssl_config.enabled and num_epoch < ssl_config.warmup_epochs:
                 # Warmup loader contains only ground-truth labeled examples.
                 train_loader = warmup_train_loader
-            elif loss_driven_ssl:
-                if semi_supervised.should_rebuild_on_epoch(
-                    ssl_config.update_mode,
-                    ssl_config.update_interval_epochs,
-                    num_epoch,
-                    loss_driven_sampling_rebuild_epoch,
-                ):
-                    if loss_driven_train_loader is not None:
-                        utils.shutdown_dataloaders(loss_driven_train_loader)
-                    sampling_embeddings = semi_supervised.extract_embeddings(
-                        model=model,
-                        dataset=dataset_bundle.train_dataset,
-                        positions=loss_driven_train_dataset.positions,
-                        device=args.ssl_device,
-                        batch_size=ssl_config.embedding_batch_size,
-                        num_workers=ssl_config.embedding_num_workers,
-                        seed=args.seed + num_epoch,
-                        start_method=args.dataloader_start_method,
-                        desc=f"STML sampling embeddings - epoch {num_epoch}",
-                        embedding_kind="stml_g",
-                    )
-                    loss_driven_train_loader = utils.make_stml_train_loader(
-                        train_dataset=loss_driven_train_dataset,
-                        sampling_embeddings=sampling_embeddings,
-                        batch_size=args.batch_size,
-                        neighbors_per_query=main_objective.criterion.num_neighbors,
-                        seed=args.seed + num_epoch,
-                        num_workers=args.num_workers,
-                        start_method=args.dataloader_start_method,
-                        pin_memory=pin_memory,
-                        graph_device=args.ssl_device,
-                    )
-                    loss_driven_sampling_rebuild_epoch = num_epoch
-                train_loader = loss_driven_train_loader
             elif regularized_ssl:
                 if regularizer.regularizer_weight == 0:
                     # This is the exact supervised-baseline sanity path: do not
@@ -5395,8 +5636,11 @@ def run_training(
                 train_loader if epoch_refresh is None else epoch_refresh.current_loader,
                 warmup_train_loader,
                 static_train_loader,
-                loss_driven_train_loader,
             )
+            # Before the final fit's early exit, so the epoch curve covers the
+            # final fit and the folds alike.
+            track_epoch(num_epoch)
+
             if final_full_train:
                 # No validation or early stopping is permitted in the final
                 # fit; the HPO-selected duration determines the resulting model.
@@ -5405,33 +5649,13 @@ def run_training(
 
             # Validation runs after every epoch and supplies both early-stopping
             # decisions and intermediate values for Optuna pruning.
-            cur_outcome = utils.evaluate_split(
-                model,
-                valid_loader,
+            cur_outcome = evaluate_validation(
                 f"valid - epoch {num_epoch:>2}",
-                device=args.device,
-                return_per_class=False,
-                return_diagnostics=True,
-                retrieval_device=validation_retrieval_device,
-                allow_cpu_fallback=False,
-                embedding_residency=evaluation_embedding_residency,
-                recall_at_k=recall_at_k,
-                measurements=requested_measurements,
+                step=epoch_trainer.global_step,
+                epoch=num_epoch,
             )
             cur_precision = cur_outcome.precision_at_1
             cur_map = cur_outcome.mean_average_precision_at_r
-            cur_per_class = None
-            metrics_logger.log_eval(
-                "valid",
-                cur_precision,
-                cur_map,
-                step=epoch_trainer.global_step,
-                epoch=num_epoch,
-                per_class_metrics=cur_per_class,
-                diagnostics=cur_outcome.diagnostics,
-                recall_at_k=cur_outcome.recall_at_k,
-                measurements=cur_outcome.measurements,
-            )
             # Warmup epochs do not consume early-stopping patience because the
             # SSL method has not started using pseudo-labels yet.
             is_after_warmup = num_epoch >= ssl_config.warmup_epochs
@@ -5484,6 +5708,27 @@ def run_training(
                 )
 
             cur_selection_value = get_selection_metric_value(args.selection_metric, cur_precision, cur_map)
+            in_patience_delay = False
+            if patience_delay and is_after_warmup and not selection_restart_pending:
+                patience_delay_seen += 1
+                in_patience_delay = patience_delay_seen <= patience_delay
+                if patience_delay_seen == 1:
+                    phase = "SSL" if ssl_config.enabled and ssl_config.warmup_epochs > 0 else "training"
+                    logger.info(
+                        f"patience_delay_epochs={patience_delay}: the first {patience_delay} "
+                        f"{phase} epochs (epochs {num_epoch}-{num_epoch + patience_delay - 1}) do "
+                        "not consume patience; selection still covers them, and patience starts "
+                        f"counting at epoch {num_epoch + patience_delay} against epoch "
+                        f"{num_epoch + patience_delay - 1}'s value."
+                    )
+                if patience_delay_seen == patience_delay:
+                    patience_reference_value = cur_selection_value
+                    logger.info(
+                        f"Epoch {num_epoch} ends the patience delay: patience now counts epochs "
+                        f"without a value above {cur_selection_value:.6f} (this epoch's "
+                        f"{args.selection_metric}); the selected checkpoint stays the best "
+                        "epoch overall."
+                    )
             # Keep independent maxima for the final report even when the chosen
             # checkpoint is selected by only one of these metrics.
             if cur_map > best_map:
@@ -5505,22 +5750,32 @@ def run_training(
                 best_selection_value = cur_selection_value
                 selected_epoch = num_epoch
                 epochs_no_improve = 0
+                if patience_reference_value is not None:
+                    patience_reference_value = cur_selection_value
                 best_model_checkpoint.save()
                 if track_warmup_optimization_state and num_epoch < ssl_config.warmup_epochs:
                     warmup_optimization_snapshot = (
                         epoch_trainer.capture_optimization_state()
                     )
-            elif is_after_warmup and not selection_restart_pending:
+            elif is_after_warmup and not selection_restart_pending and not in_patience_delay:
                 # Equal or worse selected metric consumes one patience unit.
                 # A pending restart is exempt for the same reason warm-up epochs
                 # are: the phase whose progress patience measures has not started
                 # yet, and burning the budget against the stale baseline would
                 # end the run inside the start-up stage -- leaving selection
                 # spanning the warm-up after all, which is what the restart was
-                # asked to prevent.
-                epochs_no_improve += 1
-                if epochs_no_improve >= patience:
-                    break
+                # asked to prevent. Epochs inside --patience_delay_epochs are
+                # exempt too. After the delay an epoch above the patience
+                # reference restarts patience without becoming the checkpoint,
+                # so a curve still climbing back towards an earlier best keeps
+                # training.
+                if patience_reference_value is not None and cur_selection_value > patience_reference_value:
+                    patience_reference_value = cur_selection_value
+                    epochs_no_improve = 0
+                else:
+                    epochs_no_improve += 1
+                    if epochs_no_improve >= patience:
+                        break
 
         if (
             restart_selection_when_ready
@@ -5592,14 +5847,12 @@ def run_training(
             test_map = test_outcome.mean_average_precision_at_r
             test_recall = dict(test_outcome.recall_at_k)
             test_measurement_values = dict(test_outcome.measurements)
-            test_per_class = None
             metrics_logger.log_eval(
                 "test",
                 test_precision,
                 test_map,
                 step=epoch_trainer.global_step,
                 epoch=last_epoch,
-                per_class_metrics=test_per_class,
                 recall_at_k=test_outcome.recall_at_k,
                 measurements=test_outcome.measurements,
             )
@@ -5631,36 +5884,38 @@ def run_training(
                     )
             # Every requested projection is drawn from the same test embeddings,
             # so asking for both costs one extra projection and no extra run.
-            final_test_visualizations = normalize_final_test_visualization(
+            requested_projections = normalize_final_test_visualization(
                 getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
             )
-            if FINAL_TEST_VISUALIZATION_PACMAP in final_test_visualizations:
-                pacmap_artifacts = utils.write_pacmap_visualization(
+            for layout in (FINAL_TEST_VISUALIZATION_PACMAP, FINAL_TEST_VISUALIZATION_TSNE):
+                if layout not in requested_projections:
+                    continue
+                artifacts = utils.write_projection_visualization(
+                    layout,
                     test_embeddings,
                     test_labels,
                     output_dir=args.log_dir,
-                    stem="test_pacmap",
-                    title=f"{args.dataset} final test embeddings - PacMAP",
-                    dataset=dataset_bundle.test_dataset,
-                    dataset_name=args.dataset,
-                )
-                test_pacmap_coordinates = pacmap_artifacts["coordinates"]
-                test_pacmap_plot = pacmap_artifacts["plot"]
-                logger.info(f"PacMAP final test visualization written to {test_pacmap_plot}")
-            if FINAL_TEST_VISUALIZATION_TSNE in final_test_visualizations:
-                tsne_artifacts = utils.write_tsne_visualization(
-                    test_embeddings,
-                    test_labels,
-                    output_dir=args.log_dir,
-                    stem="test_tsne",
-                    title=f"{args.dataset} final test embeddings - t-SNE",
+                    stem=f"test_{layout}",
+                    title=f"{args.dataset} final test embeddings",
                     dataset=dataset_bundle.test_dataset,
                     dataset_name=args.dataset,
                     seed=args.seed,
                 )
-                test_tsne_coordinates = tsne_artifacts["coordinates"]
-                test_tsne_plot = tsne_artifacts["plot"]
-                logger.info(f"t-SNE final test visualization written to {test_tsne_plot}")
+                test_projections[layout] = artifacts
+                logger.info(
+                    f"{utils.PROJECTION_DISPLAY_NAMES[layout]} final test visualization "
+                    f"written to {artifacts['plot']}"
+                )
+                write_test_projection_3d(
+                    args,
+                    test_embeddings,
+                    test_labels,
+                    dataset_bundle.test_dataset,
+                    layout,
+                    output_dir=args.log_dir,
+                    stem=f"test_{layout}",
+                    description=f"{layout} test",
+                )
         else:
             logger.info("Skipping test evaluation for this run")
     finally:
@@ -5671,16 +5926,20 @@ def run_training(
             # Drawing runs behind the training loop, so the run waits here for
             # the last figures rather than exiting with them half-written.
             step_visualizer.close()
+        if epoch_tracker is not None:
+            epoch_tracker.close()
+        if epoch_head_interval is not None:
+            # One file per run instead of one per epoch, checked bit for bit
+            # before the per-epoch files go; it never raises.
+            epoch_head_pack.pack_run_epoch_heads(args.log_dir)
         shutdown_epoch_train_loader(
             train_loader,
             warmup_train_loader,
             static_train_loader,
-            loss_driven_train_loader,
         )
         utils.shutdown_dataloaders(
             train_loader,
             static_train_loader,
-            loss_driven_train_loader,
             warmup_train_loader,
             valid_loader,
             test_loader,
@@ -5751,10 +6010,11 @@ def run_training(
         cv_fold=cv_fold,
         validation_retrieval_backend=validation_retrieval_backend,
         test_retrieval_backend=test_retrieval_backend,
-        test_pacmap_coordinates=test_pacmap_coordinates,
-        test_pacmap_plot=test_pacmap_plot,
-        test_tsne_coordinates=test_tsne_coordinates,
-        test_tsne_plot=test_tsne_plot,
+        **{
+            f"test_{layout}_{kind}": test_projections.get(layout, {}).get(kind)
+            for layout in (FINAL_TEST_VISUALIZATION_PACMAP, FINAL_TEST_VISUALIZATION_TSNE)
+            for kind in ("coordinates", "plot")
+        },
         test_embeddings_path=test_embeddings_path,
         test_embedding_set=test_embedding_set,
         head_state_path=head_state_path,
@@ -5771,7 +6031,31 @@ def run_training(
             else None
         ),
         warmup_restored_epoch=warmup_restored_epoch,
+        regularizer_activity=epoch_trainer.regularizer_activity_summary(),
     )
+
+
+def write_test_projection_3d(args, embeddings, labels, dataset, layout, *, output_dir, stem, description):
+    """The 3-D twin of a final test projection, only with --projection_3d."""
+
+    if not bool(getattr(args, "projection_3d", False)):
+        return None
+    try:
+        path = utils.write_projection_3d_csv(
+            embeddings,
+            labels,
+            output_dir=output_dir,
+            stem=f"{stem}_3d",
+            layout=layout,
+            seed=args.seed,
+            dataset=dataset,
+        )
+    except Exception as exc:
+        # A missing 3-D view costs the viewer a mode, not the run its test result.
+        logger.warning(f"3-D {description} projection failed: {exc}")
+        return None
+    logger.info(f"3-D {description} coordinates written to {path}")
+    return path
 
 
 def build_test_embedding_set(test_embeddings, test_labels, dataset):
@@ -5801,10 +6085,20 @@ def build_test_embedding_set(test_embeddings, test_labels, dataset):
 
 
 def save_test_embedding_set(embedding_set, output_dir):
-    """Persist one run's D_test embeddings for later joint evaluation."""
+    """Persist one run's D_test embeddings for later joint evaluation.
 
-    embeddings = embedding_set["embeddings"]
-    arrays = {"embeddings": embeddings, "labels": embedding_set["labels"]}
+    Stored as float16, half the size of float32; every reader upcasts to
+    float32. Measured on the 76 Cars geometry folds (2026-09-26): per-fold MAP@R
+    moves by at most 8e-6 and P@1 by at most 2.5e-4 (22 of 618k queries change
+    their nearest neighbor), the concatenated score by at most 1.2e-4. A head
+    whose outputs overflow float16 is kept in float32.
+    """
+
+    embeddings = to_numpy_embeddings(embedding_set["embeddings"])
+    stored = embeddings.astype(np.float16)
+    if not np.all(np.isfinite(stored)) and np.all(np.isfinite(embeddings)):
+        stored = embeddings.astype(np.float32)
+    arrays = {"embeddings": stored, "labels": embedding_set["labels"]}
     if embedding_set.get("query_indices") is not None:
         arrays["query_indices"] = embedding_set["query_indices"]
         arrays["gallery_indices"] = embedding_set["gallery_indices"]
@@ -5978,6 +6272,13 @@ def run_cross_validation(
     # the folds it already trained; every other run starts its own directory.
     resumable_run = resume.find_resumable_cross_validation_run(args)
     fold_results = [] if resumable_run is None else list(resumable_run.fold_results)
+    if slade_teacher_handoff:
+        # Each fold starts from its predecessor's student, so only a gap-free
+        # run of finished folds can be continued.
+        fold_results = resume.leading_fold_results(fold_results)
+    finished_aggregate = recorded_finished_cross_validation(args, resumable_run, fold_results)
+    if finished_aggregate is not None:
+        return finished_aggregate
     # All fold directories live below one timestamped CV directory so their
     # partial and final aggregate summaries can be updated in place.
     cv_run_name = (
@@ -5990,8 +6291,9 @@ def run_cross_validation(
     cv_dir.mkdir(parents=True, exist_ok=True)
     if fold_results:
         logger.info(
-            f"Resuming cross-validation run {cv_dir} at fold {len(fold_results)} of {args.cv_k}: "
-            f"reusing {len(fold_results)} completed fold(s) from the interrupted attempt"
+            f"Resuming cross-validation run {cv_dir}: reusing completed fold(s) "
+            f"{[result.cv_fold for result in fold_results]} of {args.cv_k} from the "
+            "interrupted attempt"
         )
 
     validation_retrieval_backend = getattr(
@@ -6011,19 +6313,44 @@ def run_cross_validation(
                 "completed fold has no saved student head. Restart the CV run so every "
                 "fold is recorded with cross_fold_teacher_handoff enabled."
             )
-    for fold_index in range(len(fold_results), args.cv_k):
+    completed_folds = {result.cv_fold for result in fold_results}
+    pending_folds = [index for index in range(args.cv_k) if index not in completed_folds]
+    parallel_folds = min(parallel_folds_setting(args), len(pending_folds))
+    if parallel_folds > 1 and slade_teacher_handoff:
+        logger.warning(
+            f"cv_parallel_folds={parallel_folds} ignored: SLADE cross-fold teacher handoff "
+            "trains each fold from the previous fold's student, so the folds run one at a time"
+        )
+        parallel_folds = 1
+    if parallel_folds > 1:
+        run_cross_validation_folds_in_parallel(
+            args,
+            ssl_config,
+            cv_dir,
+            cv_relative_dir,
+            pending_folds,
+            fold_results,
+            parallel_folds=parallel_folds,
+            validation_retrieval_backend=validation_retrieval_backend,
+            optuna_trial=optuna_trial,
+            optuna_metric=optuna_metric,
+            frozen_feature_cache=frozen_feature_cache,
+        )
+        pending_folds = []
+    for fold_index in pending_folds:
         # Each fold gets a fresh namespace, model, basis, Gaussian statistics,
         # and optimizer. In the opt-in SLADE paper lifecycle, only the selected
         # retrieval projection from the preceding student crosses this boundary
         # and becomes the next fold's teacher initialization.
-        fold_args = copy.deepcopy(args)
-        fold_args.cv_fold = fold_index
-        fold_args.save_dir = cv_relative_dir / f"fold_{fold_index:02d}"
+        fold_args = make_cross_validation_fold_args(
+            args,
+            cv_relative_dir,
+            fold_index,
+            validation_retrieval_backend,
+        )
         if slade_teacher_handoff:
             fold_args.save_head_state = True
             fold_args.slade_teacher_head_state_path = teacher_head_state_path
-        if validation_retrieval_backend is not None:
-            fold_args.validation_retrieval_backend = validation_retrieval_backend
         result = run_training(
             fold_args,
             ssl_config,
@@ -6033,6 +6360,8 @@ def run_cross_validation(
             frozen_feature_cache=frozen_feature_cache,
         )
         fold_results.append(result)
+        # A resumed run can fill a gap before folds it already had.
+        fold_results.sort(key=lambda fold: fold.cv_fold)
         if slade_teacher_handoff:
             teacher_head_state_path = result.head_state_path
             if teacher_head_state_path is None or not Path(teacher_head_state_path).is_file():
@@ -6081,6 +6410,24 @@ def run_cross_validation(
                 if name not in utils.BASE_RETRIEVAL_METRICS
             )
         )
+    elif concatenated_fold_test_requested(args):
+        carried = carried_over_concatenated_test_metrics(resumable_run, fold_results)
+        if carried is not None:
+            aggregate = replace(aggregate, **carried)
+            logger.info(
+                f"Kept the concatenated fold test evaluation recorded in {resumable_run.cv_dir} "
+                f"for the same {len(fold_results)} folds: "
+                f"precision_at_1={carried['concatenated_test_precision_at_1']:.6f}, "
+                f"mean_average_precision_at_r="
+                f"{carried['concatenated_test_mean_average_precision_at_r']:.6f}"
+            )
+        else:
+            logger.warning(
+                f"The summary rewritten in {cv_dir} has no concatenated fold test evaluation"
+            )
+    if evaluated_concatenated_folds:
+        # Drawn before the temporary fold files below are deleted.
+        write_concatenated_fold_test_visualizations(cv_dir, args, fold_results)
     if get_fold_test_embedding_storage(args) == FOLD_TEST_EMBEDDING_STORAGE_TEMPORARY:
         # The files existed only to get the folds' embeddings into one joint
         # evaluation, which has now happened.
@@ -6092,12 +6439,257 @@ def run_cross_validation(
     return aggregate
 
 
+def recorded_finished_cross_validation(args, resumable_run, fold_results):
+    """The aggregate a finished CV run already recorded, reused without rewriting it.
+
+    Restarting a run manifest replays runs that finished. Re-aggregating their
+    folds adds nothing, but it can lose the concatenated fold test evaluation:
+    with fold_test_embedding_storage='temporary' the embeddings it read are
+    gone. Returns ``None`` when the run must still train or re-aggregate.
+    """
+
+    if resumable_run is None or resumable_run.recorded_aggregate is None:
+        return None
+    if len(fold_results) != args.cv_k:
+        return None
+    aggregate = resumable_run.recorded_aggregate
+    if concatenated_fold_test_requested(args):
+        missing = resume.missing_concatenated_test_metrics(aggregate, args)
+        if missing:
+            logger.info(
+                f"Re-aggregating the finished cross-validation run {resumable_run.cv_dir}: "
+                f"its concatenated fold test evaluation lacks {list(missing)}, which this run reports"
+            )
+            return None
+    logger.info(
+        f"Cross-validation run {resumable_run.cv_dir} already finished all {args.cv_k} folds; "
+        "reusing its recorded aggregate and leaving cv_summary.json and cv_results.csv unchanged"
+    )
+    return aggregate
+
+
+def carried_over_concatenated_test_metrics(resumable_run, fold_results):
+    """The concatenated test fields recorded for exactly ``fold_results``, if any.
+
+    Used when a resumed run cannot evaluate the folds jointly itself, so the
+    rewritten summary keeps the evaluation an earlier attempt made of them.
+    """
+
+    if resumable_run is None:
+        return None
+    recorded = resume.recorded_concatenated_test_metrics(resumable_run.recorded_aggregate)
+    if recorded is None:
+        return None
+    # The recorded aggregate covers the reused folds only; one trained by this
+    # run means the joint evaluation describes other models.
+    if [result.log_dir for result in fold_results] != [
+        result.log_dir for result in resumable_run.fold_results
+    ]:
+        return None
+    return recorded
+
+
+def make_cross_validation_fold_args(args, cv_relative_dir, fold_index, validation_retrieval_backend):
+    """A private namespace for one fold, logging below the CV directory."""
+
+    fold_args = copy.deepcopy(args)
+    fold_args.cv_fold = fold_index
+    fold_args.save_dir = cv_relative_dir / f"fold_{fold_index:02d}"
+    if validation_retrieval_backend is not None:
+        fold_args.validation_retrieval_backend = validation_retrieval_backend
+    return fold_args
+
+
+def parallel_folds_setting(args):
+    parallel_folds_module.validate_cv_parallel_args(args)
+    return parallel_folds_module.get_cv_parallel_folds(args)
+
+
+def run_cross_validation_folds_in_parallel(
+    args,
+    ssl_config,
+    cv_dir,
+    cv_relative_dir,
+    pending_folds,
+    fold_results,
+    *,
+    parallel_folds,
+    validation_retrieval_backend,
+    optuna_trial,
+    optuna_metric,
+    frozen_feature_cache,
+):
+    """Train ``pending_folds`` concurrently, appending to ``fold_results``.
+
+    Folds finish in any order. ``fold_results`` is kept in fold order, and the
+    summary and the Optuna report are refreshed after every completed fold, as
+    in the sequential loop, so an interrupted run leaves every finished fold on
+    record.
+    """
+
+    backend = parallel_folds_backend(args)
+    logger.info(
+        f"Training {len(pending_folds)} cross-validation fold(s) {pending_folds} with up to "
+        f"{parallel_folds} at a time on the '{backend}' backend"
+    )
+    if backend == parallel_folds_module.CV_PARALLEL_BACKEND_THREAD:
+        logger.warning(
+            "cv_parallel_backend='thread': the folds share this process's global RNGs, so "
+            "their results are not reproducible"
+        )
+    jobs = [
+        parallel_folds_module.FoldJob(
+            fold_index,
+            make_cross_validation_fold_args(
+                args,
+                cv_relative_dir,
+                fold_index,
+                validation_retrieval_backend,
+            ),
+        )
+        for fold_index in pending_folds
+    ]
+
+    def record(result):
+        fold_results.append(result)
+        fold_results.sort(key=lambda fold: fold.cv_fold)
+        write_cross_validation_summary(cv_dir, args, fold_results)
+        maybe_report_cv_to_optuna(
+            optuna_trial,
+            optuna_metric,
+            fold_results,
+            len(fold_results) - 1,
+        )
+
+    parallel_folds_module.run_fold_jobs(
+        jobs,
+        train_fold=train_cross_validation_fold,
+        on_fold_complete=record,
+        max_parallel=parallel_folds,
+        backend=backend,
+        # Each fold process builds its own copy of the in-memory feature cache.
+        shared_kwargs={"ssl_config": ssl_config},
+        thread_kwargs={"frozen_feature_cache": frozen_feature_cache},
+    )
+
+
+def parallel_folds_backend(args):
+    return parallel_folds_module.get_cv_parallel_backend(args)
+
+
+def train_cross_validation_fold(fold_args, *, cv_fold, ssl_config, frozen_feature_cache=None):
+    """Train one fold on behalf of :func:`run_cross_validation_folds_in_parallel`.
+
+    Module-level so a spawned fold process can unpickle it. The SSL config is
+    copied because a thread-backend fold must not share a mutable config with
+    its siblings.
+    """
+
+    return run_training(
+        fold_args,
+        copy.deepcopy(ssl_config),
+        optuna_trial=None,
+        optuna_metric=None,
+        cv_fold=cv_fold,
+        frozen_feature_cache=frozen_feature_cache,
+    )
+
+
+def write_concatenated_fold_test_visualizations(cv_dir, args, fold_results):
+    """Project the concatenated fold test embeddings the way each fold's were.
+
+    The same --final_test_visualization layouts (and 3-D twins) as a fold, as
+    ``test_<layout>_concatenated`` next to the CV summary. A failure is logged
+    and skipped: the concatenated scores are already recorded.
+    """
+
+    layouts = normalize_final_test_visualization(
+        getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
+    )
+    if not layouts:
+        return {}
+    try:
+        concatenated, labels, _, _ = concatenate_fold_test_embeddings(fold_results)
+    except Exception as exc:
+        logger.warning(f"Concatenated fold test visualization skipped: {exc}")
+        return {}
+    class_source = fold_test_class_names(fold_results, labels)
+    title = (
+        f"{args.dataset} concatenated fold test embeddings "
+        f"({concatenated.shape[1]}-dim, {len(fold_results)} folds)"
+    )
+    written = {}
+    for layout in (FINAL_TEST_VISUALIZATION_PACMAP, FINAL_TEST_VISUALIZATION_TSNE):
+        if layout not in layouts:
+            continue
+        stem = f"test_{layout}_concatenated"
+        try:
+            artifacts = utils.write_projection_visualization(
+                layout,
+                concatenated,
+                labels,
+                output_dir=cv_dir,
+                stem=stem,
+                title=title,
+                dataset=class_source,
+                dataset_name=args.dataset,
+                seed=args.seed,
+            )
+        except Exception as exc:
+            logger.warning(f"Concatenated fold test {layout} visualization failed: {exc}")
+            continue
+        written[layout] = artifacts["coordinates"]
+        logger.info(f"Concatenated fold test {layout} visualization written to {artifacts['plot']}")
+        write_test_projection_3d(
+            args,
+            concatenated,
+            labels,
+            class_source,
+            layout,
+            output_dir=cv_dir,
+            stem=stem,
+            description=f"concatenated fold test {layout}",
+        )
+    return written
+
+
+def fold_test_class_names(fold_results, labels):
+    """A stand-in dataset carrying class names, read from a fold's own test projection CSV.
+
+    The CV loop holds no dataset, but every fold that drew its test projection
+    wrote each test label's class name next to it, in the same sample order.
+    """
+
+    for result in fold_results:
+        for path in (result.test_tsne_coordinates, result.test_pacmap_coordinates):
+            if path is None or not Path(path).is_file():
+                continue
+            names = {}
+            with Path(path).open(newline="", encoding="utf-8") as handle:
+                for row in csv.DictReader(handle):
+                    if row.get("class_name"):
+                        names[int(row["label"])] = row["class_name"]
+            if not names:
+                continue
+            classes = [""] * (int(max(max(names), int(np.max(labels)))) + 1)
+            for label, name in names.items():
+                classes[label] = name
+            return types.SimpleNamespace(classes=classes)
+    return None
+
+
+def concatenated_fold_test_requested(args):
+    """Return whether this run reports a joint evaluation of the folds' test embeddings."""
+
+    return bool(getattr(args, "concatenated_fold_test", False)) and bool(
+        getattr(args, "save_test_embeddings", False)
+    )
+
+
 def should_evaluate_concatenated_folds(args, fold_results):
     """Return whether the folds can and should be evaluated jointly."""
 
-    if not getattr(args, "concatenated_fold_test", False):
-        return False
-    if not getattr(args, "save_test_embeddings", False):
+    if not concatenated_fold_test_requested(args):
         return False
     missing = [
         result.cv_fold
@@ -6108,8 +6700,9 @@ def should_evaluate_concatenated_folds(args, fold_results):
     if missing:
         logger.warning(
             f"Skipping the concatenated fold test evaluation: fold(s) {missing} have no "
-            "test embeddings, which happens when a reused fold predates this setting or "
-            "kept its embeddings in the memory of an interrupted process"
+            "test embeddings, which happens when a reused fold predates this setting, "
+            "kept its embeddings in the memory of an interrupted process, or had them "
+            "deleted by fold_test_embedding_storage='temporary' after an earlier evaluation"
         )
         return False
     return True
@@ -6157,7 +6750,6 @@ def resolve_concatenated_fold_test_device(args, fold_results):
 def aggregate_cross_validation_result(cv_dir, args, fold_results):
     # Keep full fold dictionaries inside the aggregate result for JSON metadata
     # while exposing arithmetic means through the normal TrainingResult fields.
-    fold_dicts = [result_to_dict(result) for result in fold_results]
     return TrainingResult(
         log_dir=cv_dir,
         metrics_csv=cv_dir / "cv_results.csv",
@@ -6166,8 +6758,16 @@ def aggregate_cross_validation_result(cv_dir, args, fold_results):
             fold_results,
             "best_valid_mean_average_precision_at_r",
         ),
-        test_precision_at_1=mean_optional_metric(fold_results, "test_precision_at_1"),
-        test_mean_average_precision_at_r=mean_optional_metric(fold_results, "test_mean_average_precision_at_r"),
+        **{
+            name: mean_optional_metric(fold_results, name)
+            for name in (
+                "test_precision_at_1",
+                "test_mean_average_precision_at_r",
+                "warmup_best_valid_precision_at_1",
+                "warmup_best_valid_mean_average_precision_at_r",
+                "final_train_loss",
+            )
+        },
         # The spread of the per-fold test scores is the honest error bar on
         # their mean, so it is reported next to it rather than derived later.
         test_precision_at_1_std=std_optional_metric(fold_results, "test_precision_at_1"),
@@ -6175,66 +6775,36 @@ def aggregate_cross_validation_result(cv_dir, args, fold_results):
             fold_results,
             "test_mean_average_precision_at_r",
         ),
-        best_valid_recall_at_k=mean_optional_metric_mapping(
-            fold_results,
-            "best_valid_recall_at_k",
-        ),
-        test_recall_at_k=mean_optional_metric_mapping(fold_results, "test_recall_at_k"),
-        epoch0_test_recall_at_k=mean_optional_metric_mapping(
-            fold_results,
-            "epoch0_test_recall_at_k",
-        ),
-        best_valid_measurements=mean_optional_named_metric_mapping(
-            fold_results,
-            "best_valid_measurements",
-        ),
-        test_measurements=mean_optional_named_metric_mapping(
-            fold_results,
-            "test_measurements",
-        ),
-        epoch0_test_measurements=mean_optional_named_metric_mapping(
-            fold_results,
-            "epoch0_test_measurements",
-        ),
-        test_measurements_std=std_optional_named_metric_mapping(
-            fold_results,
-            "test_measurements",
-        ),
-        warmup_best_valid_precision_at_1=mean_optional_metric(
-            fold_results,
-            "warmup_best_valid_precision_at_1",
-        ),
-        warmup_best_valid_mean_average_precision_at_r=mean_optional_metric(
-            fold_results,
-            "warmup_best_valid_mean_average_precision_at_r",
-        ),
-        warmup_selected_epoch=mean_optional_epoch(
-            fold_results,
-            "warmup_selected_epoch",
-        ),
-        warmup_checkpoint_mode=common_optional_value(
-            fold_results,
-            "warmup_checkpoint_mode",
-        ),
-        warmup_restored_epoch=mean_optional_epoch(
-            fold_results,
-            "warmup_restored_epoch",
-        ),
-        final_train_loss=mean_optional_metric(fold_results, "final_train_loss"),
+        **{
+            name: mean_optional_metric_mapping(fold_results, name)
+            for name in ("best_valid_recall_at_k", "test_recall_at_k", "epoch0_test_recall_at_k")
+        },
+        **{
+            name: mean_optional_named_metric_mapping(fold_results, name)
+            for name in (
+                "best_valid_measurements",
+                "test_measurements",
+                "epoch0_test_measurements",
+                "regularizer_activity",
+            )
+        },
+        test_measurements_std=std_optional_named_metric_mapping(fold_results, "test_measurements"),
+        warmup_selected_epoch=mean_optional_epoch(fold_results, "warmup_selected_epoch"),
+        warmup_restored_epoch=mean_optional_epoch(fold_results, "warmup_restored_epoch"),
+        **{
+            name: common_optional_value(fold_results, name)
+            for name in (
+                "warmup_checkpoint_mode",
+                "validation_retrieval_backend",
+                "test_retrieval_backend",
+            )
+        },
         last_epoch=max(result.last_epoch for result in fold_results),
         selected_epoch=round(mean_metric(fold_results, "selected_epoch")),
         global_step=sum(result.global_step for result in fold_results),
         cv_k=args.cv_k,
         cv_mode=args.cv_mode,
-        fold_results=fold_dicts,
-        validation_retrieval_backend=common_optional_value(
-            fold_results,
-            "validation_retrieval_backend",
-        ),
-        test_retrieval_backend=common_optional_value(
-            fold_results,
-            "test_retrieval_backend",
-        ),
+        fold_results=[result_to_dict(result) for result in fold_results],
     )
 
 
@@ -6265,60 +6835,40 @@ def std_optional_metric(results, attr):
     return float(np.std(np.asarray(values, dtype=np.float64), ddof=1))
 
 
-def mean_optional_metric_mapping(results, attr):
-    """Average one per-K metric mapping across folds, K by K.
+def _fold_mapping_values(results, attr, key_type):
+    """(key, values) for every key of the per-fold ``attr`` mappings, in key order.
 
-    Folds that never computed Recall@K contribute nothing, and a K missing from
-    some folds is averaged over the folds that do have it rather than dropped.
+    Folds that never computed a mapping contribute nothing, and a key missing
+    from some folds is collected over the folds that do have it.
     """
 
     mappings = [getattr(result, attr, None) or {} for result in results]
-    keys = sorted({int(key) for mapping in mappings for key in mapping})
-    if not keys:
-        return None
-    averaged = {}
-    for key in keys:
-        values = [
-            float(mapping[key])
-            for mapping in mappings
-            if mapping.get(key) is not None
-        ]
-        if values:
-            averaged[key] = float(np.mean(values))
+    for key in sorted({key_type(key) for mapping in mappings for key in mapping}):
+        yield key, [float(mapping[key]) for mapping in mappings if mapping.get(key) is not None]
+
+
+def mean_optional_metric_mapping(results, attr):
+    """Average one per-K metric mapping across folds, K by K."""
+
+    averaged = {key: float(np.mean(values)) for key, values in _fold_mapping_values(results, attr, int) if values}
     return averaged or None
 
 
 def mean_optional_named_metric_mapping(results, attr):
     """Average string-keyed measurement mappings across folds."""
 
-    mappings = [getattr(result, attr, None) or {} for result in results]
-    keys = sorted({str(key) for mapping in mappings for key in mapping})
-    averaged = {}
-    for key in keys:
-        values = [
-            float(mapping[key])
-            for mapping in mappings
-            if mapping.get(key) is not None
-        ]
-        if values:
-            averaged[key] = float(np.mean(values))
+    averaged = {key: float(np.mean(values)) for key, values in _fold_mapping_values(results, attr, str) if values}
     return averaged or None
 
 
 def std_optional_named_metric_mapping(results, attr):
     """Sample standard deviations for string-keyed fold measurements."""
 
-    mappings = [getattr(result, attr, None) or {} for result in results]
-    keys = sorted({str(key) for mapping in mappings for key in mapping})
-    spread = {}
-    for key in keys:
-        values = [
-            float(mapping[key])
-            for mapping in mappings
-            if mapping.get(key) is not None
-        ]
-        if len(values) >= 2:
-            spread[key] = float(np.std(np.asarray(values, dtype=np.float64), ddof=1))
+    spread = {
+        key: float(np.std(np.asarray(values, dtype=np.float64), ddof=1))
+        for key, values in _fold_mapping_values(results, attr, str)
+        if len(values) >= 2
+    }
     return spread or None
 
 
@@ -6335,84 +6885,28 @@ def common_optional_value(results, attr):
 
 def write_cross_validation_summary(cv_dir, args, fold_results, aggregate=None):
     # During execution only completed folds are written. The final call adds a
-    # synthetic "mean" row once all folds have completed.
-    recall_at_k = utils.resolve_validation_recall_at_k(args)
-    measurements = utils.resolve_validation_measurements(args)
-    additional_measurements = utils.additional_measurements(measurements)
-    # The test columns follow the test scope, which --report_test_metrics and
-    # --test_recall_at_k can widen beyond what validation reported.
-    test_recall_at_k = utils.resolve_test_recall_at_k(args)
-    test_measurements = utils.resolve_test_measurements(args)
-    additional_test_measurements = utils.additional_measurements(test_measurements)
-    rows = [
-        make_cv_summary_row(
-            result,
-            recall_at_k=recall_at_k,
-            measurements=measurements,
-            test_recall_at_k=test_recall_at_k,
-            test_measurements=test_measurements,
-        )
-        for result in fold_results
-    ]
+    # synthetic "mean" row once all folds have completed. The test columns
+    # follow the test scope, which --report_test_metrics and --test_recall_at_k
+    # can widen beyond what validation reported.
+    scopes = {
+        "recall_at_k": utils.resolve_validation_recall_at_k(args),
+        "measurements": utils.resolve_validation_measurements(args),
+        "test_recall_at_k": utils.resolve_test_recall_at_k(args),
+        "test_measurements": utils.resolve_test_measurements(args),
+    }
+    rows = [make_cv_summary_row(result, **scopes) for result in fold_results]
     if aggregate is not None:
-        rows.append(
-            make_cv_summary_row(
-                aggregate,
-                fold="mean",
-                recall_at_k=recall_at_k,
-                measurements=measurements,
-                test_recall_at_k=test_recall_at_k,
-                test_measurements=test_measurements,
-            )
-        )
-
-    csv_path = cv_dir / "cv_results.csv"
-    fieldnames = [
-        "fold",
-        "cv_k",
-        "cv_mode",
-        "log_dir",
-        "metrics_csv",
-        "best_valid_precision_at_1",
-        "best_valid_mean_average_precision_at_r",
-        *(f"best_valid_{name}" for name in additional_measurements),
-        *(f"best_valid_recall_at_{k}" for k in recall_at_k),
-        "test_precision_at_1",
-        "test_mean_average_precision_at_r",
-        *(f"test_{name}" for name in additional_test_measurements),
-        *(f"test_recall_at_{k}" for k in test_recall_at_k),
-        "test_precision_at_1_std",
-        "test_mean_average_precision_at_r_std",
-        *(f"test_{name}_std" for name in additional_test_measurements),
-        "concatenated_test_precision_at_1",
-        "concatenated_test_mean_average_precision_at_r",
-        *(f"concatenated_test_{name}" for name in additional_test_measurements),
-        *(f"concatenated_test_recall_at_{k}" for k in test_recall_at_k),
-        "concatenated_test_embedding_dim",
-        "test_embeddings_path",
-        "head_state_path",
-        "validation_retrieval_backend",
-        "test_retrieval_backend",
-        "test_pacmap_coordinates",
-        "test_pacmap_plot",
-        "test_tsne_coordinates",
-        "test_tsne_plot",
-        "final_train_loss",
-        "last_epoch",
-        "selected_epoch",
-        "warmup_best_valid_precision_at_1",
-        "warmup_best_valid_mean_average_precision_at_r",
-        "warmup_selected_epoch",
-        "warmup_restored_epoch",
-        "warmup_checkpoint_mode",
-        "global_step",
-    ]
+        rows.append(make_cv_summary_row(aggregate, fold="mean", **scopes))
+    fieldnames = ["fold"]
+    mappings = _cv_summary_mappings(**scopes)
+    for field in CV_SUMMARY_RESULT_FIELDS:
+        fieldnames.append(field)
+        for anchor, prefix, _, keys, suffix in mappings:
+            if anchor == field:
+                fieldnames.extend(f"{prefix}{key}{suffix}" for key in keys)
     # Rewriting is intentional: the file always represents the latest complete
     # view instead of requiring readers to deduplicate appended rows.
-    with csv_path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    write_csv(cv_dir / "cv_results.csv", rows, fieldnames)
 
     write_json(
         cv_dir / "cv_summary.json",
@@ -6431,131 +6925,73 @@ def optional_csv_value(value):
     return "" if value is None else (str(value) if isinstance(value, Path) else value)
 
 
-def make_cv_summary_row(
-    result,
-    fold=None,
-    recall_at_k=(),
-    measurements=None,
-    test_recall_at_k=None,
-    test_measurements=None,
-):
-    test_recall = getattr(result, "test_recall_at_k", None) or {}
-    best_valid_recall = getattr(result, "best_valid_recall_at_k", None) or {}
+# Result fields a CV summary row reports as they are, with None written as "".
+# Only the synthetic mean row carries a spread and a joint evaluation.
+CV_SUMMARY_RESULT_FIELDS = (
+    "cv_k",
+    "cv_mode",
+    "log_dir",
+    "metrics_csv",
+    "best_valid_precision_at_1",
+    "best_valid_mean_average_precision_at_r",
+    "test_precision_at_1",
+    "test_mean_average_precision_at_r",
+    "test_precision_at_1_std",
+    "test_mean_average_precision_at_r_std",
+    "concatenated_test_precision_at_1",
+    "concatenated_test_mean_average_precision_at_r",
+    "concatenated_test_embedding_dim",
+    "test_embeddings_path",
+    "head_state_path",
+    "validation_retrieval_backend",
+    "test_retrieval_backend",
+    "test_pacmap_coordinates",
+    "test_pacmap_plot",
+    "test_tsne_coordinates",
+    "test_tsne_plot",
+    "final_train_loss",
+    "last_epoch",
+    "selected_epoch",
+    "warmup_best_valid_precision_at_1",
+    "warmup_best_valid_mean_average_precision_at_r",
+    "warmup_selected_epoch",
+    "warmup_restored_epoch",
+    "warmup_checkpoint_mode",
+    "global_step",
+)
+
+
+def _cv_summary_mappings(recall_at_k=(), measurements=None, test_recall_at_k=None, test_measurements=None):
+    """Mapping-valued result fields as (preceding column, prefix, attribute, keys, suffix)."""
+
     # Unset test scopes mean the test evaluation reported what validation did.
     if test_recall_at_k is None:
         test_recall_at_k = recall_at_k
-    if test_measurements is None:
-        test_measurements = measurements
     additional = utils.additional_measurements(measurements)
-    additional_test = utils.additional_measurements(test_measurements)
-    best_valid_measurements = getattr(result, "best_valid_measurements", None) or {}
-    test_measurement_values = getattr(result, "test_measurements", None) or {}
-    test_measurements_std = getattr(result, "test_measurements_std", None) or {}
-    concatenated_measurements = (
-        getattr(result, "concatenated_test_measurements", None) or {}
+    additional_test = utils.additional_measurements(
+        measurements if test_measurements is None else test_measurements
     )
-    concatenated_recall = getattr(result, "concatenated_test_recall_at_k", None) or {}
-    return {
-        **{
-            f"best_valid_{name}": optional_csv_value(
-                best_valid_measurements.get(name)
-            )
-            for name in additional
-        },
-        **{
-            f"test_{name}": optional_csv_value(test_measurement_values.get(name))
-            for name in additional_test
-        },
-        **{
-            f"test_{name}_std": optional_csv_value(
-                test_measurements_std.get(name)
-            )
-            for name in additional_test
-        },
-        **{
-            f"concatenated_test_{name}": optional_csv_value(
-                concatenated_measurements.get(name)
-            )
-            for name in additional_test
-        },
-        **{
-            f"best_valid_recall_at_{k}": optional_csv_value(best_valid_recall.get(k))
-            for k in recall_at_k
-        },
-        **{
-            f"test_recall_at_{k}": optional_csv_value(test_recall.get(k))
-            for k in test_recall_at_k
-        },
-        **{
-            f"concatenated_test_recall_at_{k}": optional_csv_value(
-                concatenated_recall.get(k)
-            )
-            for k in test_recall_at_k
-        },
-        "fold": result.cv_fold if fold is None else fold,
-        "cv_k": result.cv_k,
-        "cv_mode": "" if result.cv_mode is None else result.cv_mode,
-        "log_dir": str(result.log_dir),
-        "metrics_csv": str(result.metrics_csv),
-        "best_valid_precision_at_1": result.best_valid_precision_at_1,
-        "best_valid_mean_average_precision_at_r": result.best_valid_mean_average_precision_at_r,
-        "test_precision_at_1": "" if result.test_precision_at_1 is None else result.test_precision_at_1,
-        "test_mean_average_precision_at_r": ""
-        if result.test_mean_average_precision_at_r is None
-        else result.test_mean_average_precision_at_r,
-        # Only the synthetic mean row carries a spread and a joint evaluation;
-        # a single fold has neither.
-        "test_precision_at_1_std": optional_csv_value(
-            getattr(result, "test_precision_at_1_std", None)
-        ),
-        "test_mean_average_precision_at_r_std": optional_csv_value(
-            getattr(result, "test_mean_average_precision_at_r_std", None)
-        ),
-        "concatenated_test_precision_at_1": optional_csv_value(
-            getattr(result, "concatenated_test_precision_at_1", None)
-        ),
-        "concatenated_test_mean_average_precision_at_r": optional_csv_value(
-            getattr(result, "concatenated_test_mean_average_precision_at_r", None)
-        ),
-        "concatenated_test_embedding_dim": optional_csv_value(
-            getattr(result, "concatenated_test_embedding_dim", None)
-        ),
-        "test_embeddings_path": optional_csv_value(
-            getattr(result, "test_embeddings_path", None)
-        ),
-        "head_state_path": optional_csv_value(
-            getattr(result, "head_state_path", None)
-        ),
-        "validation_retrieval_backend": result.validation_retrieval_backend or "",
-        "test_retrieval_backend": result.test_retrieval_backend or "",
-        "test_pacmap_coordinates": ""
-        if result.test_pacmap_coordinates is None
-        else str(result.test_pacmap_coordinates),
-        "test_pacmap_plot": "" if result.test_pacmap_plot is None else str(result.test_pacmap_plot),
-        "test_tsne_coordinates": ""
-        if result.test_tsne_coordinates is None
-        else str(result.test_tsne_coordinates),
-        "test_tsne_plot": "" if result.test_tsne_plot is None else str(result.test_tsne_plot),
-        "final_train_loss": "" if result.final_train_loss is None else result.final_train_loss,
-        "last_epoch": result.last_epoch,
-        "selected_epoch": result.selected_epoch,
-        "warmup_best_valid_precision_at_1": optional_csv_value(
-            getattr(result, "warmup_best_valid_precision_at_1", None)
-        ),
-        "warmup_best_valid_mean_average_precision_at_r": optional_csv_value(
-            getattr(result, "warmup_best_valid_mean_average_precision_at_r", None)
-        ),
-        "warmup_selected_epoch": optional_csv_value(
-            getattr(result, "warmup_selected_epoch", None)
-        ),
-        "warmup_restored_epoch": optional_csv_value(
-            getattr(result, "warmup_restored_epoch", None)
-        ),
-        "warmup_checkpoint_mode": optional_csv_value(
-            getattr(result, "warmup_checkpoint_mode", None)
-        ),
-        "global_step": result.global_step,
-    }
+    best_map_r, test_map_r = "best_valid_mean_average_precision_at_r", "test_mean_average_precision_at_r"
+    concatenated_map_r = "concatenated_test_mean_average_precision_at_r"
+    return (
+        (best_map_r, "best_valid_", "best_valid_measurements", additional, ""),
+        (best_map_r, "best_valid_recall_at_", "best_valid_recall_at_k", recall_at_k, ""),
+        (test_map_r, "test_", "test_measurements", additional_test, ""),
+        (test_map_r, "test_recall_at_", "test_recall_at_k", test_recall_at_k, ""),
+        (f"{test_map_r}_std", "test_", "test_measurements_std", additional_test, "_std"),
+        (concatenated_map_r, "concatenated_test_", "concatenated_test_measurements", additional_test, ""),
+        (concatenated_map_r, "concatenated_test_recall_at_", "concatenated_test_recall_at_k", test_recall_at_k, ""),
+    )
+
+
+def make_cv_summary_row(result, fold=None, **scopes):
+    row = {name: optional_csv_value(getattr(result, name, None)) for name in CV_SUMMARY_RESULT_FIELDS}
+    row["fold"] = result.cv_fold if fold is None else fold
+    for _, prefix, attr, keys, suffix in _cv_summary_mappings(**scopes):
+        values = getattr(result, attr, None) or {}
+        for key in keys:
+            row[f"{prefix}{key}{suffix}"] = optional_csv_value(values.get(key))
+    return row
 
 
 def maybe_report_cv_to_optuna(optuna_trial, metric, fold_results, fold_index):
@@ -6581,14 +7017,6 @@ def validate_run_args(args, ssl_config):
     if args.dataset not in DATASETS:
         raise ValueError(f"dataset must be one of {DATASETS}: {args.dataset}")
     utils.validate_dataset_protocol(args.dataset, args.dataset_protocol)
-    utils.validate_cifar_imbalance_factor(args.dataset, args.cifar_imbalance_factor)
-    utils.validate_cifar_balanced_fraction_protocol(
-        dataset_name=args.dataset,
-        dataset_protocol=args.dataset_protocol,
-        train_fraction=args.cifar_train_fraction,
-        test_fraction=args.cifar_test_fraction,
-        imbalance_factor=args.cifar_imbalance_factor,
-    )
     utils.validate_semi_aves_ood_fraction(
         dataset_protocol=args.dataset_protocol,
         ood_fraction=getattr(
@@ -6614,7 +7042,6 @@ def validate_run_args(args, ssl_config):
     for name in ("loss_params", "miner_params", "warmup_loss_params", "warmup_miner_params"):
         if not isinstance(getattr(args, name, {}), dict):
             raise ValueError(f"{name} must be a JSON object")
-    loss_driven_ssl = ssl_config.method in semi_supervised.LOSS_DRIVEN_METHODS
     ssl_method = semi_supervised.get_method(ssl_config)
     regularized_ssl = ssl_method is not None and ssl_method.is_regularization_method
     regularizer = ssl_method.make_regularizer(ssl_config) if regularized_ssl else None
@@ -6629,11 +7056,6 @@ def validate_run_args(args, ssl_config):
     validate_effective_miner_params(args.loss, args.miner, args.miner_params, "miner")
     if uses_ssl_warmup_objective(ssl_config):
         validate_warmup_loss_args(args)
-        if uses_shared_mixed_lp_proxy_warmup(args, ssl_config) and args.warmup_loss != args.loss:
-            raise ValueError(
-                "mixed_label_propagation proxy warmup must name "
-                "warmup_loss='MixedLabelPropagationProxyLoss'; the same proxy module is reused"
-            )
     unlabeled_source = getattr(args, "unlabeled_source", "split")
     external_unlabeled_dir = getattr(args, "external_unlabeled_dir", None)
     external_unlabeled_filter = getattr(args, "external_unlabeled_filter", utils.EXTERNAL_UNLABELED_FILTER_NONE)
@@ -6672,6 +7094,12 @@ def validate_run_args(args, ssl_config):
         and external_unlabeled_filter != utils.EXTERNAL_UNLABELED_FILTER_NONE
     ):
         raise ValueError("external_unlabeled_filter requires unlabeled_source='external' or 'split_and_external'")
+    for name in ("external_unlabeled_fraction", "external_unlabeled_seed"):
+        if getattr(args, name, None) is not None and unlabeled_source not in EXTERNAL_UNLABELED_SOURCES:
+            raise ValueError(f"{name} requires unlabeled_source='external' or 'split_and_external'")
+    external_unlabeled_fraction = getattr(args, "external_unlabeled_fraction", None)
+    if external_unlabeled_fraction is not None and not 0.0 < float(external_unlabeled_fraction) <= 1.0:
+        raise ValueError(f"external_unlabeled_fraction must be in (0, 1]: {external_unlabeled_fraction}")
     if unlabeled_source == "labeled" and not is_supervised_mode(args) and not ssl_config.enabled:
         raise ValueError(
             "unlabeled_source='labeled' is an ablation of the unlabeled objective and "
@@ -6680,30 +7108,13 @@ def validate_run_args(args, ssl_config):
     if unlabeled_source in EXTERNAL_UNLABELED_SOURCES and not is_supervised_mode(args):
         if external_unlabeled_dir is None:
             raise ValueError(f"unlabeled_source={unlabeled_source!r} requires external_unlabeled_dir")
-        if not Path(external_unlabeled_dir).is_dir():
-            raise ValueError(f"external_unlabeled_dir does not exist: {external_unlabeled_dir}")
         if not ssl_config.enabled:
             raise ValueError("External unlabeled data requires --mode ssl with an enabled SSL config")
-    if args.loss == "STMLLoss":
-        if not loss_driven_ssl:
-            raise ValueError("STMLLoss requires an SSL config with method='stml'")
-        if args.miner != "no_miner":
-            raise ValueError("STMLLoss requires miner='no_miner' because it does not consume labels")
-        if args.batch_size < 2:
-            raise ValueError("STMLLoss requires batch_size >= 2")
-        if args.stml_g_dim is not None and args.stml_g_dim <= 0:
-            raise ValueError("stml_g_dim must be positive when set")
-        try:
-            stml_loss = metric_losses.STMLLoss(**args.loss_params)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid parameters for loss STMLLoss: {args.loss_params}") from exc
-        if args.batch_size % stml_loss.num_neighbors != 0:
-            raise ValueError("STMLLoss requires batch_size to be divisible by loss_params.num_neighbors")
-    elif loss_driven_ssl:
-        raise ValueError(f"SSL method {ssl_config.method!r} requires loss='STMLLoss'")
+        # CompCars and Fashion200k are fetched on first use; any other pool must already exist.
+        utils.ensure_external_unlabeled_pool(external_unlabeled_dir, external_unlabeled_filter)
+        if not Path(external_unlabeled_dir).is_dir():
+            raise ValueError(f"external_unlabeled_dir does not exist: {external_unlabeled_dir}")
     if regularizer is not None:
-        if args.loss == "STMLLoss":
-            raise ValueError("regularized mode requires a supervised loss, not STMLLoss")
         regularizer.validate_run_args(args)
         if getattr(regularizer, "within_fold_teacher_student", False):
             if ssl_config.update_mode != "once":
@@ -6749,7 +7160,7 @@ def validate_run_args(args, ssl_config):
         args.ssl_device = get_ssl_device(args)
     except ValueError as exc:
         raise ValueError(f"Invalid SSL device: {exc}") from exc
-    if args.optim not in {"adamw", "adam", "rmsprop"}:
+    if args.optim not in OPTIMIZER_CLASSES:
         raise ValueError(f"optim must be 'adamw', 'adam', or 'rmsprop': {args.optim}")
     scheduler_name = getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
     if scheduler_name not in LR_SCHEDULERS:
@@ -6822,14 +7233,14 @@ def validate_run_args(args, ssl_config):
         raise ValueError("epochs must be positive, except a final full-train run may use zero selected epochs")
     if args.patience <= 0:
         raise ValueError("patience must be positive")
+    if getattr(args, "patience_delay_epochs", 0) < 0:
+        raise ValueError("patience_delay_epochs must not be negative")
     if args.cv_k <= 0:
         raise ValueError("cv_k must be positive")
     if getattr(args, "final_full_train", False) and args.cv_k != 1:
         raise ValueError("A final full-development fit requires cv_k=1")
     if args.cv_mode not in utils.CV_MODES:
         raise ValueError(f"cv_mode must be one of {utils.CV_MODES}: {args.cv_mode}")
-    if args.cv_mode in utils.SUPERCLASS_AWARE_CV_MODES and args.dataset != "CIFAR100":
-        raise ValueError(f"cv_mode={args.cv_mode!r} is only supported for CIFAR100")
     if args.val_mode not in utils.VAL_MODES:
         raise ValueError(f"val_mode must be one of {utils.VAL_MODES}: {args.val_mode}")
     holdout_val_ratio = get_holdout_val_ratio(args)
@@ -6850,6 +7261,7 @@ def validate_run_args(args, ssl_config):
     normalize_final_test_visualization(
         getattr(args, "final_test_visualization", FINAL_TEST_VISUALIZATION_NONE)
     )
+    epoch_tracking.validate_track_epoch_args(args)
     validation_retrieval_backend = getattr(
         args,
         "validation_retrieval_backend",
@@ -6868,8 +7280,7 @@ def validate_run_args(args, ssl_config):
     if args.feat_dim is not None and args.feat_dim <= 0:
         raise ValueError("feat_dim must be positive when set")
     regularizer_provides_projection = (
-        loss_driven_ssl
-        or (regularizer is not None and regularizer.provides_trainable_projection_without_feat_dim)
+        regularizer is not None and regularizer.provides_trainable_projection_without_feat_dim
     )
     if args.backbone_tuning == BACKBONE_TUNING_FROZEN and args.feat_dim is None and not regularizer_provides_projection:
         raise ValueError("backbone_tuning='frozen' requires feat_dim so a trainable projection head remains")
@@ -6898,6 +7309,14 @@ def validate_run_args(args, ssl_config):
             "save_head_state requires backbone_tuning='frozen' because a tuned "
             "backbone is part of the fitted model and is not saved with the head"
         )
+    if (
+        get_epoch_head_interval(args) is not None
+        and args.backbone_tuning != BACKBONE_TUNING_FROZEN
+    ):
+        raise ValueError(
+            "save_epoch_head_interval requires backbone_tuning='frozen' because a tuned "
+            "backbone is part of the fitted model and is not saved with the head"
+        )
     if args.use_cache and args.backbone_tuning != BACKBONE_TUNING_FROZEN:
         raise ValueError(
             "use_cache requires backbone_tuning='frozen' because tuned backbone features are not stable"
@@ -6922,7 +7341,7 @@ def validate_run_args(args, ssl_config):
 def validate_effective_miner_params(loss_name, miner_name, miner_params, param_name):
     """Validate miner params only when the training loop will actually use the miner."""
 
-    if miner_name == "no_miner" or loss_name in CLASSIFICATION_LOSSES or loss_name == "STMLLoss":
+    if miner_name == "no_miner" or loss_name in CLASSIFICATION_LOSSES:
         return
     try:
         validate_named_miner_params(miner_name, miner_params)
@@ -6937,7 +7356,7 @@ def validate_warmup_loss_args(args):
         # Resolved into a concrete objective by resolve_warmup_objective before
         # any component is built; --loss and --miner are validated on their own.
         return
-    if args.warmup_loss not in ALL_LOSSES or args.warmup_loss == "STMLLoss":
+    if args.warmup_loss not in ALL_LOSSES:
         raise ValueError("warmup_loss must be a standard supervised loss")
     if args.warmup_miner not in ALL_MINERS:
         raise ValueError(f"warmup_miner must be one of {ALL_MINERS}: {args.warmup_miner}")
@@ -7083,15 +7502,15 @@ def make_warmup_loss_components(
     )
 
 
+# --optim name -> torch.optim class name.
+OPTIMIZER_CLASSES = {"adamw": "AdamW", "adam": "Adam", "rmsprop": "RMSprop"}
+
+
 def make_optimizer(args, parameters, lr):
-    weight_decay = float(getattr(args, "weight_decay", 0.0))
-    if args.optim == "adamw":
-        return torch.optim.AdamW(parameters, lr=lr, weight_decay=weight_decay)
-    if args.optim == "adam":
-        return torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay)
-    if args.optim == "rmsprop":
-        return torch.optim.RMSprop(parameters, lr=lr, weight_decay=weight_decay)
-    raise ValueError(f"Unknown optimizer: {args.optim}")
+    if args.optim not in OPTIMIZER_CLASSES:
+        raise ValueError(f"Unknown optimizer: {args.optim}")
+    optimizer_class = getattr(torch.optim, OPTIMIZER_CLASSES[args.optim])
+    return optimizer_class(parameters, lr=lr, weight_decay=float(getattr(args, "weight_decay", 0.0)))
 
 
 def resolve_lr_scheduler_params(args):
@@ -7123,52 +7542,34 @@ def resolve_lr_scheduler_params(args):
         )
     resolved = {**defaults, **params}
 
+    def require_int(name, requirement="a positive integer"):
+        value = resolved[name]
+        if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
+            raise ValueError(f"lr_scheduler_params.{name} must be {requirement}")
+        resolved[name] = int(value)
+
+    def require_float(name, positive):
+        value = resolved[name]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, Real)
+            or not np.isfinite(value)
+            or (value <= 0 if positive else value < 0)
+        ):
+            requirement = "positive" if positive else "non-negative"
+            raise ValueError(f"lr_scheduler_params.{name} must be finite and {requirement}")
+        resolved[name] = float(value)
+
     if scheduler_name == LR_SCHEDULER_STEP:
-        step_size = resolved["step_size"]
-        gamma = resolved["gamma"]
-        if isinstance(step_size, bool) or not isinstance(step_size, Integral) or step_size <= 0:
-            raise ValueError("lr_scheduler_params.step_size must be a positive integer")
-        if (
-            isinstance(gamma, bool)
-            or not isinstance(gamma, Real)
-            or not np.isfinite(gamma)
-            or gamma <= 0
-        ):
-            raise ValueError("lr_scheduler_params.gamma must be finite and positive")
-        resolved["step_size"] = int(step_size)
-        resolved["gamma"] = float(gamma)
+        require_int("step_size")
+        require_float("gamma", positive=True)
     elif scheduler_name == LR_SCHEDULER_COSINE:
-        t_max = resolved["T_max"]
-        eta_min = resolved["eta_min"]
-        if isinstance(t_max, bool) or not isinstance(t_max, Integral) or t_max <= 0:
-            raise ValueError("lr_scheduler_params.T_max must be a positive integer")
-        if (
-            isinstance(eta_min, bool)
-            or not isinstance(eta_min, Real)
-            or not np.isfinite(eta_min)
-            or eta_min < 0
-        ):
-            raise ValueError("lr_scheduler_params.eta_min must be finite and non-negative")
-        resolved["T_max"] = int(t_max)
-        resolved["eta_min"] = float(eta_min)
+        require_int("T_max")
+        require_float("eta_min", positive=False)
     else:
-        t_0 = resolved["T_0"]
-        t_mult = resolved["T_mult"]
-        eta_min = resolved["eta_min"]
-        if isinstance(t_0, bool) or not isinstance(t_0, Integral) or t_0 <= 0:
-            raise ValueError("lr_scheduler_params.T_0 must be a positive integer")
-        if isinstance(t_mult, bool) or not isinstance(t_mult, Integral) or t_mult < 1:
-            raise ValueError("lr_scheduler_params.T_mult must be an integer >= 1")
-        if (
-            isinstance(eta_min, bool)
-            or not isinstance(eta_min, Real)
-            or not np.isfinite(eta_min)
-            or eta_min < 0
-        ):
-            raise ValueError("lr_scheduler_params.eta_min must be finite and non-negative")
-        resolved["T_0"] = int(t_0)
-        resolved["T_mult"] = int(t_mult)
-        resolved["eta_min"] = float(eta_min)
+        require_int("T_0")
+        require_int("T_mult", "an integer >= 1")
+        require_float("eta_min", positive=False)
     return resolved
 
 
@@ -7176,77 +7577,16 @@ def make_lr_scheduler(args, optimizer):
     """Construct the selected learning-rate scheduler, or None when disabled."""
 
     scheduler_name = getattr(args, "lr_scheduler", LR_SCHEDULER_NONE)
+    # Validates the name and the parameters, so every name past 'none' is known.
     params = resolve_lr_scheduler_params(args)
     if scheduler_name == LR_SCHEDULER_NONE:
         return None
-    if scheduler_name == LR_SCHEDULER_STEP:
-        return torch.optim.lr_scheduler.StepLR(optimizer, **params)
-    if scheduler_name == LR_SCHEDULER_COSINE:
-        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, **params)
-    if scheduler_name == LR_SCHEDULER_COSINE_WARM_RESTARTS:
-        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, **params)
-    raise ValueError(f"lr_scheduler must be one of {LR_SCHEDULERS}: {scheduler_name}")
-
-
-def make_stml_teacher(student_model):
-    """Create STML's teacher with the student's current backbone and a fresh g head."""
-
-    teacher_model = copy.deepcopy(student_model)
-    torch.nn.init.orthogonal_(teacher_model.embedding_g.weight)
-    torch.nn.init.zeros_(teacher_model.embedding_g.bias)
-    teacher_model.requires_grad_(False)
-    teacher_model.eval()
-    return teacher_model
-
-
-def initialize_stml_teacher_for_phase(teacher_model, student_model, active_criterion, device):
-    """Create the EMA teacher when, and only when, the STML phase begins."""
-
-    if teacher_model is not None or not getattr(active_criterion, "requires_stml_embeddings", False):
-        return teacher_model
-    teacher_model = make_stml_teacher(student_model).to(device)
-    logger.info("Initialized EMA teacher from the fully warmed-up student")
-    return teacher_model
-
-
-@torch.no_grad()
-def update_ema_teacher(
-    teacher_model,
-    student_model,
-    momentum,
-    excluded_parameter_prefixes=(),
-    only_trainable_parameters=False,
-):
-    """Update teacher state by EMA, copying only non-floating counters."""
-
-    if not 0 <= momentum < 1:
-        raise ValueError("teacher momentum must be in [0, 1)")
-    excluded_parameter_prefixes = tuple(excluded_parameter_prefixes)
-    teacher_parameters = dict(teacher_model.named_parameters())
-    teacher_updates = []
-    student_updates = []
-    for name, student_parameter in student_model.named_parameters():
-        if name.startswith(excluded_parameter_prefixes) or (
-            only_trainable_parameters and not student_parameter.requires_grad
-        ):
-            continue
-        teacher_updates.append(teacher_parameters[name])
-        student_updates.append(student_parameter.detach())
-    if teacher_updates:
-        torch._foreach_lerp_(teacher_updates, student_updates, 1 - momentum)
-
-    teacher_buffers = dict(teacher_model.named_buffers())
-    floating_teacher_buffers = []
-    floating_student_buffers = []
-    for name, student_buffer in student_model.named_buffers():
-        teacher_buffer = teacher_buffers[name]
-        if torch.is_floating_point(teacher_buffer):
-            floating_teacher_buffers.append(teacher_buffer)
-            floating_student_buffers.append(student_buffer.detach())
-        else:
-            teacher_buffer.copy_(student_buffer.detach())
-    if floating_teacher_buffers:
-        torch._foreach_lerp_(floating_teacher_buffers, floating_student_buffers, 1 - momentum)
+    scheduler_class = {
+        LR_SCHEDULER_STEP: torch.optim.lr_scheduler.StepLR,
+        LR_SCHEDULER_COSINE: torch.optim.lr_scheduler.CosineAnnealingLR,
+        LR_SCHEDULER_COSINE_WARM_RESTARTS: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+    }[scheduler_name]
+    return scheduler_class(optimizer, **params)
 
 
 def get_loss_class(name):
@@ -7305,6 +7645,10 @@ def make_supervised_split_config(ssl_config):
             "graph_batch_mode": "global",
             "graph_labeled_batch_size": None,
             "graph_unlabeled_batch_size": None,
+            "graph_edge_ablation": "off",
+            "graph_edge_ablation_seed": None,
+            "pseudo_label_source": "method",
+            "pseudo_label_oracle_noise": 0.0,
             "method_params": {},
         }
     )

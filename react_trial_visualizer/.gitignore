@@ -1,0 +1,12 @@
+.next/
+node_modules/
+out/
+dist/
+*.tsbuildinfo
+# Intermediate CSVs and PNGs from evaluate/export_react.py; the snapshot it
+# produces under public/ is the deliverable, this is just the scratch it used.
+.epoch-tracking-build/
+share/
+.share-embedding-views/
+# Parse cache of scripts/export-study-configs.mjs (F: is slow to read).
+.study-configs-cache.json

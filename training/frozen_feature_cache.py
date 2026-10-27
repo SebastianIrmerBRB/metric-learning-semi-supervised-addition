@@ -33,9 +33,22 @@ _SOURCE_ARG_NAMES = (
     "compcars_strict_paper_counts",
     "compcars_paper_threshold_calibration",
 )
+# Removed CLI options, pinned to the defaults every run carried so persisted
+# "exact:" cache keys stay unchanged.
+_REMOVED_SOURCE_ARG_VALUES = {
+    "cifar_imbalance_factor": None,
+    "cifar_train_fraction": 0.5,
+    "cifar_test_fraction": 0.5,
+}
 # Split-affecting arguments that only join the key once they are set, so adding
 # one of them does not invalidate every cache written before it existed.
-_OPTIONAL_SOURCE_ARG_NAMES = ("holdout_val_ratio", "ablation_config", "ablation_variant")
+_OPTIONAL_SOURCE_ARG_NAMES = (
+    "holdout_val_ratio",
+    "ablation_config",
+    "ablation_variant",
+    "external_unlabeled_fraction",
+    "external_unlabeled_seed",
+)
 _DATASET_SIGNATURE_ATTRS = (
     "indices",
     "positions",
@@ -220,7 +233,10 @@ def make_frozen_feature_cache_key(
     _update_digest(digest, ("backbone", explicit_identity))
     _update_digest(
         digest,
-        tuple((name, getattr(args, name, None)) for name in _SOURCE_ARG_NAMES),
+        tuple(
+            (name, _REMOVED_SOURCE_ARG_VALUES[name] if name in _REMOVED_SOURCE_ARG_VALUES else getattr(args, name, None))
+            for name in _SOURCE_ARG_NAMES
+        ),
     )
     optional_source_args = tuple(
         (name, getattr(args, name, None))

@@ -4,108 +4,26 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
-import os
 import tarfile
-import urllib.request
 import zipfile
+from functools import partial
 from pathlib import Path, PurePosixPath
 
-from PIL import Image
-from torch.utils.data import Dataset
-from torchvision.datasets.folder import default_loader
 from tqdm import tqdm
-from utils.out_of_class_selection import select_out_of_class_records
+
+from .image_dataset_base import (
+    ImageListDataset,
+    _DinoSizedImageDownloadMixin,
+    safe_posix_path,
+    select_class_split,
+)
+from .out_of_class_selection import (
+    OutOfClassUnlabeledPool,
+    select_out_of_class_records,
+)
 
 
-class _Atomic224Mixin:
-    """Small self-contained copy of the project's atomic 224px helpers."""
-
-    TARGET_IMAGE_SIZE = (224, 224)
-    JPEG_QUALITY = 90
-    USER_AGENT = "metric-learning-semi-aves-downloader/1.0"
-
-    @classmethod
-    def _temporary_path(cls, destination):
-        destination = Path(destination)
-        return destination.with_name(
-            f".{destination.name}.{os.getpid()}.part"
-        )
-
-    @classmethod
-    def _is_target_sized_image(cls, path):
-        path = Path(path)
-        if not path.is_file():
-            return False
-        try:
-            with Image.open(path) as image:
-                return image.size == cls.TARGET_IMAGE_SIZE
-        except (OSError, ValueError):
-            return False
-
-    @classmethod
-    def _resize_image_to_destination(cls, source, destination):
-        destination = Path(destination)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = cls._temporary_path(destination)
-        temporary.unlink(missing_ok=True)
-        try:
-            with Image.open(source) as image:
-                image.draft("RGB", cls.TARGET_IMAGE_SIZE)
-                rgb_image = image.convert("RGB")
-                try:
-                    resized = rgb_image.resize(
-                        cls.TARGET_IMAGE_SIZE,
-                        resample=Image.Resampling.BILINEAR,
-                    )
-                finally:
-                    rgb_image.close()
-                try:
-                    resized.save(
-                        temporary,
-                        format="JPEG",
-                        quality=cls.JPEG_QUALITY,
-                        subsampling=2,
-                    )
-                finally:
-                    resized.close()
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-    @classmethod
-    def _write_bytes_atomic(cls, destination, content):
-        destination = Path(destination)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = cls._temporary_path(destination)
-        temporary.unlink(missing_ok=True)
-        try:
-            temporary.write_bytes(content)
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-    @classmethod
-    def _write_json_atomic(cls, destination, payload):
-        content = (
-            json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
-            + b"\n"
-        )
-        cls._write_bytes_atomic(destination, content)
-
-    @classmethod
-    def _download_url_to_path(cls, url, destination):
-        request = urllib.request.Request(
-            url,
-            headers={"User-Agent": cls.USER_AGENT},
-        )
-        with urllib.request.urlopen(request) as response:
-            with Path(destination).open("wb") as output:
-                while chunk := response.read(1024 * 1024):
-                    output.write(chunk)
-
-
-class SemiAves(_Atomic224Mixin, Dataset):
+class SemiAves(_DinoSizedImageDownloadMixin, ImageListDataset):
     """Semi-Aves with oracle-all and original-known-class protocols.
 
     ``known`` pools every image whose label falls in the 200 known classes --
@@ -245,6 +163,7 @@ class SemiAves(_Atomic224Mixin, Dataset):
     OUT_OF_CLASS_SELECTION_VERSION = "semi_aves_out_of_class_sha256_v1"
     STORAGE_VERSION = "semi_aves_released_labels_224_v1"
     COMPLETE_MARKER = ".semi_aves_224_complete.json"
+    USER_AGENT = "metric-learning-semi-aves-downloader/1.0"
 
     def __init__(
         self,
@@ -294,92 +213,54 @@ class SemiAves(_Atomic224Mixin, Dataset):
             for class_id, class_name in zip(self.class_ids, self.classes)
         }
 
-        if mode == self.MODE_ORACLE:
-            records = parsed["oracle_pool"]
-            development_classes, test_classes = self.partition_oracle_classes(
-                class_split=class_split
-            )
-            development_set = set(development_classes)
-            test_set = set(test_classes)
-            if split == "train":
-                selected_classes = development_set
-            elif split == "test":
-                selected_classes = test_set
-            else:
-                selected_classes = development_set | test_set
-            selected_records = [
-                record for record in records if record[1] in selected_classes
-            ]
-            development_sample_count = sum(
-                label in development_set for _, label, _ in records
-            )
-            test_sample_count = len(records) - development_sample_count
-            self.development_class_labels = list(development_classes)
-            self.test_class_labels = list(test_classes)
-            self.class_disjoint_split = True
-            self.class_split_info = {
-                "source": "pooled_semi_aves_released_oracle_labels",
-                "mode": self.MODE_ORACLE,
-                "pooled_sources": [
-                    "l_train_val",
-                    "test",
-                    "u_train_in_oracle",
-                    "u_train_out_oracle",
-                ],
-                "pooled_sample_count": len(records),
-                "class_disjoint_test": True,
-                "class_split_version": self.ORACLE_CLASS_SPLIT_VERSIONS[class_split],
-                "class_split": class_split,
-                "development_class_count": len(development_classes),
-                "test_class_count": len(test_classes),
-                "development_sample_count": development_sample_count,
-                "test_sample_count": test_sample_count,
-                "development_sample_fraction": development_sample_count / len(records),
-                "test_sample_fraction": test_sample_count / len(records),
-                "development_classes": list(development_classes),
-                "held_out_test_classes": list(test_classes),
-                "oracle_labels_used": True,
-                "native_unlabeled_pool": False,
-                "official_image_level_split_used": False,
-            }
-        else:
+        known = mode == self.MODE_KNOWN
+        if known:
             records = parsed["known_pool"]
-            development_classes, test_classes = self.partition_known_classes(
-                class_split=class_split
-            )
-            development_set = set(development_classes)
-            test_set = set(test_classes)
-            if split == "train":
-                selected_classes = development_set
-            elif split == "test":
-                selected_classes = test_set
-            else:
-                selected_classes = development_set | test_set
-            selected_records = [
-                record for record in records if record[1] in selected_classes
-            ]
-            development_sample_count = sum(
-                label in development_set for _, label, _ in records
-            )
-            test_sample_count = len(records) - development_sample_count
-            self.development_class_labels = list(development_classes)
-            self.test_class_labels = list(test_classes)
-            self.class_disjoint_split = True
-            self.class_split_info = {
-                "source": "pooled_semi_aves_known_class_labels",
-                "mode": self.MODE_KNOWN,
-                "pooled_sources": [
-                    "l_train_val",
-                    "test",
-                    "u_train_in_oracle",
-                ],
-                "pooled_sample_count": len(records),
-                "class_disjoint_test": True,
-                "class_split_version": self.KNOWN_CLASS_SPLIT_VERSIONS[class_split],
-                "class_split": class_split,
-                "split_basis": self.CLASS_SPLIT_BASES[class_split],
-                "protocol_reference": self.CUB_PROTOCOL_REFERENCE,
-                "known_class_count": self.EXPECTED_KNOWN_CLASS_COUNT,
+            partition = self.partition_known_classes
+        else:
+            records = parsed["oracle_pool"]
+            partition = self.partition_oracle_classes
+        development_classes, test_classes = partition(class_split=class_split)
+        selected_classes = select_class_split(split, development_classes, test_classes)
+        selected_records = [
+            record for record in records if record[1] in selected_classes
+        ]
+        development_set = set(development_classes)
+        development_sample_count = sum(
+            label in development_set for _, label, _ in records
+        )
+        test_sample_count = len(records) - development_sample_count
+        self.development_class_labels = list(development_classes)
+        self.test_class_labels = list(test_classes)
+        self.class_disjoint_split = True
+        info = {
+            "source": (
+                "pooled_semi_aves_known_class_labels"
+                if known
+                else "pooled_semi_aves_released_oracle_labels"
+            ),
+            "mode": mode,
+            "pooled_sources": [
+                "l_train_val",
+                "test",
+                "u_train_in_oracle",
+                *([] if known else ["u_train_out_oracle"]),
+            ],
+            "pooled_sample_count": len(records),
+            "class_disjoint_test": True,
+            "class_split_version": (
+                self.KNOWN_CLASS_SPLIT_VERSIONS
+                if known
+                else self.ORACLE_CLASS_SPLIT_VERSIONS
+            )[class_split],
+            "class_split": class_split,
+        }
+        if known:
+            info["split_basis"] = self.CLASS_SPLIT_BASES[class_split]
+            info["protocol_reference"] = self.CUB_PROTOCOL_REFERENCE
+            info["known_class_count"] = self.EXPECTED_KNOWN_CLASS_COUNT
+        info.update(
+            {
                 "development_class_count": len(development_classes),
                 "test_class_count": len(test_classes),
                 "development_sample_count": development_sample_count,
@@ -389,13 +270,22 @@ class SemiAves(_Atomic224Mixin, Dataset):
                 "development_classes": list(development_classes),
                 "held_out_test_classes": list(test_classes),
                 "oracle_labels_used": True,
-                "in_class_labels_hidden_by": "semi_supervised_label_budget",
-                "native_unlabeled_pool": True,
-                "native_unlabeled_out_source": "u_train_out_oracle",
-                "native_unlabeled_labels_exposed": False,
-                "out_of_class_count": self.EXPECTED_OUT_OF_CLASS_COUNT,
-                "official_image_level_split_used": False,
             }
+        )
+        if known:
+            info.update(
+                {
+                    "in_class_labels_hidden_by": "semi_supervised_label_budget",
+                    "native_unlabeled_pool": True,
+                    "native_unlabeled_out_source": "u_train_out_oracle",
+                    "native_unlabeled_labels_exposed": False,
+                    "out_of_class_count": self.EXPECTED_OUT_OF_CLASS_COUNT,
+                }
+            )
+        else:
+            info["native_unlabeled_pool"] = False
+        info["official_image_level_split_used"] = False
+        self.class_split_info = info
 
         if not selected_records:
             raise ValueError(
@@ -412,53 +302,24 @@ class SemiAves(_Atomic224Mixin, Dataset):
     @classmethod
     def is_ready(cls, root):
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        required_paths = [
-            marker_path,
+        required_paths = (
             *(root / directory for directory in cls.IMAGE_DIRECTORIES),
-            *(
-                root / cls.SPLIT_DIRECTORY / filename
-                for filename in cls.METADATA_FILES
-            ),
-        ]
-        if not all(path.exists() for path in required_paths):
-            return False
+            *(root / cls.SPLIT_DIRECTORY / filename for filename in cls.METADATA_FILES),
+        )
+        marker = cls._read_marker(root, required_paths)
         try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-            storage_version = str(marker["storage_version"])
             source_counts = {
                 str(filename): int(count)
                 for filename, count in marker["source_image_counts"].items()
             }
-        except (
-            KeyError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-            OSError,
-        ):
+        except (KeyError, TypeError, ValueError):
             return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_UNIQUE_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and storage_version == cls.STORAGE_VERSION
-            and source_counts == cls.EXPECTED_SOURCE_IMAGE_COUNTS
+        return source_counts == cls.EXPECTED_SOURCE_IMAGE_COUNTS and cls._marker_fields_match(
+            marker,
+            image_count=cls.EXPECTED_UNIQUE_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            storage_version=cls.STORAGE_VERSION,
         )
-
-    @classmethod
-    def download_224(cls, root):
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader.download_and_remove()
-        return root
 
     def download_and_remove(self):
         self.root = Path(self.root)
@@ -544,24 +405,12 @@ class SemiAves(_Atomic224Mixin, Dataset):
         self._write_json_atomic(self.root / self.COMPLETE_MARKER, marker)
 
     def _ensure_metadata_files(self):
-        metadata_directory = self.root / self.SPLIT_DIRECTORY
-        metadata_directory.mkdir(parents=True, exist_ok=True)
-        for filename in self.METADATA_FILES:
-            destination = metadata_directory / filename
-            if destination.is_file():
-                continue
-            temporary = self._temporary_path(destination)
-            temporary.unlink(missing_ok=True)
-            url = f"{self.RELEASED_LABELS_BASE_URL}/{filename}"
-            try:
-                self._download_url_to_path(url, temporary)
-                os.replace(temporary, destination)
-            except OSError as error:
-                raise RuntimeError(
-                    f"Could not download Semi-Aves split metadata from {url}"
-                ) from error
-            finally:
-                temporary.unlink(missing_ok=True)
+        self._download_missing_files(
+            self.RELEASED_LABELS_BASE_URL,
+            self.root / self.SPLIT_DIRECTORY,
+            self.METADATA_FILES,
+            "Semi-Aves split metadata",
+        )
 
     @classmethod
     def _load_metadata(cls, root):
@@ -1018,11 +867,7 @@ class SemiAves(_Atomic224Mixin, Dataset):
 
     @classmethod
     def _member_image_directory(cls, member_name):
-        path = PurePosixPath(str(member_name).replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                f"Unsafe path in Semi-Aves image archive: {member_name!r}"
-            )
+        path = safe_posix_path(member_name, "Semi-Aves image archive")
         for part in path.parts:
             if part in cls.IMAGE_DIRECTORIES:
                 return part
@@ -1049,14 +894,8 @@ class SemiAves(_Atomic224Mixin, Dataset):
         expected_paths,
     ):
         source_directory = Path(source_directory)
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(expected_paths),
-            desc=f"Saving 224x224 Semi-Aves {directory}",
-            unit="image",
-            disable=None,
-        ) as progress:
+
+        def sources():
             for path_key in sorted(expected_paths):
                 relative_path = PurePosixPath(path_key)
                 source_path = source_directory / Path(*relative_path.parts[1:])
@@ -1066,32 +905,48 @@ class SemiAves(_Atomic224Mixin, Dataset):
                         f"{path_key!r}"
                     )
                 destination = self.root / Path(*relative_path.parts)
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
+                if source_path.resolve() == destination.resolve():
+                    # Resizing in place: read the source before it is replaced.
+                    yield destination, lambda path=source_path: io.BytesIO(path.read_bytes())
                 else:
-                    if source_path.resolve() == destination.resolve():
-                        with io.BytesIO(source_path.read_bytes()) as image_source:
-                            self._resize_image_to_destination(
-                                image_source,
-                                destination,
-                            )
-                    else:
-                        self._resize_image_to_destination(source_path, destination)
-                    written_images += 1
-                progress.update(1)
+                    yield destination, partial(source_path.open, "rb")
+
+        stats = self._resize_all(
+            sources(), len(expected_paths), f"Saving 224x224 Semi-Aves {directory}"
+        )
         return {
             "source": str(source_directory),
             "source_images": len(expected_paths),
-            "written_images": written_images,
-            "reused_images": reused_images,
+            **stats,
         }
 
     def _consume_image_archive(self, archive_path, expected_by_directory):
         archive_path = Path(archive_path)
         seen = {directory: set() for directory in expected_by_directory}
-        written = {directory: 0 for directory in expected_by_directory}
-        reused = {directory: 0 for directory in expected_by_directory}
+        counts = {
+            directory: {"written_images": 0, "reused_images": 0}
+            for directory in expected_by_directory
+        }
         total = sum(len(paths) for paths in expected_by_directory.values())
+
+        def consume(member_name, open_source):
+            relative_path = self._archive_member_path(member_name)
+            if relative_path is None:
+                return
+            directory = relative_path.parts[0]
+            if directory not in expected_by_directory:
+                return
+            self._validate_archive_record(
+                directory,
+                relative_path.as_posix(),
+                expected_by_directory,
+                seen,
+            )
+            self._resize_unless_done(
+                self.root / Path(*relative_path.parts), open_source, counts[directory]
+            )
+            progress.update(1)
+
         with tqdm(
             total=total,
             desc="Saving 224x224 Semi-Aves archive images",
@@ -1102,32 +957,8 @@ class SemiAves(_Atomic224Mixin, Dataset):
                 try:
                     with zipfile.ZipFile(archive_path, "r") as archive:
                         for info in archive.infolist():
-                            if info.is_dir():
-                                continue
-                            relative_path = self._archive_member_path(info.filename)
-                            if relative_path is None:
-                                continue
-                            directory = relative_path.parts[0]
-                            if directory not in expected_by_directory:
-                                continue
-                            path_key = relative_path.as_posix()
-                            self._validate_archive_record(
-                                directory,
-                                path_key,
-                                expected_by_directory,
-                                seen,
-                            )
-                            destination = self.root / Path(*relative_path.parts)
-                            if self._is_target_sized_image(destination):
-                                reused[directory] += 1
-                            else:
-                                with archive.open(info, "r") as source:
-                                    self._resize_image_to_destination(
-                                        source,
-                                        destination,
-                                    )
-                                written[directory] += 1
-                            progress.update(1)
+                            if not info.is_dir():
+                                consume(info.filename, partial(archive.open, info, "r"))
                 except zipfile.BadZipFile as error:
                     raise RuntimeError(
                         f"Could not read Semi-Aves ZIP archive {archive_path}"
@@ -1136,38 +967,8 @@ class SemiAves(_Atomic224Mixin, Dataset):
                 try:
                     with tarfile.open(archive_path, mode="r|*") as archive:
                         for member in archive:
-                            if not member.isfile():
-                                continue
-                            relative_path = self._archive_member_path(member.name)
-                            if relative_path is None:
-                                continue
-                            directory = relative_path.parts[0]
-                            if directory not in expected_by_directory:
-                                continue
-                            path_key = relative_path.as_posix()
-                            self._validate_archive_record(
-                                directory,
-                                path_key,
-                                expected_by_directory,
-                                seen,
-                            )
-                            destination = self.root / Path(*relative_path.parts)
-                            if self._is_target_sized_image(destination):
-                                reused[directory] += 1
-                            else:
-                                source = archive.extractfile(member)
-                                if source is None:
-                                    raise RuntimeError(
-                                        f"Could not read {member.name!r} from "
-                                        f"{archive_path}"
-                                    )
-                                with source:
-                                    self._resize_image_to_destination(
-                                        source,
-                                        destination,
-                                    )
-                                written[directory] += 1
-                            progress.update(1)
+                            if member.isfile():
+                                consume(member.name, partial(archive.extractfile, member))
                 except tarfile.TarError as error:
                     raise RuntimeError(
                         f"Could not read Semi-Aves tar archive {archive_path}"
@@ -1185,8 +986,7 @@ class SemiAves(_Atomic224Mixin, Dataset):
             stats[directory] = {
                 "source": str(archive_path),
                 "source_images": len(seen[directory]),
-                "written_images": written[directory],
-                "reused_images": reused[directory],
+                **counts[directory],
             }
         return stats
 
@@ -1209,11 +1009,7 @@ class SemiAves(_Atomic224Mixin, Dataset):
 
     @classmethod
     def _archive_member_path(cls, member_name):
-        path = PurePosixPath(str(member_name).replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                f"Unsafe path in Semi-Aves image archive: {member_name!r}"
-            )
+        path = safe_posix_path(member_name, "Semi-Aves image archive")
         image_directory_index = None
         for index, part in enumerate(path.parts):
             if part in cls.IMAGE_DIRECTORIES:
@@ -1229,103 +1025,20 @@ class SemiAves(_Atomic224Mixin, Dataset):
             return None
         return relative_path
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class SemiAvesNativeUnlabeledDataset(Dataset):
+class SemiAvesNativeUnlabeledDataset(OutOfClassUnlabeledPool):
     """Semi-Aves out-of-class unlabeled pool with every oracle label hidden.
 
     The in-class images already carry oracle labels inside the known protocol's
     pooled development set, so this dataset supplies only the out-of-class
     (``u_train_out``) images that no protocol ever labels.
-
-    ``out_of_class_fraction`` controls the class-mismatch level: it is the share
-    of the released U-out pool that joins the unlabeled data, and the remaining
-    out-of-class images are dropped rather than kept with a hidden label. 1.0
-    reproduces the original protocol and 0.0 leaves no out-of-class data at all.
     """
 
-    def __init__(
-        self,
-        root,
-        transform=None,
-        out_of_class_fraction=1.0,
-        out_of_class_seed=0,
-    ):
-        self.root = Path(root)
-        if not SemiAves.is_ready(self.root):
-            raise ValueError(
-                f"Prepared Semi-Aves data was not found at {self.root}"
-            )
-        out_of_class_fraction = float(out_of_class_fraction)
-        if not 0.0 <= out_of_class_fraction <= 1.0:
-            raise ValueError(
-                "Semi-Aves out_of_class_fraction must be in [0, 1]: "
-                f"{out_of_class_fraction}"
-            )
-        parsed = SemiAves._load_metadata(self.root)
-        available_records = parsed["oracle_out"]
-        records = SemiAves.select_out_of_class_records(
-            available_records,
-            fraction=out_of_class_fraction,
-            seed=out_of_class_seed,
-        )
-        self.paths = [
-            str(self.root / Path(*relative_path.parts))
-            for relative_path, _, _ in records
-        ]
-        self.labels = [-1] * len(records)
-        self.orig_labels = [int(label) for _, label, _ in records]
-        self.oracle_labels = list(self.orig_labels)
-        self.sample_sources = ["u_train_out" for _ in records]
-        self.transform = transform
-        self.out_of_class_fraction = out_of_class_fraction
-        self.out_of_class_seed = int(out_of_class_seed)
-        self.filter_info = {
-            "mode": "semi_aves_out_of_class_only",
-            "candidate_source": "released_oracle_files_hidden_at_runtime",
-            "labels_exposed_to_training": False,
-            "kept_images": len(records),
-            "kept_out_of_class_classes": len({label for _, label, _ in records}),
-            "out_of_class_behavior": (
-                "all_original_u_train_out_images_unlabeled"
-                if out_of_class_fraction == 1.0
-                else "class_balanced_out_of_class_subset_remainder_excluded"
-            ),
-            "out_of_class_fraction_requested": out_of_class_fraction,
-            "out_of_class_fraction_realized": (
-                len(records) / len(available_records)
-                if available_records
-                else 0.0
-            ),
-            "available_out_of_class_images": len(available_records),
-            "excluded_out_of_class_images": (
-                len(available_records) - len(records)
-            ),
-            "out_of_class_selection_seed": int(out_of_class_seed),
-            "out_of_class_selection_version": (
-                SemiAves.OUT_OF_CLASS_SELECTION_VERSION
-            ),
-        }
+    DATASET = SemiAves
+    DATASET_NAME = LABEL = "Semi-Aves"
+    MODE = "semi_aves_out_of_class_only"
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        if self.transform is not None:
-            image = self.transform(image)
-        return image, -1
+    def available_records(self):
+        return SemiAves._load_metadata(self.root)["oracle_out"]
 
 
 SemiAves2020 = SemiAves

@@ -5,10 +5,12 @@ camera is one specific-place class and its time-lapse frames are observations
 of that class under changing illumination, weather, and season.  The original
 paper used 2,543 cameras and about 2.5 million images.
 
-The selected SPED image collection is not exposed as a stable, automatically
-downloadable archive.  This loader therefore consumes a manually prepared
-camera tree and never attempts to reconstruct the authors' camera selection
-from the much larger AMOS archive.  Either of these layouts is accepted::
+The paper does not publish the randomly selected camera ids, image filenames,
+or sampling seed, and no public release of the announced training archive is
+available from the authors' archived page.  The exact training collection
+therefore cannot be reconstructed from the much larger AMOS archive.  This loader consumes a
+manually obtained SPED camera tree and never substitutes a new random AMOS
+selection.  Either of these layouts is accepted::
 
     root/images/<camera_id>/<optional year/month folders>/<image>
     root/<camera_id>/<optional year/month folders>/<image>
@@ -34,11 +36,12 @@ import warnings
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
-from torch.utils.data import Dataset
-from torchvision.datasets.folder import IMG_EXTENSIONS, default_loader
+from torchvision.datasets.folder import IMG_EXTENSIONS
+
+from .image_dataset_base import ImageListDataset
 
 
-class SPED(Dataset):
+class SPED(ImageListDataset):
     """Load SPED camera observations as specific-place classes."""
 
     DATASET_PAGE = "https://arxiv.org/abs/1701.05105"
@@ -190,10 +193,11 @@ class SPED(Dataset):
     @classmethod
     def _manual_download_message(cls, root):
         return (
-            "SPED does not support automatic download. The original 2,543-camera "
-            "selection is based on AMOS, whose maintainers require an access "
-            f"request. Prepare camera folders or sped_manifest.csv below {root}; "
-            f"see {cls.DATASET_PAGE} and {cls.AMOS_PAGE}."
+            "SPED does not support automatic download because the paper did not "
+            "publish its randomly selected 2,543 camera ids, exact image list, "
+            "or sampling seed. Prepare an author-provided camera tree or exact "
+            f"sped_manifest.csv below {root}; see {cls.DATASET_PAGE} and "
+            f"{cls.AMOS_PAGE}."
         )
 
     @classmethod
@@ -479,15 +483,3 @@ class SPED(Dataset):
     def camera_id_digest(camera_ids):
         payload = "\n".join(str(camera_id) for camera_id in camera_ids).encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
-
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label

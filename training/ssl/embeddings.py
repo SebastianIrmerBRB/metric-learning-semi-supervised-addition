@@ -52,7 +52,6 @@ def extract_embeddings(
     seed,
     start_method,
     desc,
-    embedding_kind="default",
     loader=None
 ):
     """Extract deterministic embeddings on ``device`` and restore model placement."""
@@ -85,21 +84,12 @@ def extract_embeddings(
                 for images, _ in tqdm(loader, desc=desc):
                     # Labels are deliberately ignored: pseudo-label generation
                     # must use only images/embeddings for the unlabeled pool.
-                    if embedding_kind == "default":
-                        forward_cached = getattr(model, "forward_cached", None)
-                        embeddings = utils.forward_model_inputs(
-                            model,
-                            images,
-                            compute_device,
-                            use_cache=forward_cached is not None,
-                        )
-                    elif embedding_kind == "stml_g":
-                        forward_stml_cached = getattr(model, "forward_stml_cached", None)
-                        if forward_stml_cached is None:
-                            raise AttributeError("Model does not expose forward_stml_cached")
-                        embeddings, _ = forward_stml_cached(images, compute_device)
-                    else:
-                        raise ValueError(f"Unknown embedding_kind: {embedding_kind}")
+                    embeddings = utils.forward_model_inputs(
+                        model,
+                        images,
+                        compute_device,
+                        use_cache=getattr(model, "forward_cached", None) is not None,
+                    )
                     # .float() before .numpy(): numpy has no bfloat16, so an
                     # embedding produced under autocast must leave torch as
                     # float32 rather than raising on the conversion.

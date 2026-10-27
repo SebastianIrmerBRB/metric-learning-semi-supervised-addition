@@ -42,6 +42,30 @@ PSEUDO_LABEL_DIAGNOSTICS_MODES = {"off", "log", "save"}
 GRAPH_DIAGNOSTICS_MODES = {"off", "save"}
 
 
+# Hidden-label graph interventions used only by the graph-edge ablation
+# manifest. ``normal`` trains on the untouched graph while still auditing its
+# purity, so the three experimental conditions share one explicit mechanism.
+# ``degree_rewired`` needs no labels to act -- it randomizes which nodes an
+# edge joins while every node keeps its degree -- but is audited the same way.
+GRAPH_EDGE_ABLATION_MODES = {
+    "off",
+    "normal",
+    "random_pruned",
+    "oracle_pruned",
+    "degree_rewired",
+}
+
+
+# Where the pseudo-labels a pseudo-labeling method trains on come from.
+# ``method`` is the method's own prediction. ``none`` generates none, so the
+# run keeps its SSL schedule, sampler budget and hyperparameters but trains on
+# the labeled support alone: the unlabeled term at weight zero. ``oracle``
+# keeps the method's coverage -- exactly the samples it accepted -- but gives
+# each one its hidden true label, of which ``pseudo_label_oracle_noise``
+# replaces a fixed, seeded share with a wrong one.
+PSEUDO_LABEL_SOURCES = {"method", "none", "oracle"}
+
+
 GRAPH_DIAGNOSTICS_LAYOUTS = {"pacmap", "tsne", "pca"}
 
 
@@ -59,16 +83,11 @@ GRAPH_DIAGNOSTICS_CLASS_FOCUS_MODES = {
 }
 
 
-# ``in_batch_merged`` is ``in_batch`` with the objective folded into one term:
-# the graph spans the whole supervised batch plus a uniformly drawn unlabeled
-# batch, and the single loss covers every row that ends up with a label, true or
-# pseudo. ``in_batch`` instead subsamples the labeled rows and adds its term on
-# top of the engine's supervised loss, which counts the labeled rows twice.
-GRAPH_BATCH_MODES = {"global", "in_batch", "in_batch_merged"}
+GRAPH_BATCH_MODES = {"global", "in_batch"}
 
 
-# The two per-step modes, as opposed to the whole-pool ``global`` one.
-IN_BATCH_GRAPH_MODES = frozenset({"in_batch", "in_batch_merged"})
+# The per-step mode, as opposed to the whole-pool ``global`` one.
+IN_BATCH_GRAPH_MODES = frozenset({"in_batch"})
 
 
 LABEL_SAMPLING_MODES = {
@@ -98,15 +117,12 @@ UNLABELED_CLASS_SCOPES = {
 }
 
 
-LOSS_DRIVEN_METHODS = {"stml"}
-
-
 # Pool-wide pseudo-label methods that can feed ``TwoStreamMPerClassBatchSampler``
 # through ``labeled_batch_size``. The sampler only needs a relabeled dataset that
 # keeps the true-labeled and pseudo-labeled positions apart, which every
 # whole-pool method produces; the set records which ones have been validated
 # against the stream sizing rules rather than a structural limit.
-TWO_STREAM_SAMPLER_METHODS = frozenset({"iscen_label_spreading", "stml_threshold"})
+TWO_STREAM_SAMPLER_METHODS = frozenset({"iscen_label_spreading"})
 
 
 # How the two-stream sampler relates the classes drawn by each stream.
@@ -180,11 +196,17 @@ class SemiSupervisedConfig:
     graph_labeled_batch_size: int | None = None
     graph_unlabeled_batch_size: int | None = None
     pseudo_label_diagnostics_mode: str = "save"
+    # See ``PSEUDO_LABEL_SOURCES``. The noise is a share in [0, 1) and only
+    # meaningful with ``oracle``; the corrupted samples are drawn once per run
+    # seed, so the same sample stays wrong across refreshes and a larger share
+    # corrupts a superset of a smaller one.
+    pseudo_label_source: str = "method"
+    pseudo_label_oracle_noise: float = 0.0
     graph_diagnostics_mode: str = "off"
     graph_diagnostics_max_nodes: int = 400
     graph_diagnostics_max_edges: int = 2000
     graph_diagnostics_max_labels: int = 80
-    graph_diagnostics_layout: str = "pacmap"
+    graph_diagnostics_layout: str = "tsne"
     # Class-scoped view of the same graph. It changes nothing about training or
     # about the full-graph statistics; it selects which classes the plot and the
     # class-focus report are built around.
@@ -196,6 +218,12 @@ class SemiSupervisedConfig:
     # to. Without them the plot is an induced subgraph, which hides exactly the
     # leaked edges that explain a low-purity class.
     graph_diagnostics_class_context: bool = True
+    # Oracle-only mechanism analysis. Normal SSL configs leave this off; the
+    # ablation manifest turns it on for LP-DeepSSL or LRML runs.
+    graph_edge_ablation: str = "off"
+    # ``None`` follows the run seed, so a seed sweep also repeats the matched
+    # random-pruning control with an independently reproducible draw.
+    graph_edge_ablation_seed: int | None = None
     max_unlabeled_samples: int | None = None
     # Class-balanced share of the unlabeled pool kept after
     # ``unlabeled_class_scope`` has been applied; ``None`` keeps all of it. It
@@ -246,13 +274,16 @@ class GraphDiagnosticsRequest:
     max_edges: int
     max_labels: int
     seed: int
-    layout: str = "pacmap"
+    layout: str = "tsne"
     series_slug: str | None = None
     epoch: int | None = None
     class_focus: str = "off"
     class_count: int = 6
     classes: tuple[int, ...] | None = None
     class_context: bool = True
+    # False writes the data only: no graph PNG, no distributions PNG, and so no
+    # second 2-D projection of the embeddings just to draw them.
+    write_plots: bool = True
 
 
 def should_rebuild_on_epoch(update_mode, interval_epochs, epoch, last_rebuild_epoch):

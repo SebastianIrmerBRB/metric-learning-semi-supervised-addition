@@ -1,28 +1,29 @@
+import gzip
 import hashlib
 import json
 import os
-import shutil
 import statistics
 import tarfile
-import urllib.request
 import zipfile
 from collections import Counter
+from functools import partial
 from pathlib import Path, PurePosixPath
 
-from PIL import Image
 from pytorch_metric_learning.datasets.cub import CUB as _CUB
 from pytorch_metric_learning.datasets.inaturalist2018 import (
     INaturalist2018 as _INaturalist2018,
 )
 from pytorch_metric_learning.datasets.sop import StanfordOnlineProducts as _StanfordOnlineProducts
-from tqdm import tqdm
-from torchvision.datasets import CIFAR10 as _CIFAR10
-from torchvision.datasets import CIFAR100 as _CIFAR100
 from torchvision.datasets import Flowers102 as _Flowers102
-from torchvision.datasets.folder import IMG_EXTENSIONS, default_loader
-from torch.utils.data import Dataset
+from torchvision.datasets.folder import IMG_EXTENSIONS
 
-from .out_of_class_selection import select_out_of_class_records
+from .image_dataset_base import (
+    ImageListDataset,
+    _DinoSizedImageDownloadMixin,
+    safe_posix_path,
+    select_class_split,
+)
+from .out_of_class_selection import OutOfClassUnlabeledPool
 from .pittsburgh_dataset import (
     Pittsburgh30k,
     Pittsburgh250k,
@@ -33,164 +34,6 @@ from .semi_aves_dataset import (
     SemiAvesNativeUnlabeledDataset,
 )
 from .sped_dataset import SPED
-
-
-class _CIFARSplitMixin:
-    def __init__(self, root, split="train", transform=None, target_transform=None, download=False):
-        if split not in {"train", "test"}:
-            raise ValueError(f"split must be 'train' or 'test', got {split!r}")
-
-        super().__init__(
-            root=root,
-            train=split == "train",
-            transform=transform,
-            target_transform=target_transform,
-            download=download,
-        )
-        self.split = split
-        self.labels = list(self.targets)
-
-
-class CIFAR10(_CIFARSplitMixin, _CIFAR10):
-    pass
-
-
-class CIFAR100(_CIFARSplitMixin, _CIFAR100):
-    pass
-
-
-class _DownloadProgressReader:
-    """Update a byte progress bar as a streaming archive is read."""
-
-    def __init__(self, response, progress):
-        self.response = response
-        self.progress = progress
-
-    def read(self, size=-1):
-        data = self.response.read(size)
-        self.progress.update(len(data))
-        return data
-
-
-class _DinoSizedImageDownloadMixin:
-    """Shared atomic 224 x 224 JPEG download helpers."""
-
-    TARGET_IMAGE_SIZE = (224, 224)
-    JPEG_QUALITY = 90
-    USER_AGENT = "metric-learning-dino-image-downloader/1.0"
-
-    @classmethod
-    def _is_target_sized_image(cls, path):
-        if not path.is_file():
-            return False
-        try:
-            with Image.open(path) as image:
-                return image.size == cls.TARGET_IMAGE_SIZE
-        except (OSError, ValueError):
-            return False
-
-    @classmethod
-    def _resize_image_to_destination(
-        cls,
-        source,
-        destination,
-        *,
-        crop_bottom_pixels=0,
-    ):
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = cls._temporary_path(destination)
-        temporary.unlink(missing_ok=True)
-        try:
-            with Image.open(source) as image:
-                if crop_bottom_pixels:
-                    crop_bottom_pixels = int(crop_bottom_pixels)
-                    if crop_bottom_pixels < 0:
-                        raise ValueError("crop_bottom_pixels must be non-negative")
-                    if image.height <= crop_bottom_pixels:
-                        raise ValueError(
-                            f"Cannot crop {crop_bottom_pixels} pixels from an "
-                            f"image with height {image.height}"
-                        )
-                    prepared_image = image.crop(
-                        (0, 0, image.width, image.height - crop_bottom_pixels)
-                    )
-                else:
-                    image.draft("RGB", cls.TARGET_IMAGE_SIZE)
-                    prepared_image = image
-                try:
-                    rgb_image = prepared_image.convert("RGB")
-                finally:
-                    if prepared_image is not image:
-                        prepared_image.close()
-                try:
-                    resized = rgb_image.resize(
-                        cls.TARGET_IMAGE_SIZE,
-                        resample=Image.Resampling.BILINEAR,
-                    )
-                finally:
-                    rgb_image.close()
-                try:
-                    resized.save(
-                        temporary,
-                        format="JPEG",
-                        quality=cls.JPEG_QUALITY,
-                        subsampling=2,
-                    )
-                finally:
-                    resized.close()
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-    @classmethod
-    def _open_url(cls, url):
-        request = urllib.request.Request(
-            url,
-            headers={"User-Agent": cls.USER_AGENT},
-        )
-        return urllib.request.urlopen(request)
-
-    @staticmethod
-    def _byte_progress(response, description):
-        content_length = response.headers.get("Content-Length")
-        total = int(content_length) if content_length is not None else None
-        return tqdm(
-            total=total,
-            desc=description,
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1024,
-            disable=None,
-        )
-
-    def _download_url_to_path(self, url, destination, description):
-        with self._open_url(url) as response:
-            with self._byte_progress(response, description) as progress:
-                with destination.open("wb") as output:
-                    while chunk := response.read(1024 * 1024):
-                        output.write(chunk)
-                        progress.update(len(chunk))
-
-    @classmethod
-    def _write_bytes_atomic(cls, destination, content):
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = cls._temporary_path(destination)
-        temporary.unlink(missing_ok=True)
-        try:
-            with temporary.open("wb") as output:
-                output.write(content)
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
-
-    @classmethod
-    def _write_json_atomic(cls, destination, payload):
-        serialized = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
-        cls._write_bytes_atomic(destination, serialized)
-
-    @staticmethod
-    def _temporary_path(destination):
-        return destination.with_name(f".{destination.name}.{os.getpid()}.part")
 
 
 class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
@@ -239,53 +82,49 @@ class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
         """Return whether a completed 224 x 224 dataset is present."""
 
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
         required_paths = (
             root / cls.TRAIN_ANNOTATION,
             root / cls.VAL_ANNOTATION,
             root / cls.SPLIT_DIRECTORY / cls.TRAIN_SPLIT,
             root / cls.SPLIT_DIRECTORY / cls.TEST_SPLIT,
             root / cls.IMAGE_DIRECTORY,
-            marker_path,
         )
-        if not all(path.exists() for path in required_paths):
-            return False
-
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
-            return False
-        return image_size == cls.TARGET_IMAGE_SIZE and image_count > 0
-
-    @classmethod
-    def download_224(cls, root):
-        """Download the dataset without constructing and parsing a split."""
-
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = str(root)
-        downloader.download_and_remove()
-        return root
+        return cls._marker_image_count(root, required_paths) > 0
 
     def download_and_remove(self):
         """Stream the official archive and retain only 224 x 224 images."""
 
         root = Path(self.root)
         root.mkdir(parents=True, exist_ok=True)
-        self._ensure_annotation(self.TRAIN_ANN_URL, self.TRAIN_ANNOTATION)
-        self._ensure_annotation(self.VAL_ANN_URL, self.VAL_ANNOTATION)
+        for url, filename in (
+            (self.TRAIN_ANN_URL, self.TRAIN_ANNOTATION),
+            (self.VAL_ANN_URL, self.VAL_ANNOTATION),
+        ):
+            self._ensure_tar_member(url, filename, "iNaturalist annotation")
         self._ensure_split_files()
 
         expected_image_count = self._count_split_images()
         if expected_image_count <= 0:
             raise RuntimeError("The iNaturalist metric-learning split files contain no images")
 
-        stats = self._stream_and_resize_images(expected_image_count)
+        with self._download_stream(
+            self.IMG_DOWNLOAD_URL,
+            "Streaming official iNaturalist image archive",
+        ) as archive_stream:
+            stats = self._resize_tar_stream(
+                archive_stream,
+                self._image_member_path,
+                root.joinpath,
+                "Saving 224x224 iNaturalist images",
+                "iNaturalist image",
+                total=expected_image_count,
+            )
+        if stats["archive_images"] != expected_image_count:
+            raise RuntimeError(
+                "The iNaturalist image archive did not match the metric-learning split files: "
+                f"expected {expected_image_count} images, found {stats['archive_images']}. "
+                "The completion marker was not written; rerun the downloader to retry."
+            )
         marker = {
             "dataset": "INaturalist2018",
             "image_size": list(self.TARGET_IMAGE_SIZE),
@@ -297,36 +136,6 @@ class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
             "storage_layout": f"{self.IMAGE_DIRECTORY}/<supercategory>/<category>/<image>.jpg",
         }
         self._write_json_atomic(root / self.COMPLETE_MARKER, marker)
-
-    def _ensure_annotation(self, url, filename):
-        destination = Path(self.root) / filename
-        if destination.is_file():
-            return
-
-        temporary = self._temporary_path(destination)
-        temporary.unlink(missing_ok=True)
-        found = False
-        try:
-            with self._open_url(url) as response:
-                with self._byte_progress(response, f"Downloading {filename}") as progress:
-                    reader = _DownloadProgressReader(response, progress)
-                    with tarfile.open(fileobj=reader, mode="r|gz") as archive:
-                        for member in archive:
-                            if not member.isfile() or PurePosixPath(member.name).name != filename:
-                                continue
-                            source = archive.extractfile(member)
-                            if source is None:
-                                raise RuntimeError(f"Could not read {filename} from {url}")
-                            destination.parent.mkdir(parents=True, exist_ok=True)
-                            with source, temporary.open("wb") as output:
-                                shutil.copyfileobj(source, output, length=1024 * 1024)
-                            found = True
-                            break
-            if not found:
-                raise RuntimeError(f"{url} did not contain the expected file {filename}")
-            os.replace(temporary, destination)
-        finally:
-            temporary.unlink(missing_ok=True)
 
     def _ensure_split_files(self):
         split_directory = Path(self.root) / self.SPLIT_DIRECTORY
@@ -372,61 +181,11 @@ class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
                     image_count += 1
         return image_count
 
-    def _stream_and_resize_images(self, expected_image_count):
-        archive_images = 0
-        written_images = 0
-        reused_images = 0
-        with self._open_url(self.IMG_DOWNLOAD_URL) as response:
-            with self._byte_progress(
-                response,
-                "Streaming official iNaturalist image archive",
-            ) as byte_progress:
-                reader = _DownloadProgressReader(response, byte_progress)
-                with tqdm(
-                    total=expected_image_count,
-                    desc="Saving 224x224 iNaturalist images",
-                    unit="image",
-                    disable=None,
-                ) as image_progress:
-                    with tarfile.open(fileobj=reader, mode="r|gz") as archive:
-                        for member in archive:
-                            relative_path = self._image_member_path(member)
-                            if relative_path is None:
-                                continue
-                            archive_images += 1
-                            destination = Path(self.root) / relative_path
-                            if self._is_target_sized_image(destination):
-                                reused_images += 1
-                            else:
-                                source = archive.extractfile(member)
-                                if source is None:
-                                    raise RuntimeError(
-                                        f"Could not read image {member.name!r} from the archive"
-                                    )
-                                with source:
-                                    self._resize_image_to_destination(source, destination)
-                                written_images += 1
-                            image_progress.update(1)
-
-        if archive_images != expected_image_count:
-            raise RuntimeError(
-                "The iNaturalist image archive did not match the metric-learning split files: "
-                f"expected {expected_image_count} images, found {archive_images}. "
-                "The completion marker was not written; rerun the downloader to retry."
-            )
-        return {
-            "archive_images": archive_images,
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
-
     @classmethod
     def _image_member_path(cls, member):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(f"Unsafe path in iNaturalist image archive: {member.name!r}")
+        path = safe_posix_path(member.name, "iNaturalist image archive")
         if not path.parts or path.parts[0] != cls.IMAGE_DIRECTORY:
             return None
         if path.suffix.lower() not in {".jpg", ".jpeg"}:
@@ -462,7 +221,1221 @@ class INaturalist2018(_DinoSizedImageDownloadMixin, _INaturalist2018):
         return matches[0]
 
 
-class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
+class INaturalist2019(_DinoSizedImageDownloadMixin, ImageListDataset):
+    """iNaturalist 2019 with the published class-disjoint DML split.
+
+    The official 265,213 training and 3,030 validation images are pooled. As
+    used by Hierarchical Proxy-Based Loss, category ids 0--655 (48 complete
+    genera) form the development pool and ids 656--1009 (24 complete genera)
+    form the held-out test set. This project's cross-validation machinery
+    partitions only the 656 development species.
+
+    The 74 GB source archive is streamed: each source image is decoded in
+    memory and only an atomic 224 x 224 JPEG is retained.
+    """
+
+    DATASET_PAGE = "https://github.com/visipedia/inat_comp/tree/master/2019"
+    PROTOCOL_REFERENCE = (
+        "https://openaccess.thecvf.com/content/WACV2022/html/"
+        "Yang_Hierarchical_Proxy-Based_Loss_for_Deep_Metric_Learning_"
+        "WACV_2022_paper.html"
+    )
+    IMG_DOWNLOAD_URL = (
+        "https://ml-inat-competition-datasets.s3.amazonaws.com/2019/"
+        "train_val2019.tar.gz"
+    )
+    TRAIN_ANN_URL = (
+        "https://ml-inat-competition-datasets.s3.amazonaws.com/2019/"
+        "train2019.json.tar.gz"
+    )
+    VAL_ANN_URL = (
+        "https://ml-inat-competition-datasets.s3.amazonaws.com/2019/"
+        "val2019.json.tar.gz"
+    )
+    IMAGE_DIRECTORY = "train_val2019"
+    TRAIN_ANNOTATION = "train2019.json"
+    VAL_ANNOTATION = "val2019.json"
+    ARCHIVE_FILENAME = "train_val2019.tar.gz"
+    COMPLETE_MARKER = ".inaturalist2019_224_complete.json"
+    INDEX_FILENAME = ".inaturalist2019_index_v1.tsv"
+    TAXONOMY_FILENAME = ".inaturalist2019_taxonomy_v1.json"
+    PREPARED_METADATA_VERSION = 1
+    EXPECTED_TRAIN_IMAGE_COUNT = 265_213
+    EXPECTED_VAL_IMAGE_COUNT = 3_030
+    EXPECTED_IMAGE_COUNT = 268_243
+    EXPECTED_CLASS_COUNT = 1_010
+    DEVELOPMENT_CLASS_COUNT = 656
+    TEST_CLASS_COUNT = 354
+    DEVELOPMENT_GENUS_COUNT = 48
+    TEST_GENUS_COUNT = 24
+    EXPECTED_DEVELOPMENT_IMAGE_COUNT = 189_625
+    EXPECTED_TEST_IMAGE_COUNT = 78_618
+    CLASS_SPLIT_VERSION = "hpl_first_656_species_48_genera_v1"
+    SPLIT_SUPERCATEGORY_FIELD = "genus"
+    POOLED_SOURCES = ("train2019", "val2019")
+    AVAILABLE_SPLITS = ("train", "test", "train+test")
+
+    def __init__(
+        self,
+        root,
+        split="train+test",
+        transform=None,
+        target_transform=None,
+        download=False,
+    ):
+        self.root = Path(root)
+        if download and not self.is_ready(self.root):
+            self.download_224(self.root)
+        if not self.is_ready(self.root):
+            raise ValueError(
+                "iNaturalist 2019 224x224 data was not found. Initialize the "
+                "dataset with download=True, run "
+                "scripts/download_inaturalist2019_224.py, or place "
+                f"{self.ARCHIVE_FILENAME} in the dataset root before retrying."
+            )
+        if split not in self.AVAILABLE_SPLITS:
+            raise ValueError(
+                f"split must be one of {self.AVAILABLE_SPLITS}, got {split!r}"
+            )
+
+        records, taxonomy, source_counts = self._load_prepared_metadata(
+            self.root
+        )
+        development_classes, test_classes = self.partition_class_ids(taxonomy)
+        selected_classes = select_class_split(split, development_classes, test_classes)
+        selected_records = [
+            (relative_path, class_id)
+            for relative_path, class_id in records
+            if class_id in selected_classes
+        ]
+
+        self.split = split
+        self.transform = transform
+        self.target_transform = target_transform
+        self.paths = [
+            str(self.root / relative_path)
+            for relative_path, _ in selected_records
+        ]
+        self.labels = [int(class_id) for _, class_id in selected_records]
+        self.orig_labels = list(self.labels)
+        self.taxonomy = taxonomy
+        self.class_ids = sorted(taxonomy)
+        self.classes = [
+            taxonomy[class_id]["species"] for class_id in self.class_ids
+        ]
+        self.class_names = {
+            class_id: taxonomy[class_id]["species"]
+            for class_id in self.class_ids
+        }
+        self.development_class_labels = list(development_classes)
+        self.test_class_labels = list(test_classes)
+        self.class_disjoint_split = True
+        self.class_split_info = self._build_class_split_info(
+            taxonomy, source_counts, records, development_classes, test_classes
+        )
+
+    @classmethod
+    def is_ready(cls, root):
+        root = Path(root)
+        required_paths = (
+            root / cls.TRAIN_ANNOTATION,
+            root / cls.VAL_ANNOTATION,
+            root / cls.INDEX_FILENAME,
+            root / cls.TAXONOMY_FILENAME,
+            root / cls.IMAGE_DIRECTORY,
+        )
+        return cls._marker_matches(
+            root,
+            required_paths,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
+            prepared_metadata_version=cls.PREPARED_METADATA_VERSION,
+        )
+
+    def download_and_remove(self):
+        self.root = Path(self.root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        for url, filename in (
+            (self.TRAIN_ANN_URL, self.TRAIN_ANNOTATION),
+            (self.VAL_ANN_URL, self.VAL_ANNOTATION),
+        ):
+            self._ensure_tar_member(url, filename, "iNaturalist 2019 annotation")
+        records, taxonomy, source_counts = self._ensure_prepared_metadata()
+        development_classes, test_classes = self.partition_class_ids(taxonomy)
+        stats, source_description = self._resize_from_source(
+            self._find_local_image_source(records),
+            self.IMG_DOWNLOAD_URL,
+            records,
+            "iNaturalist 2019",
+            self.ARCHIVE_FILENAME,
+        )
+        split_info = self._build_class_split_info(
+            taxonomy, source_counts, records, development_classes, test_classes
+        )
+        marker = {
+            "dataset": "INaturalist2019",
+            "dataset_page": self.DATASET_PAGE,
+            "image_size": list(self.TARGET_IMAGE_SIZE),
+            "image_count": int(stats["archive_images"]),
+            "class_count": len(taxonomy),
+            "jpeg_quality": int(self.JPEG_QUALITY),
+            "written_images": int(stats["written_images"]),
+            "reused_images": int(stats["reused_images"]),
+            "source_archive": source_description,
+            "storage_layout": (
+                f"{self.IMAGE_DIRECTORY}/<iconic category>/"
+                "<category id>/<image>.jpg"
+            ),
+            "prepared_metadata_version": self.PREPARED_METADATA_VERSION,
+            "index_file": self.INDEX_FILENAME,
+            "taxonomy_file": self.TAXONOMY_FILENAME,
+            **split_info,
+        }
+        self._write_json_atomic(self.root / self.COMPLETE_MARKER, marker)
+
+    def _ensure_prepared_metadata(self):
+        try:
+            return self._load_prepared_metadata(self.root)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            records, taxonomy, source_counts = self._load_metadata(self.root)
+            self._write_prepared_metadata(
+                records,
+                taxonomy,
+                source_counts,
+            )
+            return records, taxonomy, source_counts
+
+    def _write_prepared_metadata(self, records, taxonomy, source_counts):
+        index_content = "".join(
+            f"{class_id}\t{relative_path.as_posix()}\n"
+            for relative_path, class_id in records
+        ).encode("utf-8")
+        self._write_bytes_atomic(
+            self.root / self.INDEX_FILENAME,
+            index_content,
+        )
+        self._write_json_atomic(
+            self.root / self.TAXONOMY_FILENAME,
+            {
+                "version": self.PREPARED_METADATA_VERSION,
+                "source_image_counts": dict(source_counts),
+                "taxonomy": {
+                    str(class_id): value
+                    for class_id, value in taxonomy.items()
+                },
+            },
+        )
+
+    @classmethod
+    def _load_prepared_metadata(cls, root):
+        root = Path(root)
+        taxonomy_path = root / cls.TAXONOMY_FILENAME
+        index_path = root / cls.INDEX_FILENAME
+        payload = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+        if int(payload["version"]) != cls.PREPARED_METADATA_VERSION:
+            raise ValueError(
+                f"Unsupported iNaturalist 2019 metadata index version in "
+                f"{taxonomy_path}"
+            )
+        taxonomy = {
+            int(class_id): dict(value)
+            for class_id, value in payload["taxonomy"].items()
+        }
+        source_counts = {
+            str(filename): int(count)
+            for filename, count in payload["source_image_counts"].items()
+        }
+        expected_source_counts = {
+            cls.TRAIN_ANNOTATION: cls.EXPECTED_TRAIN_IMAGE_COUNT,
+            cls.VAL_ANNOTATION: cls.EXPECTED_VAL_IMAGE_COUNT,
+        }
+        if source_counts != expected_source_counts:
+            raise ValueError(
+                "Prepared iNaturalist 2019 source counts do not match the "
+                "official release"
+            )
+        if set(taxonomy) != set(range(cls.EXPECTED_CLASS_COUNT)):
+            raise ValueError(
+                "Prepared iNaturalist 2019 taxonomy has unexpected class ids"
+            )
+
+        records = []
+        seen_paths = set()
+        with index_path.open("r", encoding="utf-8") as index_file:
+            for line_number, line in enumerate(index_file, start=1):
+                line = line.rstrip("\n")
+                try:
+                    class_text, image_name = line.split("\t", 1)
+                    class_id = int(class_text)
+                except (ValueError, TypeError) as error:
+                    raise ValueError(
+                        f"Malformed iNaturalist 2019 index line "
+                        f"{index_path}:{line_number}"
+                    ) from error
+                if class_id not in taxonomy:
+                    raise ValueError(
+                        f"Unknown class id {class_id} in "
+                        f"{index_path}:{line_number}"
+                    )
+                relative_path = cls._validated_image_path(image_name)
+                path_key = relative_path.as_posix()
+                if path_key in seen_paths:
+                    raise ValueError(
+                        f"Duplicate image path {path_key!r} in {index_path}"
+                    )
+                seen_paths.add(path_key)
+                records.append((relative_path, class_id))
+        if len(records) != cls.EXPECTED_IMAGE_COUNT:
+            raise ValueError(
+                f"Prepared iNaturalist 2019 index contains {len(records)} "
+                f"images; expected {cls.EXPECTED_IMAGE_COUNT}"
+            )
+        return records, taxonomy, source_counts
+
+    @classmethod
+    def _load_metadata(cls, root):
+        root = Path(root)
+        documents = {}
+        for filename in (cls.TRAIN_ANNOTATION, cls.VAL_ANNOTATION):
+            path = root / filename
+            try:
+                documents[filename] = json.loads(
+                    path.read_text(encoding="utf-8")
+                )
+            except (
+                OSError,
+                UnicodeError,
+                json.JSONDecodeError,
+            ) as error:
+                raise ValueError(
+                    f"Could not read iNaturalist 2019 annotation {path}"
+                ) from error
+
+        train_categories = documents[cls.TRAIN_ANNOTATION].get("categories")
+        val_categories = documents[cls.VAL_ANNOTATION].get("categories")
+        if train_categories != val_categories or not isinstance(
+            train_categories,
+            list,
+        ):
+            raise ValueError(
+                "iNaturalist 2019 train and validation category metadata "
+                "must match"
+            )
+
+        taxonomy = {}
+        for category in train_categories:
+            try:
+                class_id = int(category["id"])
+                species = str(category["name"])
+                genus = str(category["genus"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "Malformed iNaturalist 2019 category metadata"
+                ) from error
+            if class_id in taxonomy:
+                raise ValueError(
+                    f"Duplicate iNaturalist 2019 category id {class_id}"
+                )
+            taxonomy[class_id] = {
+                "species": species,
+                cls.SPLIT_SUPERCATEGORY_FIELD: genus,
+                "family": str(category.get("family", "")),
+                "order": str(category.get("order", "")),
+                "class": str(category.get("class", "")),
+                "phylum": str(category.get("phylum", "")),
+                "kingdom": str(category.get("kingdom", "")),
+            }
+
+        expected_class_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(taxonomy) != expected_class_ids:
+            missing = sorted(expected_class_ids - set(taxonomy))
+            unexpected = sorted(set(taxonomy) - expected_class_ids)
+            raise ValueError(
+                "iNaturalist 2019 category ids must be contiguous from zero: "
+                f"missing={missing[:10]}, unexpected={unexpected[:10]}"
+            )
+
+        records = []
+        seen_image_ids = set()
+        seen_paths = set()
+        source_counts = {}
+        for filename in (cls.TRAIN_ANNOTATION, cls.VAL_ANNOTATION):
+            document = documents[filename]
+            images = document.get("images")
+            annotations = document.get("annotations")
+            if not isinstance(images, list) or not isinstance(
+                annotations,
+                list,
+            ):
+                raise ValueError(
+                    f"Malformed iNaturalist 2019 annotation {filename!r}"
+                )
+            labels_by_image = {}
+            for annotation in annotations:
+                image_id = int(annotation["image_id"])
+                class_id = int(annotation["category_id"])
+                if image_id in labels_by_image:
+                    raise ValueError(
+                        f"Duplicate annotation for iNaturalist 2019 image "
+                        f"id {image_id}"
+                    )
+                labels_by_image[image_id] = class_id
+
+            for image in images:
+                image_id = int(image["id"])
+                if image_id in seen_image_ids:
+                    raise ValueError(
+                        f"Duplicate iNaturalist 2019 image id {image_id}"
+                    )
+                seen_image_ids.add(image_id)
+                try:
+                    class_id = labels_by_image.pop(image_id)
+                except KeyError as error:
+                    raise ValueError(
+                        f"iNaturalist 2019 image id {image_id} has no label"
+                    ) from error
+                if class_id not in taxonomy:
+                    raise ValueError(
+                        f"iNaturalist 2019 image id {image_id} has unknown "
+                        f"category {class_id}"
+                    )
+                relative_path = cls._validated_image_path(image["file_name"])
+                path_key = relative_path.as_posix()
+                if path_key in seen_paths:
+                    raise ValueError(
+                        f"Duplicate iNaturalist 2019 image path {path_key!r}"
+                    )
+                seen_paths.add(path_key)
+                try:
+                    directory_class_id = int(relative_path.parts[-2])
+                except (IndexError, ValueError) as error:
+                    raise ValueError(
+                        "iNaturalist 2019 image path does not contain a "
+                        f"numeric category directory: {path_key!r}"
+                    ) from error
+                if directory_class_id != class_id:
+                    raise ValueError(
+                        f"iNaturalist 2019 image path {path_key!r} implies "
+                        f"category {directory_class_id}, annotation says "
+                        f"{class_id}"
+                    )
+                iconic_category = relative_path.parts[1]
+                previous = taxonomy[class_id].setdefault(
+                    "iconic_category",
+                    iconic_category,
+                )
+                if previous != iconic_category:
+                    raise ValueError(
+                        f"iNaturalist 2019 category {class_id} appears below "
+                        f"both {previous!r} and {iconic_category!r}"
+                    )
+                records.append((relative_path, class_id))
+
+            if labels_by_image:
+                raise ValueError(
+                    f"iNaturalist 2019 annotation {filename!r} contains "
+                    f"{len(labels_by_image)} labels without images"
+                )
+            source_counts[filename] = len(images)
+
+        expected_source_counts = {
+            cls.TRAIN_ANNOTATION: cls.EXPECTED_TRAIN_IMAGE_COUNT,
+            cls.VAL_ANNOTATION: cls.EXPECTED_VAL_IMAGE_COUNT,
+        }
+        if source_counts != expected_source_counts:
+            raise ValueError(
+                "iNaturalist 2019 annotation image counts do not match the "
+                f"official release: {source_counts!r}"
+            )
+        if len(records) != cls.EXPECTED_IMAGE_COUNT:
+            raise ValueError(
+                f"iNaturalist 2019 metadata contains {len(records)} images; "
+                f"expected {cls.EXPECTED_IMAGE_COUNT}"
+            )
+        return records, taxonomy, source_counts
+
+    @classmethod
+    def partition_class_ids(cls, taxonomy):
+        expected_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(taxonomy) != expected_ids:
+            raise ValueError(
+                "iNaturalist 2019 taxonomy does not cover every category id"
+            )
+        development_classes = tuple(range(cls.DEVELOPMENT_CLASS_COUNT))
+        test_classes = tuple(
+            range(cls.DEVELOPMENT_CLASS_COUNT, cls.EXPECTED_CLASS_COUNT)
+        )
+        genus_field = cls.SPLIT_SUPERCATEGORY_FIELD
+        development_genera = {
+            taxonomy[class_id][genus_field]
+            for class_id in development_classes
+        }
+        test_genera = {
+            taxonomy[class_id][genus_field] for class_id in test_classes
+        }
+        if len(development_classes) != cls.DEVELOPMENT_CLASS_COUNT:
+            raise RuntimeError("Invalid iNaturalist 2019 development class count")
+        if len(test_classes) != cls.TEST_CLASS_COUNT:
+            raise RuntimeError("Invalid iNaturalist 2019 test class count")
+        if len(development_genera) != cls.DEVELOPMENT_GENUS_COUNT:
+            raise RuntimeError(
+                "iNaturalist 2019 development split has "
+                f"{len(development_genera)} genera; expected "
+                f"{cls.DEVELOPMENT_GENUS_COUNT}"
+            )
+        if len(test_genera) != cls.TEST_GENUS_COUNT:
+            raise RuntimeError(
+                f"iNaturalist 2019 test split has {len(test_genera)} genera; "
+                f"expected {cls.TEST_GENUS_COUNT}"
+            )
+        if development_genera & test_genera:
+            raise RuntimeError(
+                "iNaturalist 2019 DML split is not genus-disjoint"
+            )
+        return development_classes, test_classes
+
+    @classmethod
+    def _build_class_split_info(
+        cls,
+        taxonomy,
+        source_counts,
+        records,
+        development_classes,
+        test_classes,
+    ):
+        image_counts = Counter(class_id for _, class_id in records)
+        development_image_count = sum(
+            image_counts[class_id] for class_id in development_classes
+        )
+        test_image_count = sum(image_counts[class_id] for class_id in test_classes)
+        if development_image_count != cls.EXPECTED_DEVELOPMENT_IMAGE_COUNT:
+            raise RuntimeError(
+                "iNaturalist 2019 development split contains "
+                f"{development_image_count} images; expected "
+                f"{cls.EXPECTED_DEVELOPMENT_IMAGE_COUNT}"
+            )
+        if test_image_count != cls.EXPECTED_TEST_IMAGE_COUNT:
+            raise RuntimeError(
+                f"iNaturalist 2019 test split contains {test_image_count} "
+                f"images; expected {cls.EXPECTED_TEST_IMAGE_COUNT}"
+            )
+        genus_field = cls.SPLIT_SUPERCATEGORY_FIELD
+        return {
+            "source": "hpl_first_656_species_48_genera",
+            "dataset_page": cls.DATASET_PAGE,
+            "protocol_reference": cls.PROTOCOL_REFERENCE,
+            "class_split_version": cls.CLASS_SPLIT_VERSION,
+            "split_basis": "contiguous_category_ids_at_genus_boundary",
+            "pooled_sources": list(cls.POOLED_SOURCES),
+            "source_image_counts": dict(source_counts),
+            "pooled_sample_count": (
+                int(development_image_count) + int(test_image_count)
+            ),
+            "class_disjoint_test": True,
+            "genus_disjoint_test": True,
+            "split_supercategory_field": genus_field,
+            "development_class_count": len(development_classes),
+            "test_class_count": len(test_classes),
+            "development_genus_count": len(
+                {
+                    taxonomy[class_id][genus_field]
+                    for class_id in development_classes
+                }
+            ),
+            "test_genus_count": len(
+                {
+                    taxonomy[class_id][genus_field]
+                    for class_id in test_classes
+                }
+            ),
+            "development_sample_count": int(development_image_count),
+            "test_sample_count": int(test_image_count),
+            "development_classes": list(development_classes),
+            "held_out_test_classes": list(test_classes),
+            "annotation_level": "species",
+            "official_image_level_split_used": False,
+        }
+
+    def _find_local_image_source(self, records):
+        image_root = self.root / self.IMAGE_DIRECTORY
+        if image_root.is_dir() and all(
+            (self.root / relative_path).is_file()
+            for relative_path, _ in records
+        ):
+            return image_root
+        for filename in (self.ARCHIVE_FILENAME, "train_val2019.tgz"):
+            archive_path = self.root / filename
+            if archive_path.is_file():
+                return archive_path
+        return None
+
+    def _resize_from_directory(self, source_directory, records):
+        stats = self._resize_files(
+            (
+                (
+                    Path(source_directory).joinpath(*relative_path.parts[1:]),
+                    self.root / relative_path,
+                )
+                for relative_path, _ in records
+            ),
+            len(records),
+            "Saving 224x224 iNaturalist 2019 images",
+            "Extracted iNaturalist 2019",
+        )
+        return {"archive_images": len(records), **stats}
+
+    def _resize_from_archive_stream(self, archive_stream, records):
+        return self._resize_tar_stream(
+            archive_stream,
+            self._image_member_path,
+            self.root.joinpath,
+            "Saving 224x224 iNaturalist 2019 images",
+            "iNaturalist 2019 image",
+            expected={relative_path for relative_path, _ in records},
+        )
+
+    @classmethod
+    def _image_member_path(cls, member):
+        if not member.isfile():
+            return None
+        path = safe_posix_path(member.name, "iNaturalist 2019 archive")
+        if not path.parts or path.parts[0] != cls.IMAGE_DIRECTORY:
+            return None
+        if path.suffix.lower() not in {".jpg", ".jpeg"}:
+            return None
+        return Path(*path.parts)
+
+    @classmethod
+    def _validated_image_path(cls, image_name):
+        path = PurePosixPath(str(image_name).replace("\\", "/"))
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or len(path.parts) != 4
+            or path.parts[0] != cls.IMAGE_DIRECTORY
+            or path.suffix.lower() not in {".jpg", ".jpeg"}
+        ):
+            raise ValueError(
+                f"Unsafe iNaturalist 2019 image path: {image_name!r}"
+            )
+        return Path(*path.parts)
+
+class MiniINaturalist2021(_DinoSizedImageDownloadMixin, ImageListDataset):
+    """The ICML 2023 mini-iNaturalist-2021 retrieval benchmark.
+
+    This is the official 500,000-image ``train_mini`` release (50 images for
+    each of 10,000 species), partitioned with the exact class lists released by
+    Liao et al. for Contextual Similarity Optimization. Their code stratifies
+    the random split by the 11 iNaturalist supercategories. Because six groups
+    have an odd class count, the released files contain 5,003 development and
+    4,997 test species rather than the paper's rounded 5,000/5,000 statement.
+
+    The source image archive is streamed and every image is immediately saved
+    as an atomic 224 x 224 JPEG. The extracted 199 MB annotation JSON is reduced
+    to a gzip index and taxonomy file, then removed.
+    """
+
+    DATASET_PAGE = "https://sites.google.com/view/fgvc8/competitions/inatchallenge2021"
+    PROTOCOL_REFERENCE = "https://proceedings.mlr.press/v202/liao23b.html"
+    PROTOCOL_CODE_COMMIT = "8433dcb67c2205c0e30ec07ed1e5b2fb92da016d"
+    PROTOCOL_CODE_URL = (
+        "https://github.com/Chris210634/"
+        "metric-learning-using-contextual-similarity/tree/"
+        f"{PROTOCOL_CODE_COMMIT}/data"
+    )
+    IMG_DOWNLOAD_URL = (
+        "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/"
+        "train_mini.tar.gz"
+    )
+    ANN_DOWNLOAD_URL = (
+        "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/"
+        "train_mini.json.tar.gz"
+    )
+    IMAGE_DIRECTORY = "train_mini"
+    ANNOTATION_FILENAME = "train_mini.json"
+    ANNOTATION_ARCHIVE_FILENAME = "train_mini.json.tar.gz"
+    IMAGE_ARCHIVE_FILENAME = "train_mini.tar.gz"
+    COMPLETE_MARKER = ".mini_inaturalist2021_224_complete.json"
+    INDEX_FILENAME = ".mini_inaturalist2021_index_v1.tsv.gz"
+    TAXONOMY_FILENAME = ".mini_inaturalist2021_taxonomy_v1.json"
+    PREPARED_METADATA_VERSION = 1
+    EXPECTED_IMAGE_COUNT = 500_000
+    EXPECTED_CLASS_COUNT = 10_000
+    EXPECTED_IMAGES_PER_CLASS = 50
+    DEVELOPMENT_CLASS_COUNT = 5_003
+    TEST_CLASS_COUNT = 4_997
+    EXPECTED_DEVELOPMENT_IMAGE_COUNT = 250_150
+    EXPECTED_TEST_IMAGE_COUNT = 249_850
+    EXPECTED_SUPERCATEGORY_COUNT = 11
+    PAPER_REPORTED_CLASS_COUNT_PER_SPLIT = 5_000
+    CLASS_SPLIT_VERSION = (
+        "contextual_similarity_authors_8433dcb67c_5003_4997_v1"
+    )
+    RELEASED_TRAIN_MANIFEST_SHA256 = (
+        "bd9116fbab1c40a1005866606e08c9969ac23355a8fab23910db3713eb159068"
+    )
+    RELEASED_TEST_MANIFEST_SHA256 = (
+        "d257b992530a1b6b1505de2c6cbcec81380bc5b2e701a46c58700e30578feae7"
+    )
+    DEVELOPMENT_BITMAP_SHA256 = (
+        "b2223cfc9236657ab333a54c9a1b2d1f86e4dc51ad03d65cda5400f966de13c6"
+    )
+    # Little-endian bits: bit i is one exactly when class id i occurs in the
+    # authors' released iNaturalist_train.txt. This is the entire 5,003-id split
+    # represented in 1,250 bytes rather than vendoring their 31.6 MB manifest.
+    DEVELOPMENT_CLASS_BITMAP_HEX = (
+        "4cba943ea8837b1e8699faf56090d0f8eb85b3c57a2f9a72e4602221bfedb0087c103933cf598ee10834771a3f2a91858347"
+        "4febc63ee8147b7791e780c708ed343d1d31e1c52c7d7663592266c12e42c5ef98e436d3baafc126c9e5e0c3d552846f3cda"
+        "3594f2e85572e4b412aea7b7e30b9cf86f30ca8ad0aab53417ef1b19bae7db9f8fb1c2888016c2e223ef180fffb612339057"
+        "4aaf4c62c7d1f8f90952588ae9daae86497fa2977c2c51f05d65097c09e517901f2895766f45f5d3089af587f12bc7773d6f"
+        "0430d52ea5c22aedaf53f02ad0bef889da75175e5f0484053e5be44e3ec68675dac966e0c8eb90209bee741ce017a454fed7"
+        "29a1b63aaa340a52d2f7c2356f4fbb5471cc0cd74d05f2f19ff5697c88c4b0db81c1cb062e88d3055e952dc0e128bf833df9"
+        "dc514b48e570545ebfaf4e4ddf6d1e14c885431605ee4519e85031380d47071f1e5e2ba0cc6f63b4107a498500fc1db1ebdb"
+        "26b1063b31346f3264cdd496771214fcac62048bdf439fe63a4de127db6f00a929cb82db6c807ddffe89a9a3350ca3afa639"
+        "e27954133ec6e8502394998cb168809ef34aeed859561b3906ffa1e17e6129116da2688ba58be173e96c0021831f2e9dcf76"
+        "3b771c69cde201228142368df7ec54b27ad2aa6d1fe4f20b1bf5fa2c62fbf523221b074e5d8a44b6a51119fdbc270547c355"
+        "cdd21a4a521f88c860b5d4fb42094744d6d968dba31144fd5a99856a377eca95d7f5f86f3eea06bb55d0a1165c5c42207a94"
+        "83a0e683c58fbc3741b9a8dbb42defff4e8d71275c35a421557774280f3d4273589d399d6e39454f4cd643710d5a9725fb48"
+        "00cdd08d9791ef1f1f001d34ee406ad4ecdb5f0433fb1457b220390ab34cf1dcb15cde86e665610dbbb1bb75a9033f297c7e"
+        "224b55c27613d274ec0cab43d7479f922aadfb1839b22cd90058b52500bcf2d089d8d8b342746bfa6b1c04f4539e73fd524a"
+        "e9328234da79bfd5b0ed535a67bc199eae449eba94827f40878a37bfdc16950ad2a17e2590180f13476e28a6bfd4104f20d2"
+        "67c5c420a066582d280c7d968b7482b57f5c96536431b45d2fc10f9a81afba888bbf6c37efc7314590d7a9427f9ee2de1ae5"
+        "30627a378f12c7f61fde5cdd7a25504dc1c3beb84806bb9323eeff9d972436f25b6d6a6a9f4898378df49887921eec7964f3"
+        "2a2e8d14b9a1b9547de0d19339015352d514318cb6188f54638a1a6551db4acaff746bdf06acd1b067d125bd4c1359c7e7b0"
+        "7d51ec99144a47a80d472f821cba00a2c1b344fbdc401e5df5b722f309f1fcca25e398acd11f2130616aaf7a1f10a0a3a635"
+        "118565fe10e93114832a7d5cfb094a764f60003e4a9392fe0e0c4852400be417cd0174022247147084e0ad1ab464cf7f5eec"
+        "035fd90b4893c790eb2ac288c9ccba76ecc5380a03a25c627e58daf3b1fe1789663e98829252e5158628d7862d9e648040bc"
+        "6d98a14a4d6d66db137cadc595666fa2893c7524dcc51fae7da43f023a7a21f1ca7a5eee2634f5afa8df8e69055f6a224bef"
+        "9909d133637a54b8c789e2fe946f9b11fb1eeebf4b74645c27806ddbd7db8875fcb6b3fee957f608359fb65e8656a32f5d8c"
+        "137c94eaa70f5197b0f172eb3fa9ea04ad973fee1fd1397c3fcf464ba06df13ecd0684e46add814910e4f9a50cded4082fee"
+        "c0ce7e90b5dced83fcf6ab2411f5911dbd97f230e269babb16cb1ae04c98d3414072f7f40a6f5d569058c2d5efa010b17ea0"
+    )
+    # Tests can replace the bitmap with a readable tiny split.
+    DEVELOPMENT_CLASS_IDS = None
+    AVAILABLE_SPLITS = ("train", "test", "train+test")
+
+    def __init__(
+        self,
+        root,
+        split="train+test",
+        transform=None,
+        target_transform=None,
+        download=False,
+    ):
+        self.root = Path(root)
+        if download and not self.is_ready(self.root):
+            self.download_224(self.root)
+        if not self.is_ready(self.root):
+            raise ValueError(
+                "mini-iNaturalist-2021 224x224 data was not found. Initialize "
+                "the dataset with download=True, run "
+                "scripts/download_mini_inaturalist2021_224.py, or place "
+                f"{self.IMAGE_ARCHIVE_FILENAME} in the dataset root."
+            )
+        if split not in self.AVAILABLE_SPLITS:
+            raise ValueError(
+                f"split must be one of {self.AVAILABLE_SPLITS}, got {split!r}"
+            )
+
+        records, taxonomy = self._load_prepared_metadata(self.root)
+        development_classes, test_classes = self.partition_class_ids(taxonomy)
+        selected_classes = select_class_split(split, development_classes, test_classes)
+        selected_records = [
+            (relative_path, class_id)
+            for relative_path, class_id in records
+            if class_id in selected_classes
+        ]
+
+        self.split = split
+        self.transform = transform
+        self.target_transform = target_transform
+        self.paths = [
+            str(self.root / relative_path)
+            for relative_path, _ in selected_records
+        ]
+        self.labels = [int(class_id) for _, class_id in selected_records]
+        self.orig_labels = list(self.labels)
+        self.taxonomy = taxonomy
+        self.class_ids = sorted(taxonomy)
+        self.classes = [
+            str(taxonomy[class_id]["species"]) for class_id in self.class_ids
+        ]
+        self.class_names = {
+            class_id: str(taxonomy[class_id]["species"])
+            for class_id in self.class_ids
+        }
+        self.development_class_labels = list(development_classes)
+        self.test_class_labels = list(test_classes)
+        self.class_disjoint_split = True
+        self.class_split_info = self._build_class_split_info(
+            taxonomy,
+            development_classes,
+            test_classes,
+        )
+
+    @classmethod
+    def is_ready(cls, root):
+        root = Path(root)
+        required_paths = (
+            root / cls.INDEX_FILENAME,
+            root / cls.TAXONOMY_FILENAME,
+            root / cls.IMAGE_DIRECTORY,
+        )
+        return cls._marker_matches(
+            root,
+            required_paths,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
+            prepared_metadata_version=cls.PREPARED_METADATA_VERSION,
+        )
+
+    def download_and_remove(self):
+        self.root = Path(self.root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        records, taxonomy = self._ensure_prepared_metadata()
+        development_classes, test_classes = self.partition_class_ids(taxonomy)
+
+        stats, source_description = self._resize_from_source(
+            self._find_local_image_source(records),
+            self.IMG_DOWNLOAD_URL,
+            records,
+            "mini-iNaturalist-2021",
+            self.IMAGE_ARCHIVE_FILENAME,
+        )
+        split_info = self._build_class_split_info(
+            taxonomy,
+            development_classes,
+            test_classes,
+        )
+        marker = {
+            "dataset": "MiniINaturalist2021",
+            "dataset_page": self.DATASET_PAGE,
+            "image_size": list(self.TARGET_IMAGE_SIZE),
+            "image_count": int(stats["archive_images"]),
+            "class_count": len(taxonomy),
+            "images_per_class": self.EXPECTED_IMAGES_PER_CLASS,
+            "jpeg_quality": int(self.JPEG_QUALITY),
+            "written_images": int(stats["written_images"]),
+            "reused_images": int(stats["reused_images"]),
+            "source_archive": source_description,
+            "storage_layout": f"{self.IMAGE_DIRECTORY}/<taxon>/<image>.jpg",
+            "prepared_metadata_version": self.PREPARED_METADATA_VERSION,
+            "index_file": self.INDEX_FILENAME,
+            "taxonomy_file": self.TAXONOMY_FILENAME,
+            "raw_annotation_retained": False,
+            **split_info,
+        }
+        self._write_json_atomic(self.root / self.COMPLETE_MARKER, marker)
+
+    def _ensure_prepared_metadata(self):
+        try:
+            return self._load_prepared_metadata(self.root)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+            self._ensure_annotation()
+            records, taxonomy = self._load_metadata(self.root)
+            self._write_prepared_metadata(records, taxonomy)
+            (self.root / self.ANNOTATION_FILENAME).unlink(missing_ok=True)
+            return records, taxonomy
+
+    def _ensure_annotation(self):
+        destination = self.root / self.ANNOTATION_FILENAME
+        if destination.is_file():
+            return
+        label = "mini-iNaturalist annotation"
+        local_archive = self.root / self.ANNOTATION_ARCHIVE_FILENAME
+        if local_archive.is_file():
+            with local_archive.open("rb") as archive_stream:
+                self._extract_tar_member(
+                    archive_stream, self.ANNOTATION_FILENAME, destination, label
+                )
+            return
+        try:
+            with self._download_stream(
+                self.ANN_DOWNLOAD_URL,
+                "Streaming mini-iNaturalist-2021 annotations",
+            ) as archive_stream:
+                self._extract_tar_member(
+                    archive_stream, self.ANNOTATION_FILENAME, destination, label
+                )
+        except OSError as error:
+            raise RuntimeError(
+                "Could not download mini-iNaturalist-2021 annotations from "
+                f"{self.ANN_DOWNLOAD_URL} ({error})."
+            ) from error
+
+    def _write_prepared_metadata(self, records, taxonomy):
+        index_content = "".join(
+            f"{class_id}\t{relative_path.name}\n"
+            for relative_path, class_id in records
+        ).encode("utf-8")
+        self._write_bytes_atomic(
+            self.root / self.INDEX_FILENAME,
+            gzip.compress(index_content, compresslevel=6, mtime=0),
+        )
+        self._write_json_atomic(
+            self.root / self.TAXONOMY_FILENAME,
+            {
+                "version": self.PREPARED_METADATA_VERSION,
+                "image_count": len(records),
+                "taxonomy": {
+                    str(class_id): value
+                    for class_id, value in taxonomy.items()
+                },
+            },
+        )
+
+    @classmethod
+    def _load_prepared_metadata(cls, root):
+        root = Path(root)
+        taxonomy_path = root / cls.TAXONOMY_FILENAME
+        index_path = root / cls.INDEX_FILENAME
+        payload = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+        if int(payload["version"]) != cls.PREPARED_METADATA_VERSION:
+            raise ValueError(
+                "Unsupported mini-iNaturalist-2021 prepared metadata version"
+            )
+        taxonomy = {
+            int(class_id): dict(value)
+            for class_id, value in payload["taxonomy"].items()
+        }
+        expected_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(taxonomy) != expected_ids:
+            raise ValueError(
+                "Prepared mini-iNaturalist taxonomy has unexpected class ids"
+            )
+        if int(payload["image_count"]) != cls.EXPECTED_IMAGE_COUNT:
+            raise ValueError(
+                "Prepared mini-iNaturalist taxonomy has an unexpected image count"
+            )
+
+        records = []
+        seen_paths = set()
+        with gzip.open(index_path, "rt", encoding="utf-8") as index_file:
+            for line_number, line in enumerate(index_file, start=1):
+                try:
+                    class_text, filename = line.rstrip("\n").split("\t", 1)
+                    class_id = int(class_text)
+                    directory = taxonomy[class_id]["image_dir_name"]
+                except (KeyError, TypeError, ValueError) as error:
+                    raise ValueError(
+                        "Malformed mini-iNaturalist index line "
+                        f"{index_path}:{line_number}"
+                    ) from error
+                relative_path = cls._validated_image_path(
+                    f"{cls.IMAGE_DIRECTORY}/{directory}/{filename}"
+                )
+                path_key = relative_path.as_posix()
+                if path_key in seen_paths:
+                    raise ValueError(
+                        f"Duplicate mini-iNaturalist image path {path_key!r}"
+                    )
+                seen_paths.add(path_key)
+                records.append((relative_path, class_id))
+        if len(records) != cls.EXPECTED_IMAGE_COUNT:
+            raise ValueError(
+                f"Prepared mini-iNaturalist index contains {len(records)} "
+                f"images; expected {cls.EXPECTED_IMAGE_COUNT}"
+            )
+        return records, taxonomy
+
+    @classmethod
+    def _load_metadata(cls, root):
+        annotation_path = Path(root) / cls.ANNOTATION_FILENAME
+        try:
+            document = json.loads(annotation_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"Could not read mini-iNaturalist annotation {annotation_path}"
+            ) from error
+
+        categories = document.get("categories")
+        images = document.get("images")
+        annotations = document.get("annotations")
+        if not all(isinstance(value, list) for value in (categories, images, annotations)):
+            raise ValueError("Malformed mini-iNaturalist-2021 annotation")
+
+        taxonomy = {}
+        for category in categories:
+            try:
+                class_id = int(category["id"])
+                directory = str(category["image_dir_name"])
+                directory_id = int(directory.split("_", 1)[0])
+                species = str(category["name"])
+                supercategory = str(category["supercategory"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "Malformed mini-iNaturalist category metadata"
+                ) from error
+            if class_id in taxonomy or directory_id != class_id:
+                raise ValueError(
+                    f"Invalid mini-iNaturalist category directory {directory!r}"
+                )
+            taxonomy[class_id] = {
+                "species": species,
+                "common_name": str(category.get("common_name", "")),
+                "supercategory": supercategory,
+                "kingdom": str(category.get("kingdom", "")),
+                "phylum": str(category.get("phylum", "")),
+                "class": str(category.get("class", "")),
+                "order": str(category.get("order", "")),
+                "family": str(category.get("family", "")),
+                "genus": str(category.get("genus", "")),
+                "specific_epithet": str(category.get("specific_epithet", "")),
+                "image_dir_name": directory,
+            }
+
+        expected_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(taxonomy) != expected_ids:
+            raise ValueError(
+                "mini-iNaturalist category ids must be contiguous from zero"
+            )
+
+        labels_by_image = {}
+        for annotation in annotations:
+            try:
+                image_id = int(annotation["image_id"])
+                class_id = int(annotation["category_id"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "Malformed mini-iNaturalist image annotation"
+                ) from error
+            if image_id in labels_by_image:
+                raise ValueError(
+                    f"Duplicate annotation for mini-iNaturalist image {image_id}"
+                )
+            labels_by_image[image_id] = class_id
+
+        records = []
+        seen_image_ids = set()
+        seen_paths = set()
+        image_counts = Counter()
+        for image in images:
+            try:
+                image_id = int(image["id"])
+                class_id = labels_by_image.pop(image_id)
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "Malformed or unlabeled mini-iNaturalist image metadata"
+                ) from error
+            if image_id in seen_image_ids:
+                raise ValueError(
+                    f"Duplicate mini-iNaturalist image id {image_id}"
+                )
+            seen_image_ids.add(image_id)
+            if class_id not in taxonomy:
+                raise ValueError(
+                    f"Unknown mini-iNaturalist category id {class_id}"
+                )
+            relative_path = cls._validated_image_path(image["file_name"])
+            if relative_path.parts[1] != taxonomy[class_id]["image_dir_name"]:
+                raise ValueError(
+                    f"Image path {relative_path.as_posix()!r} disagrees with "
+                    f"category {class_id}"
+                )
+            path_key = relative_path.as_posix()
+            if path_key in seen_paths:
+                raise ValueError(
+                    f"Duplicate mini-iNaturalist image path {path_key!r}"
+                )
+            seen_paths.add(path_key)
+            image_counts[class_id] += 1
+            records.append((relative_path, class_id))
+
+        if labels_by_image:
+            raise ValueError(
+                "mini-iNaturalist annotations contain labels without images"
+            )
+        if len(records) != cls.EXPECTED_IMAGE_COUNT:
+            raise ValueError(
+                f"mini-iNaturalist metadata contains {len(records)} images; "
+                f"expected {cls.EXPECTED_IMAGE_COUNT}"
+            )
+        wrong_counts = {
+            class_id: count
+            for class_id, count in image_counts.items()
+            if count != cls.EXPECTED_IMAGES_PER_CLASS
+        }
+        if set(image_counts) != expected_ids or wrong_counts:
+            raise ValueError(
+                "mini-iNaturalist must contain exactly "
+                f"{cls.EXPECTED_IMAGES_PER_CLASS} images per species"
+            )
+        return records, taxonomy
+
+    @classmethod
+    def partition_class_ids(cls, taxonomy):
+        expected_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(taxonomy) != expected_ids:
+            raise ValueError(
+                "mini-iNaturalist taxonomy does not cover every category id"
+            )
+        if cls.DEVELOPMENT_CLASS_IDS is not None:
+            development_classes = tuple(
+                sorted(int(value) for value in cls.DEVELOPMENT_CLASS_IDS)
+            )
+        else:
+            bitmap = bytes.fromhex(cls.DEVELOPMENT_CLASS_BITMAP_HEX)
+            expected_bytes = (cls.EXPECTED_CLASS_COUNT + 7) // 8
+            if len(bitmap) != expected_bytes:
+                raise RuntimeError(
+                    "Invalid mini-iNaturalist released-split bitmap length"
+                )
+            if hashlib.sha256(bitmap).hexdigest() != cls.DEVELOPMENT_BITMAP_SHA256:
+                raise RuntimeError(
+                    "mini-iNaturalist released-split bitmap checksum mismatch"
+                )
+            development_classes = tuple(
+                class_id
+                for class_id in range(cls.EXPECTED_CLASS_COUNT)
+                if bitmap[class_id // 8] & (1 << (class_id % 8))
+            )
+        development_set = set(development_classes)
+        test_classes = tuple(sorted(expected_ids - development_set))
+        if len(development_classes) != cls.DEVELOPMENT_CLASS_COUNT:
+            raise RuntimeError(
+                "Invalid mini-iNaturalist development class count: "
+                f"{len(development_classes)}"
+            )
+        if len(test_classes) != cls.TEST_CLASS_COUNT:
+            raise RuntimeError(
+                f"Invalid mini-iNaturalist test class count: {len(test_classes)}"
+            )
+        if development_set & set(test_classes):
+            raise RuntimeError("mini-iNaturalist class split is not disjoint")
+        return development_classes, test_classes
+
+    @classmethod
+    def _build_class_split_info(
+        cls,
+        taxonomy,
+        development_classes,
+        test_classes,
+    ):
+        development_sample_count = (
+            len(development_classes) * cls.EXPECTED_IMAGES_PER_CLASS
+        )
+        test_sample_count = len(test_classes) * cls.EXPECTED_IMAGES_PER_CLASS
+        if development_sample_count != cls.EXPECTED_DEVELOPMENT_IMAGE_COUNT:
+            raise RuntimeError("Invalid mini-iNaturalist development image count")
+        if test_sample_count != cls.EXPECTED_TEST_IMAGE_COUNT:
+            raise RuntimeError("Invalid mini-iNaturalist test image count")
+        development_supercategories = {
+            taxonomy[class_id]["supercategory"]
+            for class_id in development_classes
+        }
+        test_supercategories = {
+            taxonomy[class_id]["supercategory"] for class_id in test_classes
+        }
+        if cls.EXPECTED_SUPERCATEGORY_COUNT is not None:
+            if (
+                len(development_supercategories)
+                != cls.EXPECTED_SUPERCATEGORY_COUNT
+                or len(test_supercategories) != cls.EXPECTED_SUPERCATEGORY_COUNT
+            ):
+                raise RuntimeError(
+                    "mini-iNaturalist split does not cover every supercategory"
+                )
+        return {
+            "source": "contextual_similarity_released_split",
+            "dataset_page": cls.DATASET_PAGE,
+            "protocol_reference": cls.PROTOCOL_REFERENCE,
+            "protocol_code_url": cls.PROTOCOL_CODE_URL,
+            "protocol_code_commit": cls.PROTOCOL_CODE_COMMIT,
+            "class_split_version": cls.CLASS_SPLIT_VERSION,
+            "split_basis": "authors_released_supercategory_stratified_random_split",
+            "class_disjoint_test": True,
+            "supercategory_disjoint_test": False,
+            "development_class_count": len(development_classes),
+            "test_class_count": len(test_classes),
+            "paper_reported_class_count_per_split": (
+                cls.PAPER_REPORTED_CLASS_COUNT_PER_SPLIT
+            ),
+            "released_train_manifest_sha256": (
+                cls.RELEASED_TRAIN_MANIFEST_SHA256
+            ),
+            "released_test_manifest_sha256": cls.RELEASED_TEST_MANIFEST_SHA256,
+            "development_bitmap_sha256": cls.DEVELOPMENT_BITMAP_SHA256,
+            "development_sample_count": development_sample_count,
+            "test_sample_count": test_sample_count,
+            "pooled_sample_count": development_sample_count + test_sample_count,
+            "images_per_class": cls.EXPECTED_IMAGES_PER_CLASS,
+            "supercategory_count": len(
+                development_supercategories | test_supercategories
+            ),
+            "development_classes": list(development_classes),
+            "held_out_test_classes": list(test_classes),
+            "annotation_level": "species",
+            "official_image_level_split_used": False,
+        }
+
+    def _find_local_image_source(self, records):
+        image_root = self.root / self.IMAGE_DIRECTORY
+        if image_root.is_dir() and all(
+            (self.root / relative_path).is_file()
+            for relative_path, _ in records
+        ):
+            return image_root
+        archive_path = self.root / self.IMAGE_ARCHIVE_FILENAME
+        if archive_path.is_file():
+            return archive_path
+        return None
+
+    def _resize_from_directory(self, source_directory, records):
+        stats = self._resize_files(
+            (
+                (
+                    Path(source_directory).joinpath(*relative_path.parts[1:]),
+                    self.root / relative_path,
+                )
+                for relative_path, _ in records
+            ),
+            len(records),
+            "Saving 224x224 mini-iNaturalist-2021 images",
+            "Extracted mini-iNaturalist",
+        )
+        return {"archive_images": len(records), **stats}
+
+    def _resize_from_archive_stream(self, archive_stream, records):
+        return self._resize_tar_stream(
+            archive_stream,
+            self._image_member_path,
+            self.root.joinpath,
+            "Saving 224x224 mini-iNaturalist-2021 images",
+            "mini-iNaturalist image",
+            expected={relative_path for relative_path, _ in records},
+        )
+
+    @classmethod
+    def _image_member_path(cls, member):
+        if not member.isfile():
+            return None
+        path = safe_posix_path(member.name, "mini-iNaturalist archive")
+        if (
+            len(path.parts) != 3
+            or path.parts[0] != cls.IMAGE_DIRECTORY
+            or path.suffix.lower() not in {".jpg", ".jpeg"}
+        ):
+            return None
+        return Path(*path.parts)
+
+    @classmethod
+    def _validated_image_path(cls, image_name):
+        path = PurePosixPath(str(image_name).replace("\\", "/"))
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or len(path.parts) != 3
+            or path.parts[0] != cls.IMAGE_DIRECTORY
+            or path.suffix.lower() not in {".jpg", ".jpeg"}
+        ):
+            raise ValueError(
+                f"Unsafe mini-iNaturalist image path: {image_name!r}"
+            )
+        return Path(*path.parts)
+
+class SemiINaturalist2021(_DinoSizedImageDownloadMixin, ImageListDataset):
     """Semi-iNaturalist 2021 with a fixed class-disjoint retrieval split.
 
     The challenge's five released labeled sources are pooled before splitting:
@@ -611,15 +1584,7 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
             )
         else:
             development_classes, test_classes = self.partition_class_ids(taxonomy)
-        development_set = set(development_classes)
-        test_set = set(test_classes)
-        if split == "train":
-            selected_classes = development_set
-        elif split == "test":
-            selected_classes = test_set
-        else:
-            selected_classes = development_set | test_set
-
+        selected_classes = select_class_split(split, development_classes, test_classes)
         selected_records = [
             (relative_path, label, source)
             for relative_path, label, source in records
@@ -667,55 +1632,31 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
         """Return whether the complete resized dataset and metadata are present."""
 
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        required_paths = [
-            root / cls.SPLIT_DIRECTORY / cls.TAXONOMY_FILE,
-            marker_path,
-        ]
-        required_paths.extend(
-            root / cls.SPLIT_DIRECTORY / filename
-            for filename in cls.SOURCE_SPLIT_FILES.values()
+        split_directory = root / cls.SPLIT_DIRECTORY
+        required_paths = (
+            split_directory / cls.TAXONOMY_FILE,
+            *(split_directory / filename for filename in cls.SOURCE_SPLIT_FILES.values()),
+            *(
+                root / directory
+                for directory in sorted(set(cls.SOURCE_IMAGE_DIRECTORIES.values()))
+            ),
         )
-        required_paths.extend(
-            root / directory
-            for directory in sorted(set(cls.SOURCE_IMAGE_DIRECTORIES.values()))
-        )
-        if not all(path.exists() for path in required_paths):
-            return False
-
+        marker = cls._read_marker(root, required_paths)
         try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
             source_counts = {
                 str(key): int(value)
                 for key, value in marker["source_image_counts"].items()
             }
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+        except (KeyError, TypeError, ValueError):
             return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            # The marker attests that every archive was fetched and resized, so
-            # it deliberately omits CLASS_SPLIT_VERSION: repartitioning the
-            # classes must not make a prepared root look undownloaded.
-            and source_counts == cls.EXPECTED_SOURCE_IMAGE_COUNTS
+        # The marker attests that every archive was fetched and resized, so
+        # it deliberately omits CLASS_SPLIT_VERSION: repartitioning the
+        # classes must not make a prepared root look undownloaded.
+        return source_counts == cls.EXPECTED_SOURCE_IMAGE_COUNTS and cls._marker_fields_match(
+            marker,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
         )
-
-    @classmethod
-    def download_224(cls, root):
-        """Download every released source while retaining only 224px images."""
-
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader.download_and_remove()
-        return root
 
     def download_and_remove(self):
         """Fetch metadata, stream all four image archives, and mark completion."""
@@ -780,32 +1721,12 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
         self._write_json_atomic(self.root / self.COMPLETE_MARKER, marker)
 
     def _ensure_metadata_files(self):
-        metadata_directory = self.root / self.SPLIT_DIRECTORY
-        metadata_directory.mkdir(parents=True, exist_ok=True)
-        filenames = [
-            self.TAXONOMY_FILE,
-            *self.SOURCE_SPLIT_FILES.values(),
-        ]
-        for filename in filenames:
-            destination = metadata_directory / filename
-            if destination.is_file():
-                continue
-            temporary = self._temporary_path(destination)
-            temporary.unlink(missing_ok=True)
-            url = f"{self.RELEASED_LABELS_BASE_URL}/{filename}"
-            try:
-                self._download_url_to_path(
-                    url,
-                    temporary,
-                    description=f"Downloading Semi-iNat metadata {filename}",
-                )
-                os.replace(temporary, destination)
-            except OSError as error:
-                raise RuntimeError(
-                    f"Could not download Semi-iNat metadata from {url}"
-                ) from error
-            finally:
-                temporary.unlink(missing_ok=True)
+        self._download_missing_files(
+            self.RELEASED_LABELS_BASE_URL,
+            self.root / self.SPLIT_DIRECTORY,
+            [self.TAXONOMY_FILE, *self.SOURCE_SPLIT_FILES.values()],
+            "Semi-iNat metadata",
+        )
 
     @classmethod
     def _load_metadata(cls, root):
@@ -1226,51 +2147,25 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
         archive_key,
         expected_paths,
     ):
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(expected_paths),
-            desc=f"Saving 224x224 Semi-iNat {archive_key} images",
-            unit="image",
-            disable=None,
-        ) as image_progress:
+        def pairs():
             for path_key in expected_paths:
                 relative_path = PurePosixPath(path_key)
-                if (
-                    not relative_path.parts
-                    or relative_path.parts[0] != archive_key
-                ):
+                if not relative_path.parts or relative_path.parts[0] != archive_key:
                     raise RuntimeError(
-                        f"Unexpected {archive_key!r} metadata path: "
-                        f"{path_key!r}"
+                        f"Unexpected {archive_key!r} metadata path: {path_key!r}"
                     )
-                source_path = (
-                    source_directory
-                    / Path(*relative_path.parts[1:])
+                yield (
+                    source_directory / Path(*relative_path.parts[1:]),
+                    self.root / Path(*relative_path.parts),
                 )
-                if not source_path.is_file():
-                    raise RuntimeError(
-                        f"The extracted Semi-iNat {archive_key!r} source is "
-                        f"missing {path_key!r} at {source_path}."
-                    )
 
-                destination = self.root / Path(*relative_path.parts)
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
-                else:
-                    with source_path.open("rb") as source:
-                        self._resize_image_to_destination(
-                            source,
-                            destination,
-                        )
-                    written_images += 1
-                image_progress.update(1)
-
-        return {
-            "archive_images": len(expected_paths),
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+        stats = self._resize_files(
+            pairs(),
+            len(expected_paths),
+            f"Saving 224x224 Semi-iNat {archive_key} images",
+            f"The extracted Semi-iNat {archive_key!r}",
+        )
+        return {"archive_images": len(expected_paths), **stats}
 
     def _consume_image_archive(
         self,
@@ -1278,78 +2173,25 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
         archive_key,
         expected_paths,
     ):
-        seen_paths = set()
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(expected_paths),
-            desc=f"Saving 224x224 Semi-iNat {archive_key} images",
-            unit="image",
-            disable=None,
-        ) as image_progress:
-            with tarfile.open(fileobj=archive_stream, mode="r|gz") as archive:
-                for member in archive:
-                    relative_path = self._image_member_path(
-                        member,
-                        expected_directory=archive_key,
-                    )
-                    if relative_path is None:
-                        continue
-                    path_key = relative_path.as_posix()
-                    if path_key not in expected_paths:
-                        raise RuntimeError(
-                            f"Unexpected image {path_key!r} in the Semi-iNat "
-                            f"{archive_key!r} archive"
-                        )
-                    if path_key in seen_paths:
-                        raise RuntimeError(
-                            f"Duplicate image {path_key!r} in the Semi-iNat "
-                            f"{archive_key!r} archive"
-                        )
-                    seen_paths.add(path_key)
-
-                    destination = self.root / Path(*relative_path.parts)
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        source = archive.extractfile(member)
-                        if source is None:
-                            raise RuntimeError(
-                                f"Could not read {member.name!r} from the "
-                                f"Semi-iNat {archive_key!r} archive"
-                            )
-                        with source:
-                            self._resize_image_to_destination(source, destination)
-                        written_images += 1
-                    image_progress.update(1)
-
-        missing_paths = expected_paths - seen_paths
-        if missing_paths:
-            raise RuntimeError(
-                f"The Semi-iNat {archive_key!r} archive is missing "
-                f"{len(missing_paths)} labeled images; examples: "
-                f"{sorted(missing_paths)[:5]}"
-            )
-        return {
-            "archive_images": len(seen_paths),
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+        return self._resize_tar_stream(
+            archive_stream,
+            partial(self._image_member_key, expected_directory=archive_key),
+            self.root.joinpath,
+            f"Saving 224x224 Semi-iNat {archive_key} images",
+            f"Semi-iNat {archive_key!r}",
+            expected=expected_paths,
+        )
 
     @classmethod
-    def _image_member_path(cls, member, expected_directory):
+    def _image_member_key(cls, member, expected_directory):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                f"Unsafe path in Semi-iNat image archive: {member.name!r}"
-            )
+        path = safe_posix_path(member.name, "Semi-iNat image archive")
         if not path.parts or path.parts[0] != expected_directory:
             return None
         if path.suffix.lower() not in {".jpg", ".jpeg"}:
             return None
-        return path
+        return path.as_posix()
 
     @classmethod
     def _validated_record_path(cls, image_name, expected_directory):
@@ -1369,117 +2211,30 @@ class SemiINaturalist2021(_DinoSizedImageDownloadMixin, Dataset):
             )
         return path
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class SemiINatNativeUnlabeledDataset(Dataset):
+class SemiINatNativeUnlabeledDataset(OutOfClassUnlabeledPool):
     """Semi-iNat out-of-class unlabeled pool with every oracle label hidden.
 
     The known protocol already pools the labeled species' images, so this
     dataset supplies only the ``u_train_out`` images -- the 1,629 species the
     challenge never labels.
-
-    ``out_of_class_fraction`` controls the class-mismatch level: it is the share
-    of the released U-out pool that joins the unlabeled data, and the remaining
-    out-of-class images are dropped rather than kept with a hidden label. 1.0
-    reproduces the original protocol and 0.0 leaves no out-of-class data at all.
     """
 
-    def __init__(
-        self,
-        root,
-        transform=None,
-        out_of_class_fraction=1.0,
-        out_of_class_seed=0,
-    ):
-        self.root = Path(root)
-        if not SemiINaturalist2021.is_ready(self.root):
-            raise ValueError(
-                f"Prepared Semi-iNaturalist 2021 data was not found at {self.root}"
-            )
-        out_of_class_fraction = float(out_of_class_fraction)
-        if not 0.0 <= out_of_class_fraction <= 1.0:
-            raise ValueError(
-                "Semi-iNat out_of_class_fraction must be in [0, 1]: "
-                f"{out_of_class_fraction}"
-            )
+    DATASET = SemiINaturalist2021
+    DATASET_NAME = "Semi-iNaturalist 2021"
+    LABEL = "Semi-iNat"
+    MODE = "semi_inat_out_of_class_only"
+    SOURCE = SemiINaturalist2021.OUT_OF_CLASS_SOURCE_SPLIT
+
+    def available_records(self):
         _, all_records = SemiINaturalist2021._load_metadata(self.root)
-        out_of_class_source = SemiINaturalist2021.OUT_OF_CLASS_SOURCE_SPLIT
-        available_records = [
-            record for record in all_records if record[2] == out_of_class_source
-        ]
-        records = select_out_of_class_records(
-            available_records,
-            out_of_class_fraction,
-            out_of_class_seed,
-            selection_version=(
-                SemiINaturalist2021.OUT_OF_CLASS_SELECTION_VERSION
-            ),
-            dataset_label="Semi-iNat",
-        )
-        self.paths = [
-            str(self.root / Path(*relative_path.parts))
-            for relative_path, _, _ in records
-        ]
-        self.labels = [-1] * len(records)
-        self.orig_labels = [int(label) for _, label, _ in records]
-        self.oracle_labels = list(self.orig_labels)
-        self.sample_sources = [out_of_class_source for _ in records]
-        self.transform = transform
-        self.out_of_class_fraction = out_of_class_fraction
-        self.out_of_class_seed = int(out_of_class_seed)
-        self.filter_info = {
-            "mode": "semi_inat_out_of_class_only",
-            "candidate_source": "released_oracle_files_hidden_at_runtime",
-            "labels_exposed_to_training": False,
-            "kept_images": len(records),
-            "kept_out_of_class_classes": len({label for _, label, _ in records}),
-            "out_of_class_behavior": (
-                "all_original_u_train_out_images_unlabeled"
-                if out_of_class_fraction == 1.0
-                else "class_balanced_out_of_class_subset_remainder_excluded"
-            ),
-            "out_of_class_fraction_requested": out_of_class_fraction,
-            "out_of_class_fraction_realized": (
-                len(records) / len(available_records)
-                if available_records
-                else 0.0
-            ),
-            "available_out_of_class_images": len(available_records),
-            "excluded_out_of_class_images": (
-                len(available_records) - len(records)
-            ),
-            "out_of_class_selection_seed": int(out_of_class_seed),
-            "out_of_class_selection_version": (
-                SemiINaturalist2021.OUT_OF_CLASS_SELECTION_VERSION
-            ),
-        }
-
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        if self.transform is not None:
-            image = self.transform(image)
-        return image, -1
+        return [record for record in all_records if record[2] == self.SOURCE]
 
 
 # Short spelling used by some Semi-iNat papers and configurations.
 SemiINat2021 = SemiINaturalist2021
 
 
-class Food101(_DinoSizedImageDownloadMixin, Dataset):
+class Food101(_DinoSizedImageDownloadMixin, ImageListDataset):
     """Food-101 pooled into a fixed class-disjoint metric-learning split.
 
     The official image-level train and test sources are pooled because both
@@ -1544,12 +2299,7 @@ class Food101(_DinoSizedImageDownloadMixin, Dataset):
             )
 
         development_names, test_names = self.partition_class_names(class_names)
-        if split == "train":
-            selected_names = set(development_names)
-        elif split == "test":
-            selected_names = set(test_names)
-        else:
-            selected_names = set(class_names)
+        selected_names = select_class_split(split, development_names, test_names)
 
         self.split = split
         self.transform = transform
@@ -1629,49 +2379,14 @@ class Food101(_DinoSizedImageDownloadMixin, Dataset):
     @classmethod
     def is_ready(cls, root):
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        if (
-            not (root / cls.IMAGE_DIRECTORY).is_dir()
-            or not marker_path.is_file()
-        ):
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-            split_version = str(marker["class_split_version"])
-            development_class_count = int(
-                marker["development_class_count"]
-            )
-            test_class_count = int(marker["test_class_count"])
-        except (
-            KeyError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-            OSError,
-        ):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and split_version == cls.CLASS_SPLIT_VERSION
-            and development_class_count == cls.DEVELOPMENT_CLASS_COUNT
-            and test_class_count == cls.TEST_CLASS_COUNT
+        return (root / cls.IMAGE_DIRECTORY).is_dir() and cls._marker_matches(
+            root,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
+            development_class_count=cls.DEVELOPMENT_CLASS_COUNT,
+            test_class_count=cls.TEST_CLASS_COUNT,
         )
-
-    @classmethod
-    def download_224(cls, root):
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader.download_and_remove()
-        return root
 
     def download_and_remove(self):
         self.root = Path(self.root)
@@ -1962,84 +2677,34 @@ class Food101(_DinoSizedImageDownloadMixin, Dataset):
         return classes, records
 
     def _resize_from_directory(self, source, records):
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(records),
-            desc="Saving 224x224 Food-101 images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            for relative_path, _, _ in records:
-                source_path = (
-                    Path(source)
-                    / self.IMAGE_DIRECTORY
-                    / Path(*relative_path.parts)
+        return self._resize_files(
+            (
+                (
+                    Path(source) / self.IMAGE_DIRECTORY / Path(*relative_path.parts),
+                    self.root / self.IMAGE_DIRECTORY / Path(*relative_path.parts),
                 )
-                if not source_path.is_file():
-                    raise RuntimeError(
-                        f"Food-101 source is missing {source_path}"
-                    )
-                destination = (
-                    self.root
-                    / self.IMAGE_DIRECTORY
-                    / Path(*relative_path.parts)
-                )
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
-                else:
-                    with source_path.open("rb") as image_source:
-                        self._resize_image_to_destination(
-                            image_source,
-                            destination,
-                        )
-                    written_images += 1
-                progress.update(1)
-        return {
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+                for relative_path, _, _ in records
+            ),
+            len(records),
+            "Saving 224x224 Food-101 images",
+            "Food-101",
+        )
 
     def _resize_from_zip(self, archive_path, dataset_prefix, records):
-        written_images = 0
-        reused_images = 0
         with zipfile.ZipFile(archive_path, "r") as archive:
-            archive_members = set(archive.namelist())
-            with tqdm(
-                total=len(records),
-                desc="Saving 224x224 Food-101 images",
-                unit="image",
-                disable=None,
-            ) as progress:
-                for relative_path, _, _ in records:
-                    member_path = (
-                        dataset_prefix
-                        / self.IMAGE_DIRECTORY
-                        / relative_path
-                    ).as_posix()
-                    if member_path not in archive_members:
-                        raise RuntimeError(
-                            f"Food-101 archive is missing {member_path!r}"
-                        )
-                    destination = (
-                        self.root
-                        / self.IMAGE_DIRECTORY
-                        / Path(*relative_path.parts)
+            return self._resize_zip_members(
+                archive,
+                (
+                    (
+                        (dataset_prefix / self.IMAGE_DIRECTORY / relative_path).as_posix(),
+                        self.root / self.IMAGE_DIRECTORY / Path(*relative_path.parts),
                     )
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        with archive.open(member_path, "r") as image_source:
-                            self._resize_image_to_destination(
-                                image_source,
-                                destination,
-                            )
-                        written_images += 1
-                    progress.update(1)
-        return {
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+                    for relative_path, _, _ in records
+                ),
+                len(records),
+                "Saving 224x224 Food-101 images",
+                "Food-101",
+            )
 
     @classmethod
     def partition_class_names(cls, class_names):
@@ -2077,20 +2742,7 @@ class Food101(_DinoSizedImageDownloadMixin, Dataset):
             )
         return development_names, test_names
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class Flowers102(Dataset):
+class Flowers102(ImageListDataset):
     """Oxford Flowers 102 with the CUB-style class-disjoint DML split.
 
     Oxford's official train, validation, and test sets all contain every flower
@@ -2152,13 +2804,7 @@ class Flowers102(Dataset):
         records, source_counts = self._load_pooled_records(self.root)
         development_classes, test_classes = self.partition_classes()
         development_set = set(development_classes)
-        test_set = set(test_classes)
-        if split == "train":
-            selected_classes = development_set
-        elif split == "test":
-            selected_classes = test_set
-        else:
-            selected_classes = development_set | test_set
+        selected_classes = select_class_split(split, development_classes, test_classes)
         selected_records = [
             record for record in records if record[1] in selected_classes
         ]
@@ -2334,20 +2980,7 @@ class Flowers102(Dataset):
             )
         return development, test
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
+class FGVCAircraft(_DinoSizedImageDownloadMixin, ImageListDataset):
     """FGVC-Aircraft with the conventional metric-learning 50/50 split.
 
     The official train, validation, and test image lists all contain the same
@@ -2399,6 +3032,7 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
     DEVELOPMENT_CLASS_COUNT = 50
     TEST_CLASS_COUNT = 50
     COPYRIGHT_BANNER_HEIGHT = 20
+    CROP_BOTTOM_PIXELS = COPYRIGHT_BANNER_HEIGHT
     CLASS_SPLIT_VERSION = "first_50_variants_metric_learning_v1"
     AVAILABLE_SPLITS = ("train", "test", "train+test")
 
@@ -2518,61 +3152,24 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
     @classmethod
     def is_ready(cls, root):
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        metadata_directory = root / cls.METADATA_DIRECTORY
         required_paths = (
             root / cls.IMAGE_DIRECTORY,
-            marker_path,
             *(
-                metadata_directory / filename
+                root / cls.METADATA_DIRECTORY / filename
                 for filename in cls.METADATA_FILENAMES
             ),
         )
-        if not all(path.exists() for path in required_paths):
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-            images_per_class = int(marker["images_per_class"])
-            split_version = str(marker["class_split_version"])
-            development_class_count = int(
-                marker["development_class_count"]
-            )
-            test_class_count = int(marker["test_class_count"])
-            banner_height = int(
-                marker["copyright_banner_removed_pixels"]
-            )
-        except (
-            KeyError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-            OSError,
-        ):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and images_per_class == cls.EXPECTED_IMAGES_PER_CLASS
-            and split_version == cls.CLASS_SPLIT_VERSION
-            and development_class_count == cls.DEVELOPMENT_CLASS_COUNT
-            and test_class_count == cls.TEST_CLASS_COUNT
-            and banner_height == cls.COPYRIGHT_BANNER_HEIGHT
+        return cls._marker_matches(
+            root,
+            required_paths,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            images_per_class=cls.EXPECTED_IMAGES_PER_CLASS,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
+            development_class_count=cls.DEVELOPMENT_CLASS_COUNT,
+            test_class_count=cls.TEST_CLASS_COUNT,
+            copyright_banner_removed_pixels=cls.COPYRIGHT_BANNER_HEIGHT,
         )
-
-    @classmethod
-    def download_224(cls, root):
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader.download_and_remove()
-        return root
 
     def download_and_remove(self):
         self.root = Path(self.root)
@@ -2580,25 +3177,12 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
         metadata, classes, records, source_counts = self._ensure_metadata()
         expected_image_ids = {image_id for image_id, _, _ in records}
 
-        local_source = self._find_local_image_source()
-        if local_source is None:
-            stats = self._stream_and_resize_archive(
-                expected_image_ids
-            )
-            source_description = self.ARCHIVE_URL
-        elif local_source.is_dir():
-            stats = self._resize_from_directory(
-                local_source,
-                expected_image_ids,
-            )
-            source_description = str(local_source)
-        else:
-            with local_source.open("rb") as archive_stream:
-                stats = self._resize_from_archive_stream(
-                    archive_stream,
-                    expected_image_ids,
-                )
-            source_description = str(local_source)
+        stats, source_description = self._resize_from_source(
+            self._find_local_image_source(),
+            self.ARCHIVE_URL,
+            expected_image_ids,
+            "FGVC-Aircraft",
+        )
 
         marker = {
             "dataset": "FGVCAircraft",
@@ -2703,12 +3287,7 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
     def _metadata_member_filename(cls, member):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                "Unsafe path in FGVC-Aircraft annotation archive: "
-                f"{member.name!r}"
-            )
+        path = safe_posix_path(member.name, "FGVC-Aircraft annotation archive")
         if (
             len(path.parts) < 2
             or path.parts[-2] != "data"
@@ -2848,126 +3427,39 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
                 return candidate
         return None
 
-    def _stream_and_resize_archive(self, expected_image_ids):
-        with self._open_url(self.ARCHIVE_URL) as response:
-            with self._byte_progress(
-                response,
-                "Streaming official FGVC-Aircraft image archive",
-            ) as byte_progress:
-                reader = _DownloadProgressReader(response, byte_progress)
-                return self._resize_from_archive_stream(
-                    reader,
-                    expected_image_ids,
-                )
-
     def _resize_from_directory(self, source_directory, expected_image_ids):
-        source_directory = Path(source_directory)
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(expected_image_ids),
-            desc="Saving 224x224 FGVC-Aircraft images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            for image_id in sorted(expected_image_ids):
-                source_path = source_directory / f"{image_id}.jpg"
-                if not source_path.is_file():
-                    raise RuntimeError(
-                        f"FGVC-Aircraft source is missing {source_path}"
-                    )
-                destination = (
-                    self.root / self.IMAGE_DIRECTORY / f"{image_id}.jpg"
+        return self._resize_files(
+            (
+                (
+                    Path(source_directory) / f"{image_id}.jpg",
+                    self.root / self.IMAGE_DIRECTORY / f"{image_id}.jpg",
                 )
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
-                else:
-                    with source_path.open("rb") as image_source:
-                        self._resize_aircraft_image(
-                            image_source,
-                            destination,
-                        )
-                    written_images += 1
-                progress.update(1)
-        return {
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+                for image_id in sorted(expected_image_ids)
+            ),
+            len(expected_image_ids),
+            "Saving 224x224 FGVC-Aircraft images",
+            "FGVC-Aircraft",
+        )
 
     def _resize_from_archive_stream(
         self,
         archive_stream,
         expected_image_ids,
     ):
-        seen_image_ids = set()
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(expected_image_ids),
-            desc="Saving 224x224 FGVC-Aircraft images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            with tarfile.open(fileobj=archive_stream, mode="r|gz") as archive:
-                for member in archive:
-                    image_id = self._image_member_id(member)
-                    if image_id is None:
-                        continue
-                    if image_id not in expected_image_ids:
-                        raise RuntimeError(
-                            "Unexpected FGVC-Aircraft image "
-                            f"{image_id!r} in the archive"
-                        )
-                    if image_id in seen_image_ids:
-                        raise RuntimeError(
-                            "Duplicate FGVC-Aircraft image "
-                            f"{image_id!r} in the archive"
-                        )
-                    seen_image_ids.add(image_id)
-                    destination = (
-                        self.root
-                        / self.IMAGE_DIRECTORY
-                        / f"{image_id}.jpg"
-                    )
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        source = archive.extractfile(member)
-                        if source is None:
-                            raise RuntimeError(
-                                f"Could not read {member.name!r} from the "
-                                "FGVC-Aircraft archive"
-                            )
-                        with source:
-                            self._resize_aircraft_image(
-                                source,
-                                destination,
-                            )
-                        written_images += 1
-                    progress.update(1)
-
-        missing_image_ids = expected_image_ids - seen_image_ids
-        if missing_image_ids:
-            raise RuntimeError(
-                "The FGVC-Aircraft archive is missing "
-                f"{len(missing_image_ids)} annotated images; examples: "
-                f"{sorted(missing_image_ids)[:5]}"
-            )
-        return {
-            "written_images": written_images,
-            "reused_images": reused_images,
-        }
+        return self._resize_tar_stream(
+            archive_stream,
+            self._image_member_id,
+            lambda image_id: self.root / self.IMAGE_DIRECTORY / f"{image_id}.jpg",
+            "Saving 224x224 FGVC-Aircraft images",
+            "FGVC-Aircraft",
+            expected=expected_image_ids,
+        )
 
     @classmethod
     def _image_member_id(cls, member):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                "Unsafe path in FGVC-Aircraft image archive: "
-                f"{member.name!r}"
-            )
+        path = safe_posix_path(member.name, "FGVC-Aircraft image archive")
         if (
             len(path.parts) < 3
             or tuple(path.parts[-3:-1]) != ("data", "images")
@@ -2976,45 +3468,21 @@ class FGVCAircraft(_DinoSizedImageDownloadMixin, Dataset):
             return None
         return path.stem
 
-    def _resize_aircraft_image(self, source, destination):
-        self._resize_image_to_destination(
-            source,
-            destination,
-            crop_bottom_pixels=self.COPYRIGHT_BANNER_HEIGHT,
-        )
-
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
-    """FGVCx Fungi 2018 with a fixed genus-balanced 50/50 class split.
+class FGVCFungi(_DinoSizedImageDownloadMixin, ImageListDataset):
+    """FGVCx Fungi 2018 with Meta-Dataset's held-out test classes.
 
     The competition released 85,578 training and 4,182 validation images over
     the same 1,394 species and never published labels for its 9,758 test
-    images. Both labeled sources ship in one ``images/<class id>.<species>/``
+    images. Both labeled sources ship in one ``images/<taxon id>_<species>/``
     tree, so this wrapper pools them -- the official image-level train/val
-    boundary lives only in the annotation JSONs and is not recoverable from the
-    image archive -- and then assigns complete species to a development or a
-    final-test half.
-
-    Species alternate into the halves along an ordering sorted by genus and
-    then class id, the same idea Semi-iNat applies inside its kingdoms. The
-    stride runs once through the concatenated genera instead of restarting per
-    genus: Semi-iNat can restart because it has three kingdoms, while 292 of
-    Fungi's 418 genera hold an odd number of species, and restarting would hand
-    the development half 843 of the 1,394 species. Running the stride through
-    keeps the halves at exactly 697 species each while still splitting every
-    genus to within one species, so both halves see the same genera.
+    boundary lives only in the annotation JSONs -- and then applies the
+    canonical Meta-Dataset class split. The compact official annotations map
+    those non-contiguous taxon ids to Meta-Dataset's category ids before the
+    resized directories are normalized to ``<category id>.<species>``.
+    Meta-Dataset's 994 training and 200 validation species are pooled into one
+    1,194-class development set so this project's cross-validation machinery
+    can split them into folds. Its remaining 200 species stay fixed as the
+    class-disjoint final test set.
 
     Labels are the official category ids parsed from the directory names. Only
     atomic 224 x 224 JPEGs are written to the dataset root. The source
@@ -3026,6 +3494,14 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
     KAGGLE_COMPETITION = "fungi-challenge-fgvc-2018"
     ARCHIVE_URL = "https://labs.gbif.org/fgvcx/2018/fungi_train_val.tgz"
     ARCHIVE_FILENAME = "fungi_train_val.tgz"
+    ANNOTATIONS_URL = (
+        "https://labs.gbif.org/fgvcx/2018/train_val_annotations.tgz"
+    )
+    ANNOTATIONS_ARCHIVE_FILENAMES = (
+        "train_val_annotations.tgz",
+        "train_val_annotations.tar.gz",
+    )
+    ANNOTATION_FILENAMES = ("train.json", "val.json")
     IMAGE_DIRECTORY = "images"
     COMPLETE_MARKER = ".fgvc_fungi_224_complete.json"
     # 85,578 training plus 4,182 validation images; the unlabeled test images
@@ -3033,13 +3509,35 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
     EXPECTED_IMAGE_COUNT = 89_760
     EXPECTED_CLASS_COUNT = 1_394
     POOLED_SOURCES = ("train", "val")
-    DEVELOPMENT_CLASS_FRACTION = 0.50
-    TEST_CLASS_FRACTION = 0.50
     SPLIT_SUPERCATEGORY_FIELD = "genus"
-    CLASS_SPLIT_VERSION = "fungi_alternating_class_ids_within_genus_50_50_v1"
-    # Both halves must stay near half the pooled images. The stride cannot
-    # control per-class counts, so this only catches a split that collapsed.
-    MIN_HALF_IMAGE_FRACTION = 0.40
+    META_DATASET_SPLIT_REFERENCE = (
+        "https://github.com/google-research/meta-dataset/blob/main/"
+        "meta_dataset/dataset_conversion/splits/fungi_splits.json"
+    )
+    META_DATASET_SPLIT_GIT_BLOB_SHA = "579d4fd1fd980fda4caf40858946555c7053519a"
+    META_DATASET_TRAIN_CLASS_COUNT = 994
+    META_DATASET_VALIDATION_CLASS_COUNT = 200
+    META_DATASET_TEST_CLASS_COUNT = 200
+    # Official class ids from Meta-Dataset's ``fungi_splits.json`` test list.
+    # The development split is deliberately the complement: canonical train
+    # plus canonical validation, subsequently partitioned by this project's CV.
+    META_DATASET_TEST_CLASS_IDS = (
+        8, 9, 19, 38, 44, 53, 55, 62, 63, 69, 70, 78, 93, 96, 99, 103,
+        105, 118, 129, 132, 141, 151, 153, 156, 165, 175, 176, 179, 184, 190, 205, 220,
+        223, 232, 234, 247, 277, 279, 289, 291, 316, 321, 326, 356, 359, 381, 382, 390,
+        393, 395, 397, 408, 413, 431, 433, 444, 453, 457, 460, 462, 472, 479, 482, 484,
+        491, 492, 498, 501, 502, 505, 517, 535, 536, 539, 541, 574, 580, 584, 587, 596,
+        600, 604, 609, 616, 618, 620, 627, 637, 651, 661, 674, 677, 680, 688, 695, 703,
+        713, 722, 724, 726, 727, 729, 742, 760, 764, 765, 784, 787, 790, 792, 799, 803,
+        805, 807, 812, 817, 820, 826, 834, 838, 849, 853, 857, 871, 885, 893, 904, 907,
+        909, 914, 915, 917, 935, 937, 938, 940, 947, 955, 960, 963, 966, 971, 976, 987,
+        989, 997, 999, 1012, 1018, 1024, 1030, 1031, 1032, 1033, 1034, 1062, 1076, 1077,
+        1084, 1086, 1094, 1096, 1098, 1104, 1105, 1107, 1111, 1115, 1117, 1120, 1129,
+        1133, 1157, 1165, 1169, 1194, 1231, 1234, 1238, 1249, 1250, 1253, 1262, 1264,
+        1265, 1273, 1280, 1299, 1305, 1314, 1318, 1344, 1348, 1352, 1362, 1366, 1373,
+        1376, 1382, 1388,
+    )
+    CLASS_SPLIT_VERSION = "meta_dataset_fungi_train_valid_vs_test_v1"
     IMAGE_EXTENSIONS = (".jpg", ".jpeg")
     AVAILABLE_SPLITS = ("train", "test", "train+test")
 
@@ -3070,14 +3568,7 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
 
         taxonomy = self.load_taxonomy(self.root)
         development_classes, test_classes = self.partition_class_ids(taxonomy)
-        development_set = set(development_classes)
-        test_set = set(test_classes)
-        if split == "train":
-            selected_classes = development_set
-        elif split == "test":
-            selected_classes = test_set
-        else:
-            selected_classes = development_set | test_set
+        selected_classes = select_class_split(split, development_classes, test_classes)
 
         records = self._scan_records(self.root, taxonomy)
         if len(records) != self.EXPECTED_IMAGE_COUNT:
@@ -3093,13 +3584,6 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
         test_image_count = sum(
             image_counts[class_id] for class_id in test_classes
         )
-        smallest_half = min(development_image_count, test_image_count)
-        if smallest_half < self.MIN_HALF_IMAGE_FRACTION * len(records):
-            raise RuntimeError(
-                "The FGVCx Fungi class halves are badly unbalanced: "
-                f"{development_image_count} development and "
-                f"{test_image_count} test images"
-            )
 
         selected_records = [
             (image_path, label)
@@ -3145,45 +3629,12 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
         """Return whether the complete resized dataset is present."""
 
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        if (
-            not (root / cls.IMAGE_DIRECTORY).is_dir()
-            or not marker_path.is_file()
-        ):
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-            split_version = str(marker["class_split_version"])
-        except (
-            KeyError,
-            TypeError,
-            ValueError,
-            json.JSONDecodeError,
-            OSError,
-        ):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and split_version == cls.CLASS_SPLIT_VERSION
+        return (root / cls.IMAGE_DIRECTORY).is_dir() and cls._marker_matches(
+            root,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
         )
-
-    @classmethod
-    def download_224(cls, root):
-        """Fetch the labeled archive while retaining only 224px images."""
-
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader.download_and_remove()
-        return root
 
     def download_and_remove(self):
         """Resize every labeled image into the root and mark completion."""
@@ -3206,6 +3657,7 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
                 stats = self._resize_from_archive_stream(archive_stream)
             source_description = str(source)
 
+        annotations_source = self._normalize_class_directories(source)
         taxonomy = self.load_taxonomy(self.root)
         development_classes, test_classes = self.partition_class_ids(taxonomy)
         genus_field = self.SPLIT_SUPERCATEGORY_FIELD
@@ -3219,16 +3671,20 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             "written_images": int(stats["written_images"]),
             "reused_images": int(stats["reused_images"]),
             "source_archive": source_description,
+            "annotations_source": annotations_source,
             "kaggle_competition": self.KAGGLE_COMPETITION,
             "pooled_sources": list(self.POOLED_SOURCES),
             "class_split_version": self.CLASS_SPLIT_VERSION,
-            "split_basis": "alternating_class_ids_within_genus",
-            "split_supercategory_field": genus_field,
+            "split_basis": "meta_dataset_train_valid_vs_test",
+            "meta_dataset_split_reference": self.META_DATASET_SPLIT_REFERENCE,
+            "meta_dataset_split_git_blob_sha": self.META_DATASET_SPLIT_GIT_BLOB_SHA,
+            "meta_dataset_train_class_count": self.META_DATASET_TRAIN_CLASS_COUNT,
+            "meta_dataset_validation_class_count": self.META_DATASET_VALIDATION_CLASS_COUNT,
+            "meta_dataset_test_class_count": self.META_DATASET_TEST_CLASS_COUNT,
+            "development_pool_components": ["meta_train", "meta_validation"],
             "genus_count": len(
                 {taxon[genus_field] for taxon in taxonomy.values()}
             ),
-            "development_class_fraction": self.DEVELOPMENT_CLASS_FRACTION,
-            "test_class_fraction": self.TEST_CLASS_FRACTION,
             "development_class_count": len(development_classes),
             "test_class_count": len(test_classes),
             "development_classes": list(development_classes),
@@ -3249,41 +3705,54 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
 
     @classmethod
     def partition_class_ids(cls, taxonomy):
-        """Halve the species with one stride through genus-sorted class ids."""
+        """Pool Meta-Dataset train+valid and retain its fixed test species."""
 
-        genus_field = cls.SPLIT_SUPERCATEGORY_FIELD
-        ranked_class_ids = sorted(
-            taxonomy,
-            key=lambda class_id: (
-                str(taxonomy[class_id][genus_field]),
-                int(class_id),
-            ),
+        all_classes = set(int(class_id) for class_id in taxonomy)
+        expected_total = (
+            cls.META_DATASET_TRAIN_CLASS_COUNT
+            + cls.META_DATASET_VALIDATION_CLASS_COUNT
+            + cls.META_DATASET_TEST_CLASS_COUNT
         )
-        development_classes = tuple(sorted(ranked_class_ids[0::2]))
-        test_classes = tuple(sorted(ranked_class_ids[1::2]))
+        if len(all_classes) != expected_total:
+            raise RuntimeError(
+                f"FGVCx Fungi has {len(all_classes)} classes; the configured "
+                f"Meta-Dataset split expects {expected_total}"
+            )
+        test_classes = tuple(
+            sorted(int(class_id) for class_id in cls.META_DATASET_TEST_CLASS_IDS)
+        )
+        test_set = set(test_classes)
+        if len(test_set) != len(test_classes):
+            raise RuntimeError("Meta-Dataset's FGVCx Fungi test class ids contain duplicates")
+        if len(test_classes) != cls.META_DATASET_TEST_CLASS_COUNT:
+            raise RuntimeError(
+                "Meta-Dataset's FGVCx Fungi test split has "
+                f"{len(test_classes)} classes; expected "
+                f"{cls.META_DATASET_TEST_CLASS_COUNT}"
+            )
+        unexpected_test_classes = sorted(test_set - all_classes)
+        if unexpected_test_classes:
+            raise RuntimeError(
+                "Meta-Dataset's FGVCx Fungi test split contains class ids "
+                f"outside this dataset: {unexpected_test_classes[:10]}"
+            )
+        development_classes = tuple(sorted(all_classes - test_set))
         if set(development_classes) & set(test_classes):
             raise RuntimeError("FGVCx Fungi class partition is not disjoint")
-        if set(development_classes) | set(test_classes) != set(taxonomy):
+        if set(development_classes) | set(test_classes) != all_classes:
             raise RuntimeError(
                 "FGVCx Fungi class partition does not cover every species"
             )
-        if abs(len(development_classes) - len(test_classes)) > 1:
+        expected_development_count = (
+            cls.META_DATASET_TRAIN_CLASS_COUNT
+            + cls.META_DATASET_VALIDATION_CLASS_COUNT
+        )
+        if len(development_classes) != expected_development_count:
             raise RuntimeError(
-                "FGVCx Fungi halves differ by "
-                f"{abs(len(development_classes) - len(test_classes))} species; "
-                "one stride through the genus-sorted ids cannot exceed one"
+                "FGVCx Fungi development split has "
+                f"{len(development_classes)} classes; expected "
+                f"{expected_development_count}"
             )
-        development_set = set(development_classes)
-        for genus, class_ids in cls._class_ids_by_genus(taxonomy).items():
-            development_count = sum(
-                1 for class_id in class_ids if class_id in development_set
-            )
-            if abs(2 * development_count - len(class_ids)) > 1:
-                raise RuntimeError(
-                    f"FGVCx Fungi genus {genus!r} is split "
-                    f"{development_count}/{len(class_ids) - development_count} "
-                    "instead of in half"
-                )
         return development_classes, test_classes
 
     @classmethod
@@ -3339,7 +3808,7 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
 
     @classmethod
     def _parse_class_directory_name(cls, directory_name):
-        """Split ``0226.Cortinarius malicorius`` into its id and species."""
+        """Split normalized ``0226.Cortinarius malicorius`` directories."""
 
         class_id, separator, species = str(directory_name).partition(".")
         # Species names carry their own dots ("Amanita citrina var. citrina"),
@@ -3351,10 +3820,265 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             or not species.strip()
         ):
             raise ValueError(
-                "FGVCx Fungi class directories must be named "
-                f"'<4-digit class id>.<species>': {directory_name!r}"
+                "Prepared FGVCx Fungi class directories must be named "
+                f"'<4-digit category id>.<species>': {directory_name!r}. "
+                "Raw '<taxon id>_<species>' archive directories must first "
+                "be mapped with the official train/validation annotations."
             )
         return int(class_id), species.strip()
+
+    def _normalize_class_directories(self, image_source=None):
+        """Map raw archive taxon directories to stable category-id names."""
+
+        image_root = self.root / self.IMAGE_DIRECTORY
+        class_directories = sorted(
+            path for path in image_root.iterdir() if path.is_dir()
+        )
+        raw_directories = []
+        normalized_ids = {}
+        for class_directory in class_directories:
+            try:
+                class_id, _ = self._parse_class_directory_name(
+                    class_directory.name
+                )
+            except ValueError:
+                raw_directories.append(class_directory)
+            else:
+                if class_id in normalized_ids:
+                    raise ValueError(
+                        f"Duplicate FGVCx Fungi category id {class_id} in "
+                        f"{class_directory.name!r} and "
+                        f"{normalized_ids[class_id].name!r}"
+                    )
+                normalized_ids[class_id] = class_directory
+
+        if not raw_directories:
+            return "normalized_directory_names"
+
+        documents, annotations_source = self._load_annotations(image_source)
+        directory_mapping = self._annotation_directory_mapping(documents)
+        rename_plan = []
+        final_ids = dict(normalized_ids)
+        for source_directory in raw_directories:
+            try:
+                class_id, species = directory_mapping[source_directory.name]
+            except KeyError as error:
+                raise ValueError(
+                    "The official FGVCx Fungi annotations do not contain raw "
+                    f"class directory {source_directory.name!r}"
+                ) from error
+            destination = image_root / f"{class_id:04d}.{species}"
+            if class_id in final_ids:
+                raise ValueError(
+                    f"FGVCx Fungi category id {class_id} appears in both "
+                    f"{source_directory.name!r} and "
+                    f"{final_ids[class_id].name!r}"
+                )
+            if destination.exists():
+                raise ValueError(
+                    "Cannot normalize FGVCx Fungi directory "
+                    f"{source_directory.name!r}: destination "
+                    f"{destination.name!r} already exists"
+                )
+            final_ids[class_id] = destination
+            rename_plan.append((source_directory, destination))
+
+        expected_ids = set(range(self.EXPECTED_CLASS_COUNT))
+        if set(final_ids) != expected_ids:
+            missing = sorted(expected_ids - set(final_ids))
+            unexpected = sorted(set(final_ids) - expected_ids)
+            raise ValueError(
+                "The FGVCx Fungi annotations did not map the image tree to "
+                "the complete category-id range: "
+                f"missing={missing[:10]}, unexpected={unexpected[:10]}"
+            )
+
+        # Validate every destination before the first atomic directory rename.
+        # A later run can safely finish a mixture left by an interruption.
+        for source_directory, destination in rename_plan:
+            os.replace(source_directory, destination)
+        return annotations_source
+
+    def _load_annotations(self, image_source=None):
+        """Load the two small official annotation documents."""
+
+        search_roots = [self.root]
+        if image_source is not None:
+            source_path = Path(image_source)
+            source_parent = source_path.parent
+            search_roots.append(source_parent)
+            if source_path.is_dir() and source_parent.name == "fungi_train_val":
+                search_roots.append(source_parent.parent)
+
+        unique_roots = []
+        for candidate in search_roots:
+            candidate = Path(candidate)
+            if candidate not in unique_roots:
+                unique_roots.append(candidate)
+
+        for candidate in unique_roots:
+            annotation_paths = [
+                candidate / filename for filename in self.ANNOTATION_FILENAMES
+            ]
+            if all(path.is_file() for path in annotation_paths):
+                try:
+                    documents = {
+                        path.name: json.loads(path.read_text(encoding="utf-8"))
+                        for path in annotation_paths
+                    }
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ) as error:
+                    raise ValueError(
+                        "Could not read the local FGVCx Fungi annotations in "
+                        f"{candidate}"
+                    ) from error
+                return documents, str(candidate)
+
+            for filename in self.ANNOTATIONS_ARCHIVE_FILENAMES:
+                archive_path = candidate / filename
+                if not archive_path.is_file():
+                    continue
+                with archive_path.open("rb") as archive_stream:
+                    documents = self._read_annotation_archive(archive_stream)
+                return documents, str(archive_path)
+
+        try:
+            with self._download_stream(
+                self.ANNOTATIONS_URL,
+                "Reading official FGVCx Fungi annotations",
+            ) as archive_stream:
+                documents = self._read_annotation_archive(archive_stream)
+        except OSError as error:
+            filenames = " or ".join(self.ANNOTATIONS_ARCHIVE_FILENAMES)
+            raise RuntimeError(
+                "Could not download the FGVCx Fungi category mapping from "
+                f"{self.ANNOTATIONS_URL} ({error}). Place {filenames}, or "
+                "both train.json and val.json, in the dataset root and rerun."
+            ) from error
+        return documents, self.ANNOTATIONS_URL
+
+    @classmethod
+    def _read_annotation_archive(cls, archive_stream):
+        documents = {}
+        with tarfile.open(fileobj=archive_stream, mode="r|gz") as archive:
+            for member in archive:
+                if not member.isfile():
+                    continue
+                filename = safe_posix_path(
+                    member.name, "FGVCx Fungi annotation archive"
+                ).name
+                if filename not in cls.ANNOTATION_FILENAMES:
+                    continue
+                if filename in documents:
+                    raise RuntimeError(
+                        "Duplicate FGVCx Fungi annotation file "
+                        f"{filename!r} in archive"
+                    )
+                with archive.extractfile(member) as source:
+                    documents[filename] = json.load(source)
+
+        missing = set(cls.ANNOTATION_FILENAMES) - set(documents)
+        if missing:
+            raise RuntimeError(
+                "The FGVCx Fungi annotation archive is missing: "
+                f"{sorted(missing)}"
+            )
+        return documents
+
+    @classmethod
+    def _annotation_directory_mapping(cls, documents):
+        """Return raw directory -> (category id, species) from annotations."""
+
+        category_names = {}
+        image_directories = {}
+        image_categories = {}
+        for filename in cls.ANNOTATION_FILENAMES:
+            try:
+                document = documents[filename]
+                categories = document["categories"]
+                images = document["images"]
+                annotations = document["annotations"]
+            except (KeyError, TypeError) as error:
+                raise ValueError(
+                    f"Malformed FGVCx Fungi annotation document {filename!r}"
+                ) from error
+
+            for category in categories:
+                class_id = int(category["id"])
+                species = str(category["name"]).strip()
+                previous = category_names.setdefault(class_id, species)
+                if previous != species:
+                    raise ValueError(
+                        f"FGVCx Fungi category {class_id} has conflicting "
+                        f"names {previous!r} and {species!r}"
+                    )
+            for image in images:
+                image_id = int(image["id"])
+                path = PurePosixPath(
+                    str(image["file_name"]).replace("\\", "/")
+                )
+                if (
+                    path.is_absolute()
+                    or ".." in path.parts
+                    or len(path.parts) < 2
+                ):
+                    raise ValueError(
+                        "Unsafe image path in FGVCx Fungi annotations: "
+                        f"{image['file_name']!r}"
+                    )
+                directory = path.parent.name
+                previous = image_directories.setdefault(image_id, directory)
+                if previous != directory:
+                    raise ValueError(
+                        f"FGVCx Fungi image id {image_id} appears in both "
+                        f"{previous!r} and {directory!r}"
+                    )
+            for annotation in annotations:
+                image_id = int(annotation["image_id"])
+                class_id = int(annotation["category_id"])
+                previous = image_categories.setdefault(image_id, class_id)
+                if previous != class_id:
+                    raise ValueError(
+                        f"FGVCx Fungi image id {image_id} has conflicting "
+                        f"categories {previous} and {class_id}"
+                    )
+
+        expected_ids = set(range(cls.EXPECTED_CLASS_COUNT))
+        if set(category_names) != expected_ids:
+            missing = sorted(expected_ids - set(category_names))
+            unexpected = sorted(set(category_names) - expected_ids)
+            raise ValueError(
+                "FGVCx Fungi annotation category ids must be contiguous from "
+                f"zero: missing={missing[:10]}, unexpected={unexpected[:10]}"
+            )
+        if set(image_directories) != set(image_categories):
+            raise ValueError(
+                "FGVCx Fungi images and annotations contain different image "
+                "id sets"
+            )
+
+        directory_ids = {}
+        for image_id, directory in image_directories.items():
+            class_id = image_categories[image_id]
+            previous = directory_ids.setdefault(directory, class_id)
+            if previous != class_id:
+                raise ValueError(
+                    f"FGVCx Fungi raw directory {directory!r} maps to both "
+                    f"categories {previous} and {class_id}"
+                )
+        if len(directory_ids) != cls.EXPECTED_CLASS_COUNT:
+            raise ValueError(
+                "FGVCx Fungi annotations map "
+                f"{len(directory_ids)} raw class directories; expected "
+                f"{cls.EXPECTED_CLASS_COUNT}"
+            )
+        return {
+            directory: (class_id, category_names[class_id])
+            for directory, class_id in directory_ids.items()
+        }
 
     @classmethod
     def _class_ids_by_genus(cls, taxonomy):
@@ -3399,16 +4123,19 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             ):
                 shared_genera += 1
         return {
-            "source": "pooled_train_val_images_class_disjoint_50_50",
+            "source": "meta_dataset_train_valid_vs_test_class_split",
             "dataset_page": cls.DATASET_PAGE,
             "pooled_sources": list(cls.POOLED_SOURCES),
             "pooled_sample_count": int(pooled_image_count),
             "class_disjoint_test": True,
             "class_split_version": cls.CLASS_SPLIT_VERSION,
-            "split_basis": "alternating_class_ids_within_genus",
-            "split_supercategory_field": genus_field,
-            "development_class_fraction": cls.DEVELOPMENT_CLASS_FRACTION,
-            "test_class_fraction": cls.TEST_CLASS_FRACTION,
+            "split_basis": "meta_dataset_train_valid_vs_test",
+            "meta_dataset_split_reference": cls.META_DATASET_SPLIT_REFERENCE,
+            "meta_dataset_split_git_blob_sha": cls.META_DATASET_SPLIT_GIT_BLOB_SHA,
+            "meta_dataset_train_class_count": cls.META_DATASET_TRAIN_CLASS_COUNT,
+            "meta_dataset_validation_class_count": cls.META_DATASET_VALIDATION_CLASS_COUNT,
+            "meta_dataset_test_class_count": cls.META_DATASET_TEST_CLASS_COUNT,
+            "development_pool_components": ["meta_train", "meta_validation"],
             "development_class_count": len(development_classes),
             "test_class_count": len(test_classes),
             "development_classes": list(development_classes),
@@ -3418,8 +4145,8 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             "genus_count": len(
                 {taxon[genus_field] for taxon in taxonomy.values()}
             ),
-            # Genera are halved rather than held out, so a test species can
-            # have congeners in development, exactly as Semi-iNat's kingdoms do.
+            # Meta-Dataset splits species, not genera, so test species can have
+            # congeners in the development pool.
             "genus_disjoint_test": False,
             "genera_shared_by_both_halves": shared_genera,
             "annotation_level": "species",
@@ -3514,13 +4241,11 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
 
     def _stream_and_resize_archive(self):
         try:
-            with self._open_url(self.ARCHIVE_URL) as response:
-                with self._byte_progress(
-                    response,
-                    "Streaming official FGVCx Fungi image archive",
-                ) as byte_progress:
-                    reader = _DownloadProgressReader(response, byte_progress)
-                    return self._resize_from_archive_stream(reader)
+            with self._download_stream(
+                self.ARCHIVE_URL,
+                "Streaming official FGVCx Fungi image archive",
+            ) as archive_stream:
+                return self._resize_from_archive_stream(archive_stream)
         except OSError as error:
             kagglehub_failure = getattr(self, "_kagglehub_failure", None)
             kagglehub_note = (
@@ -3537,94 +4262,44 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             ) from error
 
     def _resize_from_directory(self, source_directory):
-        source_directory = Path(source_directory)
-        archive_images = 0
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=self.EXPECTED_IMAGE_COUNT,
-            desc="Saving 224x224 FGVCx Fungi images",
-            unit="image",
-            disable=None,
-        ) as progress:
+        source_paths = [
+            source_path
             for class_directory in sorted(
-                path for path in source_directory.iterdir() if path.is_dir()
-            ):
-                for source_path in sorted(
-                    path
-                    for path in class_directory.iterdir()
-                    if path.is_file()
-                    and path.suffix.lower() in self.IMAGE_EXTENSIONS
-                ):
-                    archive_images += 1
-                    destination = (
-                        self.root
-                        / self.IMAGE_DIRECTORY
-                        / class_directory.name
-                        / source_path.name
-                    )
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        with source_path.open("rb") as image_source:
-                            self._resize_image_to_destination(
-                                image_source,
-                                destination,
-                            )
-                        written_images += 1
-                    progress.update(1)
-
-        return self._validated_stats(
-            archive_images=archive_images,
-            written_images=written_images,
-            reused_images=reused_images,
+                path for path in Path(source_directory).iterdir() if path.is_dir()
+            )
+            for source_path in sorted(
+                path
+                for path in class_directory.iterdir()
+                if path.is_file() and path.suffix.lower() in self.IMAGE_EXTENSIONS
+            )
+        ]
+        stats = self._resize_files(
+            (
+                (
+                    source_path,
+                    self.root
+                    / self.IMAGE_DIRECTORY
+                    / source_path.parent.name
+                    / source_path.name,
+                )
+                for source_path in source_paths
+            ),
+            self.EXPECTED_IMAGE_COUNT,
+            "Saving 224x224 FGVCx Fungi images",
+            "FGVCx Fungi",
         )
+        return self._validated_stats(archive_images=len(source_paths), **stats)
 
     def _resize_from_archive_stream(self, archive_stream):
-        seen_paths = set()
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=self.EXPECTED_IMAGE_COUNT,
-            desc="Saving 224x224 FGVCx Fungi images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            with tarfile.open(fileobj=archive_stream, mode="r|gz") as archive:
-                for member in archive:
-                    relative_path = self._image_member_path(member)
-                    if relative_path is None:
-                        continue
-                    path_key = relative_path.as_posix()
-                    if path_key in seen_paths:
-                        raise RuntimeError(
-                            f"Duplicate image {path_key!r} in the FGVCx Fungi "
-                            "archive"
-                        )
-                    seen_paths.add(path_key)
-
-                    destination = self.root / Path(*relative_path.parts)
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        source = archive.extractfile(member)
-                        if source is None:
-                            raise RuntimeError(
-                                f"Could not read {member.name!r} from the "
-                                "FGVCx Fungi archive"
-                            )
-                        with source:
-                            self._resize_image_to_destination(
-                                source,
-                                destination,
-                            )
-                        written_images += 1
-                    progress.update(1)
-
         return self._validated_stats(
-            archive_images=len(seen_paths),
-            written_images=written_images,
-            reused_images=reused_images,
+            **self._resize_tar_stream(
+                archive_stream,
+                self._image_member_path,
+                self.root.joinpath,
+                "Saving 224x224 FGVCx Fungi images",
+                "FGVCx Fungi",
+                total=self.EXPECTED_IMAGE_COUNT,
+            )
         )
 
     def _validated_stats(self, archive_images, written_images, reused_images):
@@ -3645,11 +4320,7 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
     def _image_member_path(cls, member):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(
-                f"Unsafe path in FGVCx Fungi image archive: {member.name!r}"
-            )
+        path = safe_posix_path(member.name, "FGVCx Fungi image archive")
         parts = tuple(part for part in path.parts if part != ".")
         if len(parts) < 3 or parts[-3] != cls.IMAGE_DIRECTORY:
             return None
@@ -3657,20 +4328,7 @@ class FGVCFungi(_DinoSizedImageDownloadMixin, Dataset):
             return None
         return PurePosixPath(*parts[-3:])
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
+class StanfordDogs(_DinoSizedImageDownloadMixin, ImageListDataset):
     """Stanford Dogs on one of two fixed class-disjoint splits.
 
     The official image-level train/test lists contain every breed on both
@@ -3774,14 +4432,7 @@ class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
         development_names, test_names = self.partition_class_names(
             class_names, class_split=class_split
         )
-        development_set = set(development_names)
-        test_set = set(test_names)
-        if split == "train":
-            selected_names = development_set
-        elif split == "test":
-            selected_names = test_set
-        else:
-            selected_names = set(class_names)
+        selected_names = select_class_split(split, development_names, test_names)
 
         self.classes = class_names
         self.class_to_label = {class_name: index for index, class_name in enumerate(class_names)}
@@ -3837,71 +4488,28 @@ class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
     @classmethod
     def is_ready(cls, root):
         root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        if not (root / cls.IMAGE_DIRECTORY).is_dir() or not marker_path.is_file():
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-            split_version = str(marker["class_split_version"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and split_version == cls.CLASS_SPLIT_VERSION
+        return (root / cls.IMAGE_DIRECTORY).is_dir() and cls._marker_matches(
+            root,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+            class_split_version=cls.CLASS_SPLIT_VERSION,
         )
 
-    @classmethod
-    def download_224(cls, root):
-        root = Path(root)
-        if cls.is_ready(root):
-            return root
-        root.mkdir(parents=True, exist_ok=True)
-        downloader = cls.__new__(cls)
-        downloader.root = root
-        downloader._stream_and_resize_archive()
-        return root
-
-    def _stream_and_resize_archive(self):
-        archive_images = 0
-        written_images = 0
-        reused_images = 0
-        with self._open_url(self.IMAGES_URL) as response:
-            with self._byte_progress(
-                response,
-                "Streaming official Stanford Dogs image archive",
-            ) as byte_progress:
-                reader = _DownloadProgressReader(response, byte_progress)
-                with tqdm(
-                    total=self.EXPECTED_IMAGE_COUNT,
-                    desc="Saving 224x224 Stanford Dogs images",
-                    unit="image",
-                    disable=None,
-                ) as image_progress:
-                    with tarfile.open(fileobj=reader, mode="r|") as archive:
-                        for member in archive:
-                            relative_path = self._image_member_path(member)
-                            if relative_path is None:
-                                continue
-                            archive_images += 1
-                            destination = self.root / relative_path
-                            if self._is_target_sized_image(destination):
-                                reused_images += 1
-                            else:
-                                source = archive.extractfile(member)
-                                if source is None:
-                                    raise RuntimeError(
-                                        f"Could not read image {member.name!r} from the archive"
-                                    )
-                                with source:
-                                    self._resize_image_to_destination(source, destination)
-                                written_images += 1
-                            image_progress.update(1)
-
+    def download_and_remove(self):
+        with self._download_stream(
+            self.IMAGES_URL,
+            "Streaming official Stanford Dogs image archive",
+        ) as archive_stream:
+            stats = self._resize_tar_stream(
+                archive_stream,
+                self._image_member_path,
+                self.root.joinpath,
+                "Saving 224x224 Stanford Dogs images",
+                "Stanford Dogs",
+                total=self.EXPECTED_IMAGE_COUNT,
+                mode="r|",
+            )
+        archive_images = stats["archive_images"]
         if archive_images != self.EXPECTED_IMAGE_COUNT:
             raise RuntimeError(
                 "The Stanford Dogs archive was incomplete: "
@@ -3926,8 +4534,8 @@ class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
             "image_count": archive_images,
             "class_count": len(class_names),
             "jpeg_quality": self.JPEG_QUALITY,
-            "written_images": written_images,
-            "reused_images": reused_images,
+            "written_images": stats["written_images"],
+            "reused_images": stats["reused_images"],
             "source_archive": self.IMAGES_URL,
             "class_split_version": self.CLASS_SPLIT_VERSION,
             "development_class_fraction": self.DEVELOPMENT_CLASS_FRACTION,
@@ -3992,9 +4600,7 @@ class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
     def _image_member_path(cls, member):
         if not member.isfile():
             return None
-        path = PurePosixPath(member.name.replace("\\", "/"))
-        if path.is_absolute() or ".." in path.parts:
-            raise ValueError(f"Unsafe path in Stanford Dogs image archive: {member.name!r}")
+        path = safe_posix_path(member.name, "Stanford Dogs image archive")
         if not path.parts or path.parts[0] != cls.IMAGE_DIRECTORY:
             return None
         if path.suffix.lower() not in {".jpg", ".jpeg"}:
@@ -4008,21 +4614,10 @@ class StanfordDogs(_DinoSizedImageDownloadMixin, Dataset):
             return class_directory_name.replace("_", " ")
         return breed_name.replace("_", " ")
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class RecursiveUnlabeledImageDataset(Dataset):
+class RecursiveUnlabeledImageDataset(ImageListDataset):
     """Load every image below a directory while exposing no semantic labels."""
+
+    UNLABELED = True
 
     def __init__(self, root, transform=None):
         self.root = Path(root)
@@ -4040,21 +4635,15 @@ class RecursiveUnlabeledImageDataset(Dataset):
         self.labels = [-1] * len(self.paths)
         self.orig_labels = list(self.labels)
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(str(self.paths[index]))
-        if self.transform is not None:
-            image = self.transform(image)
-        return image, -1
-
-
-class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
+class CompCarsModelFilteredUnlabeledImageDataset(ImageListDataset):
     """Load a model-balanced CompCars subset while exposing hidden labels."""
 
+    UNLABELED = True
     MODE = "compcars_model_min_count"
     PAPER_LABEL = None
+    # A category is the first CATEGORY_DEPTH directories below image/: make/model here.
+    CATEGORY_DEPTH = 2
+    CATEGORY_UNIT = "model classes"
     STRIPPED_PREFIX_DIRS = {"data", "image", "images", "web", "web-nature", "web_nature"}
     WHOLE_CAR_IMAGE_DIRS = {"image", "images"}
     NON_WHOLE_CAR_DIRS = {
@@ -4120,7 +4709,7 @@ class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
         self.paths = [path for path in discovered_paths if model_keys_by_path[path] in kept_model_key_set]
         if not self.paths:
             diagnostics = (
-                f"Candidate pool: {len(discovered_paths)} images in {len(model_counts)} model classes "
+                f"Candidate pool: {len(discovered_paths)} images in {len(model_counts)} {self.CATEGORY_UNIT} "
                 f"from candidate_source={candidate_source!r}."
             )
             if expected_images is not None and expected_model_classes is not None:
@@ -4144,6 +4733,7 @@ class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
             "mode": self.MODE if mode is None else mode,
             "paper_label": self.PAPER_LABEL if paper_label is None else paper_label,
             "candidate_source": candidate_source,
+            "category_unit": self.CATEGORY_UNIT,
             "min_images_per_model": int(min_images_per_model),
             "requested_min_images_per_model": requested_min_images_per_model,
             "calibrated_min_images_per_model": min_images_per_model != requested_min_images_per_model,
@@ -4188,10 +4778,8 @@ class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
             and relative_parent_parts[0].lower() in cls.STRIPPED_PREFIX_DIRS
         ):
             relative_parent_parts.pop(0)
-        if len(relative_parent_parts) >= 2:
-            return "/".join(relative_parent_parts[:2])
-        if len(relative_parent_parts) == 1:
-            return relative_parent_parts[0]
+        if relative_parent_parts:
+            return "/".join(relative_parent_parts[:cls.CATEGORY_DEPTH])
         raise ValueError(
             "CompCars model filtering requires images to be under model directories, "
             f"but found an image directly under {root}: {image_path}"
@@ -4285,16 +4873,17 @@ class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
             return
 
         paper_label = self.filter_info.get("paper_label") or "paper"
+        unit = self.CATEGORY_UNIT
         raise ValueError(
             f"CompCars {paper_label} paper filter did not reproduce the documented subset: "
-            f"expected {expected_images} images in {expected_model_classes} model classes, "
-            f"got {actual_images} images in {actual_model_classes} model classes. "
+            f"expected {expected_images} images in {expected_model_classes} {unit}, "
+            f"got {actual_images} images in {actual_model_classes} {unit}. "
             f"candidate_source={self.filter_info['candidate_source']!r}, "
             f"min_images_per_model={self.filter_info['min_images_per_model']}, "
             f"candidate pool={self.filter_info['discovered_images']} images in "
-            f"{self.filter_info['discovered_model_classes']} model classes. "
-            "Check that external_unlabeled_dir points to the CompCars web-nature whole-car "
-            f"classification subset used by {paper_label}. "
+            f"{self.filter_info['discovered_model_classes']} {unit}. "
+            "Check that external_unlabeled_dir holds the full CompCars release (all web-nature "
+            f"whole-car images below image/), which {paper_label} filters. "
             f"Nearest count thresholds: {threshold_diagnostics}"
         )
 
@@ -4317,16 +4906,6 @@ class CompCarsModelFilteredUnlabeledImageDataset(Dataset):
         rows.sort(key=lambda row: (row["distance"], row["threshold"]))
         return rows[:limit]
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(str(self.paths[index]))
-        if self.transform is not None:
-            image = self.transform(image)
-        return image, -1
-
-
 class CompCarsSLADEPaperUnlabeledImageDataset(CompCarsModelFilteredUnlabeledImageDataset):
     """Load the CompCars unlabeled pool described by the SLADE paper.
 
@@ -4336,38 +4915,38 @@ class CompCarsSLADEPaperUnlabeledImageDataset(CompCarsModelFilteredUnlabeledImag
     being biased towards minority classes, resulting in 16,537 images
     categorized into 145 classes."
 
-    The paper pins the resulting pool but neither the source subset nor the
-    threshold, and there is no official code release, so this class implements
-    the reading that reproduces those counts:
+    The paper pins the resulting pool but neither the source subset, the
+    category, nor the threshold, and there is no official code release. Of the
+    readings checked against the full release's file list, exactly one
+    reproduces both counts:
 
-    * candidates come from CompCars' official model-level classification split
-      (``train_test_split/classification/{train,test}.txt``), the Part-I subset
-      of 30,955 whole-car web-nature images across 431 car models;
-    * a category is a make/model directory pair, matching "collected at model
-      level" (CompCars annotates make, model and released year);
-    * "unbalanced categories" are the models holding fewer than
-      ``min_images_per_model`` images, which at the default of 100 keeps 145 of
-      the 431 models and 16,537 of the 30,955 images.
+    * candidates are all 136,726 whole-car web-nature images below ``image/``;
+      car parts and the surveillance data never enter;
+    * a category is a ``make/model/released-year`` directory, CompCars' finest
+      model-level grouping (4,446 of them);
+    * "unbalanced categories" are those holding fewer than
+      ``min_images_per_model`` images, which at the default of 100 keeps 145
+      categories (of 144 distinct models) and 16,537 images.
 
-    Because the 100-image threshold is inferred rather than quoted, a local copy
-    that misses the published counts at that threshold is recalibrated to a
-    threshold that hits them exactly (see ``calibrate_min_images_per_model``);
-    set ``calibrate_threshold=False`` to keep the requested threshold verbatim.
+    Neither the Part-I classification split (30,955 images, 431 models) nor
+    make/model categories reach both numbers at any threshold. A copy that misses
+    them at the requested threshold is recalibrated to a threshold that hits them
+    exactly (see ``calibrate_min_images_per_model``); set
+    ``calibrate_threshold=False`` to keep the requested threshold verbatim.
     ``strict_paper_counts`` turns a remaining mismatch into an error instead of
     a diagnostic recorded in ``filter_info``.
     """
 
     MODE = "compcars_slade_paper"
     PAPER_LABEL = "SLADE"
+    CATEGORY_DEPTH = 3
+    CATEGORY_UNIT = "model-year classes"
     PAPER_MIN_IMAGES_PER_MODEL = 100
     PAPER_TARGET_IMAGES = 16537
     PAPER_TARGET_MODEL_CLASSES = 145
-    # CompCars Part-I, the official fine-grained classification split that the
-    # paper's model-level filtering starts from.
-    CLASSIFICATION_SPLIT_IMAGES = 30955
-    CLASSIFICATION_SPLIT_MODEL_CLASSES = 431
-    CLASSIFICATION_SPLIT_DIR_NAMES = {"classification"}
-    CLASSIFICATION_SPLIT_FILE_NAMES = {"train.txt", "test.txt"}
+    # The full release's whole-car web-nature images, before filtering.
+    WEB_NATURE_IMAGES = 136726
+    WEB_NATURE_MODEL_YEAR_CLASSES = 4446
 
     def __init__(
         self,
@@ -4390,121 +4969,19 @@ class CompCarsSLADEPaperUnlabeledImageDataset(CompCarsModelFilteredUnlabeledImag
             expected_model_classes=self.PAPER_TARGET_MODEL_CLASSES,
             strict_expected_counts=strict_paper_counts,
             calibrate_to_expected_counts=calibrate_threshold,
-            expected_candidate_images=(
-                self.CLASSIFICATION_SPLIT_IMAGES
-                if candidate_source == "classification_split_files"
-                else None
-            ),
-            expected_candidate_model_classes=(
-                self.CLASSIFICATION_SPLIT_MODEL_CLASSES
-                if candidate_source == "classification_split_files"
-                else None
-            ),
+            expected_candidate_images=self.WEB_NATURE_IMAGES,
+            expected_candidate_model_classes=self.WEB_NATURE_MODEL_YEAR_CLASSES,
             paper_label=self.PAPER_LABEL,
         )
 
     @classmethod
     def discover_paper_candidate_paths(cls, root):
-        split_paths = cls.discover_classification_split_paths(root)
-        if split_paths:
-            return split_paths, "classification_split_files"
-
-        # Without the official split files the closest approximation is every
-        # whole-car web-nature image, which covers all 1,716 models rather than
-        # the 431 of Part-I; the count check then reports the difference.
         whole_car_paths = [
             path
             for path in cls.discover_image_paths(root)
             if cls.is_whole_car_image_path(root, path)
         ]
-        return whole_car_paths, "recursive_whole_car_images"
-
-    @classmethod
-    def discover_classification_split_paths(cls, root):
-        split_files = cls.find_classification_split_files(root)
-        image_paths = []
-        seen_paths = set()
-        for split_file in split_files:
-            for image_path in cls.read_split_file_image_paths(root, split_file):
-                if image_path not in seen_paths:
-                    image_paths.append(image_path)
-                    seen_paths.add(image_path)
-        return sorted(image_paths)
-
-    @classmethod
-    def find_classification_split_files(cls, root):
-        """Return the official classification split lists, else any classification list."""
-
-        text_files = sorted(root.rglob("*.txt"))
-        official_split_files = [
-            path
-            for path in text_files
-            if path.parent.name.lower() in cls.CLASSIFICATION_SPLIT_DIR_NAMES
-            and path.name.lower() in cls.CLASSIFICATION_SPLIT_FILE_NAMES
-        ]
-        if official_split_files:
-            return official_split_files
-        return [
-            path
-            for path in text_files
-            if any("classification" in part.lower() for part in path.parts)
-        ]
-
-    @classmethod
-    def read_split_file_image_paths(cls, root, split_file):
-        paths = []
-        image_roots = cls.split_file_image_roots(root, split_file)
-        for line in split_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-            token = cls.first_image_token(line)
-            if token is None:
-                continue
-            resolved = cls.resolve_split_image_path(image_roots, token)
-            if resolved is not None:
-                paths.append(resolved)
-        return paths
-
-    @classmethod
-    def split_file_image_roots(cls, root, split_file):
-        """Return the directories a split-file entry can be relative to.
-
-        CompCars lists entries relative to ``image/`` inside the release root,
-        so the release root is derived from the split file itself
-        (``<release>/train_test_split/classification/train.txt``) to keep the
-        lookup working when ``external_unlabeled_dir`` points above or below it.
-        """
-
-        bases = [root, root / "data"]
-        release_root = split_file.parent.parent.parent
-        # Only trust the derived release root while it stays below the
-        # configured root, so entries never resolve outside the pool directory.
-        if release_root.is_dir() and (release_root == root or root in release_root.parents):
-            bases.insert(0, release_root)
-        image_roots = []
-        for base in bases:
-            for image_dir in ("image", "images", None):
-                candidate = base if image_dir is None else base / image_dir
-                if candidate not in image_roots:
-                    image_roots.append(candidate)
-        return image_roots
-
-    @classmethod
-    def first_image_token(cls, line):
-        extensions = {extension.lower() for extension in IMG_EXTENSIONS}
-        for token in line.split():
-            cleaned = token.strip().strip(",;")
-            suffix = Path(cleaned.replace("\\", "/")).suffix.lower()
-            if suffix in extensions:
-                return cleaned
-        return None
-
-    @classmethod
-    def resolve_split_image_path(cls, image_roots, token):
-        relative_path = Path(token.replace("\\", "/"))
-        for image_root in image_roots:
-            candidate = image_root / relative_path
-            if candidate.is_file():
-                return candidate
-        return None
+        return whole_car_paths, "web_nature_whole_car_images"
 
     @classmethod
     def is_whole_car_image_path(cls, root, image_path):
@@ -4515,19 +4992,6 @@ class CompCarsSLADEPaperUnlabeledImageDataset(CompCarsModelFilteredUnlabeledImag
             Path(root).name.lower() in cls.WHOLE_CAR_IMAGE_DIRS
             or any(part in cls.WHOLE_CAR_IMAGE_DIRS for part in path_parts)
         )
-
-
-class CompCarsSTMLPaperUnlabeledImageDataset(CompCarsSLADEPaperUnlabeledImageDataset):
-    """Load the CompCars unlabeled subset used by STML, which is SLADE's subset.
-
-    STML (Kim et al., CVPR 2022) states that it "directly adopt[s] the
-    evaluation protocol of SLADE", including the {Cars, CompCars} pairing, so
-    this only relabels :class:`CompCarsSLADEPaperUnlabeledImageDataset` for
-    configs that name the STML filter.
-    """
-
-    MODE = "compcars_stml_paper"
-    PAPER_LABEL = "STML"
 
 
 class _NABirdsMetadataMixin:
@@ -4620,8 +5084,7 @@ class _NABirdsMetadataMixin:
         return self.dataset_root / "images" / relative_path
 
 
-
-class NABirdsUnlabeledImageDataset(_NABirdsMetadataMixin, Dataset):
+class NABirdsUnlabeledImageDataset(_NABirdsMetadataMixin, ImageListDataset):
     """Load every official NABirds image while keeping its annotations hidden.
 
     NABirds is used as the additional unlabeled bird collection for CUB in the
@@ -4631,6 +5094,7 @@ class NABirdsUnlabeledImageDataset(_NABirdsMetadataMixin, Dataset):
     """
 
     MODE = "nabirds"
+    UNLABELED = True
 
     def __init__(self, root, transform=None):
         self.root = Path(root)
@@ -4695,17 +5159,7 @@ class NABirdsUnlabeledImageDataset(_NABirdsMetadataMixin, Dataset):
             "metadata_class_count": int(len(class_names)),
         }
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(str(self.paths[index]))
-        if self.transform is not None:
-            image = self.transform(image)
-        return image, -1
-
-
-class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, Dataset):
+class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, ImageListDataset):
     """NABirds with a hierarchy-aware class-disjoint DML split.
 
     The official ``train_test_split.txt`` puts every visual category on both
@@ -4882,13 +5336,7 @@ class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, Dataset):
             self.class_to_label[class_id] for class_id in test_source_ids
         )
         development_set = set(development_classes)
-        test_set = set(test_classes)
-        if split == "train":
-            selected_classes = development_set
-        elif split == "test":
-            selected_classes = test_set
-        else:
-            selected_classes = development_set | test_set
+        selected_classes = select_class_split(split, development_classes, test_classes)
 
         ordered_image_ids = sorted(image_names)
         records = []
@@ -4987,23 +5435,11 @@ class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, Dataset):
         still has work to do.
         """
 
-        root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        if not marker_path.is_file():
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-            class_count = int(marker["class_count"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count == cls.EXPECTED_IMAGE_COUNT
-            and class_count == cls.EXPECTED_CLASS_COUNT
-            and cls.is_ready(root)
-        )
+        return cls._marker_matches(
+            root,
+            image_count=cls.EXPECTED_IMAGE_COUNT,
+            class_count=cls.EXPECTED_CLASS_COUNT,
+        ) and cls.is_ready(root)
 
     @classmethod
     def download_224(cls, root, source=None):
@@ -5299,58 +5735,31 @@ class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, Dataset):
                 "NABirds cannot resize a directory into itself; this would "
                 f"overwrite the full resolution images in {source}"
             )
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(image_names),
-            desc="Saving 224x224 NABirds images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            for image_name in image_names.values():
-                relative_path = self._relative_image_path(image_name)
-                source_path = source / "images" / Path(*relative_path.parts)
-                if not source_path.is_file():
-                    raise RuntimeError(f"NABirds source is missing {source_path}")
-                destination = self.root / "images" / Path(*relative_path.parts)
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
-                else:
-                    with source_path.open("rb") as image_source:
-                        self._resize_image_to_destination(image_source, destination)
-                    written_images += 1
-                progress.update(1)
-        return {"written_images": written_images, "reused_images": reused_images}
+        return self._resize_files(
+            (
+                (source / "images" / relative_path, self.root / "images" / relative_path)
+                for relative_path in map(self._relative_image_path, image_names.values())
+            ),
+            len(image_names),
+            "Saving 224x224 NABirds images",
+            "NABirds",
+        )
 
     def _resize_from_zip(self, archive_path, prefix, image_names):
-        written_images = 0
-        reused_images = 0
         with zipfile.ZipFile(archive_path, "r") as archive:
-            archive_members = set(archive.namelist())
-            with tqdm(
-                total=len(image_names),
-                desc="Saving 224x224 NABirds images",
-                unit="image",
-                disable=None,
-            ) as progress:
-                for image_name in image_names.values():
-                    relative_path = self._relative_image_path(image_name)
-                    member = (prefix / "images" / relative_path).as_posix()
-                    if member not in archive_members:
-                        raise RuntimeError(
-                            f"NABirds archive is missing {member!r}"
-                        )
-                    destination = self.root / "images" / Path(*relative_path.parts)
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        with archive.open(member, "r") as image_source:
-                            self._resize_image_to_destination(
-                                image_source, destination
-                            )
-                        written_images += 1
-                    progress.update(1)
-        return {"written_images": written_images, "reused_images": reused_images}
+            return self._resize_zip_members(
+                archive,
+                (
+                    (
+                        (prefix / "images" / relative_path).as_posix(),
+                        self.root / "images" / relative_path,
+                    )
+                    for relative_path in map(self._relative_image_path, image_names.values())
+                ),
+                len(image_names),
+                "Saving 224x224 NABirds images",
+                "NABirds",
+            )
 
     @classmethod
     def _read_hierarchy(cls, path):
@@ -5483,20 +5892,7 @@ class NABirds(_NABirdsMetadataMixin, _DinoSizedImageDownloadMixin, Dataset):
         test_parents = {parents[class_id] for class_id in test_class_ids}
         return sorted(development_parents & test_parents)
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class VehicleID(_DinoSizedImageDownloadMixin, Dataset):
+class VehicleID(_DinoSizedImageDownloadMixin, ImageListDataset):
     """PKU VehicleID on its official identity-disjoint retrieval protocol.
 
     A class here is one *vehicle*, not one model, and the official
@@ -5802,21 +6198,7 @@ class VehicleID(_DinoSizedImageDownloadMixin, Dataset):
     def is_224_complete(cls, root):
         """Whether :meth:`download_224` finished writing this root."""
 
-        root = Path(root)
-        marker_path = root / cls.COMPLETE_MARKER
-        if not marker_path.is_file():
-            return False
-        try:
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            image_size = tuple(int(value) for value in marker["image_size"])
-            image_count = int(marker["image_count"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
-            return False
-        return (
-            image_size == cls.TARGET_IMAGE_SIZE
-            and image_count > 0
-            and cls.is_ready(root)
-        )
+        return cls._marker_image_count(root) > 0 and cls.is_ready(root)
 
     @classmethod
     def download_224(cls, root, source=None):
@@ -6061,73 +6443,36 @@ class VehicleID(_DinoSizedImageDownloadMixin, Dataset):
                 "VehicleID cannot resize a directory into itself; this would "
                 f"overwrite the full resolution images in {source}"
             )
-        written_images = 0
-        reused_images = 0
-        with tqdm(
-            total=len(image_ids),
-            desc="Saving 224x224 VehicleID images",
-            unit="image",
-            disable=None,
-        ) as progress:
-            for image_id in image_ids:
-                filename = self.image_filename(image_id)
-                source_path = source / self.IMAGE_DIRECTORY / filename
-                if not source_path.is_file():
-                    raise RuntimeError(f"VehicleID source is missing {source_path}")
-                destination = self.root / self.IMAGE_DIRECTORY / filename
-                if self._is_target_sized_image(destination):
-                    reused_images += 1
-                else:
-                    with source_path.open("rb") as image_source:
-                        self._resize_image_to_destination(image_source, destination)
-                    written_images += 1
-                progress.update(1)
-        return {"written_images": written_images, "reused_images": reused_images}
+        return self._resize_files(
+            (
+                (
+                    source / self.IMAGE_DIRECTORY / self.image_filename(image_id),
+                    self.root / self.IMAGE_DIRECTORY / self.image_filename(image_id),
+                )
+                for image_id in image_ids
+            ),
+            len(image_ids),
+            "Saving 224x224 VehicleID images",
+            "VehicleID",
+        )
 
     def _resize_from_zip(self, archive_path, prefix, image_ids):
-        written_images = 0
-        reused_images = 0
         with zipfile.ZipFile(archive_path, "r") as archive:
-            archive_members = set(archive.namelist())
-            with tqdm(
-                total=len(image_ids),
-                desc="Saving 224x224 VehicleID images",
-                unit="image",
-                disable=None,
-            ) as progress:
-                for image_id in image_ids:
-                    filename = self.image_filename(image_id)
-                    member = (prefix / self.IMAGE_DIRECTORY / filename).as_posix()
-                    if member not in archive_members:
-                        raise RuntimeError(
-                            f"VehicleID archive is missing {member!r}"
-                        )
-                    destination = self.root / self.IMAGE_DIRECTORY / filename
-                    if self._is_target_sized_image(destination):
-                        reused_images += 1
-                    else:
-                        with archive.open(member, "r") as image_source:
-                            self._resize_image_to_destination(
-                                image_source, destination
-                            )
-                        written_images += 1
-                    progress.update(1)
-        return {"written_images": written_images, "reused_images": reused_images}
+            return self._resize_zip_members(
+                archive,
+                (
+                    (
+                        (prefix / self.IMAGE_DIRECTORY / self.image_filename(image_id)).as_posix(),
+                        self.root / self.IMAGE_DIRECTORY / self.image_filename(image_id),
+                    )
+                    for image_id in image_ids
+                ),
+                len(image_ids),
+                "Saving 224x224 VehicleID images",
+                "VehicleID",
+            )
 
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
-class DeepFashionInShop(Dataset):
+class DeepFashionInShop(ImageListDataset):
     """DeepFashion In-shop Clothes Retrieval dataset.
 
     Expected local layout is the official benchmark directory under ``root``:
@@ -6307,19 +6652,6 @@ class DeepFashionInShop(Dataset):
                 return candidate
         return candidates[0]
 
-    def __len__(self):
-        return len(self.records)
-
-    def __getitem__(self, index):
-        image = default_loader(self.paths[index])
-        label = self.labels[index]
-        if self.transform is not None:
-            image = self.transform(image)
-        if self.target_transform is not None:
-            label = self.target_transform(label)
-        return image, label
-
-
 ### Standford neu erstellen, da auf Windows bspw. kein im Link erlaubt ist
 class StanfordOnlineProducts(_DinoSizedImageDownloadMixin, _StanfordOnlineProducts):
     """Stanford Online Products with a readiness-driven download.
@@ -6392,29 +6724,13 @@ class StanfordOnlineProducts(_DinoSizedImageDownloadMixin, _StanfordOnlineProduc
     def _download_archive(self, destination):
         # Drive serves an HTML interstitial instead of the archive once the
         # file exceeds its daily quota, and it answers with 200 either way.
-        with self._open_url(self.DOWNLOAD_URL) as response:
-            content_length = response.headers.get("Content-Length")
-            expected_bytes = int(content_length) if content_length else None
-            with self._byte_progress(response, "Stanford Online Products") as progress:
-                with destination.open("wb") as output:
-                    while chunk := response.read(1024 * 1024):
-                        output.write(chunk)
-                        progress.update(len(chunk))
-
-        downloaded_bytes = destination.stat().st_size
-        if expected_bytes is not None and downloaded_bytes != expected_bytes:
-            raise RuntimeError(
-                f"The Stanford Online Products download stopped after "
-                f"{downloaded_bytes} of {expected_bytes} bytes"
-            )
-        with destination.open("rb") as archive:
-            magic = archive.read(len(self.ZIP_MAGIC))
-        if magic != self.ZIP_MAGIC:
-            raise RuntimeError(
-                f"{self.DOWNLOAD_URL} returned {downloaded_bytes} bytes that are "
-                "not a zip archive; Google Drive most likely served a quota or "
-                "virus-scan page instead of the dataset"
-            )
+        self._download_checked_archive(
+            destination,
+            "Stanford Online Products",
+            self.ZIP_MAGIC,
+            "zip",
+            "Google Drive most likely served a quota or virus-scan page",
+        )
 
 
 class CUB(_DinoSizedImageDownloadMixin, _CUB):
@@ -6552,26 +6868,10 @@ class CUB(_DinoSizedImageDownloadMixin, _CUB):
     def _download_archive(self, destination):
         # Caltech's CDN serves a 403 page to urllib's default user agent, which
         # is what the inherited downloader sends; _open_url names this project.
-        with self._open_url(self.DOWNLOAD_URL) as response:
-            content_length = response.headers.get("Content-Length")
-            expected_bytes = int(content_length) if content_length else None
-            with self._byte_progress(response, "CUB-200-2011") as progress:
-                with destination.open("wb") as output:
-                    while chunk := response.read(1024 * 1024):
-                        output.write(chunk)
-                        progress.update(len(chunk))
-
-        downloaded_bytes = destination.stat().st_size
-        if expected_bytes is not None and downloaded_bytes != expected_bytes:
-            raise RuntimeError(
-                f"The CUB-200-2011 download stopped after {downloaded_bytes} "
-                f"of {expected_bytes} bytes"
-            )
-        with destination.open("rb") as archive:
-            magic = archive.read(len(self.GZIP_MAGIC))
-        if magic != self.GZIP_MAGIC:
-            raise RuntimeError(
-                f"{self.DOWNLOAD_URL} returned {downloaded_bytes} bytes that "
-                "are not a gzip archive; Caltech most likely served an error "
-                "page instead of the dataset"
-            )
+        self._download_checked_archive(
+            destination,
+            "CUB-200-2011",
+            self.GZIP_MAGIC,
+            "gzip",
+            "Caltech most likely served an error page",
+        )

@@ -9,6 +9,7 @@ import math
 import multiprocessing as mp
 import pickle
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -20,11 +21,12 @@ from loguru import logger
 import utils
 from models.retrieval_model import BACKBONE_TUNING_FROZEN
 
-from . import ablation, semi_supervised
+from . import ablation, epoch_tracking, semi_supervised
 from .cli import (
     FINAL_TEST_VISUALIZATION_NONE,
     get_hparam_seed,
     get_support_seed,
+    load_args_ssl_config,
     normalize_backbone_tuning_args,
     resolve_scheduler_batch_device,
 )
@@ -34,7 +36,6 @@ from .engine import (
     get_frozen_feature_cache_max_bytes,
     get_image_resize_mode,
     get_loss_class,
-    resolve_loss_driven_supervised_args,
     resolve_mode_ssl_config,
     run_experiment,
     uses_ssl_warmup_objective,
@@ -54,7 +55,6 @@ from .types import (
     HParamStudyResult,
     JOINT_COMPONENT_HPARAM_PREFIX,
     JOINT_HPARAM_PREFIX,
-    JOINT_STML_IN_BATCH_HPARAM_KEY,
     JOINT_TWO_STREAM_HPARAM_KEY,
     LABELED_BATCH_FRACTION_HPARAM_ALIASES,
     LABELED_BATCH_FRACTION_HPARAM_KEY,
@@ -62,9 +62,6 @@ from .types import (
     LABELED_BATCH_SIZE_HPARAM_KEYS,
     MAX_LABELED_BATCH_FRACTION,
     LOSS_HPARAM_PREFIX,
-    STML_IN_BATCH_HPARAM_KEYS,
-    STML_IN_BATCH_ONLY_HPARAM_KEYS,
-    STML_MERGED_INERT_HPARAM_KEYS,
     MERGED_HPARAM_CONFIG_KEYS,
     MINER_HPARAM_PREFIX,
     OBJECTIVE_METRICS,
@@ -381,6 +378,18 @@ def validate_hparam_config(config, path=None):
         raise ValueError(f"pruner_params must be an object{source}")
     if not isinstance(config.retry_failed_trials, bool):
         raise ValueError(f"retry_failed_trials must be true or false{source}")
+    if config.max_replaced_pruned_trials is not None:
+        if (
+            isinstance(config.max_replaced_pruned_trials, bool)
+            or not isinstance(config.max_replaced_pruned_trials, int)
+            or config.max_replaced_pruned_trials < 0
+        ):
+            raise ValueError(f"max_replaced_pruned_trials must be a non-negative integer{source}")
+        if config.sampler == "grid" and config.max_replaced_pruned_trials != 0:
+            raise ValueError(
+                "max_replaced_pruned_trials does not apply to sampler 'grid': a pruned grid "
+                f"point counts as visited, so a replacement would rerun another point{source}"
+            )
     if not isinstance(config.spaces, dict) or not config.spaces:
         raise ValueError(f"spaces must be a non-empty object{source}")
     if BATCH_SAMPLER_HPARAM_KEY in config.spaces and {"batch_size", "sampler_m"} & set(config.spaces):
@@ -618,7 +627,6 @@ def derive_labeled_batch_size_from_fraction(batch_size, sampler_m, fraction, sou
 def run_hparam_search(args, config):
     """Create or resume an Optuna study and execute its remaining trials."""
 
-    args = resolve_loss_driven_supervised_args(args)
     config = apply_per_loss_hparam_config(args, config)
     config = filter_component_hparam_config(args, config)
     config = filter_loss_dependent_hparam_config(args, config)
@@ -826,6 +834,11 @@ def run_hparam_search(args, config):
         # may opt in, but validation metrics remain the usual objective.
         trial_args.evaluate_test = not bool(getattr(args, "skip_test_during_hpo", False))
         trial_args.final_test_visualization = FINAL_TEST_VISUALIZATION_NONE
+        # Hundreds of trials would each pay for the extra embedding passes, and a
+        # per-epoch test number sitting in every trial's directory is an
+        # invitation to select on it. Structure is tracked on the replay instead.
+        trial_args.track_epoch_artifacts = epoch_tracking.TRACK_EPOCH_NONE
+        trial_args.track_epoch_interval = None
         trial_args.save_dir = relative_study_dir / f"trial_{trial.number:04d}"
 
         # User attributes make the persistent trial self-describing without
@@ -941,34 +954,56 @@ def run_hparam_search(args, config):
             )
         return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
-    # Completed and pruned trials consume the target HPO budget. Failed trials
-    # stay in the study history but do not advance the saved sampler, so resume
-    # appends replacements for them.
-    budget_trials = count_hpo_budget_trials(optuna, study)
-    remaining_trials = config.n_trials - budget_trials
-    optimize_trials = remaining_trials
+    # n_trials counts completed trials; pruned trials are replaced up to
+    # max_replaced_pruned_trials. Failed trials stay in the study history but do
+    # not advance the saved sampler, so resume appends replacements for them.
+    remaining_trials = get_remaining_hpo_trials(optuna, study, config)
     logger.info(
         f"Starting Optuna study outputs in {study_dir}. "
-        f"Budget trials: {budget_trials}/{config.n_trials}. "
+        f"Completed trials: {count_completed_hpo_trials(optuna, study)}/{config.n_trials}. "
+        f"Pruned trials: {count_pruned_hpo_trials(optuna, study)} "
+        f"(replaced up to {resolve_max_replaced_pruned_trials(config)}). "
         f"Recovered unfinished trials: {len(recovered_trials)}. "
         f"Replayed sampler trials: {replayed_trials}. "
         f"Resynced sampler trials: {resynced_trials}. "
-        f"Remaining this run: {max(optimize_trials, 0)}. "
+        f"Remaining this run: {remaining_trials}. "
         f"Parallel jobs: {config.n_jobs}."
     )
-    if optimize_trials <= 0:
+    if remaining_trials <= 0:
         write_trials_summary(study, trials_csv, trials_jsonl)
-        logger.info(f"Optuna study already has {budget_trials} budget-counting trials; no new trials requested.")
+        warn_if_pruned_trial_limit_reached(optuna, study, config)
+        logger.info("Optuna study has no trials left to run; no new trials requested.")
         return make_hparam_study_result(study, study_name, study_dir, trials_csv, trials_jsonl)
 
-    study.optimize(
-        objective,
-        n_trials=optimize_trials,
-        timeout=config.timeout,
-        n_jobs=config.n_jobs,
-        callbacks=[record_trial],
-        gc_after_trial=True,
-    )
+    # Optuna's n_trials counts every trial it starts, pruned ones included, so
+    # replacing a trial pruned in this run takes another optimize call. Each
+    # call asks only for the trials still missing, so no call overshoots.
+    deadline = None if config.timeout is None else time.monotonic() + config.timeout
+    while remaining_trials > 0:
+        round_timeout = None
+        if deadline is not None:
+            round_timeout = deadline - time.monotonic()
+            if round_timeout <= 0:
+                break
+        finished_before = count_hpo_budget_trials(optuna, study)
+        study.optimize(
+            objective,
+            n_trials=remaining_trials,
+            timeout=round_timeout,
+            n_jobs=config.n_jobs,
+            callbacks=[record_trial],
+            gc_after_trial=True,
+        )
+        if count_hpo_budget_trials(optuna, study) == finished_before:
+            # The timeout expired or the sampler stopped the study first.
+            break
+        remaining_trials = get_remaining_hpo_trials(optuna, study, config)
+        if remaining_trials > 0:
+            logger.info(
+                f"{count_pruned_hpo_trials(optuna, study)} HPO trial(s) pruned so far; "
+                f"running {remaining_trials} more to reach {config.n_trials} completed trials."
+            )
+    warn_if_pruned_trial_limit_reached(optuna, study, config)
     write_trials_summary(study, trials_csv, trials_jsonl)
     if any(trial.state.name == "COMPLETE" for trial in study.trials):
         logger.info(f"Best trial: {study.best_trial.number}, value={study.best_value}, params={study.best_trial.params}")
@@ -1264,7 +1299,54 @@ def get_fixed_param_names(trial):
     return set()
 
 def count_hpo_budget_trials(optuna, study):
+    # Trials the sampler has consumed. Optuna's TPE counts completed and pruned
+    # trials toward n_startup_trials, so the startup boundary does too; the
+    # n_trials target counts completed trials only (get_remaining_hpo_trials).
     return sum(trial_counts_toward_hpo_budget(optuna, trial) for trial in study.trials)
+
+def count_completed_hpo_trials(optuna, study):
+    return sum(trial.state == optuna.trial.TrialState.COMPLETE for trial in study.trials)
+
+def count_pruned_hpo_trials(optuna, study):
+    return sum(trial.state == optuna.trial.TrialState.PRUNED for trial in study.trials)
+
+def resolve_max_replaced_pruned_trials(config):
+    # A grid visits each point once. A pruned point is visited, and asking for
+    # a replacement would rerun some other point, so pruned grid trials keep
+    # consuming n_trials.
+    if config.sampler == "grid":
+        return 0
+    if config.max_replaced_pruned_trials is None:
+        return config.n_trials
+    return config.max_replaced_pruned_trials
+
+def get_remaining_hpo_trials(optuna, study, config):
+    """Trials still to run so the study reaches n_trials completed trials.
+
+    The first max_replaced_pruned_trials pruned trials are replaced; any beyond
+    that count toward n_trials, so a region that always prunes cannot draw
+    replacements forever. The study never holds more than n_trials plus that
+    allowance of completed and pruned trials.
+    """
+
+    completed = count_completed_hpo_trials(optuna, study)
+    pruned = count_pruned_hpo_trials(optuna, study)
+    excess_pruned = max(0, pruned - resolve_max_replaced_pruned_trials(config))
+    return max(0, config.n_trials - completed - excess_pruned)
+
+def warn_if_pruned_trial_limit_reached(optuna, study, config):
+    if config.sampler == "grid":
+        return
+    completed = count_completed_hpo_trials(optuna, study)
+    pruned = count_pruned_hpo_trials(optuna, study)
+    max_replaced = resolve_max_replaced_pruned_trials(config)
+    if completed < config.n_trials and pruned > max_replaced:
+        logger.warning(
+            f"Optuna study stopped at {completed}/{config.n_trials} completed trials: "
+            f"{pruned} trial(s) were pruned and max_replaced_pruned_trials={max_replaced} "
+            "of them are replaced. Check the pruning reasons in trials.csv before "
+            "raising the limit."
+        )
 
 def maybe_save_tpe_transition_sampler(
     optuna,
@@ -1626,11 +1708,7 @@ def make_args_and_ssl_config_from_params(base_args, params):
             )
         )
 
-    ssl_config = semi_supervised.load_ssl_config(
-        trial_args.ssl_config,
-        default_seed=trial_args.seed,
-        default_support_seed=get_support_seed(trial_args),
-    )
+    ssl_config = load_args_ssl_config(trial_args)
     if ssl_overrides:
         # Convert the immutable dataclass to a mutable dictionary, apply nested
         # overrides, and then rebuild/validate a new dataclass instance.
@@ -1644,7 +1722,6 @@ def make_args_and_ssl_config_from_params(base_args, params):
         semi_supervised.validate_ssl_config(ssl_config)
 
     ssl_config = resolve_mode_ssl_config(trial_args, ssl_config)
-    trial_args = resolve_loss_driven_supervised_args(trial_args)
     resolve_scheduler_batch_device(trial_args, ssl_config)
     trial_args = resolve_hpo_warmup_objective(trial_args, ssl_config)
 
@@ -1754,11 +1831,10 @@ def resolve_hpo_warmup_objective(args, ssl_config):
 
     This runs after component hyperparameters have been applied, so the warmup
     receives the selected loss/miner names and the exact tuned constructor
-    parameters. Loss-driven STML is the sole exception: its unsupervised
-    multi-view objective cannot run on the labeled-only warmup batches.
+    parameters.
     """
 
-    if not uses_ssl_warmup_objective(ssl_config) or args.loss == "STMLLoss":
+    if not uses_ssl_warmup_objective(ssl_config):
         return args
 
     resolved = copy.deepcopy(args)
@@ -1905,11 +1981,7 @@ def filter_slade_contrastive_spaces(args, config):
         )
         return config
 
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     regularizer_params = dict(ssl_config.method_params.get("regularizer_params") or {})
     mode = str(regularizer_params.get("unlabeled_ranking_loss", "supervised"))
     if mode == "contrastive":
@@ -1960,11 +2032,7 @@ def filter_lrml_contrastive_spaces(args, config):
         )
         return config
 
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     regularizer_params = dict(ssl_config.method_params.get("regularizer_params") or {})
     if bool(regularizer_params.get("contrastive", False)):
         return config
@@ -2016,11 +2084,7 @@ def make_backbone_tuning_spaces_aware(args, config):
 def make_sampler_spaces_k_shot_aware(args, config):
     """Remove sampler choices that would repeat examples within a k-shot class."""
 
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     if ssl_config.label_sampling_mode != "class_subset_k_shot" or ssl_config.labeled_per_class is None:
         return config
 
@@ -2074,13 +2138,8 @@ def make_sampler_spaces_k_shot_aware(args, config):
 def make_sampler_spaces_label_budget_aware(args, config, training_label_sets_factory=None):
     """Constrain sampler spaces by two-stream quotas and labeled-data capacity."""
 
-    ssl_config = semi_supervised.load_ssl_config(
-        args.ssl_config,
-        default_seed=args.seed,
-        default_support_seed=get_support_seed(args),
-    )
+    ssl_config = load_args_ssl_config(args)
     config = make_two_stream_sampler_spaces_constraint_aware(args, config, ssl_config)
-    config = make_stml_in_batch_spaces_constraint_aware(args, config, ssl_config)
     capacity_space = get_sampler_capacity_space(args, config, ssl_config)
     if capacity_space is None:
         return config
@@ -2133,11 +2192,7 @@ def make_two_stream_sampler_spaces_constraint_aware(args, config, ssl_config=Non
     if getattr(args, "mode", None) != "ssl":
         return config
     if ssl_config is None:
-        ssl_config = semi_supervised.load_ssl_config(
-            args.ssl_config,
-            default_seed=args.seed,
-            default_support_seed=get_support_seed(args),
-        )
+        ssl_config = load_args_ssl_config(args)
 
     spaces = dict(config.spaces)
     labeled_keys = sorted(set(spaces) & LABELED_BATCH_SIZE_HPARAM_KEYS)
@@ -2314,172 +2369,6 @@ def make_labeled_batch_fraction_spaces_constraint_aware(
         return replace(config, spaces=spaces)
     return config
 
-def make_stml_in_batch_spaces_constraint_aware(args, config, ssl_config):
-    """Search only sampler/graph combinations the in-batch STML mode can run.
-
-    The per-step mode ties four knobs together: the graph's labeled rows come out
-    of the supervised batch, and its unlabeled stream is filled with whole
-    neighbor groups. Searching them independently would hand Optuna combinations
-    that fail at ``validate_run_args`` and lose the trial, so the searched
-    dimensions collapse into one joint categorical space of valid tuples -- the
-    same treatment ``labeled_batch_size`` gets for the two-stream sampler.
-    """
-
-    if ssl_config.method != "stml_threshold":
-        return config
-    if ssl_config.graph_batch_mode == "in_batch_merged":
-        return drop_merged_inert_stml_spaces(config)
-    if ssl_config.graph_batch_mode != "in_batch":
-        return drop_in_batch_only_stml_spaces(config)
-
-    spaces = dict(config.spaces)
-    labeled_spec = spaces.get("ssl_config.graph_labeled_batch_size")
-    if labeled_spec is not None and None in get_categorical_choices(labeled_spec):
-        # A null here reads as "do not subsample the labeled rows", which this
-        # mode cannot express: it always adds its term on top of the engine's
-        # supervised loss, so the labeled rows would still be counted twice.
-        raise ValueError(
-            "'ssl_config.graph_labeled_batch_size' cannot be null under "
-            "graph_batch_mode='in_batch'. Use graph_batch_mode='in_batch_merged' to put the "
-            "whole supervised batch in the graph and run a single loss over it."
-        )
-    searched_keys = [
-        name
-        for name in (BATCH_SAMPLER_HPARAM_KEY, *STML_IN_BATCH_HPARAM_KEYS)
-        if name in spaces
-    ]
-    if not searched_keys:
-        return config
-
-    method_params = dict(ssl_config.method_params)
-    fixed_values = {
-        BATCH_SAMPLER_HPARAM_KEY: f"{int(args.batch_size)}:{int(args.sampler_m)}",
-        "ssl_config.graph_labeled_batch_size": ssl_config.graph_labeled_batch_size,
-        "ssl_config.graph_unlabeled_batch_size": ssl_config.graph_unlabeled_batch_size,
-        "ssl_config.method_params.n_neighbors": method_params.get("n_neighbors"),
-    }
-    choices_by_key = {
-        name: (
-            list(get_categorical_choices(spaces[name]))
-            if name in spaces
-            else [fixed_values[name]]
-        )
-        for name in fixed_values
-    }
-
-    valid_combinations = [
-        combination
-        for combination in (
-            dict(zip(choices_by_key, values))
-            for values in itertools.product(*choices_by_key.values())
-        )
-        if stml_in_batch_combination_is_valid(args, ssl_config, combination)
-    ]
-    combination_count = int(np.prod([len(values) for values in choices_by_key.values()]))
-    if not valid_combinations:
-        raise ValueError(
-            "No valid in-batch STML sampler/graph HPO combinations remain. "
-            "graph_labeled_batch_size must fit inside batch_size and "
-            "graph_unlabeled_batch_size must be divisible by method_params.n_neighbors; "
-            f"searched {sorted(searched_keys)}."
-        )
-
-    if len(searched_keys) == 1:
-        # One searched dimension needs no joint space, only a pruned one.
-        searched_key = searched_keys[0]
-        retained = list(
-            dict.fromkeys(combination[searched_key] for combination in valid_combinations)
-        )
-        spaces[searched_key] = replace_categorical_choices_for_label_budget(
-            spaces[searched_key],
-            retained,
-        )
-    else:
-        for name in searched_keys:
-            del spaces[name]
-        spaces[JOINT_STML_IN_BATCH_HPARAM_KEY] = [
-            serialize_joint_component_params(
-                {name: combination[name] for name in searched_keys}
-            )
-            for combination in valid_combinations
-        ]
-
-    excluded_count = combination_count - len(valid_combinations)
-    if excluded_count:
-        logger.info(
-            f"Excluded {excluded_count} of {combination_count} in-batch STML sampler/graph HPO "
-            f"combinations; retained {len(valid_combinations)} where the graph fits the batch "
-            "and the unlabeled stream divides into whole neighbor groups."
-        )
-    return replace(config, spaces=spaces)
-
-
-def drop_merged_inert_stml_spaces(config):
-    """Remove dimensions the merged in-batch mode ignores.
-
-    Unlike the two-term mode, nothing here needs a joint space: the graph takes
-    the supervised batch whole, so ``batch_sampler`` is unconstrained, and the
-    uniform unlabeled stream has no group size to divide by. What is left is a
-    plain independent search over ``batch_sampler`` and
-    ``graph_unlabeled_batch_size``.
-    """
-
-    removed = sorted(set(config.spaces) & set(STML_MERGED_INERT_HPARAM_KEYS))
-    if not removed:
-        return config
-    spaces = {name: spec for name, spec in config.spaces.items() if name not in removed}
-    logger.info(
-        f"Excluded {removed} from HPO because graph_batch_mode='in_batch_merged' puts the whole "
-        "supervised batch in the graph, draws the unlabeled rows uniformly, and runs a single "
-        "weighted loss."
-    )
-    return replace(config, spaces=spaces)
-
-
-def drop_in_batch_only_stml_spaces(config):
-    """Remove graph-size spaces the pool-wide STML mode never reads.
-
-    One study config can then cover both modes: the in-batch mode constrains
-    these against the batch, and the pool-wide mode drops them instead of
-    spending trials on dimensions that change nothing.
-    """
-
-    removed = sorted(set(config.spaces) & set(STML_IN_BATCH_ONLY_HPARAM_KEYS))
-    if not removed:
-        return config
-    spaces = {name: spec for name, spec in config.spaces.items() if name not in removed}
-    logger.info(
-        f"Excluded {removed} from HPO because graph_batch_mode='global' builds one graph over "
-        "the whole pool and has no per-step graph to size."
-    )
-    return replace(config, spaces=spaces)
-
-
-def stml_in_batch_combination_is_valid(args, ssl_config, combination):
-    """Check one combination against the regularizer's own run-time rules."""
-
-    batch_size, sampler_m = parse_batch_sampler_choice(combination[BATCH_SAMPLER_HPARAM_KEY])
-    trial_ssl_config = replace(
-        ssl_config,
-        graph_labeled_batch_size=combination["ssl_config.graph_labeled_batch_size"],
-        graph_unlabeled_batch_size=combination["ssl_config.graph_unlabeled_batch_size"],
-        method_params={
-            **ssl_config.method_params,
-            "n_neighbors": combination["ssl_config.method_params.n_neighbors"],
-        },
-    )
-    trial_args = copy.copy(args)
-    trial_args.batch_size = batch_size
-    trial_args.sampler_m = sampler_m
-    try:
-        # Asking the regularizer itself keeps the search space and the run-time
-        # check from drifting apart.
-        method = semi_supervised.get_method(trial_ssl_config)
-        method.make_regularizer(trial_ssl_config).validate_run_args(trial_args)
-    except ValueError:
-        return False
-    return True
-
 
 def validate_two_stream_hpo_method(ssl_config, hparam_key):
     """Reject studies whose SSL config can never build a two-stream sampler.
@@ -2541,21 +2430,6 @@ def get_sampler_capacity_space(args, config, ssl_config):
             labeled_batch_size = parse_labeled_batch_size_choice(params[labeled_key])
             capacity_choices.append((choice, labeled_batch_size, sampler_m))
         return JOINT_TWO_STREAM_HPARAM_KEY, joint_spec, capacity_choices
-
-    in_batch_spec = spaces.get(JOINT_STML_IN_BATCH_HPARAM_KEY)
-    if in_batch_spec is not None:
-        # The in-batch mode draws its graph rows from the full supervised batch,
-        # so batch_size is what the M-per-class sampler has to satisfy.
-        capacity_choices = []
-        for choice in get_categorical_choices(in_batch_spec):
-            params = expand_joint_component_params({JOINT_STML_IN_BATCH_HPARAM_KEY: choice})
-            batch_choice = params.get(
-                BATCH_SAMPLER_HPARAM_KEY,
-                f"{int(args.batch_size)}:{int(args.sampler_m)}",
-            )
-            batch_size, sampler_m = parse_batch_sampler_choice(batch_choice)
-            capacity_choices.append((choice, batch_size, sampler_m))
-        return JOINT_STML_IN_BATCH_HPARAM_KEY, in_batch_spec, capacity_choices
 
     fraction_spec = spaces.get(LABELED_BATCH_FRACTION_HPARAM_KEY)
     batch_sampler_spec = spaces.get(BATCH_SAMPLER_HPARAM_KEY)
@@ -2645,9 +2519,6 @@ def make_label_budget_training_label_sets(args, ssl_config):
             cv_mode=args.cv_mode,
             val_mode=args.val_mode,
             dataset_protocol=args.dataset_protocol,
-            cifar_imbalance_factor=args.cifar_imbalance_factor,
-            cifar_train_fraction=args.cifar_train_fraction,
-            cifar_test_fraction=args.cifar_test_fraction,
             image_resize_mode=get_image_resize_mode(args),
         )
         split = semi_supervised.prepare_label_split(dataset_bundle.train_dataset, ssl_config)
@@ -2655,7 +2526,6 @@ def make_label_budget_training_label_sets(args, ssl_config):
             args,
             dataset_bundle.train_dataset.labels,
             split.labeled_positions,
-            original_labels=getattr(dataset_bundle.train_dataset, "orig_labels", None),
             support_seed=ssl_config.support_seed,
         )
 
@@ -2671,9 +2541,6 @@ def make_label_budget_training_label_sets(args, ssl_config):
             cv_mode=args.cv_mode,
             val_mode=args.val_mode,
             dataset_protocol=args.dataset_protocol,
-            cifar_imbalance_factor=args.cifar_imbalance_factor,
-            cifar_train_fraction=args.cifar_train_fraction,
-            cifar_test_fraction=args.cifar_test_fraction,
             image_resize_mode=get_image_resize_mode(args),
         )
         split = semi_supervised.prepare_label_split(dataset_bundle.train_dataset, ssl_config)
@@ -2681,21 +2548,12 @@ def make_label_budget_training_label_sets(args, ssl_config):
         training_label_sets.append(labels[np.asarray(split.labeled_positions, dtype=np.int64)])
     return training_label_sets
 
-def make_post_apportion_training_label_sets(args, labels, labeled_positions, original_labels=None, support_seed=None):
+def make_post_apportion_training_label_sets(args, labels, labeled_positions, support_seed=None):
     """Return labeled training labels after each post-apportion validation split."""
 
     labels = np.asarray(labels, dtype=np.int64)
     labeled_positions = np.asarray(labeled_positions, dtype=np.int64)
     split_seed = get_support_seed(args) if support_seed is None else int(support_seed)
-    if args.cv_mode in utils.SUPERCLASS_AWARE_CV_MODES:
-        if original_labels is None:
-            raise ValueError(
-                f"{args.cv_mode} requires original CIFAR-100 "
-                "fine labels for post-apportion CV"
-            )
-        superclass_labels = utils.cifar100_superclass_labels_for_fine_labels(original_labels)
-    else:
-        superclass_labels = None
     if args.cv_k > 1:
         training_label_sets = []
         for fold_index in range(args.cv_k):
@@ -2706,7 +2564,6 @@ def make_post_apportion_training_label_sets(args, labels, labeled_positions, ori
                 cv_fold=fold_index,
                 cv_mode=args.cv_mode,
                 seed=split_seed,
-                superclass_labels=superclass_labels,
             )
             training_label_sets.append(labels[train_positions])
         return training_label_sets
@@ -2718,18 +2575,6 @@ def make_post_apportion_training_label_sets(args, labels, labeled_positions, ori
         seed=split_seed,
     )
     return [labels[train_positions]]
-
-def filter_batch_sampler_choices_for_training_labels(choices, training_label_sets):
-    valid_choices = []
-    for choice in choices:
-        batch_size, sampler_m = parse_batch_sampler_choice(choice)
-        try:
-            for labels in training_label_sets:
-                utils.validate_m_per_class_sampler_capacity(labels, batch_size, sampler_m)
-        except utils.MPerClassSamplerCapacityError:
-            continue
-        valid_choices.append(choice)
-    return valid_choices
 
 def summarize_training_label_sets(training_label_sets):
     summaries = []
@@ -2872,7 +2717,6 @@ def component_override_applies(args, name):
     if component == "miner" and (
         getattr(args, "miner") == "no_miner"
         or getattr(args, "loss") in CLASSIFICATION_LOSSES
-        or getattr(args, "loss") == "STMLLoss"
     ):
         return False
     if len(parts) == 2:
