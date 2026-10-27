@@ -1,0 +1,25 @@
+{
+  "confidence_threshold": 0.8,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "pacmap",
+  "labeled_batch_size": null,
+  "labeled_per_class": 16,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.2,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 1.0,
+    "linear_solver": "torch_block_cg",
+    "n_neighbors": 10
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "seed": 7,
+  "support_seed": 7,
+  "update_interval_epochs": 1,
+  "update_mode": "every_epoch",
+  "warmup_epochs": 0
+}

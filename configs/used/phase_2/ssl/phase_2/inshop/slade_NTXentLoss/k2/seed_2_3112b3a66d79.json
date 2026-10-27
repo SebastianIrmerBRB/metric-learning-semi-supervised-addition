@@ -1,0 +1,21 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop/slade_NTXentLoss.json",
+  "labeled_per_class": 2,
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 0.6110796852872727,
+      "cluster_ratio": 1,
+      "sd_margin": 0.3401492154069693,
+      "unlabeled_batch_size": 64
+    },
+    "regularizer_target_ratio": 0.5705009446681212,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 10,
+  "warmup_epochs": 15
+}

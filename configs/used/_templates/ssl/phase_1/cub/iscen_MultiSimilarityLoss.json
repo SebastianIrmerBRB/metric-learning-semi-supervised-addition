@@ -1,0 +1,25 @@
+{
+  "confidence_threshold": 0.6744152916205516,
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "pacmap",
+  "labeled_batch_size": 64,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.13444077530910986,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 7,
+    "linear_solver": "torch_block_cg",
+    "n_neighbors": 15
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_epochs": 1,
+  "update_mode": "every_epoch",
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 0
+}

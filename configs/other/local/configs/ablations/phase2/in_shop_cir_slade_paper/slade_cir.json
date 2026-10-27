@@ -1,0 +1,125 @@
+{
+  "description": "SLADE paper ablations (Duan et al., CVPR 2021, Tables 4-6, Sec. 3.3.3 and 4.3) on the tuned in_shop/slade/cir configuration (best trial 61). The replay itself is Table 4's '+ Basis + Mining', controls' zero_weight its teacher. t4_matched_count is plan B5's pair-count control.",
+  "name": "in_shop_cir_slade_paper_slade_cir",
+  "variants": {
+    "paper_beta": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.beta": 0.99
+    },
+    "paper_new_student_per_iteration": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.reset_basis_on_refresh": true,
+      "ssl_config.method_params.regularizer_params.reset_basis_warmup_on_refresh": true
+    },
+    "paper_no_basis_warmup": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_warmup_epochs": 0.0,
+      "ssl_config.method_params.regularizer_params.basis_warmup_steps": null
+    },
+    "paper_teacher_student": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.within_fold_teacher_student": true,
+      "ssl_config.update_mode": "once"
+    },
+    "paper_unlabeled_batch": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 32,
+      "ssl_config.method_params.regularizer_params.unlabeled_ratio": null
+    },
+    "paper_weights": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": null,
+      "ssl_config.method_params.regularizer_params.lambda_basis": 0.25,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 1.0
+    },
+    "t4_matched_count": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.pair_source": "pseudo_label_matched"
+    },
+    "t4_pseudo_label": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": null,
+      "ssl_config.method_params.regularizer_params.lambda_basis": 0.0,
+      "ssl_config.method_params.regularizer_params.pair_source": "pseudo_label"
+    },
+    "t4_pseudo_label_basis": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.pair_source": "pseudo_label"
+    },
+    "t5_ce_only": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_unlabeled_loss": "none"
+    },
+    "t5_global_ce": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_unlabeled_loss": "global_ce"
+    },
+    "t5_local_ce": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_unlabeled_loss": "local_ce"
+    },
+    "t6_cluster_ratio_0p25": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 0.25,
+      "ssl_config.method_params.regularizer_params.num_clusters": null
+    },
+    "t6_cluster_ratio_0p5": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 0.5,
+      "ssl_config.method_params.regularizer_params.num_clusters": null
+    },
+    "t6_cluster_ratio_2": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 2.0,
+      "ssl_config.method_params.regularizer_params.num_clusters": null
+    },
+    "t6_cluster_ratio_4": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 4.0,
+      "ssl_config.method_params.regularizer_params.num_clusters": null
+    }
+  }
+}

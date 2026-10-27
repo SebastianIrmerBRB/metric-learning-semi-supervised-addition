@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/semiinat/slade_CircleLoss.json",
+  "labeled_per_class": 2,
+  "seed": 11,
+  "support_seed": 11
+}

@@ -1,0 +1,101 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 100,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4"
+      ],
+      "type": "categorical"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 25,
+      "log": false,
+      "low": 2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.3,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 160,
+      "log": true,
+      "low": 20,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 5e-06,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.confidence_threshold": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.labeled_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.alpha": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.2,
+      "type": "float"
+    },
+    "ssl_config.method_params.gamma": {
+      "high": 10,
+      "low": 1,
+      "step": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.n_neighbors": {
+      "choices": [
+        3,
+        5,
+        10,
+        20,
+        50
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars",
+  "timeout": null
+}

@@ -1,0 +1,36 @@
+{
+  "classifier_lr": 0.00016128386060324106,
+  "compcars_strict_paper_counts": false,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/hoffer_entropy_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "file",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "margin": 16.326445909895053,
+    "scale": 0.37446339811204205
+  },
+  "lr": 2.428173570728425e-05,
+  "patience_delay_epochs": 20,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/phase_2_k8/cars/hoffer_entropy_ArcFaceLoss/k8/017b59837bbc",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2_k8/cars/hoffer_entropy_ArcFaceLoss/k8/seed_2_017b59837bbc.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 16.326445909895053,
+    "scale": 0.37446339811204205
+  }
+}

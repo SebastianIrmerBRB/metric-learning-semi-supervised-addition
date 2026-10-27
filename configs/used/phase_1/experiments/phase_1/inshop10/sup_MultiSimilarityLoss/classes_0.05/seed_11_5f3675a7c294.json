@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/sup_MultiSimilarityLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/sup_MultiSimilarityLoss/classes_0.05/5f3675a7c294",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/sup_MultiSimilarityLoss/classes_0.05/seed_11_5f3675a7c294.json",
+  "support_seed": 11
+}

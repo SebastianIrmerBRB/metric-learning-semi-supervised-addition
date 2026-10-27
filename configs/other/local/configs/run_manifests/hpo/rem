@@ -1,0 +1,30 @@
+    {
+      "name": "nt-xent1",
+      "experiment_config": "configs/phase_1/cars/cars_nt.json",
+      "hparam_config": "configs/runs/cars.json",
+      "args": ["--loss_miner_grid", "NTXentLoss:no_miner"]
+    },
+     {
+      "name": "ms-loss1",
+      "experiment_config": "configs/phase_1/cars/cars_nt.json",
+      "hparam_config": "configs/runs/cars.json",
+      "args": ["--loss_miner_grid", "MultiSimilarityLoss:MultiSimilarityMiner"]
+    },
+    {
+      "name": "circle_loss1",
+      "experiment_config": "configs/phase_1/cars/cars_nt.json",
+      "hparam_config": "configs/runs/cars.json",
+      "args": ["--loss_miner_grid", "CircleLoss:no_miner"]
+    },
+     {
+      "name": "arc_loss1",
+      "experiment_config": "configs/phase_1/cars/cars_nt.json",
+      "hparam_config": "configs/runs/cars.json",
+      "args": ["--loss_miner_grid", "ArcFaceLoss:no_miner"]
+    },
+    {
+      "name": "prx_loss1",
+      "experiment_config": "configs/phase_1/cars/cars_nt.json",
+      "hparam_config": "configs/runs/cars.json",
+      "args": ["--loss_miner_grid", "ProxyAnchorLoss:no_miner"]
+    }

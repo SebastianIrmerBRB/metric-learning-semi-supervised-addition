@@ -1,0 +1,13 @@
+{
+  "description": "sup_all_shared of configs/ablations/phase2/in_shop_2x2/iscen_nt.json, rerun with 1000 epochs / patience 20 (Methodik: all Phase-2 variants 1000); the 600-epoch run reached its cap.",
+  "name": "in_shop_e1000_rerun_iscen_nt",
+  "variants": {
+    "sup_all_shared": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.NTXentLoss.temperature": 0.127,
+      "lr": 1.949e-05,
+      "patience": 20
+    }
+  }
+}

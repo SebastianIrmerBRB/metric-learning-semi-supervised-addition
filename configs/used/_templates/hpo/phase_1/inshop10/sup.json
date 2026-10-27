@@ -1,0 +1,14 @@
+{
+  "extends": "common.json",
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "64:8",
+        "128:8",
+        "256:8",
+        "512:8"
+      ]
+    }
+  },
+  "study_name": "tpe_run_supervised"
+}

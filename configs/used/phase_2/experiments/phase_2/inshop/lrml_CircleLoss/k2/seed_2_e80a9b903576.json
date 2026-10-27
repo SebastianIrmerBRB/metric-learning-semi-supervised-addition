@@ -1,0 +1,28 @@
+{
+  "batch_size": 128,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "gamma": 435.03316082491926,
+    "m": 0.0790993367843033
+  },
+  "lr": 2.0086597128939133e-05,
+  "save_dir": "thesis/phase_2/phase_2/inshop/lrml_CircleLoss/k2/e80a9b903576",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/lrml_CircleLoss/k2/seed_2_e80a9b903576.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 435.03316082491926,
+    "m": 0.0790993367843033
+  }
+}

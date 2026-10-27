@@ -1,0 +1,23 @@
+{
+  "batch_size": 512,
+  "classifier_lr": 1.0,
+  "compile_train_step": true,
+  "cv_parallel_folds": 1,
+  "extends": "common.json",
+  "length_before_new_iter": null,
+  "loss": "NTXentLoss",
+  "loss_params": {
+    "temperature": 0.09278570634339933
+  },
+  "lr": 9.069797635259985e-05,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 0,
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.09278570634339933
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

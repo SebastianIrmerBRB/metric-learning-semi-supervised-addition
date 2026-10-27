@@ -1,0 +1,26 @@
+{
+  "extends": [
+    "../../../../../used/originals/local/configs/runs/semi_inat_2021.json",
+    "../../../../../used/originals/local/configs/runs/lrml/standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.contrastive": {
+      "choices": [
+        true
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_margin": {
+      "high": 3,
+      "log": true,
+      "low": 1.5,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 12,
+      "low": 0,
+      "step": 2,
+      "type": "int"
+    }
+  }
+}

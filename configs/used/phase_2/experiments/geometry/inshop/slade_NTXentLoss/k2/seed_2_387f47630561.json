@@ -1,0 +1,27 @@
+{
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.09790741138384125
+  },
+  "lr": 6.0761857005630744e-05,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/slade_NTXentLoss/k2/387f47630561",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/slade_NTXentLoss/k2/seed_2_387f47630561.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.09790741138384125
+  }
+}

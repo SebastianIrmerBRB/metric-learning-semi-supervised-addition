@@ -1,0 +1,11 @@
+{
+  "description": "Cars Phase 1 HPO using only the cosine affinity from Iscen label propagation: positive-part cosine similarity raised to gamma, with W + W.T symmetrization. Fix edge_weighting to cosine while HPO tunes gamma from 1 to 10, matching the existing Iscen search range. All other parameters follow the Cars Phase 1 LRML HPO recipe. LRML remains uncapped (regularizer_max_ratio = null).",
+  "name": "lrml_iscen_weighting",
+  "variants": {
+    "iscen_weighting": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.edge_weighting": "cosine"
+    }
+  }
+}

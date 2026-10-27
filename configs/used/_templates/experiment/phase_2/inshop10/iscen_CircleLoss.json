@@ -1,0 +1,24 @@
+{
+  "batch_size": 128,
+  "classifier_lr": 1.0,
+  "compile_train_step": true,
+  "extends": "common.json",
+  "length_before_new_iter": null,
+  "loss": "CircleLoss",
+  "loss_params": {
+    "gamma": 41.574013132344035,
+    "m": 0.20470081331285636
+  },
+  "lr": 6.326998620546372e-05,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 0,
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 41.574013132344035,
+    "m": 0.20470081331285636
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

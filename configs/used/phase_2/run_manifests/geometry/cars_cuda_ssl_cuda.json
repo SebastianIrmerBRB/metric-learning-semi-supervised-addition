@@ -1,0 +1,410 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ProxyAnchorLoss/k4/seed_2_047dc8692245.json",
+      "name": "047dc8692245"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_NTXentLoss/k32/seed_2_0a189c7a36b6.json",
+      "name": "0a189c7a36b6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ProxyAnchorLoss/k16/seed_2_0a2a2c51a9a3.json",
+      "name": "0a2a2c51a9a3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ArcFaceLoss/k16/seed_2_0a79d2bed12b.json",
+      "name": "0a79d2bed12b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_NTXentLoss/k16/seed_2_0c2598b417a4.json",
+      "name": "0c2598b417a4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ArcFaceLoss/k4/seed_2_0d09937201c1.json",
+      "name": "0d09937201c1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_NTXentLoss/k32/seed_2_0e93e08d683a.json",
+      "name": "0e93e08d683a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ProxyAnchorLoss/k4/seed_2_1340aca752f8.json",
+      "name": "1340aca752f8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_NTXentLoss/k8/seed_2_14a95e35b3ee.json",
+      "name": "14a95e35b3ee"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_CircleLoss/k4/seed_2_1580468dae55.json",
+      "name": "1580468dae55"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ProxyAnchorLoss/k4/seed_2_1923f61fc4ad.json",
+      "name": "1923f61fc4ad"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_NTXentLoss/k8/seed_2_1928d132e1d1.json",
+      "name": "1928d132e1d1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_MultiSimilarityLoss/k4/seed_2_1c077e833582.json",
+      "name": "1c077e833582"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_CircleLoss/k32/seed_2_1c7753bd8e70.json",
+      "name": "1c7753bd8e70"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_CircleLoss/k4/seed_2_1dc51f1e6370.json",
+      "name": "1dc51f1e6370"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ProxyAnchorLoss/k16/seed_2_2e6ee8358faa.json",
+      "name": "2e6ee8358faa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ArcFaceLoss/k8/seed_2_2f5c9d178f21.json",
+      "name": "2f5c9d178f21"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_MultiSimilarityLoss/k16/seed_2_2f800120a15a.json",
+      "name": "2f800120a15a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ProxyAnchorLoss/k8/seed_2_3254a6873cfd.json",
+      "name": "3254a6873cfd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_CircleLoss/k32/seed_2_333c59914336.json",
+      "name": "333c59914336"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_CircleLoss/k32/seed_2_36f7c6d52111.json",
+      "name": "36f7c6d52111"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_MultiSimilarityLoss/k8/seed_2_3a068d30448d.json",
+      "name": "3a068d30448d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_NTXentLoss/k4/seed_2_417350e7de7c.json",
+      "name": "417350e7de7c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ArcFaceLoss/k8/seed_2_4b44cf74c220.json",
+      "name": "4b44cf74c220"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_MultiSimilarityLoss/k16/seed_2_4ec60e7c20e7.json",
+      "name": "4ec60e7c20e7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_NTXentLoss/k4/seed_2_5166028b7954.json",
+      "name": "5166028b7954"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ArcFaceLoss/k16/seed_2_5a3b54e86a35.json",
+      "name": "5a3b54e86a35"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ArcFaceLoss/k16/seed_2_5c7e0dd78e80.json",
+      "name": "5c7e0dd78e80"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ProxyAnchorLoss/k32/seed_2_5ce9acaf1cfa.json",
+      "name": "5ce9acaf1cfa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ProxyAnchorLoss/k32/seed_2_6223b10ed0b3.json",
+      "name": "6223b10ed0b3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_CircleLoss/k4/seed_2_63273439d439.json",
+      "name": "63273439d439"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_NTXentLoss/k32/seed_2_63fe82832779.json",
+      "name": "63fe82832779"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_MultiSimilarityLoss/k32/seed_2_640772a1ebb0.json",
+      "name": "640772a1ebb0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_NTXentLoss/k8/seed_2_67bed9345e79.json",
+      "name": "67bed9345e79"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ArcFaceLoss/k32/seed_2_6903f1ba8eef.json",
+      "name": "6903f1ba8eef"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ArcFaceLoss/k4/seed_2_6f9a86d36242.json",
+      "name": "6f9a86d36242"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_CircleLoss/k8/seed_2_6fcdd098cb06.json",
+      "name": "6fcdd098cb06"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_MultiSimilarityLoss/k4/seed_2_71a761d22d54.json",
+      "name": "71a761d22d54"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ProxyAnchorLoss/k8/seed_2_71d82234f65b.json",
+      "name": "71d82234f65b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_MultiSimilarityLoss/k32/seed_2_7228836c2691.json",
+      "name": "7228836c2691"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_MultiSimilarityLoss/k32/seed_2_72339da297d3.json",
+      "name": "72339da297d3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ProxyAnchorLoss/k16/seed_2_75e48416b9bd.json",
+      "name": "75e48416b9bd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_CircleLoss/k8/seed_2_7d0acb0c51c8.json",
+      "name": "7d0acb0c51c8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_NTXentLoss/k8/seed_2_7dfd3297d174.json",
+      "name": "7dfd3297d174"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_CircleLoss/k8/seed_2_825c91b2be16.json",
+      "name": "825c91b2be16"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ProxyAnchorLoss/k32/seed_2_8487f6d8a1ff.json",
+      "name": "8487f6d8a1ff"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_NTXentLoss/k16/seed_2_8674f4ce8f42.json",
+      "name": "8674f4ce8f42"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_MultiSimilarityLoss/k4/seed_2_8b4f171e6f39.json",
+      "name": "8b4f171e6f39"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_MultiSimilarityLoss/k8/seed_2_8cbf77cf4767.json",
+      "name": "8cbf77cf4767"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ProxyAnchorLoss/k8/seed_2_8ced223444e0.json",
+      "name": "8ced223444e0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_MultiSimilarityLoss/k16/seed_2_8ec3671266b9.json",
+      "name": "8ec3671266b9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_MultiSimilarityLoss/k8/seed_2_8f2bcafee4b3.json",
+      "name": "8f2bcafee4b3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_NTXentLoss/k16/seed_2_903b81bb8a64.json",
+      "name": "903b81bb8a64"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ArcFaceLoss/k32/seed_2_9591f8dec2fa.json",
+      "name": "9591f8dec2fa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_CircleLoss/k16/seed_2_986f24a2c7db.json",
+      "name": "986f24a2c7db"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_MultiSimilarityLoss/k4/seed_2_998efa137ac1.json",
+      "name": "998efa137ac1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_CircleLoss/k16/seed_2_9a88fd7f64fe.json",
+      "name": "9a88fd7f64fe"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_CircleLoss/k16/seed_2_9af23991f5d7.json",
+      "name": "9af23991f5d7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_CircleLoss/k32/seed_2_9c3e491e9b33.json",
+      "name": "9c3e491e9b33"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_MultiSimilarityLoss/k32/seed_2_9d62c5d929c6.json",
+      "name": "9d62c5d929c6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ArcFaceLoss/k8/seed_2_9fb1481beca0.json",
+      "name": "9fb1481beca0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ArcFaceLoss/k16/seed_2_ab97583607de.json",
+      "name": "ab97583607de"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_CircleLoss/k16/seed_2_b0453cb08892.json",
+      "name": "b0453cb08892"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_MultiSimilarityLoss/k4/seed_2_b5f424a2abbd.json",
+      "name": "b5f424a2abbd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ProxyAnchorLoss/k4/seed_2_b7e9f26ad26a.json",
+      "name": "b7e9f26ad26a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_CircleLoss/k4/seed_2_bf2ca7d0814e.json",
+      "name": "bf2ca7d0814e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_NTXentLoss/k4/seed_2_c1859daffce0.json",
+      "name": "c1859daffce0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ArcFaceLoss/k32/seed_2_c246b64039d4.json",
+      "name": "c246b64039d4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_MultiSimilarityLoss/k16/seed_2_c2b1294144a4.json",
+      "name": "c2b1294144a4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_MultiSimilarityLoss/k32/seed_2_c375a3ef60f3.json",
+      "name": "c375a3ef60f3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_NTXentLoss/k4/seed_2_c608d7c038e6.json",
+      "name": "c608d7c038e6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_CircleLoss/k8/seed_2_c64401a997bd.json",
+      "name": "c64401a997bd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ArcFaceLoss/k16/seed_2_c77bd4e0fb15.json",
+      "name": "c77bd4e0fb15"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_NTXentLoss/k8/seed_2_c79f8e633b07.json",
+      "name": "c79f8e633b07"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_CircleLoss/k32/seed_2_ca04d2109b63.json",
+      "name": "ca04d2109b63"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ProxyAnchorLoss/k16/seed_2_cab1f1894db0.json",
+      "name": "cab1f1894db0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_CircleLoss/k8/seed_2_cda97d712a1d.json",
+      "name": "cda97d712a1d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_NTXentLoss/k32/seed_2_ce88df35ada7.json",
+      "name": "ce88df35ada7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_NTXentLoss/k16/seed_2_d2de47b9dd1d.json",
+      "name": "d2de47b9dd1d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_MultiSimilarityLoss/k16/seed_2_d5883c7ccfd8.json",
+      "name": "d5883c7ccfd8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ProxyAnchorLoss/k16/seed_2_d5e582847b67.json",
+      "name": "d5e582847b67"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ArcFaceLoss/k32/seed_2_d97e97d6316c.json",
+      "name": "d97e97d6316c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_CircleLoss/k4/seed_2_db98aa4c2549.json",
+      "name": "db98aa4c2549"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ArcFaceLoss/k32/seed_2_dc3084e8975b.json",
+      "name": "dc3084e8975b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ProxyAnchorLoss/k8/seed_2_e3d562549f8a.json",
+      "name": "e3d562549f8a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_CircleLoss/k16/seed_2_e5b2ce9c9f3b.json",
+      "name": "e5b2ce9c9f3b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_MultiSimilarityLoss/k8/seed_2_e9d1ad54a279.json",
+      "name": "e9d1ad54a279"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ArcFaceLoss/k8/seed_2_eacce5cddc92.json",
+      "name": "eacce5cddc92"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ProxyAnchorLoss/k8/seed_2_ec58f12f65fa.json",
+      "name": "ec58f12f65fa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_NTXentLoss/k4/seed_2_ee359b357ab6.json",
+      "name": "ee359b357ab6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/hoffer_entropy_ArcFaceLoss/k4/seed_2_f0527a845410.json",
+      "name": "f0527a845410"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_NTXentLoss/k16/seed_2_f29b11c5dacb.json",
+      "name": "f29b11c5dacb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ProxyAnchorLoss/k4/seed_2_f29c050f9dd1.json",
+      "name": "f29c050f9dd1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_NTXentLoss/k32/seed_2_f2b7497a4248.json",
+      "name": "f2b7497a4248"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/sup_ArcFaceLoss/k4/seed_2_f352d9115344.json",
+      "name": "f352d9115344"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_MultiSimilarityLoss/k8/seed_2_f6f76cf883ec.json",
+      "name": "f6f76cf883ec"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/lrml_ArcFaceLoss/k4/seed_2_f9096f6b0e3b.json",
+      "name": "f9096f6b0e3b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ArcFaceLoss/k8/seed_2_fa7aa64c1320.json",
+      "name": "fa7aa64c1320"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/slade_ProxyAnchorLoss/k32/seed_2_fc74a6a1ebd1.json",
+      "name": "fc74a6a1ebd1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/cars/iscen_ProxyAnchorLoss/k32/seed_2_fd4ab52a33e0.json",
+      "name": "fd4ab52a33e0"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/geometry/cars/cuda_ssl_cuda"
+}

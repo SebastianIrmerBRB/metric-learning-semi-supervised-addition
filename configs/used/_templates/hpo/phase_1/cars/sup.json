@@ -1,0 +1,4 @@
+{
+  "extends": "common.json",
+  "study_name": "tpe_run_supervised"
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop10/hoffer_entropy_ArcFaceLoss.json",
+  "labeled_fraction": 0.5,
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 9,
+  "support_seed": 9
+}

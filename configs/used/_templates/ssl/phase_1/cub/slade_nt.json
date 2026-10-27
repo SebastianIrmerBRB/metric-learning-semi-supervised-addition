@@ -1,0 +1,43 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "labeled_batch_size": null,
+  "labeled_per_class": 16,
+  "method": "slade",
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 1,
+      "basis_warmup_steps": null,
+      "beta": 0.99,
+      "lambda_basis": 0.01,
+      "num_clusters": null,
+      "sd_gradient_mode": "damped",
+      "sd_margin": 0.5,
+      "sd_variance_weight": 1.0,
+      "unlabeled_ranking_loss": "supervised",
+      "unlabeled_ratio": 1.0
+    },
+    "regularizer_target_ratio": 1,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "seed": 7,
+  "support_seed": 7,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_epochs": 25,
+  "update_mode": "every_n_epochs",
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 0
+}

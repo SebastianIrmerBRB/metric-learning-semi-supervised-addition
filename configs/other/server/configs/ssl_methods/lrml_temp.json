@@ -1,0 +1,29 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "label_sampling_mode": "global_budget",
+  "labeled_fraction": 0.1,
+  "labeled_per_class": null,
+  "max_unlabeled_samples": null,
+  "method": "regularized",
+  "method_params": {
+    "grad_norm_alpha": 1,
+    "grad_norm_renormalize": "supervised",
+    "regularizer": "lrml",
+    "regularizer_params": {
+      "edge_weighting": "binary",
+      "graph_on": "all",
+      "n_neighbors": 6,
+      "normalized_laplacian": true,
+      "oracle_same_class_edges": false,
+      "reduction": "mean"
+    },
+    "regularizer_weight": 0.01,
+    "supervised_weight": 1.0
+  },
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 1,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 1
+}

@@ -1,0 +1,35 @@
+{
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "max_unlabeled_samples": null,
+  "method": "seraph",
+  "method_params": {
+    "regularizer_params": {
+      "em_sharpening": 2.0,
+      "include_labeled_unlabeled": true,
+      "kappa": 6.0,
+      "kappa_mode": "fixed",
+      "metric": "identity",
+      "metric_dim": null,
+      "objective": "em",
+      "prior_mode": "fixed",
+      "threshold": 1.0,
+      "threshold_mode": "fixed",
+      "trace_mode": "soft_rank",
+      "trace_target": "projection",
+      "trace_target_ratio": 0.1,
+      "trace_weight": 1.0,
+      "unlabeled_batch_size": 256,
+      "unlabeled_ratio": null
+    },
+    "regularizer_target_ratio": 0.5,
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 1.0,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "warmup_epochs": 20
+}

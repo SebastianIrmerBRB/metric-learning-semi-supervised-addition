@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_NTXentLoss.json",
+  "graph_diagnostics_layout": "tsne",
+  "labeled_fraction": 0.5
+}

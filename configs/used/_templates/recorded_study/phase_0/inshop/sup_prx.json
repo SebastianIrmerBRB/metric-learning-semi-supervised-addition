@@ -1,0 +1,73 @@
+{
+  "base_args": {
+    "compile_train_step": false,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/supervised.json",
+    "experiment_config_resolved": {
+      "loss_miner_grid": [
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "mode": "supervised",
+      "patience": 20,
+      "save_dir": "ssl_methods/phase_1/hoffer/in_shop/ms",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "faiss_temp_memory_mb": 256,
+    "final_fit_mode": "cross_validation_folds",
+    "final_test_visualization": "pacmap",
+    "frozen_feature_cache_max_gb": 8096,
+    "frozen_feature_residency_max_gb": 2.0,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/first/first_run_in_shop.json",
+    "image_resize_mode": "squash",
+    "length_before_new_iter": null,
+    "loss": "ProxyAnchorLoss",
+    "loss_miner_grid": [
+      "ProxyAnchorLoss:no_miner"
+    ],
+    "lr": 1e-06,
+    "miner": "no_miner",
+    "mode": "supervised",
+    "patience": 20,
+    "save_dir": "supervised/prx_loss_shop/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7/hpo",
+    "save_head_state": true,
+    "ssl_config": "logs/supervised/prx_loss_shop/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "warmup_loss": null,
+    "warmup_miner": null
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "classifier_lr": {
+        "high": 100.0,
+        "log": true,
+        "low": 0.0001,
+        "type": "float"
+      },
+      "loss.ProxyAnchorLoss.alpha": {
+        "high": 100.0,
+        "log": true,
+        "low": 1,
+        "type": "float"
+      },
+      "loss.ProxyAnchorLoss.margin": {
+        "high": 1.0,
+        "log": false,
+        "low": 0.01,
+        "type": "float"
+      }
+    },
+    "study_name": "in_shop_supervised"
+  },
+  "in_flight_sampler_state_path": "logs/supervised/prx_loss_shop/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/supervised/prx_loss_shop/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/optuna_study.db",
+  "resolved_study_name": "in_shop_supervised",
+  "sampler_state_path": "logs/supervised/prx_loss_shop/class_subset_k_shot_label_1_k_2_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/sampler.pkl"
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/lrml_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/lrml_ArcFaceLoss/k16/bd2468a19da1",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/lrml_ArcFaceLoss/k16/seed_11_bd2468a19da1.json",
+  "support_seed": 11
+}

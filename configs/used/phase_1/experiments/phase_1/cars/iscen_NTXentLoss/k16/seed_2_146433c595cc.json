@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/iscen_NTXentLoss.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/iscen_NTXentLoss/k16/146433c595cc",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/iscen_NTXentLoss/k16/seed_2_146433c595cc.json",
+  "support_seed": 2
+}

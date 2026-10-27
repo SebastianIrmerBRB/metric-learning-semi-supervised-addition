@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 1,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_NTXentLoss/k4/1624d777d42d",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_NTXentLoss/k4/seed_9_1624d777d42d.json",
+  "support_seed": 9
+}

@@ -1,0 +1,111 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "patience_delay_epochs": 20,
+        "ssl_config.confidence_threshold": 0.3,
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Every Cars196 Phase 2 run of the thesis (variants.csv, SLADE sweeps) replayed at k=8 instead of k=16; built by Thesis/review/cars_k8_2026-10-19/baue_manifest_k8.py. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus 1000 epochs, its patience and patience_delay_epochs 20.",
+      "name": "phase2_k8_cars_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "variant": "iscen_cir__confidence_threshold_0p3"
+    },
+    "ablation_variant": "iscen_cir__confidence_threshold_0p3",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "classifier_lr": 0.9809886015925092,
+    "compcars_strict_paper_counts": false,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      8
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/phase_2_k8/phase_2/cars/iscen_prx_sweeps_confidence_threshold_0p3/k8_s2/iscen_cir__confidence_threshold_0p3/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_21-30-32/fold_00/2026-10-19_21-30-32",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "alpha": 4.577802934164329,
+      "margin": 0.0323475083241839
+    },
+    "lr": 1.5444453286934094e-05,
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_sweeps_confidence_threshold_0p3/k8_s2/iscen_cir__confidence_threshold_0p3/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_21-30-32/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2_k8/phase_2/cars/iscen_prx_sweeps_confidence_threshold_0p3/k8_s2/iscen_cir__confidence_threshold_0p3/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.3,
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": 16,
+      "labeled_per_class": 8,
+      "method_params": {
+        "n_neighbors": 7
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 10
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 4.577802934164329,
+      "margin": 0.0323475083241839
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.3,
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": 16,
+    "labeled_per_class": 8,
+    "method_params": {
+      "n_neighbors": 7
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 10
+  }
+}

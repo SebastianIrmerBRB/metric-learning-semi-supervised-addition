@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/cub/sup_CircleLoss.json",
+  "labeled_per_class": 16,
+  "seed": 9,
+  "support_seed": 9
+}

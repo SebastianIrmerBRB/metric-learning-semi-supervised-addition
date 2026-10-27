@@ -1,0 +1,106 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0,
+    1
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "arc_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "prx_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised_full.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "nt-xent1"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised_full.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "ms-loss1"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised_full.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "circle_loss1"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised_full.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "arc_loss1"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_1/semi_inat_2021/supervised_full.json",
+      "hparam_config": "configs/runs/first_run_semi_inat_2021.json.json",
+      "name": "prx_loss1"
+    }
+  ],
+  "save_dir_root": "inat/supervised/first",
+  "scheduler_log_dir": "logs/run_scheduler/semi_inat_2021",
+  "version": 1
+}

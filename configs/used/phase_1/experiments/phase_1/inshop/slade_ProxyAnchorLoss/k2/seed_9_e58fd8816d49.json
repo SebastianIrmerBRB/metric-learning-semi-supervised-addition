@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/slade_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/slade_ProxyAnchorLoss/k2/e58fd8816d49",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/slade_ProxyAnchorLoss/k2/seed_9_e58fd8816d49.json",
+  "support_seed": 9
+}

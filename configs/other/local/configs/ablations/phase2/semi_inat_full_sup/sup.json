@@ -1,0 +1,12 @@
+{
+  "description": "Unmodified supervised replay of semi_inat/sup/* (Phase-1 HPO at k=16, best trial, dataset_protocol semi_inat_known_810 from the study) with all labels of the training classes (k_shot_grid 99999 in the manifest, no unlabeled pool), the fully labelled reference as in the external-images experiment. Training settings of the Semi-iNat seeded runs (configs/final_manifests/final/changes/epochs_semi_inat.json): 1000 epochs, patience 10, evaluation embeddings on the GPU, folds one after another.",
+  "name": "semi_inat_full_sup",
+  "variants": {
+    "defaults": {
+      "cv_parallel_folds": 1,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10
+    }
+  }
+}

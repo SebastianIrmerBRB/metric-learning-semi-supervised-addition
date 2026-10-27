@@ -1,0 +1,32 @@
+{
+  "classifier_lr": 0.19527458815783286,
+  "compile_train_step": true,
+  "cv_parallel_folds": 1,
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_ArcFaceLoss.json",
+  "external_unlabeled_dir": "data/Fashion200k",
+  "external_unlabeled_fraction": 0.25,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "margin": 43.428110439290336,
+    "scale": 34.97466610534077
+  },
+  "lr": 0.0002025218780723444,
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop/lrml_ArcFaceLoss/k99999/2845b2ca3c07",
+  "save_epoch_head_interval": null,
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop/lrml_ArcFaceLoss/k99999/seed_2_2845b2ca3c07.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "external",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 43.428110439290336,
+    "scale": 34.97466610534077
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "in_shop_target_ratio.json",
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.contrastive_margin": {
+      "high": 2.0,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "study_name": "cars_contrastive"
+}

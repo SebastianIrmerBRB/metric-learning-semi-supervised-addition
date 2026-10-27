@@ -1,0 +1,27 @@
+{
+  "description": "External unlabeled data for in_shop/lrml/cir: data/Fashion200k (unfiltered) at 5 %, 10 %, 25 % of the pool, replacing the in-split pool.",
+  "name": "in_shop_cir_full_external_lrml_cir",
+  "variants": {
+    "external_10": {
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.1,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "external"
+    },
+    "external_25": {
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.25,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "external"
+    },
+    "external_5": {
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.05,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "external"
+    }
+  }
+}

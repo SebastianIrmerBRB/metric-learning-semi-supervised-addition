@@ -1,0 +1,108 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 20,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/hoffer.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/hoffer/cub.json",
+      "name": "nt-xent_hoffer"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/hoffer.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/hoffer/cub.json",
+      "name": "ms-loss_hoffer"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/hoffer.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/hoffer/cub.json",
+      "name": "circle_loss_hoffer"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/hoffer.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/hoffer/cub.json",
+      "name": "arc_loss_hoffer"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/hoffer.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/hoffer/cub.json",
+      "name": "prx_loss_hoffer"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/cub.json",
+      "name": "nt-xent_lrml"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/cub.json",
+      "name": "ms-loss_lrml"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/cub.json",
+      "name": "circle_loss_lrml"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/cub.json",
+      "name": "arc_loss_lrml"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/used/originals/server/configs/phase_1/cub/lrml.json",
+      "hparam_config": "configs/used/originals/server/configs/runs/lrml/cub.json",
+      "name": "prx_loss_lrml"
+    }
+  ],
+  "save_dir_root": "phase_1/cub",
+  "scheduler_log_dir": "logs/run_scheduler/cub_four_losses",
+  "version": 1
+}

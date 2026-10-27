@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/slade_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/slade_NTXentLoss/k4/f939287a4abf",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/slade_NTXentLoss/k4/seed_9_f939287a4abf.json",
+  "support_seed": 9
+}

@@ -1,0 +1,34 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "cv_fold": 3,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 19409,
+    "length_before_new_iter_num_labeled": 4807,
+    "length_before_new_iter_num_unlabeled": 14602,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_prx/class_subset_label_0p25_comparison_seed_8/final/ssl/cv_2026-09-25_00-03-27/fold_03/2026-09-25_08-37-26",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_prx/class_subset_label_0p25_comparison_seed_8/final/ssl/cv_2026-09-25_00-03-27/fold_03",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_prx/study_replay_grid/ssl_configs/class_subset_label_0p25_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.25,
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/hoffer_entropy_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.25,
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "seed": 8,
+    "support_seed": 8
+  }
+}

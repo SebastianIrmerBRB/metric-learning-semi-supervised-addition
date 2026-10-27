@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/sup_ArcFaceLoss.json",
+  "labeled_per_class": 8
+}

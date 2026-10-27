@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/lrml_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/lrml_NTXentLoss/k16/a69e600ffbd0",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/lrml_NTXentLoss/k16/seed_8_a69e600ffbd0.json",
+  "support_seed": 8
+}

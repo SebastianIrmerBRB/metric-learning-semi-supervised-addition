@@ -1,0 +1,18 @@
+{
+  "cv_parallel_folds": 2,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/iscen_ProxyAnchorLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop10/iscen_ProxyAnchorLoss/classes_0.5/15558533f62c",
+  "save_epoch_head_interval": null,
+  "seed": 10,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_10_15558533f62c.json",
+  "support_seed": 10,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000
+}

@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/iscen_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/iscen_ArcFaceLoss/k4/8c3a570aaaf6",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/iscen_ArcFaceLoss/k4/seed_9_8c3a570aaaf6.json",
+  "support_seed": 9
+}

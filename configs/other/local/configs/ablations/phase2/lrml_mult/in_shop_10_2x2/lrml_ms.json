@@ -1,0 +1,31 @@
+{
+  "description": "2x2 of in_shop_10/lrml/ms (10 % fully labeled classes) on the multivariate LRML study (checklist 1.1): tuned SSL (defaults, LRML trial 62), supervised hyperparameters + SSL (sup_all_shared: every hyperparameter both studies tuned, from Ü trial 73 of final/phase_2_studies/geometry/in_shop_10/supervised/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled). LRML uncapped, 1000 epochs / patience 20.",
+  "name": "in_shop_10_2x2_lrml_mult_ms",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "256:8",
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.MultiSimilarityLoss.alpha": 0.3797772215646115,
+      "loss.MultiSimilarityLoss.base": 0.4338835893644813,
+      "loss.MultiSimilarityLoss.beta": 119.1258375440373,
+      "lr": 1.0518639207764401e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.8324479134212855,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

@@ -5,10 +5,12 @@ learning with DINOv2 features. The project builds on
 [gmberton/image-retrieval](https://github.com/gmberton/image-retrieval).
 
 This snapshot contains the current source code and general-purpose scripts.
-Experiment configs, run manifests, tests, datasets, checkpoints, result archives,
-machine-specific launch scripts, and generated frontend snapshots are excluded.
-Supply your own experiment settings through the CLI or local config files;
-the root `configs/` directory is ignored by Git.
+Recovered thesis configs and run manifests are organized under `configs/used/`;
+other local and server config versions are under `configs/other/`. See the
+[configuration guide](configs/README.md) for the phase structure, inheritance,
+recorded run provenance, and validation commands. Tests, datasets, checkpoints,
+training-result archives, machine-specific launch scripts, and generated
+frontend snapshots are excluded.
 
 ## Setup
 
@@ -35,8 +37,8 @@ python launch_runs.py --help
 The supported config format is described in
 [docs/experiment_config.md](docs/experiment_config.md), with scheduler usage in
 [docs/parallel_runs.md](docs/parallel_runs.md). References in the detailed docs
-to historical experiment files describe local workflows; those files are not
-bundled in this snapshot.
+to historical experiment paths describe local workflows; recovered files now
+live under `configs/used/` or `configs/other/`.
 
 ## Code
 

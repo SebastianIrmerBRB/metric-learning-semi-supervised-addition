@@ -1,0 +1,43 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 32,
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "data_split_seed": 7,
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "device": "cuda",
+  "epochs": 500,
+  "evaluate_test": false,
+  "feat_dim": 768,
+  "final_test_visualization": "none",
+  "hparam_config": null,
+  "length_before_new_iter": 5979,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "loss_params": {
+    "alpha": 4.732641783087131,
+    "margin": 0.47406292151150364
+  },
+  "lr": 3.415604193630501e-05,
+  "mode": "ssl",
+  "num_workers": 0,
+  "patience": 20,
+  "sampler_m": 4,
+  "save_dir": "ema_prx/cars",
+  "seed": 7,
+  "ssl_config": "configs/other/local/configs/test_bed/lrml_prx_trial2_k10.json",
+  "ssl_device": "cuda",
+  "ssl_gradient_contribution_log_interval": 1,
+  "support_seed": 7,
+  "use_cache": true,
+  "val_mode": "all",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 4.732641783087131,
+    "margin": 0.47406292151150364
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

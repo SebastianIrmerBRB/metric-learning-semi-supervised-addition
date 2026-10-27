@@ -1,0 +1,28 @@
+{
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/iscen_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "gamma": 90.38342585155723,
+    "m": 0.11243360155386083
+  },
+  "lr": 1.3042994313551001e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/iscen_CircleLoss/k16/ed942faf7b68",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/iscen_CircleLoss/k16/seed_2_ed942faf7b68.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 90.38342585155723,
+    "m": 0.11243360155386083
+  }
+}

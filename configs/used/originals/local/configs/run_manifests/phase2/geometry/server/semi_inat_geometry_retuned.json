@@ -1,0 +1,434 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 8,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__lrml_arc",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_arc_defaults",
+      "study_dir": "final/semi_inat/lrml_higher_tr/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__lrml_cir",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_cir_defaults",
+      "study_dir": "final/semi_inat/lrml_higher_tr/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__lrml_ms",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_ms_defaults",
+      "study_dir": "final/semi_inat/lrml_higher_tr/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in_shop_target_ratio",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__lrml_nt",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_nt_defaults",
+      "study_dir": "final/semi_inat/lrml_higher_tr/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__lrml_prx",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/lrml_prx_defaults",
+      "study_dir": "final/semi_inat/lrml_higher_tr/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__hoffer_arc",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_arc_defaults",
+      "study_dir": "logs/semi_inat/hoffer/arc_loss/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__hoffer_cir",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_cir_defaults",
+      "study_dir": "logs/semi_inat/hoffer/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__hoffer_ms",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_ms_defaults",
+      "study_dir": "logs/semi_inat/hoffer/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__hoffer_nt",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_nt_defaults",
+      "study_dir": "logs/semi_inat/hoffer/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__hoffer_prx",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/hoffer_prx_defaults",
+      "study_dir": "logs/semi_inat/hoffer/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__slade_arc",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/slade_arc_defaults",
+      "study_dir": "logs/semi_inat/slade/arc_loss/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__slade_cir",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/slade_cir_defaults",
+      "study_dir": "logs/semi_inat/slade/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__slade_ms",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/slade_ms_defaults",
+      "study_dir": "logs/semi_inat/slade/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__slade_nt",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/slade_nt_defaults",
+      "study_dir": "logs/semi_inat/slade/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/local/configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+        "--ablation_variant",
+        "defaults",
+        "--evaluate_test"
+      ],
+      "name": "semi_inat_retuned__slade_prx",
+      "save_dir": "final/phase_2/semi_inat_geometry_retuned/slade_prx_defaults",
+      "study_dir": "logs/semi_inat/slade/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run",
+      "study_replay": {
+        "k_shot_grid": [
+          2,
+          4,
+          16
+        ],
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    }
+  ],
+  "save_dir_root": "final/phase_2",
+  "scheduler_log_dir": "final/phase_2/_scheduler/semi_inat_geometry_retuned",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "epoch_head_dtype": "bfloat16",
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "file",
+    "save_epoch_head_interval": 0,
+    "save_head_state": false,
+    "study_dir_mode": "final_train",
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_layout": "tsne"
+  },
+  "version": 1
+}

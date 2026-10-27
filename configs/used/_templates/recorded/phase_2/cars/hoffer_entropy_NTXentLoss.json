@@ -1,0 +1,167 @@
+{
+  "args": {
+    "batch_size": 128,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "compile_train_step": true,
+    "configured_length_before_new_iter": 6041,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cars/hoffer.json",
+    "experiment_config_resolved": {
+      "final_test_after_hpo": true,
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_nt.json",
+      "length_before_new_iter": 6041,
+      "loss_miner_grid": [
+        "NTXentLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/hoffer/cars/nt",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/hoffer/cars.json",
+    "hparam_config_resolved": {
+      "sampler_params": {
+        "group": true,
+        "multivariate": true
+      },
+      "spaces": {
+        "loss.NTXentLoss.temperature": {
+          "high": 0.4,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 0.0005
+        },
+        "ssl_config.method_params.regularizer_params.distance_scale": {
+          "high": 30,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.reference_sets": {
+          "choices": [
+            1,
+            2,
+            3,
+            5
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 30,
+          "low": 0,
+          "step": 5,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_final_trial_number": 0,
+    "hparam_params": {
+      "batch_sampler": "128:4",
+      "loss.NTXentLoss.temperature": 0.013251055025709576,
+      "lr": 0.00021137743999695316,
+      "ssl_config.method_params.regularizer_params.distance_scale": 5.498138656659572,
+      "ssl_config.method_params.regularizer_params.reference_sets": 5,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 128,
+      "ssl_config.method_params.regularizer_target_ratio": 1.3037390361043755,
+      "ssl_config.warmup_epochs": 5
+    },
+    "loss": "NTXentLoss",
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 32,
+      "embedding_num_workers": 8,
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "hoffer_entropy",
+        "regularizer_params": {
+          "reference_sets": 5,
+          "unlabeled_batch_size": 128
+        },
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "once"
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 32,
+    "embedding_num_workers": 8,
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "hoffer_entropy",
+      "regularizer_params": {
+        "reference_sets": 5,
+        "unlabeled_batch_size": 128
+      },
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "once"
+  }
+}

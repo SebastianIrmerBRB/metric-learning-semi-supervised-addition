@@ -1,0 +1,55 @@
+{
+  "ablation_variant": null,
+  "batch_size": 128,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": true,
+  "epochs": 1000,
+  "evaluate_test": true,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": 4692,
+  "loss": "MultiSimilarityLoss",
+  "loss_params": {
+    "alpha": 0.9925215615482863,
+    "base": 0.6009331220025923,
+    "beta": 240.4888395147558
+  },
+  "lr": 1.6495289930571275e-05,
+  "max_unlabeled_samples": null,
+  "miner": "MultiSimilarityMiner",
+  "miner_params": {
+    "epsilon": 0.16557458014074172
+  },
+  "mode": "ssl",
+  "patience": 40,
+  "report_test_metrics": true,
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 30,
+  "study_dir_mode": "final_train",
+  "test_measurements": null,
+  "test_recall_at_k": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "same_as_loss",
+  "warmup_loss_params": {},
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

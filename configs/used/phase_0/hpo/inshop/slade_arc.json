@@ -1,0 +1,35 @@
+{
+  "extends": "../../../_templates/hpo/phase_0/inshop/slade.json",
+  "spaces": {
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.margin": {
+      "high": 75.0,
+      "log": false,
+      "low": 15,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.scale": {
+      "high": 250.0,
+      "log": true,
+      "low": 10,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_neg_margin": {
+      "high": 2,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_pos_margin": {
+      "high": 0.5,
+      "log": false,
+      "low": 0,
+      "type": "float"
+    }
+  }
+}

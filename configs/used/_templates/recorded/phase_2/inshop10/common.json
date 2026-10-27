@@ -1,0 +1,83 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20
+      }
+    },
+    "backbone_cache_dir": "data/DeepFashionInShop/backbone_cache/v3/dinov2_vitb14",
+    "compcars_strict_paper_counts": false,
+    "cv_fold": 0,
+    "dataset": "DeepFashionInShop",
+    "dataset_protocol": "official",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "dataset": "DeepFashionInShop",
+      "dataset_protocol": "official",
+      "evaluation_embedding_residency": "gpu",
+      "feat_dim": 768,
+      "hparam_config": null,
+      "label_budget_grid": [
+        0.1
+      ],
+      "patience": 20,
+      "ssl_label_sampling_modes": [
+        "class_subset"
+      ]
+    },
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_test_visualization": [
+      "none"
+    ],
+    "hparam_config_resolved": {
+      "spaces": {
+        "lr": {
+          "low": 1e-05
+        }
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "patience": 20
+    },
+    "k_shot_grid": null,
+    "length_before_new_iter": 19621,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "log_head_dynamics": false,
+    "patience": 20,
+    "projection_3d": false,
+    "sampler_m": 8,
+    "semi_inat_ood_fraction": 0,
+    "ssl_config_resolved": {
+      "graph_edge_ablation": "off",
+      "label_sampling_mode": "class_subset",
+      "labeled_per_class": null,
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method"
+    },
+    "ssl_label_sampling_modes": [
+      "class_subset"
+    ],
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ],
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split"
+  },
+  "extends": "../common.json",
+  "ssl_config": {
+    "graph_edge_ablation": "off",
+    "label_sampling_mode": "class_subset",
+    "labeled_per_class": null,
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method"
+  }
+}

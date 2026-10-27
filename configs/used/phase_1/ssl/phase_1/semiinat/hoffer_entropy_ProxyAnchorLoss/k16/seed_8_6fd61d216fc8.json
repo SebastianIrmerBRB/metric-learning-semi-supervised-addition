@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/semiinat/hoffer_entropy_ProxyAnchorLoss.json",
+  "labeled_per_class": 16,
+  "seed": 8,
+  "support_seed": 8
+}

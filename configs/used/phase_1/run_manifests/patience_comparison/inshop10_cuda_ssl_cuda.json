@@ -1,0 +1,222 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.25/seed_2_004eef3fee7b.json",
+      "name": "004eef3fee7b"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.25/seed_8_0752fd5d5ab1.json",
+      "name": "0752fd5d5ab1"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_2_0d75cedca061.json",
+      "name": "0d75cedca061"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_10_1a2002b31651.json",
+      "name": "1a2002b31651"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_9_1f5147cf59d1.json",
+      "name": "1f5147cf59d1"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_10_247e51158353.json",
+      "name": "247e51158353"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_10_29ca0ea92fb8.json",
+      "name": "29ca0ea92fb8"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.25/seed_9_2b7e32c86b9a.json",
+      "name": "2b7e32c86b9a"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_NTXentLoss/classes_0.1/seed_8_2e727c1db116.json",
+      "name": "2e727c1db116"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_37a0a55c42e9.json",
+      "name": "37a0a55c42e9"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_10_3be3735e3976.json",
+      "name": "3be3735e3976"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_8_4349274de4cb.json",
+      "name": "4349274de4cb"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.05/seed_9_436eed503030.json",
+      "name": "436eed503030"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.25/seed_11_49425ea5e0cb.json",
+      "name": "49425ea5e0cb"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_10_4ad731a0990d.json",
+      "name": "4ad731a0990d"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.5/seed_8_62f9dcff1d83.json",
+      "name": "62f9dcff1d83"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.5/seed_10_63e320d21794.json",
+      "name": "63e320d21794"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.25/seed_11_66385ed15a28.json",
+      "name": "66385ed15a28"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.05/seed_2_672d48e2f01c.json",
+      "name": "672d48e2f01c"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_2_6738e57b9d81.json",
+      "name": "6738e57b9d81"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_9_730d80cbb076.json",
+      "name": "730d80cbb076"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.25/seed_8_77420b29bcf5.json",
+      "name": "77420b29bcf5"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_ProxyAnchorLoss/classes_0.25/seed_10_78f3a96f0d45.json",
+      "name": "78f3a96f0d45"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.5/seed_11_7ed20ebbb4f6.json",
+      "name": "7ed20ebbb4f6"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_9_8ad414ae75c5.json",
+      "name": "8ad414ae75c5"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_ProxyAnchorLoss/classes_0.1/seed_8_8b32329d2893.json",
+      "name": "8b32329d2893"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_11_8c992ad138bd.json",
+      "name": "8c992ad138bd"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_NTXentLoss/classes_0.1/seed_2_92a6d1ac5c8f.json",
+      "name": "92a6d1ac5c8f"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_2_953552a1eb66.json",
+      "name": "953552a1eb66"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/lrml_ProxyAnchorLoss/classes_0.05/seed_11_9646f2ead14e.json",
+      "name": "9646f2ead14e"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_9_973369ac03bc.json",
+      "name": "973369ac03bc"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_10_a207339be97c.json",
+      "name": "a207339be97c"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_8_a6b56400bd39.json",
+      "name": "a6b56400bd39"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.1/seed_9_ab42a48c5242.json",
+      "name": "ab42a48c5242"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.1/seed_10_ac8e9dd2d2c3.json",
+      "name": "ac8e9dd2d2c3"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/lrml_ArcFaceLoss/classes_0.25/seed_8_ad41e3d45453.json",
+      "name": "ad41e3d45453"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_ArcFaceLoss/classes_0.5/seed_11_b5b77c9b90ac.json",
+      "name": "b5b77c9b90ac"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_b80391f02c2c.json",
+      "name": "b80391f02c2c"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_8_c145511487b5.json",
+      "name": "c145511487b5"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.05/seed_8_cd184519261a.json",
+      "name": "cd184519261a"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_NTXentLoss/classes_0.1/seed_9_cf37517b9599.json",
+      "name": "cf37517b9599"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_11_cffdea324fae.json",
+      "name": "cffdea324fae"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.25/seed_2_d00c08b362aa.json",
+      "name": "d00c08b362aa"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_NTXentLoss/classes_0.1/seed_10_d45a6905749f.json",
+      "name": "d45a6905749f"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_ArcFaceLoss/classes_0.25/seed_8_d8fd93192093.json",
+      "name": "d8fd93192093"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_11_d966a2670c70.json",
+      "name": "d966a2670c70"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.5/seed_2_d9e353e1e714.json",
+      "name": "d9e353e1e714"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_11_e1a1512a1249.json",
+      "name": "e1a1512a1249"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.1/seed_11_ed85fd9fe3dc.json",
+      "name": "ed85fd9fe3dc"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/iscen_CircleLoss/classes_0.25/seed_10_ed9f71b6b2b9.json",
+      "name": "ed9f71b6b2b9"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/lrml_MultiSimilarityLoss/classes_0.1/seed_10_ee251c9d1525.json",
+      "name": "ee251c9d1525"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_8_f67642f18099.json",
+      "name": "f67642f18099"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/experiments/phase_1/inshop10/slade_NTXentLoss/classes_0.1/seed_2_fba156116338.json",
+      "name": "fba156116338"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_1/patience_comparison/inshop10/cuda_ssl_cuda"
+}

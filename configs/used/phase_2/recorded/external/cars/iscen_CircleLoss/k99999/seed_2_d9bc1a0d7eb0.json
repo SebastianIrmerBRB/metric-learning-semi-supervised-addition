@@ -1,0 +1,112 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/full_external_0/iscen.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20,
+        "unlabeled_source": "split"
+      },
+      "description": "M5 control for lp at k=99999 (all labels): the external-data replay (cars_full_external / in_shop_full_external, 1000 epochs, patience 20) with no external images. unlabeled_source='split' attaches no pool, and at k=99999 the split leaves 0 unlabeled candidates, so LP's generate_pseudo_labels returns an empty result every epoch and each fold trains on the labeled set only with LP's tuned hyperparameters.",
+      "name": "full_external_0_iscen",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/full_external_0/iscen.json",
+      "variant": "external_0"
+    },
+    "ablation_variant": "external_0",
+    "appended_unlabeled_pool_size": 0,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "cv_fold": 0,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "evaluation_embedding_residency": "gpu",
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter": 6003,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 6003,
+    "length_before_new_iter_num_unlabeled": 0,
+    "log_dir": "logs/final/phase_2/cars_full/iscen_cir_external_0/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_13-27-57/fold_00/2026-10-12_13-27-57",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "gamma": 90.38342585155723,
+      "m": 0.11243360155386083
+    },
+    "lr": 1.3042994313551001e-05,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2/cars_full/iscen_cir_external_0/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_13-27-57/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/cars_full/iscen_cir_external_0/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.8058219112925765,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 99999,
+      "method_params": {
+        "n_neighbors": 38
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 20
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 90.38342585155723,
+      "m": 0.11243360155386083
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_CircleLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.8058219112925765,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 99999,
+    "method_params": {
+      "n_neighbors": 38
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 20
+  }
+}

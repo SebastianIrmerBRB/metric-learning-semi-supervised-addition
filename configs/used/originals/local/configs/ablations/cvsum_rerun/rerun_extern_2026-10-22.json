@@ -1,0 +1,105 @@
+{
+  "description": "Reruns of the 74 external-image runs (seed 2) whose cv_summary.json lacks the Concat evaluation, Thesis/review/cvsum_rerun_extern_2026-10-22. Each variant is the run's original resolved ablation variant plus its own recorded epoch cap and patience; nothing else changes.",
+  "name": "cvsum_rerun_extern_2026-10-22",
+  "variants": {
+    "hoffer__external_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "split"
+    },
+    "lrml__external_10": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_25": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.05,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml__external_50": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "ssl__external_10": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "ssl__external_25": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "ssl__external_5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.05,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "ssl__external_50": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    }
+  }
+}

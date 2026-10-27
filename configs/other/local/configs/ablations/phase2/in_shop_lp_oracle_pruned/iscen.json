@@ -1,0 +1,11 @@
+{
+  "description": "LP graph control graph_oracle_pruned for in_shop/lp (any loss), the variant configs/ablations/phase2/in_shop_controls/iscen.json (= in_shop_cir_controls/iscen_cir.json) left out; identical to the Cars196 LP variant in cars_cir_controls/iscen_cir.json. Uses hidden labels: diagnostic only; never report as an SSL result or use for selection. 1000 epochs come from the manifest's --epochs 1000, as for every other In-Shop LP control.",
+  "name": "in_shop_lp_graph_oracle_pruned",
+  "variants": {
+    "graph_oracle_pruned": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "oracle_pruned",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "batch_size": 64,
+  "classifier_lr": 0.9809886015925092,
+  "compcars_strict_paper_counts": false,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/iscen_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "temporary",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "alpha": 4.577802934164329,
+    "margin": 0.0323475083241839
+  },
+  "lr": 1.5444453286934094e-05,
+  "patience_delay_epochs": 20,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/phase_2_k8/cars/iscen_ProxyAnchorLoss/k8/39c40867e629",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2_k8/cars/iscen_ProxyAnchorLoss/k8/seed_2_39c40867e629.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 4.577802934164329,
+    "margin": 0.0323475083241839
+  }
+}

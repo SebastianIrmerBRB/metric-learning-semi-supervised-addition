@@ -1,0 +1,41 @@
+{
+  "ablation_variant": null,
+  "batch_size": 32,
+  "classifier_lr": 0.0009021639342406636,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": false,
+  "device": "cuda",
+  "epochs": 600,
+  "evaluate_test": true,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": null,
+  "loss": "ArcFaceLoss",
+  "loss_params": {
+    "margin": 38.59149418111065,
+    "scale": 2.9001616152522476
+  },
+  "lr": 0.8308332084865383,
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 38.59149418111065,
+    "scale": 2.9001616152522476
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

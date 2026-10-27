@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/iscen_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/iscen_ProxyAnchorLoss/k100/d4208e3d2661",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/iscen_ProxyAnchorLoss/k100/seed_2_d4208e3d2661.json"
+}

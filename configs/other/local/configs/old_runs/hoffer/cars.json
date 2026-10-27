@@ -1,0 +1,85 @@
+{
+  "extends": "../cars.json",
+  "n_trials": 20,
+  "per_loss": {
+    "ArcFaceLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 50,
+          "log": false,
+          "low": 10,
+          "type": "float"
+        }
+      }
+    },
+    "CircleLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 400,
+          "log": false,
+          "low": 10,
+          "type": "float"
+        }
+      }
+    },
+    "MultiSimilarityLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 5,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        }
+      }
+    },
+    "NTXentLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 100,
+          "log": false,
+          "low": 10,
+          "type": "float"
+        }
+      }
+    },
+    "ProxyAnchorLoss": {
+      "spaces": {
+        "ssl_config.method_params.regularizer_weight": {
+          "high": 30,
+          "log": false,
+          "low": 1,
+          "type": "float"
+        }
+      }
+    }
+  },
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.distance_scale": {
+      "high": 16,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.reference_sets": {
+      "choices": [
+        1,
+        2
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 10,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  }
+}

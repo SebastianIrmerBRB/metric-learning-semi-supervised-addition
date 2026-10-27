@@ -1,0 +1,35 @@
+{
+  "extends": "../../../_templates/hpo/phase_1/cub/slade.json",
+  "spaces": {
+    "classifier_lr": {
+      "high": 10,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.margin": {
+      "high": 80.0,
+      "log": false,
+      "low": 1,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.scale": {
+      "high": 80.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_neg_margin": {
+      "high": 2,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_pos_margin": {
+      "high": 0.5,
+      "log": false,
+      "low": 0,
+      "type": "float"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "extends": [
+    "../in_shop_10.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.distance_scale": {
+      "high": 100,
+      "log": false,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.reference_sets": {
+      "choices": [
+        1
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        16,
+        32,
+        64
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "in-shop"
+}

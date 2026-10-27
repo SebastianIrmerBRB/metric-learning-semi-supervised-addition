@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/semiinat/slade_ArcFaceLoss.json",
+  "labeled_per_class": 4
+}

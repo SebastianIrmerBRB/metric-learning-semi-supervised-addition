@@ -16,6 +16,7 @@ from models.retrieval_model import (
 from utils.dataset_constants import SAME_SOURCE_EVALUATION, VAL_MODE_MATCH_TRAIN
 
 from . import cpu_threads, device_thresholds, epoch_tracking, semi_supervised
+from .config_inheritance import load_config
 from .ssl import step_visualization
 from .types import (
     ALL_LOSSES,
@@ -1798,8 +1799,7 @@ def load_experiment_config(config_path):
         return {}
 
     path = Path(config_path)
-    with path.open() as config_file:
-        raw_config = json.load(config_file)
+    raw_config = load_config(path)
     if not isinstance(raw_config, dict):
         raise ValueError(f"Experiment config must be a JSON object: {path}")
 

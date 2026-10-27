@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/iscen_CircleLoss.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/iscen_CircleLoss/k8/13b0d6f09859",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/iscen_CircleLoss/k8/seed_10_13b0d6f09859.json",
+  "support_seed": 10
+}

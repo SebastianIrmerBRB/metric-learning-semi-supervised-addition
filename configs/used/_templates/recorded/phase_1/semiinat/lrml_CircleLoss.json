@@ -1,0 +1,182 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 4
+      }
+    },
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 256,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "cv_fold": 0,
+    "cv_parallel_folds": 4,
+    "epoch_head_dtype": "bfloat16",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/lrml.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 4,
+      "hparam_config": null,
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "loss.CircleLoss.gamma": {
+          "high": 512,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "loss.CircleLoss.m": {
+          "high": 0.5,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.graph_batch_size": {
+          "choices": [
+            16,
+            32,
+            64
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.n_neighbors": {
+          "high": 100,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.25,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 2,
+          "low": 0,
+          "step": 1,
+          "type": "int"
+        }
+      },
+      "study_name": "in_shop_target_ratio"
+    },
+    "hparam_final_from_study": "in_shop_target_ratio",
+    "hparam_final_trial_number": 47,
+    "hparam_params": {
+      "batch_sampler": "256:2",
+      "loss.CircleLoss.gamma": 57.861201119823015,
+      "loss.CircleLoss.m": 0.25434301265471404,
+      "lr": 1.1103638604260435e-05,
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 16,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 49,
+      "ssl_config.method_params.regularizer_target_ratio": 0.529409313150841,
+      "ssl_config.warmup_epochs": 0
+    },
+    "length_before_new_iter": 46172,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "log_head_dynamics": false,
+    "loss": "CircleLoss",
+    "loss_params": {
+      "gamma": 57.861201119823015,
+      "m": 0.25434301265471404
+    },
+    "lr": 1.1103638604260435e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_epoch_head_interval": null,
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "lrml",
+        "regularizer_params": {
+          "edge_weighting": "binary",
+          "graph_batch_size": 16,
+          "graph_on": "all",
+          "n_neighbors": 49,
+          "normalized_laplacian": true,
+          "reduction": "torch_sum"
+        },
+        "regularizer_target_ratio": 0.529409313150841,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "lrml",
+      "regularizer_params": {
+        "edge_weighting": "binary",
+        "graph_batch_size": 16,
+        "graph_on": "all",
+        "n_neighbors": 49,
+        "normalized_laplacian": true,
+        "reduction": "torch_sum"
+      },
+      "regularizer_target_ratio": 0.529409313150841,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 0
+  }
+}

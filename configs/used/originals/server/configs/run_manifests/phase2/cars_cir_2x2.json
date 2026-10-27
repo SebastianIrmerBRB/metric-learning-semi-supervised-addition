@@ -1,0 +1,78 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 6,
+  "max_total_runs": 20,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/default.json",
+      "name": "sup_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/supervised/supervised_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/default.json",
+      "name": "iscen_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/lrml_uncapped_default.json",
+      "name": "lrml_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/lrml/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/default.json",
+      "name": "hoffer_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/hoffer/hoffer_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/cars_cir_2x2/iscen_cir.json",
+      "name": "iscen_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/cars_cir_2x2/lrml_cir.json",
+      "name": "lrml_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/lrml/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2/cars_cir_2x2/hoffer_cir.json",
+      "name": "hoffer_cir",
+      "study_dir": "/mnt/f/server_logs/final/cars/hoffer/hoffer_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop"
+    }
+  ],
+  "save_dir_root": "final/phase_2/cars",
+  "scheduler_log_dir": "final/phase_2/cars/_scheduler/cars_cir_2x2",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "file",
+    "k_shot_grid": [
+      16
+    ],
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ]
+  },
+  "version": 1
+}

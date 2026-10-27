@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/cars/slade_CircleLoss.json",
+  "labeled_per_class": 4,
+  "seed": 8,
+  "support_seed": 8
+}

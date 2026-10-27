@@ -1,0 +1,32 @@
+{
+  "extends": [
+    "../first/first_run_semi_inat_2021.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.proxies_per_class": {
+      "choices": [
+        1,
+        2,
+        3
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        1,
+        2,
+        3,
+        5
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 12,
+      "low": 0,
+      "step": 2,
+      "type": "int"
+    }
+  },
+  "study_name": "ismlp_semi_inat_2021_initial"
+}

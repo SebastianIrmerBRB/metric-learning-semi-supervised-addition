@@ -1,0 +1,17 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/lrml_ProxyAnchorLoss.json",
+  "graph_diagnostics_layout": "pacmap",
+  "labeled_fraction": 0.25,
+  "method_params": {
+    "regularizer_max_ratio": null,
+    "regularizer_params": {
+      "graph_batch_size": 128,
+      "n_neighbors": 8,
+      "oracle_same_class_edges": false
+    },
+    "regularizer_target_ratio": 0.5832413119361521
+  },
+  "seed": 2,
+  "support_seed": 2,
+  "warmup_epochs": 15
+}

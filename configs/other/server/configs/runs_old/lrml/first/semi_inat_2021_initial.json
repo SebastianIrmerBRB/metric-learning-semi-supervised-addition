@@ -1,0 +1,39 @@
+{
+  "extends": "../first_run_semi_inat_2021.json",
+  "spaces": {
+    "ssl_config.method_params.grad_norm_alpha": {
+      "high": 3,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        5,
+        10,
+        50,
+        100
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 10,
+      "low": 0,
+      "step": 2,
+      "type": "int"
+    }
+  }
+}

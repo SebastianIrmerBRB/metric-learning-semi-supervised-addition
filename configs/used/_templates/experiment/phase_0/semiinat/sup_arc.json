@@ -1,0 +1,13 @@
+{
+  "batch_size": 256,
+  "extends": "common.json",
+  "hparam_config": "configs/used/phase_0/hpo/semiinat/sup_arc.json",
+  "loss": "ArcFaceLoss",
+  "lr": 5e-05,
+  "miner": "no_miner",
+  "mode": "supervised",
+  "save_dir": "thesis/phase_0/hpo/semiinat/sup_arc",
+  "semi_inat_ood_fraction": 0,
+  "ssl_config": "configs/used/phase_0/hpo_ssl/semiinat/sup_arc.json",
+  "ssl_gradient_contribution_log_interval": 0
+}

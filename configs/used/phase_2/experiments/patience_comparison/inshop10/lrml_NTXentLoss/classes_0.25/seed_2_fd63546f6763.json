@@ -1,0 +1,8 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/lrml_NTXentLoss.json",
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.25/fd63546f6763",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.25/seed_2_fd63546f6763.json"
+}

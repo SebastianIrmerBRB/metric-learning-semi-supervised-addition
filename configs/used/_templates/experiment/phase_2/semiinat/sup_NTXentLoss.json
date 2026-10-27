@@ -1,0 +1,26 @@
+{
+  "batch_size": 512,
+  "classifier_lr": 1.0,
+  "cv_parallel_folds": 1,
+  "extends": "common.json",
+  "loss": "NTXentLoss",
+  "loss_params": {
+    "temperature": 0.060137494502474576
+  },
+  "lr": 1.9889382199909774e-05,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "supervised",
+  "semi_inat_ood_fraction": 0,
+  "ssl_gradient_contribution_log_interval": 0,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "warmup_loss": "same_as_loss",
+  "warmup_loss_params": {},
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

@@ -1,0 +1,106 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_full_external/iscen_n.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "compcars_strict_paper_counts": true,
+        "epochs": 1000,
+        "external_unlabeled_dir": "data/CompCars",
+        "external_unlabeled_filter": "compcars_slade_paper",
+        "patience": 20,
+        "ssl_config.method_params.n_neighbors": 300,
+        "unlabeled_source": "external"
+      },
+      "description": "External unlabeled data for cars/iscen, any loss: data/CompCars (compcars_slade_paper) at 10 %, 25 %, 50 %, 100 % of the pool, replacing the in-split pool (external_<percent>), and the same fractions crossed with n_neighbors 50, 100, 200, 300 (external_<percent>_<value>).",
+      "name": "cars_full_external_iscen",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_full_external/iscen_n.json",
+      "variant": "external_100_300"
+    },
+    "ablation_variant": "external_100_300",
+    "appended_unlabeled_pool_size": 16537,
+    "compcars_strict_paper_counts": true,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": "data/CompCars",
+    "external_unlabeled_filter": "compcars_slade_paper",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_excluded_unlabeled": 16537,
+    "length_before_new_iter_num_labeled": 6003,
+    "length_before_new_iter_num_unlabeled": 16537,
+    "log_dir": "logs/final/phase_2/cars_full/iscen_nt_external_100_300/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_16-01-09/fold_00/2026-10-12_16-01-09",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "temperature": 0.16756883876942139
+    },
+    "lr": 2.2134317905839245e-05,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2/cars_full/iscen_nt_external_100_300/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-12_16-01-09/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/cars_full/iscen_nt_external_100_300/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.28693405058064164,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 99999,
+      "method_params": {
+        "n_neighbors": 300
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 15
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "external",
+    "warmup_loss_params": {
+      "temperature": 0.16756883876942139
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_NTXentLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.28693405058064164,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 99999,
+    "method_params": {
+      "n_neighbors": 300
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 15
+  }
+}

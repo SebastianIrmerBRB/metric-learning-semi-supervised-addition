@@ -1,0 +1,11 @@
+{
+  "classifier_lr": 1.0,
+  "compile_train_step": true,
+  "extends": "common.json",
+  "loss": "MultiSimilarityLoss",
+  "miner": "MultiSimilarityMiner",
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 30,
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_miner": "MultiSimilarityMiner"
+}

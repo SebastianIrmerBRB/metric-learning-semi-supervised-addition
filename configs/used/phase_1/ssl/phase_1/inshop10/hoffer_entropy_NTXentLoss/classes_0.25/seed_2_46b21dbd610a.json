@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop10/hoffer_entropy_NTXentLoss.json",
+  "labeled_fraction": 0.25,
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 2,
+  "support_seed": 2
+}

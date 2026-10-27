@@ -1,0 +1,29 @@
+{
+  "cv_parallel_folds": 1,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "common.json",
+  "external_unlabeled_seed": null,
+  "final_test_visualization": [
+    "none"
+  ],
+  "length_before_new_iter": null,
+  "log_head_dynamics": false,
+  "loss": "ProxyAnchorLoss",
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "projection_3d": false,
+  "ssl_gradient_contribution_log_interval": 30,
+  "test_recall_at_k": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

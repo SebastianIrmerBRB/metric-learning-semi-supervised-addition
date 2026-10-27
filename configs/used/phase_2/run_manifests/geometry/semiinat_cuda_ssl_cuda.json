@@ -1,0 +1,410 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ArcFaceLoss/k16/seed_2_012df3d4af95.json",
+      "name": "012df3d4af95"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_NTXentLoss/k4/seed_2_043d55355dec.json",
+      "name": "043d55355dec"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_MultiSimilarityLoss/k100/seed_2_06ef022456c7.json",
+      "name": "06ef022456c7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_NTXentLoss/k100/seed_2_085e2be25f6e.json",
+      "name": "085e2be25f6e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ProxyAnchorLoss/k100/seed_2_09603b6ab3ae.json",
+      "name": "09603b6ab3ae"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ArcFaceLoss/k100/seed_2_0c70716a4168.json",
+      "name": "0c70716a4168"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_CircleLoss/k2/seed_2_116ecdeb081c.json",
+      "name": "116ecdeb081c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ArcFaceLoss/k2/seed_2_123fcad84074.json",
+      "name": "123fcad84074"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ProxyAnchorLoss/k2/seed_2_1453db97838f.json",
+      "name": "1453db97838f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ProxyAnchorLoss/k2/seed_2_155a0339a5a1.json",
+      "name": "155a0339a5a1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ProxyAnchorLoss/k4/seed_2_168b786f463d.json",
+      "name": "168b786f463d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_MultiSimilarityLoss/k2/seed_2_19b857e1758a.json",
+      "name": "19b857e1758a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_NTXentLoss/k100/seed_2_1acde6265203.json",
+      "name": "1acde6265203"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_CircleLoss/k2/seed_2_1c2b64c6bb72.json",
+      "name": "1c2b64c6bb72"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_NTXentLoss/k4/seed_2_1cee4aa7a8fd.json",
+      "name": "1cee4aa7a8fd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ArcFaceLoss/k4/seed_2_1eb851880967.json",
+      "name": "1eb851880967"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_CircleLoss/k4/seed_2_1fe05a848c7f.json",
+      "name": "1fe05a848c7f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ArcFaceLoss/k16/seed_2_20b966d7cef3.json",
+      "name": "20b966d7cef3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ProxyAnchorLoss/k16/seed_2_21ac034ace29.json",
+      "name": "21ac034ace29"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_NTXentLoss/k100/seed_2_257f298cfa5e.json",
+      "name": "257f298cfa5e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_CircleLoss/k100/seed_2_271fafdf7d9c.json",
+      "name": "271fafdf7d9c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ArcFaceLoss/k4/seed_2_2d1323a2f7c4.json",
+      "name": "2d1323a2f7c4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ProxyAnchorLoss/k100/seed_2_2f7f7c3c1b0f.json",
+      "name": "2f7f7c3c1b0f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ArcFaceLoss/k4/seed_2_2fc53e60ba61.json",
+      "name": "2fc53e60ba61"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_NTXentLoss/k2/seed_2_31fd1536c52e.json",
+      "name": "31fd1536c52e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_MultiSimilarityLoss/k2/seed_2_420063d1d421.json",
+      "name": "420063d1d421"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k100/seed_2_42bd5e329902.json",
+      "name": "42bd5e329902"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_NTXentLoss/k2/seed_2_442908bef28d.json",
+      "name": "442908bef28d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_NTXentLoss/k16/seed_2_4967e88dba4c.json",
+      "name": "4967e88dba4c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_CircleLoss/k16/seed_2_4a7b1a742d38.json",
+      "name": "4a7b1a742d38"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ProxyAnchorLoss/k16/seed_2_4a84cf65fb93.json",
+      "name": "4a84cf65fb93"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_CircleLoss/k100/seed_2_4bbe8a199a60.json",
+      "name": "4bbe8a199a60"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k2/seed_2_5599d5448e37.json",
+      "name": "5599d5448e37"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_CircleLoss/k4/seed_2_5aa5238f342c.json",
+      "name": "5aa5238f342c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_MultiSimilarityLoss/k2/seed_2_5f8ba00a20b7.json",
+      "name": "5f8ba00a20b7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_MultiSimilarityLoss/k16/seed_2_612c95df7e0e.json",
+      "name": "612c95df7e0e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_MultiSimilarityLoss/k4/seed_2_6293939dbcd0.json",
+      "name": "6293939dbcd0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_MultiSimilarityLoss/k4/seed_2_681585b1a5cb.json",
+      "name": "681585b1a5cb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_CircleLoss/k16/seed_2_6af9f91e2295.json",
+      "name": "6af9f91e2295"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ArcFaceLoss/k2/seed_2_6b36c299c560.json",
+      "name": "6b36c299c560"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k16/seed_2_6c3fc9d06ba9.json",
+      "name": "6c3fc9d06ba9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_NTXentLoss/k4/seed_2_6d63e4ee42fc.json",
+      "name": "6d63e4ee42fc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_MultiSimilarityLoss/k4/seed_2_6d6e40ff8409.json",
+      "name": "6d6e40ff8409"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_CircleLoss/k100/seed_2_6e969ed7af0a.json",
+      "name": "6e969ed7af0a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_MultiSimilarityLoss/k2/seed_2_6ed6681a69b3.json",
+      "name": "6ed6681a69b3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k2/seed_2_6eea4b95a32b.json",
+      "name": "6eea4b95a32b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ProxyAnchorLoss/k16/seed_2_704645ed45f5.json",
+      "name": "704645ed45f5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ArcFaceLoss/k100/seed_2_705c1d8ca2ce.json",
+      "name": "705c1d8ca2ce"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_NTXentLoss/k2/seed_2_70e8c26f95a5.json",
+      "name": "70e8c26f95a5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_NTXentLoss/k100/seed_2_71c3ea38e3de.json",
+      "name": "71c3ea38e3de"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ProxyAnchorLoss/k2/seed_2_72771e6e04f6.json",
+      "name": "72771e6e04f6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ArcFaceLoss/k100/seed_2_76f2788cdbe5.json",
+      "name": "76f2788cdbe5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ArcFaceLoss/k2/seed_2_7923a48b69f0.json",
+      "name": "7923a48b69f0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ArcFaceLoss/k100/seed_2_7d938b601460.json",
+      "name": "7d938b601460"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_MultiSimilarityLoss/k100/seed_2_802e8942d2bb.json",
+      "name": "802e8942d2bb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_NTXentLoss/k100/seed_2_89181a33c54c.json",
+      "name": "89181a33c54c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ProxyAnchorLoss/k4/seed_2_8c7c17f9efc4.json",
+      "name": "8c7c17f9efc4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_CircleLoss/k16/seed_2_8cd393028c4c.json",
+      "name": "8cd393028c4c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_NTXentLoss/k16/seed_2_8f75735961fa.json",
+      "name": "8f75735961fa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_MultiSimilarityLoss/k16/seed_2_926fda76eb08.json",
+      "name": "926fda76eb08"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_NTXentLoss/k2/seed_2_9456f3354be1.json",
+      "name": "9456f3354be1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_NTXentLoss/k4/seed_2_9fbea245deec.json",
+      "name": "9fbea245deec"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_NTXentLoss/k2/seed_2_a0eb1907a9d8.json",
+      "name": "a0eb1907a9d8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_NTXentLoss/k16/seed_2_a761b7549da4.json",
+      "name": "a761b7549da4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ArcFaceLoss/k16/seed_2_a87d9ebf3a3f.json",
+      "name": "a87d9ebf3a3f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_NTXentLoss/k4/seed_2_a8b655e61c80.json",
+      "name": "a8b655e61c80"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_CircleLoss/k4/seed_2_a8f3b5101844.json",
+      "name": "a8f3b5101844"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_CircleLoss/k16/seed_2_a93244f5e992.json",
+      "name": "a93244f5e992"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k16/seed_2_ae7a7dfd209f.json",
+      "name": "ae7a7dfd209f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ArcFaceLoss/k4/seed_2_aeb25a9e73dd.json",
+      "name": "aeb25a9e73dd"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k4/seed_2_af7234588d90.json",
+      "name": "af7234588d90"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_MultiSimilarityLoss/k16/seed_2_c1306beb3b06.json",
+      "name": "c1306beb3b06"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_CircleLoss/k2/seed_2_c302cdd35682.json",
+      "name": "c302cdd35682"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ProxyAnchorLoss/k4/seed_2_c3b4f8b38693.json",
+      "name": "c3b4f8b38693"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ProxyAnchorLoss/k100/seed_2_c418d324281d.json",
+      "name": "c418d324281d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ProxyAnchorLoss/k16/seed_2_cb9a42e1d1ef.json",
+      "name": "cb9a42e1d1ef"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_CircleLoss/k4/seed_2_cdd52534d599.json",
+      "name": "cdd52534d599"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ProxyAnchorLoss/k4/seed_2_cf45ee9ea85d.json",
+      "name": "cf45ee9ea85d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ProxyAnchorLoss/k2/seed_2_d3410bbfd885.json",
+      "name": "d3410bbfd885"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_ArcFaceLoss/k4/seed_2_d39fe2427e6d.json",
+      "name": "d39fe2427e6d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ProxyAnchorLoss/k100/seed_2_d4208e3d2661.json",
+      "name": "d4208e3d2661"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_ProxyAnchorLoss/k100/seed_2_d6436bc1e512.json",
+      "name": "d6436bc1e512"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ProxyAnchorLoss/k2/seed_2_d64ec4474f25.json",
+      "name": "d64ec4474f25"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_MultiSimilarityLoss/k4/seed_2_daedc0a0db51.json",
+      "name": "daedc0a0db51"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_CircleLoss/k2/seed_2_db1a490b68e6.json",
+      "name": "db1a490b68e6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_MultiSimilarityLoss/k16/seed_2_dc8670f7f557.json",
+      "name": "dc8670f7f557"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_CircleLoss/k100/seed_2_df4a32b22390.json",
+      "name": "df4a32b22390"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_ArcFaceLoss/k16/seed_2_e657328bc323.json",
+      "name": "e657328bc323"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_CircleLoss/k100/seed_2_e74845590ed6.json",
+      "name": "e74845590ed6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/slade_ArcFaceLoss/k2/seed_2_e9da1d1e1ca2.json",
+      "name": "e9da1d1e1ca2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_MultiSimilarityLoss/k100/seed_2_efc86c9b0a5a.json",
+      "name": "efc86c9b0a5a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_MultiSimilarityLoss/k100/seed_2_f200a174a003.json",
+      "name": "f200a174a003"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_CircleLoss/k16/seed_2_f2142b85363c.json",
+      "name": "f2142b85363c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_f28a0f2f6ba2.json",
+      "name": "f28a0f2f6ba2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ProxyAnchorLoss/k4/seed_2_f2f99e1caabc.json",
+      "name": "f2f99e1caabc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/iscen_NTXentLoss/k16/seed_2_f7c430dbf69d.json",
+      "name": "f7c430dbf69d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/sup_MultiSimilarityLoss/k100/seed_2_fb59cc784faf.json",
+      "name": "fb59cc784faf"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_NTXentLoss/k16/seed_2_fe7377ac89ab.json",
+      "name": "fe7377ac89ab"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/hoffer_entropy_CircleLoss/k4/seed_2_feca01d46f87.json",
+      "name": "feca01d46f87"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/semiinat/lrml_ProxyAnchorLoss/k16/seed_2_ff01f1b41563.json",
+      "name": "ff01f1b41563"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/geometry/semiinat/cuda_ssl_cuda"
+}

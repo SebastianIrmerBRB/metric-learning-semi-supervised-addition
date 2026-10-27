@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/inshop10/sup_ProxyAnchorLoss.json",
+  "labeled_fraction": 0.5,
+  "seed": 9,
+  "support_seed": 9
+}

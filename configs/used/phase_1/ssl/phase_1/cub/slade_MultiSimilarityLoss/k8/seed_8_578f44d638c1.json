@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/cub/slade_MultiSimilarityLoss.json",
+  "labeled_per_class": 8,
+  "seed": 8,
+  "support_seed": 8
+}

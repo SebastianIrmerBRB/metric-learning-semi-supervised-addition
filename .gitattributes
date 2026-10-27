@@ -3,3 +3,6 @@
 *.jpg binary
 *.ico binary
 *.ps1 text eol=crlf
+*.gz binary
+configs/other/** -text
+configs/used/originals/** -text

@@ -1,0 +1,13 @@
+{
+  "batch_size": 16,
+  "extends": "common.json",
+  "hparam_config": "configs/used/phase_0/hpo/semiinat/slade_arc.json",
+  "loss": "ArcFaceLoss",
+  "lr": 1e-06,
+  "miner": "no_miner",
+  "mode": "ssl",
+  "save_dir": "thesis/phase_0/hpo/semiinat/slade_arc",
+  "semi_inat_ood_fraction": 0,
+  "ssl_config": "configs/used/phase_0/hpo_ssl/semiinat/slade_arc.json",
+  "ssl_gradient_contribution_log_interval": 30
+}

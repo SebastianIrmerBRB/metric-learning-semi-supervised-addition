@@ -1,0 +1,74 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 100,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "16:8",
+        "32:8",
+        "64:8",
+        "128:8",
+        "256:8"
+      ],
+      "type": "categorical"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 0.3,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 5e-06,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25,
+        50
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 200,
+      "log": false,
+      "low": 10,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 15,
+      "low": 0,
+      "step": 3,
+      "type": "int"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_imb_search",
+  "timeout": null
+}

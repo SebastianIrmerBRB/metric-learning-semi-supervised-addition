@@ -1,0 +1,157 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20
+      }
+    },
+    "classifier_lr": 1.0,
+    "configured_length_before_new_iter": null,
+    "cv_fold": 0,
+    "cv_parallel_folds": 1,
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cars/lrml.json",
+    "experiment_config_resolved": {
+      "final_test_after_hpo": true,
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/iscen/cars/cars_arc.json",
+      "loss_miner_grid": [
+        "ArcFaceLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/iscen/cars/arc",
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_seed": null,
+    "final_test_visualization": [
+      "none"
+    ],
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/cars.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "loss.NTXentLoss.temperature": {
+          "high": 0.4,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 0.0005
+        },
+        "ssl_config.method_params.regularizer_params.graph_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128,
+            256,
+            512
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.n_neighbors": {
+          "high": 100,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 30,
+          "low": 0,
+          "step": 5,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_params": {
+      "batch_sampler": "256:4",
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 512
+    },
+    "length_before_new_iter": 6003,
+    "log_head_dynamics": false,
+    "loss": "NTXentLoss",
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "lrml",
+        "regularizer_params": {
+          "edge_weighting": "binary",
+          "graph_batch_size": 512,
+          "graph_on": "all",
+          "normalized_laplacian": true,
+          "reduction": "torch_sum"
+        },
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "lrml",
+      "regularizer_params": {
+        "edge_weighting": "binary",
+        "graph_batch_size": 512,
+        "graph_on": "all",
+        "normalized_laplacian": true,
+        "reduction": "torch_sum"
+      },
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1
+  }
+}

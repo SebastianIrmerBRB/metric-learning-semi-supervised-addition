@@ -1,0 +1,12 @@
+{
+  "description": "pool_labeled of configs/ablations/phase2/in_shop_2x2/slade_prx.json, rerun with 1000 epochs / patience 20 (Methodik: all Phase-2 variants 1000); the 600-epoch run reached its cap.",
+  "name": "in_shop_e1000_rerun_slade_prx",
+  "variants": {
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    }
+  }
+}

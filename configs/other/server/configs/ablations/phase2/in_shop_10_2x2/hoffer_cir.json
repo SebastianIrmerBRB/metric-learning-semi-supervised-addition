@@ -1,0 +1,20 @@
+{
+  "description": "2x2 of in_shop/hoffer/cir: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop_10/supervised/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_10_2x2_hoffer_cir",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "128:8",
+      "evaluation_embedding_residency": "gpu",
+      "loss.CircleLoss.gamma": 22.52,
+      "loss.CircleLoss.m": 0.0177,
+      "lr": 1.667e-05
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "description": "Mechanism controls for in_shop/lp/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "in_shop_cir_controls_iscen_cir",
+  "variants": {
+    "diag": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "graph_random_pruned": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "random_pruned",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "graph_rewired": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.graph_edge_ablation": "degree_rewired",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "no_warmup": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 0
+    },
+    "oracle_noise_0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.0,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_10": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.1,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_20": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.2,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_40": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.4,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_60": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_oracle_noise": 0.6,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "pl_once": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.update_mode": "once"
+    },
+    "zero_weight": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.pseudo_label_source": "none"
+    }
+  }
+}

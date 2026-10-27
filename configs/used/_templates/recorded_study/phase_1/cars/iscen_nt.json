@@ -1,0 +1,100 @@
+{
+  "base_args": {
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "compile_train_step": false,
+    "device": "cuda",
+    "experiment_config": "/home/basti/metric-learning/configs/phase_1/cars/iscen.json",
+    "experiment_config_resolved": {
+      "final_test_after_hpo": true,
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/iscen/cars/cars_arc.json",
+      "loss_miner_grid": [
+        "ArcFaceLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/iscen/cars/arc",
+      "ssl_config": "configs/ssl_methods/iscen.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_after_hpo": true,
+    "final_test_visualization": "pacmap",
+    "hparam_config": "/home/basti/metric-learning/configs/runs/iscen/cars.json",
+    "length_before_new_iter": null,
+    "loss": "NTXentLoss",
+    "loss_miner_grid": [
+      "NTXentLoss:no_miner"
+    ],
+    "miner": "no_miner",
+    "mode": "ssl",
+    "save_dir": "ssl/cars/iscen_n_neighbor1/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo",
+    "ssl_config": "logs/ssl/cars/iscen_n_neighbor1/iscen_nt/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "warmup_loss": "NTXentLoss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "labeled_batch_fraction": {
+        "choices": [
+          0.125,
+          0.25,
+          0.5
+        ],
+        "type": "categorical"
+      },
+      "loss.NTXentLoss.temperature": {
+        "high": 0.4,
+        "log": true,
+        "low": 0.01,
+        "type": "float"
+      },
+      "lr": {
+        "high": 0.0005
+      },
+      "ssl_config.confidence_threshold": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.alpha": {
+        "high": 0.99,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.gamma": {
+        "high": 10,
+        "log": false,
+        "low": 1,
+        "type": "int"
+      },
+      "ssl_config.method_params.n_neighbors": {
+        "high": 100,
+        "log": false,
+        "low": 2,
+        "type": "int"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 30,
+        "low": 0,
+        "step": 5,
+        "type": "int"
+      }
+    },
+    "study_name": "in-shop"
+  },
+  "in_flight_sampler_state_path": "logs/ssl/cars/iscen_n_neighbor1/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/basti/metric-learning/logs/ssl/cars/iscen_n_neighbor1/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop/optuna_study.db",
+  "resolved_study_name": "in-shop",
+  "sampler_state_path": "logs/ssl/cars/iscen_n_neighbor1/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop/sampler.pkl",
+  "tpe_transition_sampler_state_path": "logs/ssl/cars/iscen_n_neighbor1/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_before_tpe.pkl"
+}

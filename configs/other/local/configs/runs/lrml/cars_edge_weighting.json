@@ -1,0 +1,31 @@
+{
+  "extends": [
+    "../../../../../used/originals/local/configs/runs/cars.json",
+    "../../../../../used/originals/local/configs/runs/lrml/standardized_ssl_params.json"
+  ],
+  "n_jobs": 1,
+  "n_trials": 80,
+  "sampler": "tpe",
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.gamma": {
+      "high": 10,
+      "log": false,
+      "low": 1,
+      "type": "int"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "high": 100,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "cars_lrml_edge_weighting",
+  "tpe_startup_trials": 40
+}

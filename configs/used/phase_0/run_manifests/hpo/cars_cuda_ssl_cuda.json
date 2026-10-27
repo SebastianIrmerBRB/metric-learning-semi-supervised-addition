@@ -1,0 +1,110 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/hoffer_arc.json",
+      "name": "hoffer_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/hoffer_cir.json",
+      "name": "hoffer_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/hoffer_ms.json",
+      "name": "hoffer_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/hoffer_nt.json",
+      "name": "hoffer_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/hoffer_prx.json",
+      "name": "hoffer_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/iscen_arc.json",
+      "name": "iscen_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/iscen_cir.json",
+      "name": "iscen_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/iscen_ms.json",
+      "name": "iscen_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/iscen_nt.json",
+      "name": "iscen_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/iscen_prx.json",
+      "name": "iscen_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/lrml_arc.json",
+      "name": "lrml_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/lrml_cir.json",
+      "name": "lrml_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/lrml_ms.json",
+      "name": "lrml_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/lrml_nt.json",
+      "name": "lrml_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/lrml_prx.json",
+      "name": "lrml_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/slade_arc.json",
+      "name": "slade_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/slade_cir.json",
+      "name": "slade_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/slade_ms.json",
+      "name": "slade_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/slade_nt.json",
+      "name": "slade_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/slade_prx.json",
+      "name": "slade_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/sup_arc.json",
+      "name": "sup_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/sup_cir.json",
+      "name": "sup_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/sup_ms.json",
+      "name": "sup_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/sup_nt.json",
+      "name": "sup_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cars/sup_prx.json",
+      "name": "sup_prx"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_0/hpo/cars/cuda_ssl_cuda"
+}

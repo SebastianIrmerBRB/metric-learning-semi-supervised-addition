@@ -1,0 +1,11 @@
+{
+  "description": "Rerun of combinations in which a fold stopped prematurely (criterion of methodik sec:training, review/zaehlung_fruehe_stopps_2026-10-09.py) with twice the series' patience, as for Ü/Proxy-Anchor in the class series and Hoffer/NT-Xent on Cars196. In-Shop class series: 1000 epochs as in the series, patience 40.",
+  "name": "epochs_1000_patience_40",
+  "variants": {
+    "epochs": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 40
+    }
+  }
+}

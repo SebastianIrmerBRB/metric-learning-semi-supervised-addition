@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/lrml_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/lrml_CircleLoss/k4/090b25bb6020",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/lrml_CircleLoss/k4/seed_9_090b25bb6020.json",
+  "support_seed": 9
+}

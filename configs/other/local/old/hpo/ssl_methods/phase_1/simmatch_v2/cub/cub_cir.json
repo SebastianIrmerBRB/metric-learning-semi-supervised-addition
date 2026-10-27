@@ -1,0 +1,133 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 60,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "tpe",
+  "sampler_params": {
+    "group": true,
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "16:4",
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4",
+        "512:8"
+      ],
+      "type": "categorical"
+    },
+    "loss.CircleLoss.gamma": {
+      "high": 512.0,
+      "log": true,
+      "low": 64,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.5,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 0.5,
+      "log": false,
+      "low": 0.001,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    },
+    "ssl_config.confidence_threshold": {
+      "high": 0.95,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.graph_space": {
+      "choices": [
+        "embedding"
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.lambda_dml": {
+      "choices": [
+        1
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.lambda_ee": {
+      "high": 1,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.lambda_ne": {
+      "high": 1,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.lambda_nn": {
+      "high": 1,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.propagation_alpha": {
+      "high": 0.5,
+      "low": 0.05,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.queue_size": {
+      "choices": [
+        2048,
+        4096,
+        8192
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.temperature": {
+      "high": 0.25,
+      "log": true,
+      "low": 0.05,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.top_n": {
+      "choices": [
+        32,
+        64,
+        128
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_ratio": {
+      "choices": [
+        1,
+        3,
+        5,
+        7
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 10.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_imb_search",
+  "timeout": null,
+  "tpe_startup_trials": 20
+}

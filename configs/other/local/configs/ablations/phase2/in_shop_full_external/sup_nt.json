@@ -1,0 +1,9 @@
+{
+  "description": "Unmodified supervised replay of in_shop/sup/nt: the external-data reference.",
+  "name": "in_shop_full_external_sup_nt",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

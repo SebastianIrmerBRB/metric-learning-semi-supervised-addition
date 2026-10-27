@@ -1,0 +1,17 @@
+{
+  "extends": "../../../_templates/hpo/phase_0/semiinat/lrml.json",
+  "spaces": {
+    "loss.CircleLoss.gamma": {
+      "high": 512.0,
+      "log": true,
+      "low": 32,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.5,
+      "log": false,
+      "low": 0.01,
+      "type": "float"
+    }
+  }
+}

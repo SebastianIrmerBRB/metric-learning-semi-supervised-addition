@@ -1,0 +1,23 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 5,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "grid",
+  "sampler_params": {},
+  "spaces": {
+    "ssl_config.method_params.n_neighbors": {
+      "choices": [
+        10,
+        25,
+        50,
+        100,
+        200
+      ],
+      "type": "categorical"
+    }
+  },
+  "study_name": "cars_iscen_prx_n_neighbors_ablation"
+}

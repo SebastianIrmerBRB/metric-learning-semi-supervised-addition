@@ -1,0 +1,20 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 8,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "pacmap",
+  "graph_edge_ablation": "off",
+  "labeled_batch_size": null,
+  "method": "none",
+  "method_params": {},
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "restart_selection_after_warmup": false,
+  "seed": 2,
+  "support_seed": 2,
+  "update_interval_epochs": 1,
+  "update_mode": "once",
+  "warmup_epochs": 0
+}

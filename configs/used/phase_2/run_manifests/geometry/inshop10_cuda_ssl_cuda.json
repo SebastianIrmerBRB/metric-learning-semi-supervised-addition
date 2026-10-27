@@ -1,0 +1,410 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.25/seed_2_02cfcf7f854f.json",
+      "name": "02cfcf7f854f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.5/seed_2_0310626f332e.json",
+      "name": "0310626f332e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_2_0468db59bc06.json",
+      "name": "0468db59bc06"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ArcFaceLoss/classes_0.5/seed_2_0840d3e3499f.json",
+      "name": "0840d3e3499f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.1/seed_2_08ec9314e053.json",
+      "name": "08ec9314e053"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ProxyAnchorLoss/classes_0.1/seed_2_0de5f4ad5205.json",
+      "name": "0de5f4ad5205"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_MultiSimilarityLoss/classes_0.5/seed_2_0e5919104cc6.json",
+      "name": "0e5919104cc6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_1296358b3c05.json",
+      "name": "1296358b3c05"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_2_1da93593cf26.json",
+      "name": "1da93593cf26"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_CircleLoss/classes_0.25/seed_2_1ff3ce232074.json",
+      "name": "1ff3ce232074"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.1/seed_2_20e6e548c769.json",
+      "name": "20e6e548c769"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.1/seed_2_25679eba05e0.json",
+      "name": "25679eba05e0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_NTXentLoss/classes_0.05/seed_2_27c7c7e5e99a.json",
+      "name": "27c7c7e5e99a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.25/seed_2_29c2c62b54f0.json",
+      "name": "29c2c62b54f0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.5/seed_2_2d76b8e6cc0a.json",
+      "name": "2d76b8e6cc0a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ArcFaceLoss/classes_0.25/seed_2_2df20cb0b8e2.json",
+      "name": "2df20cb0b8e2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.25/seed_2_2fa321149865.json",
+      "name": "2fa321149865"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.25/seed_2_342c0f00c474.json",
+      "name": "342c0f00c474"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_NTXentLoss/classes_0.05/seed_2_371173fa4765.json",
+      "name": "371173fa4765"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.05/seed_2_3aef1eb51af4.json",
+      "name": "3aef1eb51af4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ArcFaceLoss/classes_0.5/seed_2_3b36248f5ee5.json",
+      "name": "3b36248f5ee5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.05/seed_2_3e60a4714d26.json",
+      "name": "3e60a4714d26"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.25/seed_2_3fc8e73ce64d.json",
+      "name": "3fc8e73ce64d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.5/seed_2_431794e2a30d.json",
+      "name": "431794e2a30d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.5/seed_2_4617bbcc0281.json",
+      "name": "4617bbcc0281"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_CircleLoss/classes_0.1/seed_2_4abb37229ce4.json",
+      "name": "4abb37229ce4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.5/seed_2_4d6671bd95ea.json",
+      "name": "4d6671bd95ea"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ProxyAnchorLoss/classes_0.1/seed_2_4f48354c256f.json",
+      "name": "4f48354c256f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ArcFaceLoss/classes_0.1/seed_2_578a909301df.json",
+      "name": "578a909301df"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_2_59311e76f890.json",
+      "name": "59311e76f890"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.05/seed_2_5a2d1a329044.json",
+      "name": "5a2d1a329044"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_NTXentLoss/classes_0.5/seed_2_5ca1e02f1935.json",
+      "name": "5ca1e02f1935"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_MultiSimilarityLoss/classes_0.1/seed_2_5e154814e06d.json",
+      "name": "5e154814e06d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.5/seed_2_5ec4db1723f4.json",
+      "name": "5ec4db1723f4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ArcFaceLoss/classes_0.1/seed_2_5f43c8811693.json",
+      "name": "5f43c8811693"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_CircleLoss/classes_0.25/seed_2_5fd20598569d.json",
+      "name": "5fd20598569d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_CircleLoss/classes_0.5/seed_2_61a1300cba11.json",
+      "name": "61a1300cba11"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.5/seed_2_621b9edb9fb4.json",
+      "name": "621b9edb9fb4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_NTXentLoss/classes_0.1/seed_2_626cb2a80eb0.json",
+      "name": "626cb2a80eb0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_64ffd7898abe.json",
+      "name": "64ffd7898abe"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_NTXentLoss/classes_0.05/seed_2_657fec527f1f.json",
+      "name": "657fec527f1f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_CircleLoss/classes_0.1/seed_2_6596f3b47001.json",
+      "name": "6596f3b47001"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ArcFaceLoss/classes_0.5/seed_2_66dfb4378d47.json",
+      "name": "66dfb4378d47"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_CircleLoss/classes_0.05/seed_2_67abe28951f4.json",
+      "name": "67abe28951f4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.1/seed_2_681759518feb.json",
+      "name": "681759518feb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_CircleLoss/classes_0.05/seed_2_68bda607c0b4.json",
+      "name": "68bda607c0b4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ProxyAnchorLoss/classes_0.25/seed_2_6a34cb1104a2.json",
+      "name": "6a34cb1104a2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ProxyAnchorLoss/classes_0.05/seed_2_6a66e5289422.json",
+      "name": "6a66e5289422"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ArcFaceLoss/classes_0.25/seed_2_6f3267fb2b79.json",
+      "name": "6f3267fb2b79"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_NTXentLoss/classes_0.5/seed_2_721bd149f6c1.json",
+      "name": "721bd149f6c1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.1/seed_2_721ce5dd7db5.json",
+      "name": "721ce5dd7db5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_NTXentLoss/classes_0.25/seed_2_7618782fd8b4.json",
+      "name": "7618782fd8b4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.05/seed_2_77b9d09f15c9.json",
+      "name": "77b9d09f15c9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ArcFaceLoss/classes_0.05/seed_2_7b0252b59709.json",
+      "name": "7b0252b59709"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.1/seed_2_7b898149be11.json",
+      "name": "7b898149be11"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.1/seed_2_7dd2fcc324ab.json",
+      "name": "7dd2fcc324ab"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_CircleLoss/classes_0.25/seed_2_83b442666aa2.json",
+      "name": "83b442666aa2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ArcFaceLoss/classes_0.05/seed_2_88e99cd063ad.json",
+      "name": "88e99cd063ad"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ArcFaceLoss/classes_0.25/seed_2_8c735be772fe.json",
+      "name": "8c735be772fe"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ArcFaceLoss/classes_0.25/seed_2_8dfc6b684e1d.json",
+      "name": "8dfc6b684e1d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.1/seed_2_8f226a8e090a.json",
+      "name": "8f226a8e090a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.5/seed_2_94572cb52362.json",
+      "name": "94572cb52362"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.05/seed_2_9500657c8294.json",
+      "name": "9500657c8294"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ArcFaceLoss/classes_0.1/seed_2_972dee00aa46.json",
+      "name": "972dee00aa46"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.5/seed_2_9799117a5e4c.json",
+      "name": "9799117a5e4c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.25/seed_2_98ef94206298.json",
+      "name": "98ef94206298"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_CircleLoss/classes_0.5/seed_2_9af66594073b.json",
+      "name": "9af66594073b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.25/seed_2_a27d249d360b.json",
+      "name": "a27d249d360b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ArcFaceLoss/classes_0.05/seed_2_a784805c95a5.json",
+      "name": "a784805c95a5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.1/seed_2_ad32940dc574.json",
+      "name": "ad32940dc574"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_CircleLoss/classes_0.5/seed_2_aeb3093203cc.json",
+      "name": "aeb3093203cc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.05/seed_2_b1c2649e6449.json",
+      "name": "b1c2649e6449"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.25/seed_2_b1d6df0453e5.json",
+      "name": "b1d6df0453e5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.5/seed_2_b5c1d3bef12b.json",
+      "name": "b5c1d3bef12b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.25/seed_2_be7deb6bdc9a.json",
+      "name": "be7deb6bdc9a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.1/seed_2_be987a861351.json",
+      "name": "be987a861351"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.5/seed_2_bec0b119b6de.json",
+      "name": "bec0b119b6de"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.25/seed_2_c15aebafbc2d.json",
+      "name": "c15aebafbc2d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_MultiSimilarityLoss/classes_0.05/seed_2_c715a8c63007.json",
+      "name": "c715a8c63007"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ArcFaceLoss/classes_0.05/seed_2_c7e110c24a3a.json",
+      "name": "c7e110c24a3a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ProxyAnchorLoss/classes_0.25/seed_2_ccae0bc6ac5d.json",
+      "name": "ccae0bc6ac5d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ArcFaceLoss/classes_0.5/seed_2_cd7c73f9143c.json",
+      "name": "cd7c73f9143c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.05/seed_2_ce56a918de61.json",
+      "name": "ce56a918de61"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.05/seed_2_d23d3bf44511.json",
+      "name": "d23d3bf44511"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.1/seed_2_d3938b34ec1c.json",
+      "name": "d3938b34ec1c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_MultiSimilarityLoss/classes_0.25/seed_2_d453be542cf8.json",
+      "name": "d453be542cf8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_NTXentLoss/classes_0.1/seed_2_d868d51965fb.json",
+      "name": "d868d51965fb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_NTXentLoss/classes_0.1/seed_2_da4c8e870120.json",
+      "name": "da4c8e870120"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_NTXentLoss/classes_0.25/seed_2_dbdb50417575.json",
+      "name": "dbdb50417575"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ProxyAnchorLoss/classes_0.05/seed_2_dfb7bc65a2b7.json",
+      "name": "dfb7bc65a2b7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.05/seed_2_e3ea68ad12cb.json",
+      "name": "e3ea68ad12cb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_NTXentLoss/classes_0.25/seed_2_e8d95f293574.json",
+      "name": "e8d95f293574"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.05/seed_2_eb4060054746.json",
+      "name": "eb4060054746"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_CircleLoss/classes_0.1/seed_2_ec74c801c8e8.json",
+      "name": "ec74c801c8e8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.05/seed_2_eec96cdfb8e4.json",
+      "name": "eec96cdfb8e4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ArcFaceLoss/classes_0.25/seed_2_f0ab93283cfe.json",
+      "name": "f0ab93283cfe"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_NTXentLoss/classes_0.5/seed_2_f1e4208cf1b2.json",
+      "name": "f1e4208cf1b2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_ProxyAnchorLoss/classes_0.5/seed_2_f971b4a35626.json",
+      "name": "f971b4a35626"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ArcFaceLoss/classes_0.1/seed_2_fb17f5159ea0.json",
+      "name": "fb17f5159ea0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_CircleLoss/classes_0.05/seed_2_fc0191805832.json",
+      "name": "fc0191805832"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/geometry/inshop10/cuda_ssl_cuda"
+}

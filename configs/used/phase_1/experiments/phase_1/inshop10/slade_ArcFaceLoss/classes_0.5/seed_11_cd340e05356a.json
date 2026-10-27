@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_ArcFaceLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_ArcFaceLoss/classes_0.5/cd340e05356a",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_ArcFaceLoss/classes_0.5/seed_11_cd340e05356a.json",
+  "support_seed": 11
+}

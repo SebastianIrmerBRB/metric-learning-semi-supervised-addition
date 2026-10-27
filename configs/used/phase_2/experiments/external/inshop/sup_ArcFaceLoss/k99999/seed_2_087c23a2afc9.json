@@ -1,0 +1,17 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/sup_ArcFaceLoss.json",
+  "fold_test_embedding_storage": "file",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/inshop/sup_ArcFaceLoss/k99999/087c23a2afc9",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/sup_ArcFaceLoss/k99999/seed_2_087c23a2afc9.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

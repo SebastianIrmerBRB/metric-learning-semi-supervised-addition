@@ -1,0 +1,156 @@
+{
+  "args": {
+    "batch_size": 512,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "cv_fold": 0,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/iscen.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "feat_dim": 768,
+      "hparam_config": "configs/ssl/phase_0/cars_phase0.json",
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "SemiINaturalist2021",
+      "semi_inat_ood_fraction": 0.0,
+      "ssl_config": "configs/ssl_methods/iscen.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "frozen_feature_batch_size_resolved": 512,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/iscen/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "labeled_batch_fraction": {
+          "choices": [
+            0.125,
+            0.25,
+            0.5
+          ],
+          "type": "categorical"
+        },
+        "loss.NTXentLoss.temperature": {
+          "high": 0.15,
+          "log": true,
+          "low": 0.005,
+          "type": "float"
+        },
+        "ssl_config.confidence_threshold": {
+          "high": 0.9,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.alpha": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.gamma": {
+          "high": 10,
+          "log": false,
+          "low": 1,
+          "type": "int"
+        },
+        "ssl_config.method_params.n_neighbors": {
+          "high": 100,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 10,
+          "low": 0,
+          "step": 2,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_final_trial_number": 55,
+    "hparam_params": {
+      "batch_sampler": "512:2",
+      "labeled_batch_fraction": 0.125,
+      "loss.NTXentLoss.temperature": 0.05171805103965605,
+      "lr": 1.8613581492137393e-05,
+      "ssl_config.confidence_threshold": 0.6901310294645677,
+      "ssl_config.method_params.alpha": 0.2045419936833508,
+      "ssl_config.method_params.gamma": 1,
+      "ssl_config.method_params.n_neighbors": 69,
+      "ssl_config.warmup_epochs": 4
+    },
+    "length_before_new_iter": 46172,
+    "loss": "NTXentLoss",
+    "loss_params": {
+      "temperature": 0.05171805103965605
+    },
+    "lr": 1.8613581492137393e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": true,
+    "semi_inat_ood_fraction": 0.0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.6901310294645677,
+      "embedding_batch_size": 1024,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": 64,
+      "method": "iscen_label_spreading",
+      "method_params": {
+        "alpha": 0.2045419936833508,
+        "cg_max_iter": 2000,
+        "cg_rtol": 1e-05,
+        "gamma": 1,
+        "linear_solver": "torch_block_cg",
+        "n_neighbors": 69
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_epoch",
+      "warmup_epochs": 4
+    },
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "warmup_loss": "NTXentLoss",
+    "warmup_loss_params": {
+      "temperature": 0.05171805103965605
+    },
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.6901310294645677,
+    "embedding_batch_size": 1024,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": 64,
+    "method": "iscen_label_spreading",
+    "method_params": {
+      "alpha": 0.2045419936833508,
+      "cg_max_iter": 2000,
+      "cg_rtol": 1e-05,
+      "gamma": 1,
+      "linear_solver": "torch_block_cg",
+      "n_neighbors": 69
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_epoch",
+    "warmup_epochs": 4
+  }
+}

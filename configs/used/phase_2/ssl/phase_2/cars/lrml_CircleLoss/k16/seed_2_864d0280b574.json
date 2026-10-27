@@ -1,0 +1,27 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/lrml_CircleLoss.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "labeled_per_class": 16,
+  "method_params": {
+    "regularizer_max_ratio": null,
+    "regularizer_params": {
+      "n_neighbors": 81
+    },
+    "regularizer_target_ratio": null,
+    "regularizer_target_ratio_aggregation": null,
+    "regularizer_target_ratio_batches": null,
+    "regularizer_target_ratio_diagnostics": null,
+    "regularizer_target_ratio_ema_alpha": null,
+    "regularizer_target_ratio_probe_memory": null,
+    "regularizer_target_ratio_recalibration_interval_samples": null,
+    "regularizer_target_ratio_statistic": null,
+    "regularizer_target_ratio_statistic_anchor": null,
+    "regularizer_target_ratio_update_interval_samples": null,
+    "regularizer_weight": 0.0
+  },
+  "seed": 2,
+  "support_seed": 2,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 20
+}

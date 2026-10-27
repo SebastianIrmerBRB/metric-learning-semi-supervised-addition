@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 320,
+    "length_before_new_iter_num_unlabeled": 4352,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/lrml_nt/class_subset_k_shot_label_1_k_4_comparison_seed_8/final/ssl/cv_2026-10-15_23-13-21/fold_00/2026-10-15_23-13-24",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/lrml_nt/class_subset_k_shot_label_1_k_4_comparison_seed_8/final/ssl/cv_2026-10-15_23-13-21/fold_00",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cub/lrml_nt/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cub/lrml_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

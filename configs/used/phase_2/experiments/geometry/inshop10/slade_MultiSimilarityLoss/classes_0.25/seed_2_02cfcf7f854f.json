@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/slade_MultiSimilarityLoss.json",
+  "fold_test_embedding_storage": "file",
+  "save_dir": "thesis/phase_2/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.25/02cfcf7f854f",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/slade_MultiSimilarityLoss/classes_0.25/seed_2_02cfcf7f854f.json"
+}

@@ -1,0 +1,22 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 10008,
+    "length_before_new_iter_num_unlabeled": 9613,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_arc/class_subset_label_0p5_comparison_seed_11/final/supervised/cv_2026-09-29_02-09-13/fold_00/2026-09-29_02-09-16",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_arc/class_subset_label_0p5_comparison_seed_11/final/supervised/cv_2026-09-29_02-09-13/fold_00",
+    "seed": 11,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/supervised_arc/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_11.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5,
+      "seed": 11,
+      "support_seed": 11
+    },
+    "support_seed": 11
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/sup_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5,
+    "seed": 11,
+    "support_seed": 11
+  }
+}

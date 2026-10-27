@@ -1,0 +1,31 @@
+{
+  "batch_size": 256,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_CircleLoss.json",
+  "external_unlabeled_dir": "data/Fashion200k",
+  "external_unlabeled_fraction": 0.05,
+  "loss_params": {
+    "gamma": 28.03835921852372,
+    "m": 0.11453494197437712
+  },
+  "lr": 1.3236401813223236e-05,
+  "patience_delay_epochs": 0,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/external/inshop/slade_CircleLoss/k99999/07c49299a96a",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/slade_CircleLoss/k99999/seed_2_07c49299a96a.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "external",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 28.03835921852372,
+    "m": 0.11453494197437712
+  }
+}

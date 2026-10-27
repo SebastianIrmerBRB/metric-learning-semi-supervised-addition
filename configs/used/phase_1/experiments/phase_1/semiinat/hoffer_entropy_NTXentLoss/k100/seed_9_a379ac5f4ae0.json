@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/hoffer_entropy_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/hoffer_entropy_NTXentLoss/k100/a379ac5f4ae0",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/hoffer_entropy_NTXentLoss/k100/seed_9_a379ac5f4ae0.json",
+  "support_seed": 9
+}

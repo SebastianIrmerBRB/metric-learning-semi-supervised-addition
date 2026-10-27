@@ -1,0 +1,9 @@
+{
+  "description": "Mechanism controls for cars/lrml/ms. graph_*_pruned use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_ms_2x2_lrml_ms",
+  "variants": {
+    "pool_labeled": {
+      "unlabeled_source": "labeled"
+    }
+  }
+}

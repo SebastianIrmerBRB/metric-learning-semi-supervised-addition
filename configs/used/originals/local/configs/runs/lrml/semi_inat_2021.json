@@ -1,0 +1,15 @@
+{
+  "extends": [
+    "../semi_inat_2021.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "high": 200,
+      "log": false,
+      "low": 2,
+      "type": "int"
+    }
+  },
+  "study_name": "in-shop"
+}

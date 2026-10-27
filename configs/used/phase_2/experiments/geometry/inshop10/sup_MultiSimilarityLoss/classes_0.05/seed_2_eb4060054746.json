@@ -1,0 +1,7 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/sup_MultiSimilarityLoss.json",
+  "fold_test_embedding_storage": "file",
+  "save_dir": "thesis/phase_2/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.05/eb4060054746",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/sup_MultiSimilarityLoss/classes_0.05/seed_2_eb4060054746.json"
+}

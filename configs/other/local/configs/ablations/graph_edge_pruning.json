@@ -1,0 +1,21 @@
+{
+  "description": "Oracle-only mechanism analysis for LRML and explicit-affinity label propagation. 'normal' leaves the graph unchanged while recording hidden-label edge purity; 'random_pruned' removes a seeded random set with exactly the oracle's edge count; 'oracle_pruned' removes only cross-class edges. No condition adds or reweights edges. These variants leak hidden training labels and must never be reported as valid SSL results or used for HPO/model selection.",
+  "name": "graph_edge_pruning",
+  "variants": {
+    "graph_normal": {
+      "ssl_config": {
+        "graph_edge_ablation": "normal"
+      }
+    },
+    "graph_oracle_pruned": {
+      "ssl_config": {
+        "graph_edge_ablation": "oracle_pruned"
+      }
+    },
+    "graph_random_pruned": {
+      "ssl_config": {
+        "graph_edge_ablation": "random_pruned"
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "classifier_lr": 0.005990294321455087,
+  "compcars_strict_paper_counts": false,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/slade_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "alpha": 11.051001213615987,
+    "margin": 0.1365233377577464
+  },
+  "lr": 7.724727772408571e-05,
+  "patience_delay_epochs": 20,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/phase_2_k8/cars/slade_ProxyAnchorLoss/k8/d98037571970",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/phase_2_k8/cars/slade_ProxyAnchorLoss/k8/seed_2_d98037571970.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split"
+}

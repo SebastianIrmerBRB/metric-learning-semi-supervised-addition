@@ -1,0 +1,16 @@
+{
+  "args": {
+    "length_before_new_iter_num_labeled": 9859,
+    "length_before_new_iter_num_unlabeled": 9762,
+    "log_dir": "logs/final/phase_2/in_shop_10_geometry_uncapped/hoffer_nt_defaults/class_subset_label_0p5_comparison_seed_2/final/ssl/cv_2026-10-01_05-12-49/fold_00/2026-10-01_05-12-49",
+    "save_dir": "final/phase_2/in_shop_10_geometry_uncapped/hoffer_nt_defaults/class_subset_label_0p5_comparison_seed_2/final/ssl/cv_2026-10-01_05-12-49/fold_00",
+    "ssl_config": "logs/final/phase_2/in_shop_10_geometry_uncapped/hoffer_nt_defaults/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop10/hoffer_entropy_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5
+  }
+}

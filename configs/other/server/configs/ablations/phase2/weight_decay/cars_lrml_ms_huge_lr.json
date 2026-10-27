@@ -1,0 +1,72 @@
+{
+  "description": "Weight decay at the very large learning rates that Phase 0 found nearly as good (Cars LRML MS: lr~5.2 -> 0.598 vs 0.608 best). Replays Phase-1 cars/lrml/lrml_ms trial 66 at lr 0.1, 1, 10, each with Adam wd=0 and AdamW with wd chosen so the per-step shrink lr*wd is 1e-4, 1e-3 or 1e-2 (AdamW multiplies W by 1-lr*wd, so a fixed wd grid would flip W's sign at lr 10). All runs log --log_head_dynamics.",
+  "name": "cars_lrml_ms_weight_decay_huge_lr",
+  "variants": {
+    "lr_1e0_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 1.0
+    },
+    "lr_1e0_adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 1.0,
+      "optim": "adamw",
+      "weight_decay": 0.01
+    },
+    "lr_1e0_adamw_wd_1em3": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 1.0,
+      "optim": "adamw",
+      "weight_decay": 0.001
+    },
+    "lr_1e0_adamw_wd_1em4": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 1.0,
+      "optim": "adamw",
+      "weight_decay": 0.0001
+    },
+    "lr_1e1_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 10.0
+    },
+    "lr_1e1_adamw_wd_1em3": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 10.0,
+      "optim": "adamw",
+      "weight_decay": 0.001
+    },
+    "lr_1e1_adamw_wd_1em4": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 10.0,
+      "optim": "adamw",
+      "weight_decay": 0.0001
+    },
+    "lr_1e1_adamw_wd_1em5": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 10.0,
+      "optim": "adamw",
+      "weight_decay": 1e-05
+    },
+    "lr_1em1_adam_wd0": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.1
+    },
+    "lr_1em1_adamw_wd_1em1": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.1,
+      "optim": "adamw",
+      "weight_decay": 0.09999999999999999
+    },
+    "lr_1em1_adamw_wd_1em2": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.1,
+      "optim": "adamw",
+      "weight_decay": 0.01
+    },
+    "lr_1em1_adamw_wd_1em3": {
+      "evaluation_embedding_residency": "gpu",
+      "lr": 0.1,
+      "optim": "adamw",
+      "weight_decay": 0.001
+    }
+  }
+}

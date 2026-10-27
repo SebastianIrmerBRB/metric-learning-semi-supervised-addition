@@ -1,0 +1,145 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/lrml_mult/cars_extern/lrml.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "compcars_strict_paper_counts": true,
+        "epochs": 1000,
+        "external_unlabeled_dir": "data/CompCars",
+        "external_unlabeled_filter": "compcars_slade_paper",
+        "unlabeled_source": "external"
+      },
+      "description": "External-images experiment of LRML (CompCars, all labels) on the multivariate study (checklist 1.1): external_0 is the control without unlabeled images, external_<pct> the share of the external pool, external_<pct>_<n> the same with n graph neighbours. Changes copied from the runs in all_logs/final/phase_2/cars_full, same for every loss.",
+      "name": "cars_extern_lrml_mult",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/lrml_mult/cars_extern/lrml.json",
+      "variant": "external_100"
+    },
+    "ablation_variant": "external_100",
+    "appended_unlabeled_pool_size": 16537,
+    "batch_size": 128,
+    "classifier_lr": 0.00010506319030005296,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": true,
+    "compile_train_step": true,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 1
+    },
+    "external_unlabeled_dir": "data/CompCars",
+    "external_unlabeled_filter": "compcars_slade_paper",
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config_resolved": {
+      "sampler_params": {
+        "group": true,
+        "multivariate": true
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "hparam_final_trial_number": 66,
+    "hparam_params": {
+      "batch_sampler": "128:4",
+      "classifier_lr": 0.00010506319030005296,
+      "loss.ArcFaceLoss.margin": 17.19968806500192,
+      "loss.ArcFaceLoss.scale": 12.7434491210522,
+      "lr": 0.0001781598939698584,
+      "ssl_config.method_params.regularizer_params.graph_batch_size": 512,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 48,
+      "ssl_config.method_params.regularizer_target_ratio": 0.7529317350180248,
+      "ssl_config.warmup_epochs": 30
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_excluded_unlabeled": 16537,
+    "length_before_new_iter_num_labeled": 6003,
+    "length_before_new_iter_num_unlabeled": 16537,
+    "log_dir": "logs/final/phase_2/cars_full_lrml_mult/lrml_arc_external_100/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-16_10-35-20/fold_00/2026-10-16_10-35-20",
+    "loss_params": {
+      "margin": 17.19968806500192,
+      "scale": 12.7434491210522
+    },
+    "lr": 0.0001781598939698584,
+    "save_dir": "final/phase_2/cars_full_lrml_mult/lrml_arc_external_100/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-16_10-35-20/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 2,
+    "ssl_config": "logs/final/phase_2/cars_full_lrml_mult/lrml_arc_external_100/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 99999,
+      "method_params": {
+        "regularizer_params": {
+          "graph_batch_size": 512,
+          "n_neighbors": 48
+        },
+        "regularizer_target_ratio": 0.7529317350180248,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "seed": 2,
+      "support_seed": 2,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 30
+    },
+    "support_seed": 2,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "external",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 17.19968806500192,
+      "scale": 12.7434491210522
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/lrml_ArcFaceLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 99999,
+    "method_params": {
+      "regularizer_params": {
+        "graph_batch_size": 512,
+        "n_neighbors": 48
+      },
+      "regularizer_target_ratio": 0.7529317350180248,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "seed": 2,
+    "support_seed": 2,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 30
+  }
+}

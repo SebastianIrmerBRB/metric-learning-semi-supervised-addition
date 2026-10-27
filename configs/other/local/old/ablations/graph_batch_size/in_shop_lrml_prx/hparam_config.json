@@ -1,0 +1,23 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 5,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "grid",
+  "sampler_params": {},
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        64,
+        256,
+        1024,
+        4096
+      ],
+      "type": "categorical"
+    }
+  },
+  "study_name": "in_shop_lrml_prx_graph_batch_size_ablation"
+}

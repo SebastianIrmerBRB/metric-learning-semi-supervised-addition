@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 1,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_CircleLoss/k32/46ddc7c0d763",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_CircleLoss/k32/seed_11_46ddc7c0d763.json",
+  "support_seed": 11
+}

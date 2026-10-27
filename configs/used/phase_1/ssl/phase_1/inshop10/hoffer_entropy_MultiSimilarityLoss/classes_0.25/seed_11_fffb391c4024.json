@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop10/hoffer_entropy_MultiSimilarityLoss.json",
+  "labeled_fraction": 0.25,
+  "seed": 11,
+  "support_seed": 11
+}

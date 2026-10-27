@@ -1,0 +1,31 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "labeled_batch_size": null,
+  "method": "slade",
+  "method_params": {
+    "regularizer_params": {
+      "basis_warmup_epochs": 0.5,
+      "basis_warmup_steps": null,
+      "beta": 0.5927509380584872,
+      "contrastive_neg_margin": 0.9688313520194223,
+      "contrastive_pos_margin": 0.4334289239932061,
+      "lambda_basis": 0.01,
+      "sd_gradient_mode": "damped",
+      "sd_variance_weight": 5.927560735698883,
+      "unlabeled_ranking_loss": "contrastive",
+      "unlabeled_ratio": 1.0
+    },
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 2,
+  "support_seed": 2,
+  "update_mode": "every_n_epochs"
+}

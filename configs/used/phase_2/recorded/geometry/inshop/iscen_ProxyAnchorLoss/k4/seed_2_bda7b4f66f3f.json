@@ -1,0 +1,99 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_lp.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "ssl_config.pseudo_label_diagnostics_mode": "save",
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay of LP with pseudo-label diagnostics on (the tuned config has them off); 600 epochs / patience 20. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_lp_uncapped",
+      "path": "configs/ablations/phase2/geometry/uncapped_lp.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "appended_unlabeled_pool_size": 0,
+    "classifier_lr": 0.007334867663900393,
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2,
+      4
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 11645,
+    "length_before_new_iter_num_unlabeled": 7976,
+    "log_dir": "logs/final/phase_2/in_shop_geometry_uncapped/iscen_prx_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-01_18-13-45/fold_00/2026-10-01_18-13-45",
+    "loss_params": {
+      "alpha": 4.478129298930762,
+      "margin": 0.05892560964759625
+    },
+    "lr": 5.646121545886887e-05,
+    "save_dir": "final/phase_2/in_shop_geometry_uncapped/iscen_prx_defaults/class_subset_k_shot_label_1_k_4_comparison_seed_2/final/ssl/cv_2026-10-01_18-13-45/fold_00",
+    "ssl_config": "logs/final/phase_2/in_shop_geometry_uncapped/iscen_prx_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.14524496956882355,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 4,
+      "method_params": {
+        "n_neighbors": 2
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 25
+    },
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 4.478129298930762,
+      "margin": 0.05892560964759625
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.14524496956882355,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 4,
+    "method_params": {
+      "n_neighbors": 2
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 25
+  }
+}

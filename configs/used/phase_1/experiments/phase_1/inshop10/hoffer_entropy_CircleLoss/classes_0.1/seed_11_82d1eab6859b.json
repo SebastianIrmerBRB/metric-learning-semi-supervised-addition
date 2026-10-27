@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_CircleLoss/classes_0.1/82d1eab6859b",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_CircleLoss/classes_0.1/seed_11_82d1eab6859b.json",
+  "support_seed": 11
+}

@@ -1,0 +1,24 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "label_sampling_mode": "global_budget",
+  "labeled_fraction": 0.1,
+  "labeled_per_class": null,
+  "max_unlabeled_samples": null,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "lrml",
+    "regularizer_params": {
+      "graph_on": "all",
+      "n_neighbors": 3,
+      "normalized_laplacian": true,
+      "reduction": "mean"
+    },
+    "regularizer_weight": 162.36693624910998,
+    "supervised_weight": 1.0
+  },
+  "update_interval_epochs": 1,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 15
+}

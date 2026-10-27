@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.05/7ee3f65b641b",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_ProxyAnchorLoss/classes_0.05/seed_9_7ee3f65b641b.json",
+  "support_seed": 9
+}

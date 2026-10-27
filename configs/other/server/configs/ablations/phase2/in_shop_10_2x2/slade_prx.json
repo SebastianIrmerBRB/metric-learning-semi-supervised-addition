@@ -1,0 +1,27 @@
+{
+  "description": "2x2 of in_shop/slade/prx: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop_10/supervised/supervised_prx/class_subset_label_0p1_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_10_2x2_slade_prx",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "512:8",
+      "classifier_lr": 0.0003036,
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ProxyAnchorLoss.alpha": 5.413,
+      "loss.ProxyAnchorLoss.margin": 0.07974,
+      "lr": 7.223,
+      "patience": 20
+    }
+  }
+}

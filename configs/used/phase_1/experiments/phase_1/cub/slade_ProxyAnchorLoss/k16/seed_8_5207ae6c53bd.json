@@ -1,0 +1,9 @@
+{
+  "cv_parallel_folds": 2,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/slade_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/slade_ProxyAnchorLoss/k16/5207ae6c53bd",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/slade_ProxyAnchorLoss/k16/seed_8_5207ae6c53bd.json",
+  "support_seed": 8
+}

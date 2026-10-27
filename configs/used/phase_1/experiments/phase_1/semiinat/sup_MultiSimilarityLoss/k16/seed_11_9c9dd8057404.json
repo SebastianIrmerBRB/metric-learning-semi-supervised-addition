@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/sup_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/sup_MultiSimilarityLoss/k16/9c9dd8057404",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/sup_MultiSimilarityLoss/k16/seed_11_9c9dd8057404.json",
+  "support_seed": 11
+}

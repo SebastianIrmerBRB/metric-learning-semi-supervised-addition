@@ -1,0 +1,10 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/sup_ArcFaceLoss.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "save_dir": "thesis/phase_1/phase_1/cars/sup_ArcFaceLoss/k16/1cfeab005adf",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/sup_ArcFaceLoss/k16/seed_8_1cfeab005adf.json",
+  "support_seed": 8
+}

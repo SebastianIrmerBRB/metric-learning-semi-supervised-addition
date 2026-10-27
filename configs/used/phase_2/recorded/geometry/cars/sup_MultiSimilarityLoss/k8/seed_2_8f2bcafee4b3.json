@@ -1,0 +1,69 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_default.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600,
+        "patience": 20,
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay: unmodified tuned run, 600 epochs / patience 20 for every method. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_default_uncapped",
+      "path": "configs/ablations/phase2/geometry/uncapped_default.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "epochs": 600,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "fold_test_embedding_storage": "file",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/phase_2/cars_geometry_uncapped/sup_ms_defaults/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/supervised/cv_2026-10-01_00-11-26/fold_00/2026-10-01_00-11-26",
+    "projection_3d": false,
+    "save_dir": "final/phase_2/cars_geometry_uncapped/sup_ms_defaults/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/supervised/cv_2026-10-01_00-11-26/fold_00",
+    "ssl_config": "logs/final/phase_2/cars_geometry_uncapped/sup_ms_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8
+    },
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/sup_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8
+  }
+}

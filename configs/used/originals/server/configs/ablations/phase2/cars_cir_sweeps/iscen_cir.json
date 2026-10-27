@@ -1,0 +1,76 @@
+{
+  "description": "One-at-a-time range sweep around the tuned cars/lp/cir configuration (best trial 74); every other parameter keeps its tuned value.",
+  "name": "cars_cir_sweeps_iscen_cir",
+  "variants": {
+    "confidence_threshold_0p1": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.confidence_threshold": 0.1,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "confidence_threshold_0p3": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.confidence_threshold": 0.3,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "confidence_threshold_0p5": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.confidence_threshold": 0.5,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "confidence_threshold_0p7": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.confidence_threshold": 0.7,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "confidence_threshold_0p9": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.confidence_threshold": 0.9,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "n_neighbors_100": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.n_neighbors": 100,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "n_neighbors_2": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.n_neighbors": 2,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "n_neighbors_26": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.n_neighbors": 26,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "n_neighbors_51": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.n_neighbors": 51,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "n_neighbors_76": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.n_neighbors": 76,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "warmup_epochs_0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 0
+    },
+    "warmup_epochs_10": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 10
+    },
+    "warmup_epochs_15": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 15
+    },
+    "warmup_epochs_30": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 30
+    }
+  }
+}

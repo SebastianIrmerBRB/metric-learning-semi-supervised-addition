@@ -1,0 +1,24 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/slade_NTXentLoss.json",
+  "labeled_per_class": 99999,
+  "method_params": {
+    "regularizer_max_ratio": 3,
+    "regularizer_params": {
+      "basis_target_ratio": 1.0876465472835493,
+      "cluster_ratio": null,
+      "num_clusters": 100,
+      "sd_margin": 0.8590219014604661,
+      "unlabeled_batch_size": 256
+    },
+    "regularizer_target_ratio": 1.4506137986239291,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01
+  },
+  "restart_selection_after_warmup": true,
+  "seed": 2,
+  "support_seed": 2,
+  "update_interval_epochs": 10,
+  "warmup_epochs": 5
+}

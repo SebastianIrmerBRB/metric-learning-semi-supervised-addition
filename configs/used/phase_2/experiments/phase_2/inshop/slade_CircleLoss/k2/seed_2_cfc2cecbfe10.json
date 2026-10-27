@@ -1,0 +1,26 @@
+{
+  "batch_size": 128,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "gamma": 14.67,
+    "m": 0.02051
+  },
+  "lr": 1.153e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/slade_CircleLoss/k2/cfc2cecbfe10",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/slade_CircleLoss/k2/seed_2_cfc2cecbfe10.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 14.67,
+    "m": 0.02051
+  }
+}

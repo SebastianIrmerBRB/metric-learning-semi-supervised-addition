@@ -1,0 +1,41 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 128,
+  "classifier_lr": 0.00022368769774440943,
+  "cv_k": 4,
+  "cv_mode": "stratified_group_kfold",
+  "data_split_seed": 7,
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": "configs/ablations/confidence_threshold/cars_iscen_prx/hparam_config.json",
+  "k_shot_grid": [
+    16
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 6041,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "loss_params": {
+    "alpha": 2.667597485178041,
+    "margin": 0.7177445477330927
+  },
+  "lr": 0.00015017812638079355,
+  "mode": "ssl",
+  "patience": 20,
+  "sampler_m": 4,
+  "save_dir": "ablations/confidence_threshold/cars_iscen_prx/seed_7",
+  "seed": 7,
+  "ssl_config": "configs/ablations/confidence_threshold/cars_iscen_prx/ssl_config.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "support_seed": 7,
+  "use_cache": true,
+  "val_mode": "all"
+}

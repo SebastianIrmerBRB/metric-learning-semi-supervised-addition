@@ -1,0 +1,410 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_9_01900cf8005b.json",
+      "name": "01900cf8005b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_9_075bb777f685.json",
+      "name": "075bb777f685"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_9_0a3c6f1f2540.json",
+      "name": "0a3c6f1f2540"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_2_0ecd833e5e41.json",
+      "name": "0ecd833e5e41"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_8_116325c6579e.json",
+      "name": "116325c6579e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_11_13a75eac74ac.json",
+      "name": "13a75eac74ac"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_11_161781c3acff.json",
+      "name": "161781c3acff"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_11_16d76c07f044.json",
+      "name": "16d76c07f044"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_11_179db713c57f.json",
+      "name": "179db713c57f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_2_1b8589767b50.json",
+      "name": "1b8589767b50"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_10_206f9b0e14fc.json",
+      "name": "206f9b0e14fc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_9_20e964ff5913.json",
+      "name": "20e964ff5913"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_11_220884eb3b30.json",
+      "name": "220884eb3b30"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_9_22beefba5254.json",
+      "name": "22beefba5254"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_2_2a13339f78d5.json",
+      "name": "2a13339f78d5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_2_2e70967904ea.json",
+      "name": "2e70967904ea"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_11_2ee33832dd80.json",
+      "name": "2ee33832dd80"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_11_311e23eb05d9.json",
+      "name": "311e23eb05d9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_8_31f44f1ae650.json",
+      "name": "31f44f1ae650"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_10_33e68854af3d.json",
+      "name": "33e68854af3d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_8_3463c2ffafa5.json",
+      "name": "3463c2ffafa5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_2_37741b0b1b25.json",
+      "name": "37741b0b1b25"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_9_387c1b978eeb.json",
+      "name": "387c1b978eeb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_9_391b28ca058a.json",
+      "name": "391b28ca058a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_10_39ee031f2019.json",
+      "name": "39ee031f2019"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_2_3a67bc46152c.json",
+      "name": "3a67bc46152c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_11_3ab227561448.json",
+      "name": "3ab227561448"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_9_3afbc18fe0f4.json",
+      "name": "3afbc18fe0f4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_2_3f8d7742982d.json",
+      "name": "3f8d7742982d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_9_40e47851d2f2.json",
+      "name": "40e47851d2f2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_10_422aa34e3898.json",
+      "name": "422aa34e3898"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_8_42bebeba43df.json",
+      "name": "42bebeba43df"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_9_4461e2f0f1d0.json",
+      "name": "4461e2f0f1d0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_8_48d5a369ed60.json",
+      "name": "48d5a369ed60"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_11_4afff6ba9d78.json",
+      "name": "4afff6ba9d78"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_2_4f56e0c196f2.json",
+      "name": "4f56e0c196f2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_11_50a09f901590.json",
+      "name": "50a09f901590"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_2_5142d64c7bf0.json",
+      "name": "5142d64c7bf0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_10_544456d0d65b.json",
+      "name": "544456d0d65b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_10_58b4b767a935.json",
+      "name": "58b4b767a935"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_9_5aded39ceb99.json",
+      "name": "5aded39ceb99"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_11_5bd6c3f13695.json",
+      "name": "5bd6c3f13695"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_11_602ec479017e.json",
+      "name": "602ec479017e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_10_64cafce6422f.json",
+      "name": "64cafce6422f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_10_69a0b544780d.json",
+      "name": "69a0b544780d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_8_69b0014c31c5.json",
+      "name": "69b0014c31c5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_2_6a77098906e3.json",
+      "name": "6a77098906e3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_11_74d624165bc6.json",
+      "name": "74d624165bc6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_8_759784c94672.json",
+      "name": "759784c94672"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_8_75dbd937eb5d.json",
+      "name": "75dbd937eb5d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_10_774e77d8dd89.json",
+      "name": "774e77d8dd89"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_8_78d32797d173.json",
+      "name": "78d32797d173"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_8_79a44d498568.json",
+      "name": "79a44d498568"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_9_7afa7a7a0876.json",
+      "name": "7afa7a7a0876"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_10_7c5e51fe5123.json",
+      "name": "7c5e51fe5123"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_10_821ce3f71cd4.json",
+      "name": "821ce3f71cd4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_2_872a37e79208.json",
+      "name": "872a37e79208"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_2_87ee8f15c0ac.json",
+      "name": "87ee8f15c0ac"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_10_89a9fd8dccff.json",
+      "name": "89a9fd8dccff"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_8_89e3e86957d3.json",
+      "name": "89e3e86957d3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_2_8e82b7cb472a.json",
+      "name": "8e82b7cb472a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_10_8f2d4824066e.json",
+      "name": "8f2d4824066e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_8_916b4bbb6f50.json",
+      "name": "916b4bbb6f50"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_11_92a78e098af5.json",
+      "name": "92a78e098af5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_10_968c332b74d2.json",
+      "name": "968c332b74d2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_11_9acabb273de6.json",
+      "name": "9acabb273de6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_9_9b065831dd08.json",
+      "name": "9b065831dd08"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_10_9d680005f1d7.json",
+      "name": "9d680005f1d7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_9_aa53489a5117.json",
+      "name": "aa53489a5117"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_11_aba418e86c5f.json",
+      "name": "aba418e86c5f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_8_ae771e492a91.json",
+      "name": "ae771e492a91"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_11_b2773da555e9.json",
+      "name": "b2773da555e9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_11_b3273d3006b2.json",
+      "name": "b3273d3006b2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_2_b55786072f45.json",
+      "name": "b55786072f45"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_2_b8a865f0b024.json",
+      "name": "b8a865f0b024"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_10_bba9491c3b3c.json",
+      "name": "bba9491c3b3c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_10_bf6cc5fa9a1a.json",
+      "name": "bf6cc5fa9a1a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_8_c9c3033de934.json",
+      "name": "c9c3033de934"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_2_ca388f115df0.json",
+      "name": "ca388f115df0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_9_caeedd70eb0f.json",
+      "name": "caeedd70eb0f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_9_d19b21b07183.json",
+      "name": "d19b21b07183"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_2_d1b87c1906ea.json",
+      "name": "d1b87c1906ea"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_9_d588b8a58165.json",
+      "name": "d588b8a58165"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_8_dbf695d0db46.json",
+      "name": "dbf695d0db46"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_11_dc55332f1c76.json",
+      "name": "dc55332f1c76"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ProxyAnchorLoss/k4/seed_8_df9c5c94aa2e.json",
+      "name": "df9c5c94aa2e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_8_e07930e591b3.json",
+      "name": "e07930e591b3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_8_e110901bd4e1.json",
+      "name": "e110901bd4e1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_10_e15decdab291.json",
+      "name": "e15decdab291"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_10_e2538bcbb475.json",
+      "name": "e2538bcbb475"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_8_e5b2fa79618e.json",
+      "name": "e5b2fa79618e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_9_e8ea4e628848.json",
+      "name": "e8ea4e628848"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_9_ef040b3b6753.json",
+      "name": "ef040b3b6753"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_2_ef1ba0c67d37.json",
+      "name": "ef1ba0c67d37"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_2_f0371d3ed8f3.json",
+      "name": "f0371d3ed8f3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_MultiSimilarityLoss/k4/seed_10_f4bfbdd6292d.json",
+      "name": "f4bfbdd6292d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_NTXentLoss/k4/seed_2_f607b5fa061a.json",
+      "name": "f607b5fa061a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_9_fa9ccc37f691.json",
+      "name": "fa9ccc37f691"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_ArcFaceLoss/k4/seed_11_fb8e8bfd6b43.json",
+      "name": "fb8e8bfd6b43"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/k4_ensemble/cars/lrml_CircleLoss/k4/seed_8_fc164d0b4b88.json",
+      "name": "fc164d0b4b88"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/k4_ensemble/cars/cuda_ssl_cuda"
+}

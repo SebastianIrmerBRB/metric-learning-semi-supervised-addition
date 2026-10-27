@@ -1,0 +1,32 @@
+{
+  "extends": "../../../_templates/hpo/phase_1/cars/iscen.json",
+  "spaces": {
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 30,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.4,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 280,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    }
+  }
+}

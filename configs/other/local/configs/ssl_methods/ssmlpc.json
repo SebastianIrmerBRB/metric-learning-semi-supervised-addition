@@ -1,0 +1,31 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "label_sampling_mode": "global_budget",
+  "labeled_fraction": 0.1,
+  "labeled_per_class": null,
+  "max_unlabeled_samples": null,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "ssmlpc",
+    "regularizer_params": {
+      "graph_on": "all",
+      "graph_source": "embeddings",
+      "n_neighbors": 10,
+      "neighbor_metric": "cosine",
+      "reconstruction_regularization": 0.001,
+      "reduction": "mean"
+    },
+    "regularizer_target_ratio": 1,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.2,
+    "supervised_weight": 1.0
+  },
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 1,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 30
+}

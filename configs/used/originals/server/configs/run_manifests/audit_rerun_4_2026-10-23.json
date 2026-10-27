@@ -1,0 +1,56 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    2
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/audit_rerun/rerun_4_2026-10-23.json",
+      "ablation_variants": [
+        "epochs__epochs"
+      ],
+      "enabled": true,
+      "name": "seeded_runs_in_shop_10_slade_nt__b0p5_s8",
+      "priority": 0,
+      "save_dir": "final/audit_rerun_2026-10-23/runde4/seeded_runs/in_shop_10/slade_nt/b0p5_s8",
+      "study_dir": "final/phase_2_studies/geometry/in_shop_10/slade/slade_nt/class_subset_label_0p1_NTXentLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          8
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "label_budget_grid": [
+          0.5
+        ],
+        "ssl_label_sampling_modes": [
+          "class_subset"
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          10,
+          20,
+          40,
+          100
+        ]
+      }
+    }
+  ],
+  "save_dir_root": "final/audit_rerun_2026-10-23/runde4",
+  "scheduler_log_dir": "final/audit_rerun_2026-10-23/runde4/_scheduler",
+  "version": 1
+}

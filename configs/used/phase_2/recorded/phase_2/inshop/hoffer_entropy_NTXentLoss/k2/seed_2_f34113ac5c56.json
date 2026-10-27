@@ -1,0 +1,103 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "ssl_config.method_params.regularizer_params.distance_scale": 4.0
+      },
+      "description": "Reruns of every thesis CV run whose values did not all come from its own cv_summary.json (only info.log, or no Concat in cv_summary.json), Thesis/review/cvsum_rerun_2026-10-21. Each variant is the run's original resolved ablation variant plus its own recorded epoch cap and patience; nothing else changes.",
+      "name": "cvsum_rerun_2026-10-21",
+      "path": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_2026-10-21.json",
+      "variant": "hoffer__distance_scale_4"
+    },
+    "ablation_variant": "hoffer__distance_scale_4",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epochs",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/cvsum_rerun/phase_2/in_shop_ablation/hoffer_nt_distance_scale_4/k2_s2/hoffer__distance_scale_4/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-21_18-52-37/fold_00/2026-10-21_18-52-37",
+    "loss_params": {
+      "temperature": 0.23808912125621443
+    },
+    "lr": 2.84106647895727e-05,
+    "patience_delay_epochs": 0,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/cvsum_rerun/phase_2/in_shop_ablation/hoffer_nt_distance_scale_4/k2_s2/hoffer__distance_scale_4/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-21_18-52-37/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/cvsum_rerun/phase_2/in_shop_ablation/hoffer_nt_distance_scale_4/k2_s2/hoffer__distance_scale_4/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 4.0
+        },
+        "regularizer_target_ratio": 0.7997141000625925,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "warmup_epochs": 20
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "NTXentLoss",
+    "warmup_loss_params": {
+      "temperature": 0.23808912125621443
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/hoffer_entropy_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 4.0
+      },
+      "regularizer_target_ratio": 0.7997141000625925,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "warmup_epochs": 20
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/sup_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/sup_ProxyAnchorLoss/k4/8b9e2d8ed29a",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/sup_ProxyAnchorLoss/k4/seed_9_8b9e2d8ed29a.json",
+  "support_seed": 9
+}

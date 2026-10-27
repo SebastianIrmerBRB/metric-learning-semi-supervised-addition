@@ -1,0 +1,30 @@
+{
+  "archive_files": 2116,
+  "archive_referenced": 446,
+  "authority": "/mnt/f/Thesis/daten",
+  "fold_sources": 20328,
+  "hpo_by_phase": {
+    "0": 110,
+    "1": 125
+  },
+  "hpo_studies": 235,
+  "hpo_trial_records": 15529,
+  "inherited_configs": 15967,
+  "mixed_phase0_studies": 23,
+  "phase0_ssl_regimes": 47,
+  "reference_links": 25,
+  "run_manifests": 34,
+  "run_memberships": {
+    "external": 470,
+    "geometry": 350,
+    "k4_ensemble": 100,
+    "patience_comparison": 678,
+    "phase_1": 2250,
+    "phase_2": 917,
+    "phase_2_k8": 518
+  },
+  "schema_version": 1,
+  "summary_epoch_conflicts": 297,
+  "thesis_observations": 5308,
+  "unique_runs": 4957
+}

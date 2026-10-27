@@ -1,0 +1,2497 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    2
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_arc_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_arc_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_arc_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_arc_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_cir_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_cir_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_cir_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_cir_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_ms_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_ms_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_ms_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_ms_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_nt_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_nt_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_nt_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_nt_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_prx_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_prx_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "hoffer_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_hoffer_prx_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_prx_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/hoffer/hoffer_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__diag"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_arc_controls_diag__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_arc_controls_diag/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_arc_controls_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_arc_controls_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_arc_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_arc_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__pl_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_arc_controls_pl_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_arc_controls_pl_once/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_arc_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_arc_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__diag"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_cir_diag__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_cir_diag/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_cir_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_cir_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_cir_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_cir_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__pl_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_cir_pl_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_cir_pl_once/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_cir_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_cir_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "file",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__diag"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_ms_controls_diag__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_ms_controls_diag/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_ms_controls_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_ms_controls_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_ms_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_ms_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__pl_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_ms_controls_pl_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_ms_controls_pl_once/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_ms_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_ms_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__diag"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_nt_controls_diag__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_nt_controls_diag/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_nt_controls_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_nt_controls_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_nt_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_nt_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__pl_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_nt_controls_pl_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_nt_controls_pl_once/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_nt_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_nt_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__diag"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_prx_controls_diag__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_controls_diag/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_prx_controls_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_controls_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_prx_controls_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_controls_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__pl_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_prx_controls_pl_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_controls_pl_once/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "iscen_cir__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_iscen_prx_controls_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/iscen_prx_controls_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_slade_arc_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/slade_arc_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/slade/slade_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_slade_cir_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/slade_cir_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/slade/slade_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_slade_ms_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/slade_ms_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/slade/slade_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_slade_nt_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/slade_nt_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/slade/slade_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_slade_prx_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars/slade_prx_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/cars/slade/slade_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_arc_graph_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_arc_graph_once/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_arc_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_arc_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_arc_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_arc_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_arc_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_arc_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_cir_graph_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_cir_graph_once/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_cir_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_cir_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_cir_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_cir_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_cir_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_cir_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_ms_graph_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_ms_graph_once/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_ms_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_ms_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_ms_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_ms_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_ms_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_ms_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_nt_graph_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_nt_graph_once/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_nt_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_nt_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_nt_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_nt_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_nt_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_nt_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_once"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_prx_graph_once__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_graph_once/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__graph_rewired"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_prx_graph_rewired__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_graph_rewired/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_prx_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "lrml__zero_weight"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_lrml_mult_lrml_prx_zero_weight__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_lrml_mult/lrml_prx_zero_weight/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/lrml_mult/lrml_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_no_warmup_rest_slade_arc_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_no_warmup_rest/slade_arc_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/slade/slade_arc/class_subset_k_shot_label_1_k_16_ArcFaceLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_no_warmup_rest_slade_cir_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_no_warmup_rest/slade_cir_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/slade/slade_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_no_warmup_rest_slade_ms_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_no_warmup_rest/slade_ms_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/slade/slade_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_no_warmup_rest_slade_nt_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_no_warmup_rest/slade_nt_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/slade/slade_nt/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    },
+    {
+      "ablation_config": "configs/used/originals/server/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "ablation_variants": [
+        "slade__no_warmup"
+      ],
+      "enabled": true,
+      "name": "phase_2_cars_no_warmup_rest_slade_prx_no_warmup__k8_s2",
+      "priority": 2,
+      "save_dir": "final/phase_2_k8/phase_2/cars_no_warmup_rest/slade_prx_no_warmup/k8_s2",
+      "study_dir": "final/phase_2_studies/geometry/cars/slade/slade_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/slade_cars_initial",
+      "study_replay": {
+        "comparison_seed_targets": [
+          "seed",
+          "support_seed"
+        ],
+        "comparison_seeds": [
+          2
+        ],
+        "epoch_head_dtype": "bfloat16",
+        "final_test_top_n": 1,
+        "final_test_visualization": [
+          "none"
+        ],
+        "fold_test_embedding_storage": "temporary",
+        "k_shot_grid": [
+          8
+        ],
+        "save_epoch_head_interval": 0,
+        "save_head_state": false,
+        "study_dir_mode": "final_train",
+        "test_recall_at_k": [
+          1,
+          2,
+          4,
+          8,
+          16,
+          32
+        ]
+      }
+    }
+  ],
+  "save_dir_root": "final/phase_2_k8",
+  "scheduler_log_dir": "final/phase_2_k8/_scheduler",
+  "version": 1
+}

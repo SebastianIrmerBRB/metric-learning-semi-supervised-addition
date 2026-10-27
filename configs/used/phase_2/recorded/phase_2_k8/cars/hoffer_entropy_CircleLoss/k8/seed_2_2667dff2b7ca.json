@@ -1,0 +1,141 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20,
+        "patience_delay_epochs": 20,
+        "ssl_config.method_params.regularizer_max_ratio": null,
+        "ssl_config.method_params.regularizer_target_ratio": null,
+        "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+        "ssl_config.method_params.regularizer_target_ratio_batches": null,
+        "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+        "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+        "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+        "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+        "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+        "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+        "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+        "ssl_config.method_params.regularizer_weight": 0.0
+      },
+      "description": "Every Cars196 Phase 2 run of the thesis (variants.csv, SLADE sweeps) replayed at k=8 instead of k=16; built by Thesis/review/cars_k8_2026-10-19/baue_manifest_k8.py. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus 1000 epochs, its patience and patience_delay_epochs 20.",
+      "name": "phase2_k8_cars_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2_k8/cars_2026-10-19.json",
+      "variant": "hoffer_cir__zero_weight"
+    },
+    "ablation_variant": "hoffer_cir__zero_weight",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "cv_fold": 0,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "evaluation_embedding_residency": "gpu",
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "file",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      8
+    ],
+    "length_before_new_iter": 6003,
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 584,
+    "length_before_new_iter_num_unlabeled": 5419,
+    "log_dir": "logs/final/phase_2_k8/phase_2/cars/hoffer_cir_zero_weight/k8_s2/hoffer_cir__zero_weight/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_19-12-34/fold_00/2026-10-19_19-12-34",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "gamma": 35.34628354650579,
+      "m": 0.020804679654451545
+    },
+    "lr": 8.36587323443373e-05,
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2_k8/phase_2/cars/hoffer_cir_zero_weight/k8_s2/hoffer_cir__zero_weight/class_subset_k_shot_label_1_k_8_comparison_seed_2/final/ssl/cv_2026-10-19_19-12-34/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2_k8/phase_2/cars/hoffer_cir_zero_weight/k8_s2/hoffer_cir__zero_weight/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "method_params": {
+        "regularizer_max_ratio": null,
+        "regularizer_params": {
+          "distance_scale": 4.135371623959961
+        },
+        "regularizer_target_ratio": null,
+        "regularizer_target_ratio_aggregation": null,
+        "regularizer_target_ratio_batches": null,
+        "regularizer_target_ratio_diagnostics": null,
+        "regularizer_target_ratio_ema_alpha": null,
+        "regularizer_target_ratio_probe_memory": null,
+        "regularizer_target_ratio_recalibration_interval_samples": null,
+        "regularizer_target_ratio_statistic": null,
+        "regularizer_target_ratio_statistic_anchor": null,
+        "regularizer_target_ratio_update_interval_samples": null,
+        "regularizer_weight": 0.0
+      },
+      "warmup_epochs": 10
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 35.34628354650579,
+      "m": 0.020804679654451545
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/hoffer_entropy_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "method_params": {
+      "regularizer_max_ratio": null,
+      "regularizer_params": {
+        "distance_scale": 4.135371623959961
+      },
+      "regularizer_target_ratio": null,
+      "regularizer_target_ratio_aggregation": null,
+      "regularizer_target_ratio_batches": null,
+      "regularizer_target_ratio_diagnostics": null,
+      "regularizer_target_ratio_ema_alpha": null,
+      "regularizer_target_ratio_probe_memory": null,
+      "regularizer_target_ratio_recalibration_interval_samples": null,
+      "regularizer_target_ratio_statistic": null,
+      "regularizer_target_ratio_statistic_anchor": null,
+      "regularizer_target_ratio_update_interval_samples": null,
+      "regularizer_weight": 0.0
+    },
+    "warmup_epochs": 10
+  }
+}

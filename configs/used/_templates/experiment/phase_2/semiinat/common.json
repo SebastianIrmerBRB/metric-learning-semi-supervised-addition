@@ -1,0 +1,36 @@
+{
+  "compcars_strict_paper_counts": false,
+  "compile_train_step": true,
+  "dataset": "iNat",
+  "dataset_protocol": "semi_inat_known_810",
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../common.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "final_test_visualization": [
+    "none"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "length_before_new_iter": null,
+  "log_head_dynamics": false,
+  "patience": 10,
+  "projection_3d": false,
+  "sampler_m": 2,
+  "save_epoch_head_interval": null,
+  "seed": 2,
+  "support_seed": 2,
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split"
+}

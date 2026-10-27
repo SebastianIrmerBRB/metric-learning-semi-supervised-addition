@@ -1,0 +1,12 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/hoffer_entropy_CircleLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/hoffer_entropy_CircleLoss/k2/f28a0f2f6ba2",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_f28a0f2f6ba2.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0
+}

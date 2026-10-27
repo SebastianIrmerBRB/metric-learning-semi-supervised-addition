@@ -1,0 +1,21 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/sup_CircleLoss.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "temporary",
+  "log_head_dynamics": false,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/sup_CircleLoss/k4/ab3e01d1b752",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/sup_CircleLoss/k4/seed_2_ab3e01d1b752.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

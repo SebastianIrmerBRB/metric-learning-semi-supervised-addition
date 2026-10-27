@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/slade_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/slade_CircleLoss/k4/37bbf0f5a398",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/slade_CircleLoss/k4/seed_2_37bbf0f5a398.json",
+  "support_seed": 2
+}

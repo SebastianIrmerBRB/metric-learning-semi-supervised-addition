@@ -1,0 +1,29 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cpu",
+  "gpu_batch_size_thresholds": [
+    "TripletMarginLoss:all=99999"
+  ],
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "TripletMarginLoss:DistanceWeightedMiner"
+      ],
+      "experiment_config": "configs/used/originals/local/configs/phase_1/cars/supervised.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/first/first_run_cars_cub.json",
+      "name": "triplet"
+    }
+  ],
+  "save_dir_root": "supervised/cars_initial",
+  "scheduler_log_dir": "logs/run_scheduler/cars_four_losses",
+  "version": 1
+}

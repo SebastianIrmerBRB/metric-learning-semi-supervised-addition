@@ -1,0 +1,47 @@
+{
+  "description": "Mechanism controls for cars/slade/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_cir_slade_controls_slade_cir",
+  "variants": {
+    "clusters_once": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_mode": "once"
+    },
+    "oracle_noise_0": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.0,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.1,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_20": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.2,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_40": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.4,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_60": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.6,
+      "ssl_config.pseudo_label_source": "oracle"
+    }
+  }
+}

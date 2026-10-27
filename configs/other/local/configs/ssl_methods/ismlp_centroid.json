@@ -1,0 +1,36 @@
+{
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "graph_diagnostics_mode": "off",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "max_unlabeled_samples": null,
+  "method": "ismlp",
+  "method_params": {
+    "grad_norm_alpha": 1,
+    "regularizer_params": {
+      "centroid_backend": "auto",
+      "centroid_gpu": null,
+      "centroid_iterations": 25,
+      "centroid_method": "kmeans",
+      "centroid_n_init": 10,
+      "kappa": 3.0,
+      "kappa_mode": "fixed",
+      "normalize_proxies": true,
+      "num_proxies": null,
+      "proxies_per_class": 1.0,
+      "proxy_lr": null,
+      "proxy_mode": "centroids",
+      "unlabeled_batch_size": 128,
+      "unlabeled_ratio": null
+    },
+    "regularizer_weight": 1.0,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "restart_selection_after_warmup": true,
+  "update_interval_epochs": 5,
+  "update_mode": "every_n_epochs",
+  "warmup_epochs": 20
+}

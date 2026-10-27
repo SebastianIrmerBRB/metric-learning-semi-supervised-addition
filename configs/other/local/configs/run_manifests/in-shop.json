@@ -1,0 +1,113 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 5,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_ms.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_pair.json",
+      "name": "nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_ms.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_ms.json",
+      "name": "ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_ms.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_cir.json",
+      "name": "circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_ms.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_arc.json",
+      "name": "arc_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_ms.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_prx.json",
+      "name": "prx_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_nt.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_pair.json",
+      "name": "nt-xent1",
+      "save_dir": "scheduled/supervised/nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_nt.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_ms.json",
+      "name": "ms-loss1",
+      "save_dir": "scheduled/supervised/ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_nt.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_cir.json",
+      "name": "circle_loss1",
+      "save_dir": "scheduled/supervised/circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_nt.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_arc.json",
+      "name": "arc_loss1",
+      "save_dir": "scheduled/supervised/arc_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/in_shop/in_shop_nt.json",
+      "hparam_config": "configs/hpo/in_shop/supervised_prx.json",
+      "name": "prx_loss1",
+      "save_dir": "scheduled/supervised/prx_loss"
+    }
+  ],
+  "save_dir_root": "scheduled/in_shop",
+  "scheduler_log_dir": "logs/run_scheduler/in_shop_four_losses",
+  "version": 1
+}

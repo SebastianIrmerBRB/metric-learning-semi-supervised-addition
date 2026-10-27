@@ -1,0 +1,89 @@
+{
+  "base_args": {
+    "ablation_config": null,
+    "ablation_variant": null,
+    "compile_train_step": true,
+    "cv_k": 4,
+    "cv_parallel_backend": "process",
+    "cv_parallel_folds": 1,
+    "dataset": "iNat",
+    "dataset_protocol": "semi_inat_known_810",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "iNat",
+      "dataset_protocol": "semi_inat_known_810",
+      "evaluation_embedding_residency": "gpu",
+      "final_test_after_hpo": true,
+      "k_shot_grid": [
+        16
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "patience": 10,
+      "ssl_label_sampling_modes": [
+        "class_subset_k_shot"
+      ]
+    },
+    "faiss_temp_memory_mb": 256,
+    "final_fit_mode": "cross_validation_folds",
+    "final_test_after_hpo": true,
+    "final_test_visualization": [
+      "tsne"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_cache_max_gb": 8096,
+    "frozen_feature_residency_max_gb": 2.0,
+    "graph_projection": false,
+    "image_resize_mode": "squash",
+    "k_shot_grid": [
+      16
+    ],
+    "label_budget_grid": [
+      1.0
+    ],
+    "length_before_new_iter": null,
+    "max_unlabeled_samples": null,
+    "measurements": [
+      "precision_at_1",
+      "mean_average_precision_at_r"
+    ],
+    "patience": 10,
+    "projection_3d": true,
+    "report_test_metrics": true,
+    "save_final_head_state": false,
+    "save_head_state": false,
+    "ssl_label_sampling_modes": [
+      "class_subset_k_shot"
+    ],
+    "test_measurements": null,
+    "test_recall_at_k": null,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0,
+    "unlabeled_class_scope": null,
+    "unlabeled_fraction": null,
+    "validation_gallery_fraction": 0.5,
+    "validation_retrieval_mode": "same_source",
+    "warmup_loss": "same_as_loss",
+    "warmup_miner": "no_miner"
+  },
+  "extends": "../common.json",
+  "hparam_config": {
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "128:2",
+          "256:2",
+          "512:2"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "confidence_threshold": 0.9,
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/iscen_MultiSimilarityLoss.json",
+  "graph_edge_ablation": "off",
+  "labeled_batch_size": 8,
+  "labeled_per_class": 16,
+  "method_params": {
+    "n_neighbors": 6
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "update_mode": "every_epoch",
+  "warmup_epochs": 5
+}

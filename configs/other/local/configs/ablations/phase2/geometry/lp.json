@@ -1,0 +1,12 @@
+{
+  "description": "Geometry replay of LP with pseudo-label diagnostics on (the tuned config has them off); 600 epochs / patience 20.",
+  "name": "geometry_lp",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    }
+  }
+}

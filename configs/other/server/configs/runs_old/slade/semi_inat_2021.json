@@ -1,0 +1,35 @@
+{
+  "extends": [
+    "../semi_inat_2021.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+      "choices": [
+        0,
+        0.05,
+        0.25,
+        0.5,
+        1.0,
+        2.5
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        2,
+        4,
+        8,
+        12
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 12,
+      "low": 0,
+      "step": 2,
+      "type": "int"
+    }
+  },
+  "study_name": "slade_cars_initial"
+}

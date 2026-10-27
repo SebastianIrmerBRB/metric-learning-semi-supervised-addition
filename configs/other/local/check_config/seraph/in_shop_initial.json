@@ -1,0 +1,21 @@
+{
+  "extends": [
+    "../first/first_run_in_shop.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.positive_pair_prior": {
+      "high": 0.75,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "seraph_in_shop_initial"
+}

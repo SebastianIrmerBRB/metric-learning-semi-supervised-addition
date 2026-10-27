@@ -1,0 +1,26 @@
+{
+  "batch_size": 64,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/hoffer_entropy_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "gamma": 35.34628354650579,
+    "m": 0.020804679654451545
+  },
+  "lr": 8.36587323443373e-05,
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/cars/hoffer_entropy_CircleLoss/k16/f94a20755f5e",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/cars/hoffer_entropy_CircleLoss/k16/seed_2_f94a20755f5e.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss": "same_as_loss",
+  "warmup_loss_params": {}
+}

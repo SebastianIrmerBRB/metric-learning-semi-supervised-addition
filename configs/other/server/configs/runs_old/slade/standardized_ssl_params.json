@@ -1,0 +1,56 @@
+{
+  "spaces": {
+    "loss.NTXentLoss.temperature": {
+      "high": 1,
+      "log": true,
+      "low": 0.05,
+      "type": "float"
+    },
+    "ssl_config.method_params.grad_norm_alpha": {
+      "high": 5,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.beta": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_neg_margin": {
+      "high": 2,
+      "log": false,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.contrastive_pos_margin": {
+      "high": 1,
+      "log": false,
+      "low": 0,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_margin": {
+      "high": 2.0,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+      "high": 50.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        32,
+        64,
+        128,
+        256
+      ],
+      "type": "categorical"
+    }
+  },
+  "study_name": "slade_cars_initial"
+}

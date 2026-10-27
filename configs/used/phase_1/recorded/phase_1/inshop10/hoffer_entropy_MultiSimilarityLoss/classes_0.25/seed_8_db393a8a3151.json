@@ -1,0 +1,30 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2
+      }
+    },
+    "cv_fold": 0,
+    "cv_parallel_folds": 2,
+    "length_before_new_iter": 19621,
+    "length_before_new_iter_num_labeled": 4805,
+    "length_before_new_iter_num_unlabeled": 14816,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_ms/class_subset_label_0p25_comparison_seed_8/final/ssl/cv_2026-09-24_16-23-27/fold_00/2026-09-24_16-23-30",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_ms/class_subset_label_0p25_comparison_seed_8/final/ssl/cv_2026-09-24_16-23-27/fold_00",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/hoffer_ms/study_replay_grid/ssl_configs/class_subset_label_0p25_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.25,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/hoffer_entropy_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.25,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

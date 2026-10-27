@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/slade_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/slade_ArcFaceLoss/k8/794da10618db",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/slade_ArcFaceLoss/k8/seed_11_794da10618db.json",
+  "support_seed": 11
+}

@@ -1,0 +1,292 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs.json",
+    "ablation_config_resolved": {
+      "path": "configs/final_manifests/final/changes/epochs.json"
+    },
+    "batch_size": 256,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 0.05065521377413245,
+    "compile_train_step": true,
+    "configured_length_before_new_iter": null,
+    "cv_parallel_backend": "process",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cub/slade.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 2,
+      "epochs": 600,
+      "evaluation_embedding_residency": "cpu",
+      "mode": "ssl",
+      "save_dir": "runs/slade_cars",
+      "ssl_config": "configs/runs/ssl/slade/paper.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_config",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/slade/cub.json",
+    "hparam_config_resolved": {
+      "max_replaced_pruned_trials": null,
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "64:4",
+            "128:4",
+            "256:4"
+          ]
+        },
+        "classifier_lr": {
+          "high": 10,
+          "log": true,
+          "low": 1e-05,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.alpha": {
+          "high": 30.0,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.margin": {
+          "high": 1.0,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 0.0001,
+          "low": 5e-06
+        },
+        "ssl_config.method_params.regularizer_params.basis_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+          "choices": [
+            0,
+            0.25,
+            0.5,
+            1.0,
+            2.5
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.beta": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.cluster_ratio": {
+          "choices": [
+            1,
+            2,
+            3
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.contrastive_neg_margin": {
+          "high": 2,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.contrastive_pos_margin": {
+          "high": 0.5,
+          "log": false,
+          "low": 0,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.sd_margin": {
+          "high": 0.99,
+          "log": false,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.sd_variance_weight": {
+          "high": 20.0,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+          "choices": [
+            32,
+            64,
+            128,
+            256,
+            512
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.update_interval_epochs": {
+          "choices": [
+            1,
+            2,
+            5
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 12,
+          "low": 0,
+          "step": 2,
+          "type": "int"
+        }
+      },
+      "study_name": "slade_cars_initial"
+    },
+    "hparam_final_from_study": "slade_cars_initial",
+    "hparam_final_trial_number": 57,
+    "hparam_params": {
+      "batch_sampler": "256:4",
+      "classifier_lr": 0.05065521377413245,
+      "loss.ProxyAnchorLoss.alpha": 14.84729347829069,
+      "loss.ProxyAnchorLoss.margin": 0.24675908148420878,
+      "lr": 9.107417554983169e-05,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": 0.596006272665793,
+      "ssl_config.method_params.regularizer_params.basis_warmup_epochs": 1.0,
+      "ssl_config.method_params.regularizer_params.beta": 0.3951803744244998,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 1,
+      "ssl_config.method_params.regularizer_params.contrastive_neg_margin": 1.3876812331878476,
+      "ssl_config.method_params.regularizer_params.contrastive_pos_margin": 0.08975876540463093,
+      "ssl_config.method_params.regularizer_params.sd_margin": 0.6531371202321068,
+      "ssl_config.method_params.regularizer_params.sd_variance_weight": 0.10891433312930023,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 128,
+      "ssl_config.method_params.regularizer_target_ratio": 0.5128102903689062,
+      "ssl_config.update_interval_epochs": 1,
+      "ssl_config.warmup_epochs": 10
+    },
+    "loss": "ProxyAnchorLoss",
+    "loss_params": {
+      "alpha": 14.84729347829069,
+      "margin": 0.24675908148420878
+    },
+    "lr": 9.107417554983169e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87232512,
+    "model_trainable_parameters": 652032,
+    "projection_3d": true,
+    "save_final_head_state": false,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 1024,
+      "embedding_num_workers": 0,
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "graph_edge_ablation_seed": null,
+      "labeled_batch_size": null,
+      "method": "slade",
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "basis_target_ratio": 0.596006272665793,
+          "basis_warmup_epochs": 1.0,
+          "basis_warmup_steps": null,
+          "beta": 0.3951803744244998,
+          "cluster_ratio": 1,
+          "contrastive_neg_margin": 1.3876812331878476,
+          "contrastive_pos_margin": 0.08975876540463093,
+          "lambda_basis": 0.01,
+          "num_clusters": null,
+          "sd_gradient_mode": "damped",
+          "sd_margin": 0.6531371202321068,
+          "sd_variance_weight": 0.10891433312930023,
+          "unlabeled_batch_size": 128,
+          "unlabeled_ranking_loss": "contrastive",
+          "unlabeled_ratio": 1.0
+        },
+        "regularizer_target_ratio": 0.5128102903689062,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 10
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0,
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 14.84729347829069,
+      "margin": 0.24675908148420878
+    },
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 1024,
+    "embedding_num_workers": 0,
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "graph_edge_ablation_seed": null,
+    "labeled_batch_size": null,
+    "method": "slade",
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "basis_target_ratio": 0.596006272665793,
+        "basis_warmup_epochs": 1.0,
+        "basis_warmup_steps": null,
+        "beta": 0.3951803744244998,
+        "cluster_ratio": 1,
+        "contrastive_neg_margin": 1.3876812331878476,
+        "contrastive_pos_margin": 0.08975876540463093,
+        "lambda_basis": 0.01,
+        "num_clusters": null,
+        "sd_gradient_mode": "damped",
+        "sd_margin": 0.6531371202321068,
+        "sd_variance_weight": 0.10891433312930023,
+        "unlabeled_batch_size": 128,
+        "unlabeled_ranking_loss": "contrastive",
+        "unlabeled_ratio": 1.0
+      },
+      "regularizer_target_ratio": 0.5128102903689062,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 10
+  }
+}

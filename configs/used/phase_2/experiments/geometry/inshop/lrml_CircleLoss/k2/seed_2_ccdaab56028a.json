@@ -1,0 +1,27 @@
+{
+  "batch_size": 256,
+  "compile_train_step": false,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/lrml_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "gamma": 18.26503152825121,
+    "m": 0.01019917295141441
+  },
+  "lr": 5.187374140043142e-05,
+  "save_dir": "thesis/phase_2/geometry/inshop/lrml_CircleLoss/k2/ccdaab56028a",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/lrml_CircleLoss/k2/seed_2_ccdaab56028a.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 18.26503152825121,
+    "m": 0.01019917295141441
+  }
+}

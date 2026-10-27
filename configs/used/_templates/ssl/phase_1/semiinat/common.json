@@ -1,0 +1,13 @@
+{
+  "extends": "../common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "warmup_checkpoint_mode": "keep_last"
+}

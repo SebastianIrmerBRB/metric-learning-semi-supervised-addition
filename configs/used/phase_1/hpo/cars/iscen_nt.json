@@ -1,0 +1,14 @@
+{
+  "extends": "../../../_templates/hpo/phase_1/cars/iscen.json",
+  "spaces": {
+    "loss.NTXentLoss.temperature": {
+      "high": 0.4,
+      "log": true,
+      "low": 0.01,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005
+    }
+  }
+}

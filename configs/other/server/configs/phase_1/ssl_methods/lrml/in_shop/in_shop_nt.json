@@ -1,0 +1,29 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 4,
+  "cv_mode": "group_kfold",
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": "configs/runs/lrml/in_shop_target_ratio.json",
+  "k_shot_grid": [
+    2
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 20706,
+  "loss_miner_grid": [
+    "ProxyAnchorLoss:no_miner"
+  ],
+  "mode": "ssl",
+  "patience": 20,
+  "save_dir": "test123",
+  "ssl_config": "configs/used/originals/server/configs/ssl_methods/lrml.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "use_cache": true,
+  "val_mode": "all"
+}

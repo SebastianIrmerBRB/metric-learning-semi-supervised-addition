@@ -1,0 +1,10 @@
+{
+  "description": "In-Shop Phase-1 runs of Ü that stopped at the 600-epoch cap, rerun with the 1000-epoch cap of the other methods (Thesis/review/cvsum_rerun_2026-10-21/baue_manifest_cap1000.py).",
+  "name": "cap1000_2026-10-21",
+  "variants": {
+    "none": {
+      "epochs": 1000,
+      "patience": 20
+    }
+  }
+}

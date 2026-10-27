@@ -1,0 +1,47 @@
+{
+  "description": "Why LRML gains more from Concat than Ue at k=4 on Cars196 (thesis checklist, B7). LRML uncapped (regularizer_max_ratio = null), 1000 epochs / patience 20 as in Methodik Phase 2. zero_weight: LRML hyperparameters, term off (copied from cars_cir_controls/lrml_cir.json). sup_all_shared: Ue hyperparameters, term on (copied from cars_2x2/lrml_arc.json). pool_labeled: LRML hyperparameters, term on, graph without unlabeled images (cars_2x2/lrml_arc.json). defaults: unchanged LRML replay, reproduction check of the Phase-1 runs in seeded_runs_cars.",
+  "name": "cars_k4_ensemble_lrml_arc",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "32:4",
+      "classifier_lr": 0.0002797,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ArcFaceLoss.margin": 42.11,
+      "loss.ArcFaceLoss.scale": 4.327,
+      "lr": 1.052e-05,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "zero_weight": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0
+    }
+  }
+}

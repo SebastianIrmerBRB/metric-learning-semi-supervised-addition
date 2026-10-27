@@ -1,0 +1,91 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    3
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 15,
+  "max_total_runs": 15,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/server/configs/final_manifests/final/changes/epochs_nt.json"
+      ],
+      "enabled": true,
+      "name": "supervised_nt",
+      "study_dir": "final/phase_2_studies/in_shop_10/supervised/supervised_nt/class_subset_label_0p1_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/server/configs/final_manifests/final/changes/epochs.json"
+      ],
+      "name": "supervised_ms",
+      "study_dir": "final/phase_2_studies/in_shop_10/supervised/supervised_ms/class_subset_label_0p1_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/server/configs/final_manifests/final/changes/epochs.json"
+      ],
+      "enabled": false,
+      "name": "supervised_cir",
+      "study_dir": "final/phase_2_studies/in_shop_10/supervised/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/server/configs/final_manifests/final/changes/epochs.json"
+      ],
+      "name": "supervised_arc",
+      "study_dir": "final/phase_2_studies/in_shop_10/supervised/supervised_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    },
+    {
+      "args": [
+        "--ablation_config",
+        "configs/used/originals/server/configs/final_manifests/final/changes/epochs_prx.json"
+      ],
+      "enabled": true,
+      "name": "supervised_prx",
+      "study_dir": "final/phase_2_studies/in_shop_10/supervised/supervised_prx/class_subset_label_0p1_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    }
+  ],
+  "save_dir_root": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10",
+  "scheduler_log_dir": "/home/irmers/metric-learning/final/seeded_runs/_scheduler/in_shop_10_supervised_sup",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      9
+    ],
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "label_budget_grid": [
+      0.05,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "ssl_label_sampling_modes": [
+      "class_subset"
+    ],
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ]
+  },
+  "version": 1
+}

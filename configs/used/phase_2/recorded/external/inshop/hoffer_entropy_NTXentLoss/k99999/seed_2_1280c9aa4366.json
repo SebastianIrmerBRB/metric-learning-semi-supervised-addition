@@ -1,0 +1,107 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_extern_2026-10-22.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "external_unlabeled_dir": "data/Fashion200k",
+        "external_unlabeled_fraction": 0.1,
+        "patience": 20,
+        "unlabeled_source": "external"
+      },
+      "description": "Reruns of the 74 external-image runs (seed 2) whose cv_summary.json lacks the Concat evaluation, Thesis/review/cvsum_rerun_extern_2026-10-22. Each variant is the run's original resolved ablation variant plus its own recorded epoch cap and patience; nothing else changes.",
+      "name": "cvsum_rerun_extern_2026-10-22",
+      "path": "/home/irmers/metric-learning/configs/ablations/cvsum_rerun/rerun_extern_2026-10-22.json",
+      "variant": "ssl__external_10"
+    },
+    "ablation_variant": "ssl__external_10",
+    "appended_unlabeled_pool_size": 33834,
+    "batch_size": 64,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": "data/Fashion200k",
+    "external_unlabeled_fraction": 0.1,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      99999
+    ],
+    "length_before_new_iter_excluded_unlabeled": 33834,
+    "length_before_new_iter_num_labeled": 19621,
+    "length_before_new_iter_num_unlabeled": 33834,
+    "log_dir": "logs/final/cvsum_rerun_extern/phase_2/in_shop_full_cvsum/hoffer_nt_external_10/k99999_s2/ssl__external_10/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-22_18-20-32/fold_00/2026-10-22_18-20-32",
+    "loss_params": {
+      "temperature": 0.23808912125621443
+    },
+    "lr": 2.84106647895727e-05,
+    "patience_delay_epochs": 0,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/cvsum_rerun_extern/phase_2/in_shop_full_cvsum/hoffer_nt_external_10/k99999_s2/ssl__external_10/class_subset_k_shot_label_1_k_99999_comparison_seed_2/final/ssl/cv_2026-10-22_18-20-32/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/cvsum_rerun_extern/phase_2/in_shop_full_cvsum/hoffer_nt_external_10/k99999_s2/ssl__external_10/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_99999_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 99999,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 9.654615783359288
+        },
+        "regularizer_target_ratio": 0.7997141000625925,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "warmup_epochs": 20
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "external",
+    "warmup_loss": "NTXentLoss",
+    "warmup_loss_params": {
+      "temperature": 0.23808912125621443
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/hoffer_entropy_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 99999,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 9.654615783359288
+      },
+      "regularizer_target_ratio": 0.7997141000625925,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "warmup_epochs": 20
+  }
+}

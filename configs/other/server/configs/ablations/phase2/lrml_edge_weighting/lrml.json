@@ -1,0 +1,23 @@
+{
+  "description": "Compare LRML with binary OR-union edges (the original Hoi et al. graph), positive-part cosine weights (gamma = 1), or positive-part cubed cosine weights (gamma = 3, Iscen's affinity). Cosine variants use W + W.T, so mutual kNN pairs contribute twice a one-way pair's weight; nonpositive cosine edges are removed. The binary variant is an explicit reference. Phase 2 manifests replay each study's tuned parameters without retuning. The separate Cars Phase 1 HPO config uses only Iscen cosine weighting and tunes gamma. All other settings are inherited from the replay recipe. LRML is uncapped (regularizer_max_ratio = null), matching the existing Phase 2 LRML ablations.",
+  "name": "lrml_edge_weighting",
+  "variants": {
+    "binary": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.edge_weighting": "binary"
+    },
+    "cosine_gamma_1": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.edge_weighting": "cosine",
+      "ssl_config.method_params.regularizer_params.gamma": 1.0
+    },
+    "cosine_gamma_3": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_params.edge_weighting": "cosine",
+      "ssl_config.method_params.regularizer_params.gamma": 3.0
+    }
+  }
+}

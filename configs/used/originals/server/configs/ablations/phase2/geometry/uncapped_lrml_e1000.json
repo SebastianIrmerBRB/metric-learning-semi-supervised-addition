@@ -1,0 +1,14 @@
+{
+  "description": "Geometry replay of LRML as uncapped_lrml.json (regularizer_max_ratio = null, patience 20), but with the Phase-1 epoch limit of the In-Shop series with labeled classes (1000 instead of 600), for LRML/ArcFace at 50 %, whose fold 1 reached 600.",
+  "name": "geometry_lrml_uncapped_e1000",
+  "variants": {
+    "defaults": {
+      "cv_parallel_folds": 4,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "track_epoch_max_samples": 0
+    }
+  }
+}

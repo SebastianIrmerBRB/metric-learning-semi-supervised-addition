@@ -1,0 +1,12 @@
+{
+  "description": "Reruns from the run audit of 23 Oct 2026 (Thesis/review/audit_laeufe_2026-10-23). Each variant is the run's original resolved ablation variant plus its own epoch cap and patience. LRML/Proxy-Anchor sup_all_shared on Cars196 additionally sets batch_sampler 32:4 (the supervised value the original variant missed). Round 2: main results without delayed patience; runs with 10-50 % CompCars from before the pool was rebuilt (16 Oct) change nothing; former patience-40 runs use patience 20; *_verzoegert variants add patience_delay_epochs 20 for runs that meet criterion A.",
+  "name": "audit_rerun_4_2026-10-23",
+  "variants": {
+    "epochs__epochs": {
+      "cv_parallel_folds": 2,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    }
+  }
+}

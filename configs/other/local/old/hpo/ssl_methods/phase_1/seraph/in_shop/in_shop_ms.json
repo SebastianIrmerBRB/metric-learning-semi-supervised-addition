@@ -1,0 +1,129 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 50,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "16:4",
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4",
+        "512:4"
+      ],
+      "type": "categorical"
+    },
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.margin": {
+      "high": 30.0,
+      "log": true,
+      "low": 15,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.scale": {
+      "high": 250.0,
+      "log": true,
+      "low": 40,
+      "type": "float"
+    },
+    "loss.CircleLoss.gamma": {
+      "high": 260.0,
+      "log": true,
+      "low": 50,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.9,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 25,
+      "log": true,
+      "low": 2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": true,
+      "low": 0.4,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 100,
+      "log": true,
+      "low": 40,
+      "type": "float"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 0.5,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "high": 1.0,
+      "log": true,
+      "low": 0.01,
+      "type": "float"
+    },
+    "lr": {
+      "high": 1e-05,
+      "log": true,
+      "low": 1e-07,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.8,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.eta": {
+      "high": 100,
+      "log": true,
+      "low": 0.001,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.temperature": {
+      "high": 10.0,
+      "log": true,
+      "low": 0.01,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_ratio": {
+      "choices": [
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        3.0,
+        4.0
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 1,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_imb_search",
+  "timeout": null
+}

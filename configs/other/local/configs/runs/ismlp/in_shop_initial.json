@@ -1,0 +1,33 @@
+{
+  "extends": [
+    "../../../../../used/originals/local/configs/runs/first/first_run_in_shop.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.proxies_per_class": {
+      "choices": [
+        0.1,
+        0.25,
+        0.5,
+        1
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        1,
+        2,
+        5,
+        10
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "ismlp_in_shop_initial"
+}

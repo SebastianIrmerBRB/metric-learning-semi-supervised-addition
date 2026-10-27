@@ -1,0 +1,14 @@
+{
+  "batch_size": 32,
+  "compile_train_step": false,
+  "cv_parallel_folds": 1,
+  "extends": "common.json",
+  "length_before_new_iter": null,
+  "loss": "ArcFaceLoss",
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "ssl_gradient_contribution_log_interval": 0,
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

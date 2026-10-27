@@ -1,0 +1,144 @@
+{
+  "description": "SLADE one-at-a-time sweep around the tuned configuration of whichever study is replayed (any loss, any dataset); every other parameter keeps its tuned value. Six live SLADE settings: eta (regularizer_target_ratio, extended below the Phase 1 bound 0.5 as for LRML, and up to the max-ratio cap 3), basis_target_ratio (L_Basis strength), cluster_ratio (k-means k over the labeled class count; k is clamped to the unlabeled pool), update_interval_epochs (re-clustering interval; 100 and 500 re-cluster only in runs that last that long past the warm-up), unlabeled_batch_size (wins over unlabeled_ratio) and sd_margin (Eq 5 margin). A value that equals a study's tuned value replays that study's baseline. 1000 epochs as a ceiling, patience 20.",
+  "name": "sweeps_slade",
+  "variants": {
+    "basis_target_ratio_0p1": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": 0.1
+    },
+    "basis_target_ratio_1p0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": 1.0
+    },
+    "basis_target_ratio_3p0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.basis_target_ratio": 3.0
+    },
+    "cluster_ratio_0p5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 0.5
+    },
+    "cluster_ratio_1": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 1
+    },
+    "cluster_ratio_2": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 2
+    },
+    "cluster_ratio_4": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.cluster_ratio": 4
+    },
+    "regularizer_target_ratio_0p1": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.1
+    },
+    "regularizer_target_ratio_0p2": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.2
+    },
+    "regularizer_target_ratio_0p5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 0.5
+    },
+    "regularizer_target_ratio_1p0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 1.0
+    },
+    "regularizer_target_ratio_1p5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 1.5
+    },
+    "regularizer_target_ratio_3p0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_target_ratio": 3.0
+    },
+    "sd_margin_0p1": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.sd_margin": 0.1
+    },
+    "sd_margin_0p5": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.sd_margin": 0.5
+    },
+    "sd_margin_0p9": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.sd_margin": 0.9
+    },
+    "unlabeled_batch_size_128": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 128
+    },
+    "unlabeled_batch_size_32": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 32
+    },
+    "unlabeled_batch_size_512": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 512
+    },
+    "update_interval_epochs_1": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 1
+    },
+    "update_interval_epochs_10": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 10
+    },
+    "update_interval_epochs_100": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 100
+    },
+    "update_interval_epochs_500": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_interval_epochs": 500
+    }
+  }
+}

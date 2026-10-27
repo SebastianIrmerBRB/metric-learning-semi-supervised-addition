@@ -1,0 +1,26 @@
+{
+  "args": {
+    "final_test_visualization": [
+      "pacmap",
+      "tsne"
+    ],
+    "length_before_new_iter_num_labeled": 292,
+    "length_before_new_iter_num_unlabeled": 5711,
+    "log_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs/iscen_arc/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-11_20-43-48/fold_00/2026-09-11_20-43-48",
+    "save_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs/iscen_arc/class_subset_k_shot_label_1_k_4_comparison_seed_9/final/ssl/cv_2026-09-11_20-43-48/fold_00",
+    "seed": 9,
+    "ssl_config": "/home/irmers/metric-learning/final/phase_1/seeded_runs/iscen_arc/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_4_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 4,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cars/iscen_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 4,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

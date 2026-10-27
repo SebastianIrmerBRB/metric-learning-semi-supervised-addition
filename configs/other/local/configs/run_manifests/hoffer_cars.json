@@ -1,0 +1,60 @@
+{
+  "device": "cpu",
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 4,
+  "poll_interval_seconds": 2,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/hoffer/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_nt.json",
+      "name": "hoffer_nt"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/hoffer/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_ms.json",
+      "name": "hoffer_ms"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/hoffer/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_cir.json",
+      "name": "hoffer_cir"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/hoffer/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_arc.json",
+      "name": "hoffer_arc"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/hoffer/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_prx.json",
+      "name": "hoffer_prx"
+    }
+  ],
+  "save_dir_root": "ssl",
+  "scheduler_log_dir": "logs/run_scheduler/hoffer",
+  "ssl_gpus": [
+    0
+  ],
+  "version": 1
+}

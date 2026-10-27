@@ -1,0 +1,119 @@
+{
+  "description": "Reruns from the run audit of 23 Oct 2026 (Thesis/review/audit_laeufe_2026-10-23). Each variant is the run's original resolved ablation variant plus its own epoch cap and patience. LRML/Proxy-Anchor sup_all_shared on Cars196 additionally sets batch_sampler 32:4 (the supervised value the original variant missed); the 31 Cars196 runs with 10-50 % CompCars change nothing else (the current code draws the CompCars share).",
+  "name": "audit_rerun_2026-10-23",
+  "variants": {
+    "cars_2026-10-19__lrml_prx__sup_all_shared": {
+      "batch_sampler": "32:4",
+      "classifier_lr": 0.001503,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ProxyAnchorLoss.alpha": 2.66,
+      "loss.ProxyAnchorLoss.margin": 0.06927,
+      "lr": 0.0008236,
+      "patience": 20,
+      "patience_delay_epochs": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "hoffer__external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "hoffer__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "iscen__external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "iscen__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "iscen__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "lrml_prx__sup_all_shared": {
+      "batch_sampler": "32:4",
+      "classifier_lr": 0.001503,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ProxyAnchorLoss.alpha": 2.66,
+      "loss.ProxyAnchorLoss.margin": 0.06927,
+      "lr": 0.0008236,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "slade__external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade__external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "slade__external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    }
+  }
+}

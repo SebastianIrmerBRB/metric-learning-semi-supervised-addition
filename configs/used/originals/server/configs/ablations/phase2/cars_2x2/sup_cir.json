@@ -1,0 +1,9 @@
+{
+  "description": "Supervised corner of the 2x2 for cars/sup/cir.",
+  "name": "cars_2x2_sup_cir",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    }
+  }
+}

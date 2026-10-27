@@ -1,0 +1,14 @@
+{
+  "batch_size": 16,
+  "cv_k": 5,
+  "dataset": "CUB",
+  "dataset_protocol": "official",
+  "evaluation_embedding_residency": "cpu",
+  "extends": "../common.json",
+  "final_test_visualization": [
+    "pacmap"
+  ],
+  "lr": 1e-06,
+  "patience": 20,
+  "semi_inat_ood_fraction": 0
+}

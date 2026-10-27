@@ -1,0 +1,3 @@
+{
+  "extends": "../../../_templates/ssl/phase_1/cars/iscen_nt.json"
+}

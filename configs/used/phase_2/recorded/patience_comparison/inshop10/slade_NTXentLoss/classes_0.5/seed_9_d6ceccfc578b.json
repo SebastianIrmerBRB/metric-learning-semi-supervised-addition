@@ -1,0 +1,72 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2,
+        "epochs": 1000,
+        "patience_delay_epochs": 20
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "epochs__epochs__2"
+    },
+    "ablation_variant": "epochs__epochs__2",
+    "comparison_seeds": [
+      9
+    ],
+    "cv_parallel_folds": 2,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "label_budget_grid",
+      "save_dir",
+      "ssl_device",
+      "ssl_label_sampling_modes",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "label_budget_grid": [
+      0.5
+    ],
+    "length_before_new_iter_num_labeled": 9675,
+    "length_before_new_iter_num_unlabeled": 9946,
+    "log_dir": "logs/final/patience_delay/seeded_runs/in_shop_10/slade_nt/b0p5_s9/epochs__epochs__2/class_subset_label_0p5_comparison_seed_9/final/ssl/cv_2026-10-20_08-46-07/fold_00/2026-10-20_08-46-10",
+    "patience_delay_epochs": 20,
+    "save_dir": "final/patience_delay/seeded_runs/in_shop_10/slade_nt/b0p5_s9/epochs__epochs__2/class_subset_label_0p5_comparison_seed_9/final/ssl/cv_2026-10-20_08-46-07/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 9,
+    "ssl_config": "logs/final/patience_delay/seeded_runs/in_shop_10/slade_nt/b0p5_s9/epochs__epochs__2/study_replay_grid/ssl_configs/class_subset_label_0p5_comparison_seed_9.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.5,
+      "seed": 9,
+      "support_seed": 9
+    },
+    "support_seed": 9,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop10/slade_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.5,
+    "seed": 9,
+    "support_seed": 9
+  }
+}

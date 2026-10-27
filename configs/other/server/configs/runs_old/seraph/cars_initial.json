@@ -1,0 +1,51 @@
+{
+  "extends": "../first/first_run_cars_cub.json",
+  "spaces": {
+    "ssl_config.method_params.grad_norm_alpha": {
+      "high": 3,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.kappa": {
+      "high": 10,
+      "log": true,
+      "low": 0.5,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.positive_pair_prior": {
+      "high": 0.75,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.threshold": {
+      "high": 2.5,
+      "log": true,
+      "low": 0.75,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.threshold_momentum": {
+      "high": 0.99,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+      "choices": [
+        32,
+        64,
+        128,
+        256,
+        512
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  }
+}

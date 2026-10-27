@@ -1,0 +1,53 @@
+{
+  "ablation_variant": null,
+  "batch_size": 128,
+  "classifier_lr": 0.007334867663900393,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "compile_train_step": false,
+  "epochs": 600,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "final_test_visualization": [
+    "tsne"
+  ],
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": null,
+  "length_before_new_iter": null,
+  "loss": "ProxyAnchorLoss",
+  "loss_params": {
+    "alpha": 4.478129298930762,
+    "margin": 0.05892560964759625
+  },
+  "lr": 5.646121545886887e-05,
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "report_test_metrics": true,
+  "sampler_m": 2,
+  "save_test_embeddings": true,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "test_measurements": null,
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 4.478129298930762,
+    "margin": 0.05892560964759625
+  },
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

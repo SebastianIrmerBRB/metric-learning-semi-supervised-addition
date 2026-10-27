@@ -1,0 +1,20 @@
+{
+  "cv_parallel_folds": 1,
+  "epochs": 1000,
+  "extends": "common.json",
+  "external_unlabeled_seed": null,
+  "length_before_new_iter": 20706,
+  "log_head_dynamics": false,
+  "loss": "ProxyAnchorLoss",
+  "miner": "no_miner",
+  "miner_params": {},
+  "mode": "ssl",
+  "projection_3d": false,
+  "seed": 2,
+  "ssl_gradient_contribution_log_interval": 30,
+  "support_seed": 2,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "warmup_miner": "no_miner",
+  "warmup_miner_params": {}
+}

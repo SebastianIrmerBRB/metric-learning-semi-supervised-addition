@@ -1,0 +1,101 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/hoffer_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "ssl_config.warmup_epochs": 0
+      },
+      "description": "Mechanism controls for cars/hoffer/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+      "name": "cars_cir_controls_hoffer_cir",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/hoffer_cir.json",
+      "variant": "no_warmup"
+    },
+    "ablation_variant": "no_warmup",
+    "batch_size": 64,
+    "compcars_strict_paper_counts": false,
+    "cv_fold": 2,
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter": 6131,
+    "length_before_new_iter_num_labeled": 1184,
+    "length_before_new_iter_num_unlabeled": 4947,
+    "log_dir": "logs/final/phase_2/cars/hoffer_ms_controls_no_warmup/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_17-45-09/fold_02/2026-09-25_18-05-49",
+    "loss_params": {
+      "alpha": 8.53107768629961,
+      "base": 0.730524184186991,
+      "beta": 3.2473504772497015
+    },
+    "lr": 2.1848994709590475e-05,
+    "miner_params": {
+      "epsilon": 0.7878514672129868
+    },
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/hoffer_ms_controls_no_warmup/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_17-45-09/fold_02",
+    "ssl_config": "logs/final/phase_2/cars/hoffer_ms_controls_no_warmup/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 4.629646455417682
+        },
+        "regularizer_target_ratio": 1.290241713868326,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "warmup_epochs": 0
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/hoffer_entropy_MultiSimilarityLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 4.629646455417682
+      },
+      "regularizer_target_ratio": 1.290241713868326,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "warmup_epochs": 0
+  }
+}

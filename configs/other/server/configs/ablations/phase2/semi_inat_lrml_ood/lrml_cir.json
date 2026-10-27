@@ -1,0 +1,30 @@
+{
+  "description": "Semi-iNat 2021 (semi_inat_known_810) class mismatch for semi_inat/lrml/arc: ood_<pct> adds that share of the original out-of-class pool (u_train_out, nested, class-balanced over the 1,629 out-of-class species); ood_<pct>_nn200 additionally sets the LRML graph's n_neighbors to 200. Every cell: LRML uncapped, 600 epochs / patience 20, GPU eval residency.",
+  "name": "semi_inat_lrml_ood_lrml_arc",
+  "variants": {
+    "ood_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10,
+      "semi_inat_ood_fraction": 0.1
+    },
+    "ood_100": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10,
+      "semi_inat_ood_fraction": 1.0
+    },
+    "ood_25": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10,
+      "semi_inat_ood_fraction": 0.25
+    },
+    "ood_50": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10,
+      "semi_inat_ood_fraction": 0.5
+    }
+  }
+}

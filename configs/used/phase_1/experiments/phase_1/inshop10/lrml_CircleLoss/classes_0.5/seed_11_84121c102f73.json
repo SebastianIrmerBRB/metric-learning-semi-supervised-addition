@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/lrml_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/lrml_CircleLoss/classes_0.5/84121c102f73",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/lrml_CircleLoss/classes_0.5/seed_11_84121c102f73.json",
+  "support_seed": 11
+}

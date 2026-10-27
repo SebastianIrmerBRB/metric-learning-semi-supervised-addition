@@ -1,0 +1,25 @@
+{
+  "description": "M5 control for slade at k=99999 (all labels), external-data replay settings (1000 epochs, patience 20). SLADE cannot run with an empty unlabeled pool (begin_unlabeled_pool raises 'requires at least two unlabeled samples' at fold setup), so this is the closest valid control: the unlabeled term at weight 0 exactly as make_phase2_ablations.ZERO_WEIGHT. At weight 0 SLADE attaches no basis and builds no pool, so the empty split pool is accepted and L_Basis is never computed. restart_selection_after_warmup is off for the reason given in configs/ablations/phase2/slade_zero_weight/slade.json: SLADE never reports steady state at weight 0, which would otherwise suspend early stopping for all 1000 epochs.",
+  "name": "full_external_0_slade",
+  "variants": {
+    "external_0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0,
+      "ssl_config.restart_selection_after_warmup": false,
+      "unlabeled_source": "split"
+    }
+  }
+}

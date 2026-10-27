@@ -1,0 +1,56 @@
+{
+  "base_args": {
+    "compile_train_step": false,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/class_subset_10/supervised.json",
+    "experiment_config_resolved": {
+      "loss_miner_grid": [
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "mode": "supervised",
+      "save_dir": "ssl_methods/phase_1/supervised/in_shop/class_subset_10",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": "pacmap",
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/first/first_run_in_shop.json",
+    "loss": "CircleLoss",
+    "loss_miner_grid": [
+      "CircleLoss:no_miner"
+    ],
+    "miner": "no_miner",
+    "mode": "supervised",
+    "save_dir": "phase_0/supervised/in_shop/class_subset_10/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo",
+    "ssl_config": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_cir/experiment_grid/ssl_configs/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "warmup_loss": "NTXentLoss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "loss.CircleLoss.gamma": {
+        "high": 512.0,
+        "log": true,
+        "low": 32,
+        "type": "float"
+      },
+      "loss.CircleLoss.m": {
+        "high": 0.5,
+        "log": false,
+        "low": 0.01,
+        "type": "float"
+      }
+    },
+    "study_name": "in_shop_supervised"
+  },
+  "in_flight_sampler_state_path": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_0/supervised/in_shop/class_subset_10/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/optuna_study.db",
+  "resolved_study_name": "in_shop_supervised",
+  "sampler_state_path": "logs/phase_0/supervised/in_shop/class_subset_10/supervised_cir/class_subset_label_0p1_CircleLoss_no_miner_tune_seed_7/hpo/in_shop_supervised/sampler.pkl"
+}

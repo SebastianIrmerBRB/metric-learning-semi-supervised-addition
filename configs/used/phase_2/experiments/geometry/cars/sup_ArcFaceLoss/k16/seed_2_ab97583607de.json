@@ -1,0 +1,16 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/sup_ArcFaceLoss.json",
+  "fold_test_embedding_storage": "file",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/cars/sup_ArcFaceLoss/k16/ab97583607de",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/cars/sup_ArcFaceLoss/k16/seed_2_ab97583607de.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

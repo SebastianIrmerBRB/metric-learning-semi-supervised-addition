@@ -1,0 +1,11 @@
+{
+  "description": "Unmodified supervised replay of in_shop/sup/* with all labels: the external-data reference, rerun with 1000 epochs / patience 20 like the SSL runs (the first runs had 600 and hit it in 5 of 20 folds).",
+  "name": "in_shop_full_external_sup_e1000",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    }
+  }
+}

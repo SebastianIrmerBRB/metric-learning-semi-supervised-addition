@@ -1,0 +1,14 @@
+{
+  "confidence_threshold": 0.3,
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/iscen_NTXentLoss.json",
+  "graph_edge_ablation": "off",
+  "labeled_per_class": 16,
+  "method_params": {
+    "n_neighbors": 7
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "update_mode": "every_epoch",
+  "warmup_epochs": 15
+}

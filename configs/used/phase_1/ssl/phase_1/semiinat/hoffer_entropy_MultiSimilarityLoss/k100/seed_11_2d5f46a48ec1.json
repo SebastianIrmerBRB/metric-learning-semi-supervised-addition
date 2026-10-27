@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/semiinat/hoffer_entropy_MultiSimilarityLoss.json",
+  "labeled_per_class": 100,
+  "seed": 11,
+  "support_seed": 11
+}

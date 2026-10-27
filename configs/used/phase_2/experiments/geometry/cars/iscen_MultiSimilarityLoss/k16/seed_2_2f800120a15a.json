@@ -1,0 +1,43 @@
+{
+  "batch_size": 64,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/iscen_MultiSimilarityLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "fold_test_embedding_storage": "file",
+  "log_head_dynamics": false,
+  "loss_params": {
+    "alpha": 2.7309965443408464,
+    "base": 0.7380730776734609,
+    "beta": 57.56578612691184
+  },
+  "lr": 8.124568081881318e-05,
+  "miner_params": {
+    "epsilon": 0.36197077907036335
+  },
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/cars/iscen_MultiSimilarityLoss/k16/2f800120a15a",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/cars/iscen_MultiSimilarityLoss/k16/seed_2_2f800120a15a.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 2.7309965443408464,
+    "base": 0.7380730776734609,
+    "beta": 57.56578612691184
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.36197077907036335
+  }
+}

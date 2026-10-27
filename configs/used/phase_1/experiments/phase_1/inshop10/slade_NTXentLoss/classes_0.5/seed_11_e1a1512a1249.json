@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_NTXentLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_NTXentLoss/classes_0.5/e1a1512a1249",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_NTXentLoss/classes_0.5/seed_11_e1a1512a1249.json",
+  "support_seed": 11
+}

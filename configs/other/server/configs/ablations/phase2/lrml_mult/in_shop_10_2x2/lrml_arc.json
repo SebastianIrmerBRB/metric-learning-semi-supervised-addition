@@ -1,0 +1,30 @@
+{
+  "description": "2x2 of in_shop_10/lrml/arc (10 % fully labeled classes) on the multivariate LRML study (checklist 1.1): tuned SSL (defaults, LRML trial 77), supervised hyperparameters + SSL (sup_all_shared: every hyperparameter both studies tuned, from Ü trial 68 of final/phase_2_studies/geometry/in_shop_10/supervised/supervised_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled). LRML uncapped, 1000 epochs / patience 20.",
+  "name": "in_shop_10_2x2_lrml_mult_arc",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    },
+    "pool_labeled": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "256:8",
+      "classifier_lr": 6.390512260964583,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "loss.ArcFaceLoss.margin": 32.52431337656338,
+      "loss.ArcFaceLoss.scale": 8.051215275253856,
+      "lr": 0.00025718462189594824,
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null
+    }
+  }
+}

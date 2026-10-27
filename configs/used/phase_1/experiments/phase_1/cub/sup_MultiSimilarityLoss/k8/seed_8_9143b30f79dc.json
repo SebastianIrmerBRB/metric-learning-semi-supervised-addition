@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cub/sup_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cub/sup_MultiSimilarityLoss/k8/9143b30f79dc",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cub/sup_MultiSimilarityLoss/k8/seed_8_9143b30f79dc.json",
+  "support_seed": 8
+}

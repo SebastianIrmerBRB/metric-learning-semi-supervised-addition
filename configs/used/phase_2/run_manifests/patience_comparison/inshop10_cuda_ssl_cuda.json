@@ -1,0 +1,366 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_11_020c9141b32f.json",
+      "name": "020c9141b32f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.1/seed_10_020f9c80a7d8.json",
+      "name": "020f9c80a7d8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.1/seed_2_02eaf6a2cf43.json",
+      "name": "02eaf6a2cf43"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_2_0468db59bc06.json",
+      "name": "0468db59bc06"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_1296358b3c05.json",
+      "name": "1296358b3c05"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_10_15558533f62c.json",
+      "name": "15558533f62c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_2_1da93593cf26.json",
+      "name": "1da93593cf26"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.1/seed_9_1e00d0bc1ca5.json",
+      "name": "1e00d0bc1ca5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_2_20147845549b.json",
+      "name": "20147845549b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.1/seed_2_20e6e548c769.json",
+      "name": "20e6e548c769"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_8_22f8793b87e4.json",
+      "name": "22f8793b87e4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.1/seed_2_25679eba05e0.json",
+      "name": "25679eba05e0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_8_2606d4dbe5ac.json",
+      "name": "2606d4dbe5ac"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_2_28cf1185b894.json",
+      "name": "28cf1185b894"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.25/seed_2_29c2c62b54f0.json",
+      "name": "29c2c62b54f0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.05/seed_8_315176a48fdf.json",
+      "name": "315176a48fdf"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_MultiSimilarityLoss/classes_0.25/seed_2_342c0f00c474.json",
+      "name": "342c0f00c474"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_9_385c60512629.json",
+      "name": "385c60512629"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_ProxyAnchorLoss/classes_0.25/seed_2_3919f6500140.json",
+      "name": "3919f6500140"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.25/seed_8_393d234ce9e7.json",
+      "name": "393d234ce9e7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.05/seed_2_3aef1eb51af4.json",
+      "name": "3aef1eb51af4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.25/seed_9_3da3a4f77c7c.json",
+      "name": "3da3a4f77c7c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_3deb97ce1d04.json",
+      "name": "3deb97ce1d04"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.25/seed_2_3fc8e73ce64d.json",
+      "name": "3fc8e73ce64d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.5/seed_2_425144416d56.json",
+      "name": "425144416d56"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_11_481f568a9486.json",
+      "name": "481f568a9486"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.25/seed_2_4834aa22f8fb.json",
+      "name": "4834aa22f8fb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_2_4916c014dff4.json",
+      "name": "4916c014dff4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.5/seed_8_4a75dce91b59.json",
+      "name": "4a75dce91b59"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.5/seed_2_4d535468e1f6.json",
+      "name": "4d535468e1f6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_10_51d3ed5575fb.json",
+      "name": "51d3ed5575fb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_2_576deb2d107a.json",
+      "name": "576deb2d107a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_ProxyAnchorLoss/classes_0.05/seed_11_5818372f9a95.json",
+      "name": "5818372f9a95"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_2_59311e76f890.json",
+      "name": "59311e76f890"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_9_5cbdd5365e4d.json",
+      "name": "5cbdd5365e4d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.5/seed_2_5ec4db1723f4.json",
+      "name": "5ec4db1723f4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.25/seed_2_61657ea53b2a.json",
+      "name": "61657ea53b2a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.25/seed_2_62a3e08fd426.json",
+      "name": "62a3e08fd426"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_64ffd7898abe.json",
+      "name": "64ffd7898abe"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.25/seed_8_6898b2daa4b4.json",
+      "name": "6898b2daa4b4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_2_6ab823700720.json",
+      "name": "6ab823700720"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_9_74fb64d972c9.json",
+      "name": "74fb64d972c9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_ProxyAnchorLoss/classes_0.5/seed_2_74fe4e22ebd8.json",
+      "name": "74fe4e22ebd8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_2_7631aa4e3f34.json",
+      "name": "7631aa4e3f34"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.05/seed_2_7a15a12bc6a2.json",
+      "name": "7a15a12bc6a2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_10_7dfb26e97081.json",
+      "name": "7dfb26e97081"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_8_80edb388e737.json",
+      "name": "80edb388e737"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_ArcFaceLoss/classes_0.5/seed_11_82ca0ed91a59.json",
+      "name": "82ca0ed91a59"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_11_8799489ecce1.json",
+      "name": "8799489ecce1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.1/seed_2_89b78a77b86e.json",
+      "name": "89b78a77b86e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.25/seed_10_941560bfaf36.json",
+      "name": "941560bfaf36"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.5/seed_2_94572cb52362.json",
+      "name": "94572cb52362"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/slade_NTXentLoss/classes_0.25/seed_2_98ef94206298.json",
+      "name": "98ef94206298"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_2_9e50ab1d3bae.json",
+      "name": "9e50ab1d3bae"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_10_9f199143cd2d.json",
+      "name": "9f199143cd2d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.25/seed_11_a108e7c1a628.json",
+      "name": "a108e7c1a628"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_ArcFaceLoss/classes_0.25/seed_8_a24ffb006264.json",
+      "name": "a24ffb006264"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_10_a27093d64d45.json",
+      "name": "a27093d64d45"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_11_ab844ebbb0ae.json",
+      "name": "ab844ebbb0ae"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.1/seed_11_b10677cb1cda.json",
+      "name": "b10677cb1cda"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_CircleLoss/classes_0.5/seed_2_b5c1d3bef12b.json",
+      "name": "b5c1d3bef12b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_ProxyAnchorLoss/classes_0.25/seed_2_be7deb6bdc9a.json",
+      "name": "be7deb6bdc9a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.05/seed_2_be9c76b582b8.json",
+      "name": "be9c76b582b8"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_2_bf48c929aa3d.json",
+      "name": "bf48c929aa3d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_8_c13a9847e20d.json",
+      "name": "c13a9847e20d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.1/seed_10_c14d3ce98006.json",
+      "name": "c14d3ce98006"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_ProxyAnchorLoss/classes_0.25/seed_10_cf78b22090c6.json",
+      "name": "cf78b22090c6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_10_d32d3528dc3d.json",
+      "name": "d32d3528dc3d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_ArcFaceLoss/classes_0.25/seed_8_d3df105a1e3a.json",
+      "name": "d3df105a1e3a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.5/seed_9_d6ceccfc578b.json",
+      "name": "d6ceccfc578b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.1/seed_8_d7593addca4b.json",
+      "name": "d7593addca4b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.1/seed_2_d91fee0e2962.json",
+      "name": "d91fee0e2962"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.25/seed_11_da1a7335eeca.json",
+      "name": "da1a7335eeca"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/iscen_NTXentLoss/classes_0.1/seed_2_da4c8e870120.json",
+      "name": "da4c8e870120"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_dbc7fabba0eb.json",
+      "name": "dbc7fabba0eb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.5/seed_2_dec6597e92f5.json",
+      "name": "dec6597e92f5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.05/seed_9_e3958c9c884f.json",
+      "name": "e3958c9c884f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.25/seed_2_e7be2d80e8ce.json",
+      "name": "e7be2d80e8ce"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.5/seed_2_ec19d325a363.json",
+      "name": "ec19d325a363"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_9_ee894b3cd968.json",
+      "name": "ee894b3cd968"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/geometry/inshop10/lrml_NTXentLoss/classes_0.05/seed_2_eec96cdfb8e4.json",
+      "name": "eec96cdfb8e4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.5/seed_10_f4ba7e23a0ff.json",
+      "name": "f4ba7e23a0ff"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_2_f54a269d2f56.json",
+      "name": "f54a269d2f56"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.05/seed_2_f5f7616df05a.json",
+      "name": "f5f7616df05a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_NTXentLoss/classes_0.25/seed_2_f9fa7f2e476a.json",
+      "name": "f9fa7f2e476a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/slade_ProxyAnchorLoss/classes_0.1/seed_8_fa7198d9b6ae.json",
+      "name": "fa7198d9b6ae"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/lrml_NTXentLoss/classes_0.25/seed_2_fd63546f6763.json",
+      "name": "fd63546f6763"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/sup_ProxyAnchorLoss/classes_0.25/seed_10_ff6018a51383.json",
+      "name": "ff6018a51383"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/patience_comparison/inshop10/iscen_CircleLoss/classes_0.5/seed_11_ff6c4701a664.json",
+      "name": "ff6c4701a664"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/patience_comparison/inshop10/cuda_ssl_cuda"
+}

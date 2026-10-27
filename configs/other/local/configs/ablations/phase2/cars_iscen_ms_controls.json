@@ -1,0 +1,29 @@
+{
+  "description": "Mechanism controls for cars/lp/ms. graph_*_pruned use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "cars_iscen_ms_controls",
+  "variants": {
+    "diag": {
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "graph_oracle_pruned": {
+      "ssl_config.graph_edge_ablation": "oracle_pruned",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "graph_random_pruned": {
+      "ssl_config.graph_edge_ablation": "random_pruned",
+      "ssl_config.pseudo_label_diagnostics_mode": "save"
+    },
+    "no_warmup": {
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.warmup_epochs": 0
+    },
+    "pl_once": {
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "ssl_config.update_mode": "once"
+    },
+    "pool_labeled": {
+      "ssl_config.pseudo_label_diagnostics_mode": "save",
+      "unlabeled_source": "labeled"
+    }
+  }
+}

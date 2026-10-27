@@ -1,0 +1,60 @@
+{
+  "args": {
+    "backbone_cache_dir": "data/DeepFashionInShop/backbone_cache/v3/dinov2_vitb14",
+    "cv_k": 4,
+    "dataset": "DeepFashionInShop",
+    "dataset_protocol": "official",
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config_resolved": {
+      "cv_k": 4,
+      "dataset": "DeepFashionInShop",
+      "dataset_protocol": "official",
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "feat_dim": 768,
+      "hparam_config": null,
+      "k_shot_grid": [
+        2
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "patience": 20
+    },
+    "fold_test_embedding_storage": "temporary",
+    "hparam_config_resolved": {
+      "spaces": {
+        "lr": {
+          "low": 1e-05
+        }
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "cv_k": 4,
+      "patience": 20
+    },
+    "label_budget_grid": null,
+    "patience": 20,
+    "report_test_metrics": true,
+    "sampler_m": 2,
+    "semi_inat_ood_fraction": 0,
+    "ssl_config_resolved": {
+      "label_sampling_mode": "class_subset_k_shot",
+      "labeled_fraction": 1.0
+    },
+    "ssl_label_sampling_modes": null,
+    "test_measurements": null,
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ]
+  },
+  "extends": "../common.json",
+  "ssl_config": {
+    "label_sampling_mode": "class_subset_k_shot",
+    "labeled_fraction": 1.0
+  }
+}

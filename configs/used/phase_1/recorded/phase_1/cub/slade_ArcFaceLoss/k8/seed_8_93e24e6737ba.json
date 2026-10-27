@@ -1,0 +1,32 @@
+{
+  "args": {
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 1,
+        "evaluation_embedding_residency": "cpu"
+      }
+    },
+    "cv_fold": 0,
+    "cv_parallel_folds": 1,
+    "evaluation_embedding_residency": "cpu",
+    "length_before_new_iter": 4672,
+    "length_before_new_iter_num_labeled": 640,
+    "length_before_new_iter_num_unlabeled": 4032,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_arc/class_subset_k_shot_label_1_k_8_comparison_seed_8/final/ssl/cv_2026-09-23_22-36-36/fold_00/2026-09-23_22-36-36",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_arc/class_subset_k_shot_label_1_k_8_comparison_seed_8/final/ssl/cv_2026-09-23_22-36-36/fold_00",
+    "seed": 8,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/cub/slade_arc/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_8_comparison_seed_8.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 8,
+      "seed": 8,
+      "support_seed": 8
+    },
+    "support_seed": 8
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/cub/slade_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 8,
+    "seed": 8,
+    "support_seed": 8
+  }
+}

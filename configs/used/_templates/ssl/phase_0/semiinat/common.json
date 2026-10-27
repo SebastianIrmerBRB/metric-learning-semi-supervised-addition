@@ -1,0 +1,18 @@
+{
+  "extends": "../common.json",
+  "graph_diagnostics_class_context": true,
+  "graph_diagnostics_class_count": 6,
+  "graph_diagnostics_class_focus": "off",
+  "graph_diagnostics_classes": null,
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0,
+  "labeled_per_class": 16,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_samples": null,
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 0
+}

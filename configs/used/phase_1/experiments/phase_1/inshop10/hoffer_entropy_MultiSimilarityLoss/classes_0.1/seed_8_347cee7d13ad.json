@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.1/347cee7d13ad",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.1/seed_8_347cee7d13ad.json",
+  "support_seed": 8
+}

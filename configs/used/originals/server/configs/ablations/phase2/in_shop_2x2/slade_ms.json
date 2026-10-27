@@ -1,0 +1,28 @@
+{
+  "description": "2x2 of in_shop/slade/ms: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop/supervised/supervised_ms/class_subset_k_shot_label_1_k_2_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_2x2_slade_ms",
+  "variants": {
+    "defaults": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20
+    },
+    "pool_labeled": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "batch_sampler": "256:2",
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "loss.MultiSimilarityLoss.alpha": 0.1465,
+      "loss.MultiSimilarityLoss.base": 0.6765,
+      "loss.MultiSimilarityLoss.beta": 115.9,
+      "lr": 1.315e-05,
+      "miner.MultiSimilarityMiner.epsilon": 0.6091,
+      "patience": 20
+    }
+  }
+}

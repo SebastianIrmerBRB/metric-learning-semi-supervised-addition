@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/hoffer_entropy_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/hoffer_entropy_NTXentLoss/classes_0.1/1ed1681fbfae",
+  "seed": 9,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/hoffer_entropy_NTXentLoss/classes_0.1/seed_9_1ed1681fbfae.json",
+  "support_seed": 9
+}

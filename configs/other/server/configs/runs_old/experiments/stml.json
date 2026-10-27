@@ -1,0 +1,33 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 256,
+  "cv_k": 4,
+  "cv_mode": "stratified_group_kfold",
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "evaluation_embedding_residency": "gpu",
+  "feat_dim": 768,
+  "final_test_after_hpo": false,
+  "hparam_config": "configs/runs/stml/cars.json",
+  "k_shot_grid": [
+    16
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner"
+  ],
+  "lr": 3e-05,
+  "mode": "ssl",
+  "patience": 20,
+  "sampler_m": 4,
+  "save_dir": "runs/stml_threshold_cars",
+  "ssl_config": "configs/runs/ssl/stml/hard.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

@@ -1,0 +1,129 @@
+{
+  "base_args": {
+    "ablation_config": null,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "compile_train_step": true,
+    "epochs": 500,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cub/iscen.json",
+    "experiment_config_resolved": {
+      "epochs": 500,
+      "length_before_new_iter": 4692,
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/lrml/cub/nt",
+      "ssl_config": "configs/ssl_methods/iscen.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "final_test_visualization": [
+      "pacmap"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "graph_projection": false,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/iscen/cub.json",
+    "length_before_new_iter": 4692,
+    "loss": "ProxyAnchorLoss",
+    "loss_miner_grid": [
+      "ProxyAnchorLoss:no_miner"
+    ],
+    "max_unlabeled_samples": null,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "report_test_metrics": true,
+    "save_dir": "phase_1/ssl/cub/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo",
+    "ssl_config": "logs/phase_1/ssl/cub/iscen/iscen_prx/experiment_grid/ssl_configs/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "test_measurements": null,
+    "test_recall_at_k": null,
+    "unlabeled_class_scope": null,
+    "unlabeled_fraction": null,
+    "warmup_loss": "same_as_loss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "32:4",
+          "64:4",
+          "128:4",
+          "256:4"
+        ]
+      },
+      "classifier_lr": {
+        "high": 10,
+        "log": true,
+        "low": 1e-05,
+        "type": "float"
+      },
+      "labeled_batch_fraction": {
+        "choices": [
+          0.125,
+          0.25,
+          0.5
+        ],
+        "type": "categorical"
+      },
+      "loss.ProxyAnchorLoss.alpha": {
+        "high": 30.0,
+        "log": true,
+        "low": 0.1,
+        "type": "float"
+      },
+      "loss.ProxyAnchorLoss.margin": {
+        "high": 1.0,
+        "log": true,
+        "low": 0.01,
+        "type": "float"
+      },
+      "lr": {
+        "high": 10,
+        "low": 1e-05
+      },
+      "ssl_config.confidence_threshold": {
+        "high": 0.9,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.alpha": {
+        "high": 0.99,
+        "log": false,
+        "low": 0.1,
+        "type": "float"
+      },
+      "ssl_config.method_params.gamma": {
+        "high": 10,
+        "log": false,
+        "low": 1,
+        "type": "int"
+      },
+      "ssl_config.method_params.n_neighbors": {
+        "high": 200,
+        "log": false,
+        "low": 2,
+        "type": "int"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 12,
+        "low": 0,
+        "step": 2,
+        "type": "int"
+      }
+    },
+    "study_name": "in-shop"
+  },
+  "in_flight_sampler_state_path": "logs/phase_1/ssl/cub/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_1/ssl/cub/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/optuna_study.db",
+  "resolved_study_name": "in-shop",
+  "sampler_state_path": "logs/phase_1/ssl/cub/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler.pkl",
+  "tpe_transition_sampler_state_path": "logs/phase_1/ssl/cub/iscen/iscen_prx/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in-shop/sampler_before_tpe.pkl"
+}

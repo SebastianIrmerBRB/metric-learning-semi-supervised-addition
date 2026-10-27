@@ -1,0 +1,30 @@
+{
+  "description": "External unlabeled data for in_shop/slade/ms: data/Fashion200k (unfiltered) at 5 %, 10 %, 25 % of the pool, replacing the in-split pool.",
+  "name": "in_shop_full_external_slade_ms",
+  "variants": {
+    "external_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "external_25": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "external_5": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/Fashion200k",
+      "external_unlabeled_fraction": 0.05,
+      "patience": 20,
+      "unlabeled_source": "external"
+    }
+  }
+}

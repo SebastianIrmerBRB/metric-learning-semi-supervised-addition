@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/sup_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/sup_MultiSimilarityLoss/k4/daedc0a0db51",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/sup_MultiSimilarityLoss/k4/seed_2_daedc0a0db51.json"
+}

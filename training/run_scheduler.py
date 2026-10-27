@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence, TextIO
 
 from . import ablation, cpu_threads, device_thresholds
+from .config_inheritance import load_config
 # Importable here because the SSL config module itself stays free of PyTorch.
 from .ssl.config import LABEL_SAMPLING_MODES
 
@@ -903,7 +904,7 @@ def load_scheduler_config(path: str | Path) -> SchedulerConfig:
 
     manifest_path = Path(path).resolve()
     try:
-        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        raw = load_config(manifest_path)
     except FileNotFoundError as exc:
         raise ManifestError(f"Run manifest does not exist: {manifest_path}") from exc
     except json.JSONDecodeError as exc:
@@ -1037,7 +1038,7 @@ def _workspace_path(value: str, working_dir: Path) -> Path:
 
 def _read_json_object(path: Path, source: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = load_config(path)
     except FileNotFoundError as exc:
         raise ManifestError(f"{source} does not exist: {path}") from exc
     except json.JSONDecodeError as exc:

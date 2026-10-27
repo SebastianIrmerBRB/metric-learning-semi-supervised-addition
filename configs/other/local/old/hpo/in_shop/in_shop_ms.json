@@ -1,0 +1,57 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 80,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "32:2",
+        "64:2",
+        "128:2",
+        "256:2",
+        "512:2"
+      ],
+      "type": "categorical"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 25,
+      "log": false,
+      "low": 2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.3,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 160,
+      "log": true,
+      "low": 20,
+      "type": "float"
+    },
+    "lr": {
+      "high": 0.0005,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cifar",
+  "timeout": null
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/hoffer_entropy_CircleLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.1/721ce5dd7db5",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/hoffer_entropy_CircleLoss/classes_0.1/seed_2_721ce5dd7db5.json"
+}

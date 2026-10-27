@@ -1,0 +1,38 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 256,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "labeled_batch_size": null,
+  "method": "regularized",
+  "method_params": {
+    "regularizer": "lrml",
+    "regularizer_params": {
+      "edge_weighting": "binary",
+      "graph_batch_size": 512,
+      "graph_on": "all",
+      "n_neighbors": 48,
+      "normalized_laplacian": true,
+      "reduction": "torch_sum"
+    },
+    "regularizer_target_ratio": 0.7529317350180248,
+    "regularizer_target_ratio_ema_alpha": 0.1,
+    "regularizer_target_ratio_statistic": "max_mean",
+    "regularizer_target_ratio_update_interval_samples": 1000,
+    "regularizer_weight": 0.01,
+    "supervised_weight": 1.0
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "restart_selection_after_warmup": true,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_epochs": 1,
+  "update_mode": "every_n_epochs",
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 30
+}

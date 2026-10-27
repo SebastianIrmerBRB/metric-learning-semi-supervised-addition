@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/lrml_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/lrml_CircleLoss/k16/a88daf265aaf",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/lrml_CircleLoss/k16/seed_11_a88daf265aaf.json",
+  "support_seed": 11
+}

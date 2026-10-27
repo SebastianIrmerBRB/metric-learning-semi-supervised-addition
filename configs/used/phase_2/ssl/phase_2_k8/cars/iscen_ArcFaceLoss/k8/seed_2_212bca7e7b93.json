@@ -1,0 +1,16 @@
+{
+  "confidence_threshold": 0.1,
+  "extends": "../../../../../../_templates/ssl/phase_2/cars/iscen_ArcFaceLoss.json",
+  "graph_edge_ablation": "off",
+  "labeled_per_class": 8,
+  "method_params": {
+    "n_neighbors": 92
+  },
+  "pseudo_label_diagnostics_mode": "save",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "seed": 2,
+  "support_seed": 2,
+  "update_mode": "every_epoch",
+  "warmup_epochs": 10
+}

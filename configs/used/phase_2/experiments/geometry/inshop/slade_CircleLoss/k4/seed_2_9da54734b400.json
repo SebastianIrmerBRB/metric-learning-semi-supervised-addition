@@ -1,0 +1,31 @@
+{
+  "batch_size": 256,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_CircleLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "gamma": 28.03835921852372,
+    "m": 0.11453494197437712
+  },
+  "lr": 1.3236401813223236e-05,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/slade_CircleLoss/k4/9da54734b400",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/slade_CircleLoss/k4/seed_2_9da54734b400.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "CircleLoss",
+  "warmup_loss_params": {
+    "gamma": 28.03835921852372,
+    "m": 0.11453494197437712
+  }
+}

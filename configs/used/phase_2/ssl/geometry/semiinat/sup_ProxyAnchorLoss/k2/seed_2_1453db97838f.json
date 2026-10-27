@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_2/semiinat/sup_ProxyAnchorLoss.json",
+  "labeled_per_class": 2
+}

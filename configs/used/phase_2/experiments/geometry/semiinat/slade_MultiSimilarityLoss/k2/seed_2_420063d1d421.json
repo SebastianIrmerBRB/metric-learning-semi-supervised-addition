@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/slade_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_2/geometry/semiinat/slade_MultiSimilarityLoss/k2/420063d1d421",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/semiinat/slade_MultiSimilarityLoss/k2/seed_2_420063d1d421.json"
+}

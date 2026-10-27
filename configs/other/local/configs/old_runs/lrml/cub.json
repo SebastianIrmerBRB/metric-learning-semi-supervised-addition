@@ -1,0 +1,41 @@
+{
+  "extends": "../cub.json",
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.graph_batch_size": {
+      "choices": [
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25,
+        50
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_target_ratio": {
+      "high": 2,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "cub"
+}

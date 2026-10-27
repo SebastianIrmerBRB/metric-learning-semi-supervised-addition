@@ -1,0 +1,95 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/in_shop_e1000_rerun/iscen_nt.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "loss.NTXentLoss.temperature": 0.127,
+        "lr": 1.949e-05,
+        "patience": 20
+      },
+      "description": "sup_all_shared of configs/ablations/phase2/in_shop_2x2/iscen_nt.json, rerun with 1000 epochs / patience 20 (Methodik: all Phase-2 variants 1000); the 600-epoch run reached its cap.",
+      "name": "in_shop_e1000_rerun_iscen_nt",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/in_shop_e1000_rerun/iscen_nt.json",
+      "variant": "sup_all_shared"
+    },
+    "ablation_variant": "sup_all_shared",
+    "appended_unlabeled_pool_size": 0,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "file",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/phase_2/in_shop_e1000_rerun/iscen_nt_sup_all_shared/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-15_00-05-38/fold_00/2026-10-15_00-05-38",
+    "loss_params": {
+      "temperature": 0.127
+    },
+    "lr": 1.949e-05,
+    "save_dir": "final/phase_2/in_shop_e1000_rerun/iscen_nt_sup_all_shared/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-15_00-05-38/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_e1000_rerun/iscen_nt_sup_all_shared/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.2901756251868307,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 2,
+      "method_params": {
+        "n_neighbors": 2
+      },
+      "pseudo_label_diagnostics_mode": "off",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 20
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss_params": {
+      "temperature": 0.127
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_NTXentLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.2901756251868307,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 2,
+    "method_params": {
+      "n_neighbors": 2
+    },
+    "pseudo_label_diagnostics_mode": "off",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 20
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/sup_ProxyAnchorLoss.json",
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/sup_ProxyAnchorLoss/k2/6a5ebd70e682",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/sup_ProxyAnchorLoss/k2/seed_2_6a5ebd70e682.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4
+}

@@ -1,0 +1,20 @@
+{
+  "compile_train_step": false,
+  "evaluation_embedding_residency": "cpu",
+  "extends": "common.json",
+  "faiss_temp_memory_mb": 256,
+  "final_fit_mode": "cross_validation_folds",
+  "frozen_feature_cache_max_gb": 8096,
+  "frozen_feature_residency_max_gb": 2.0,
+  "hparam_config": "configs/used/phase_0/hpo/cars/lrml_nt.json",
+  "image_resize_mode": "squash",
+  "loss": "NTXentLoss",
+  "miner": "no_miner",
+  "mode": "ssl",
+  "save_dir": "thesis/phase_0/hpo/cars/lrml_nt",
+  "save_head_state": true,
+  "ssl_config": "configs/used/phase_0/hpo_ssl/cars/lrml_nt.json",
+  "ssl_gradient_contribution_log_interval": 30,
+  "warmup_loss": null,
+  "warmup_miner": null
+}

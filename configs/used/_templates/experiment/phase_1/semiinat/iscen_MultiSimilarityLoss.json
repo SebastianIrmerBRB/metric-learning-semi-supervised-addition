@@ -1,0 +1,48 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 1.0,
+  "comparison_seed_targets": [
+    "seed",
+    "support_seed"
+  ],
+  "epochs": 1000,
+  "evaluate_test": true,
+  "extends": "common.json",
+  "hparam_config": null,
+  "loss": "MultiSimilarityLoss",
+  "loss_params": {
+    "alpha": 0.47381654742116247,
+    "base": 0.5729072499777415,
+    "beta": 3.865769483871439
+  },
+  "lr": 6.428125569086838e-06,
+  "miner": "MultiSimilarityMiner",
+  "miner_params": {
+    "epsilon": 0.11131581886084689
+  },
+  "mode": "ssl",
+  "projection_3d": true,
+  "sampler_m": 2,
+  "save_test_embeddings": true,
+  "semi_inat_ood_fraction": 0.0,
+  "skip_test_during_hpo": false,
+  "ssl_gradient_contribution_log_interval": 0,
+  "study_dir_mode": "final_train",
+  "test_recall_at_k": [
+    1,
+    10,
+    20,
+    40,
+    100
+  ],
+  "warmup_loss": "MultiSimilarityLoss",
+  "warmup_loss_params": {
+    "alpha": 0.47381654742116247,
+    "base": 0.5729072499777415,
+    "beta": 3.865769483871439
+  },
+  "warmup_miner": "MultiSimilarityMiner",
+  "warmup_miner_params": {
+    "epsilon": 0.11131581886084689
+  }
+}

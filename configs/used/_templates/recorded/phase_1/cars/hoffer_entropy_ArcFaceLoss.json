@@ -1,0 +1,272 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "cv_parallel_folds": 2,
+        "epochs": 1000,
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20
+      },
+      "description": "increasing Epochs and Patience",
+      "name": "increase_epochs",
+      "path": "configs/final_manifests/final/changes/epochs.json",
+      "variant": "epochs"
+    },
+    "ablation_variant": null,
+    "batch_size": 32,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 0.00016128386060324106,
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "compile_train_step": true,
+    "configured_length_before_new_iter": 6041,
+    "cv_fold": 0,
+    "cv_parallel_backend": "process",
+    "cv_parallel_folds": 2,
+    "epochs": 1000,
+    "evaluation_embedding_residency": "gpu",
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/cars/hoffer.json",
+    "experiment_config_resolved": {
+      "final_test_after_hpo": true,
+      "hparam_config": "configs/hpo/ssl_methods/phase_1/hoffer/cars/cars_nt.json",
+      "length_before_new_iter": 6041,
+      "loss_miner_grid": [
+        "NTXentLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/hoffer/cars/nt",
+      "ssl_config": "configs/ssl_methods/hoffer.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 32,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/hoffer/cars.json",
+    "hparam_config_resolved": {
+      "max_replaced_pruned_trials": null,
+      "spaces": {
+        "classifier_lr": {
+          "high": 10,
+          "log": true,
+          "low": 1e-05,
+          "type": "float"
+        },
+        "loss.ArcFaceLoss.margin": {
+          "high": 80.0,
+          "log": false,
+          "low": 1,
+          "type": "float"
+        },
+        "loss.ArcFaceLoss.scale": {
+          "high": 80.0,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "lr": {
+          "high": 10
+        },
+        "ssl_config.method_params.regularizer_params.distance_scale": {
+          "high": 30,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "ssl_config.method_params.regularizer_params.reference_sets": {
+          "choices": [
+            1,
+            2,
+            3,
+            5
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.unlabeled_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 30,
+          "low": 0,
+          "step": 5,
+          "type": "int"
+        }
+      },
+      "study_name": "in-shop"
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "hparam_final_from_study": "in-shop",
+    "hparam_final_trial_number": 73,
+    "hparam_params": {
+      "batch_sampler": "32:4",
+      "classifier_lr": 0.00016128386060324106,
+      "loss.ArcFaceLoss.margin": 16.326445909895053,
+      "loss.ArcFaceLoss.scale": 0.37446339811204205,
+      "lr": 2.428173570728425e-05,
+      "ssl_config.method_params.regularizer_params.distance_scale": 8.119271111078751,
+      "ssl_config.method_params.regularizer_params.reference_sets": 2,
+      "ssl_config.method_params.regularizer_params.unlabeled_batch_size": 128,
+      "ssl_config.method_params.regularizer_target_ratio": 0.6573618113782197,
+      "ssl_config.warmup_epochs": 15
+    },
+    "k_shot_grid": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "length_before_new_iter": 6003,
+    "log_head_dynamics": false,
+    "loss": "ArcFaceLoss",
+    "loss_params": {
+      "margin": 16.326445909895053,
+      "scale": 0.37446339811204205
+    },
+    "lr": 2.428173570728425e-05,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "projection_3d": true,
+    "report_test_metrics": true,
+    "save_final_head_state": false,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 32,
+      "embedding_num_workers": 8,
+      "graph_diagnostics_layout": "tsne",
+      "graph_edge_ablation": "off",
+      "graph_edge_ablation_seed": null,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "hoffer_entropy",
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 8.119271111078751,
+          "reference_sets": 2,
+          "unlabeled_batch_size": 128
+        },
+        "regularizer_target_ratio": 0.6573618113782197,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 15
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "stml_g_dim": null,
+    "test_measurements": null,
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0,
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 16.326445909895053,
+      "scale": 0.37446339811204205
+    },
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 32,
+    "embedding_num_workers": 8,
+    "graph_diagnostics_layout": "tsne",
+    "graph_edge_ablation": "off",
+    "graph_edge_ablation_seed": null,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "hoffer_entropy",
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 8.119271111078751,
+        "reference_sets": 2,
+        "unlabeled_batch_size": 128
+      },
+      "regularizer_target_ratio": 0.6573618113782197,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 15
+  }
+}

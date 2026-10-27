@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/lrml_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/lrml_ProxyAnchorLoss/classes_0.5/89ad328dcf7e",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/lrml_ProxyAnchorLoss/classes_0.5/seed_11_89ad328dcf7e.json",
+  "support_seed": 11
+}

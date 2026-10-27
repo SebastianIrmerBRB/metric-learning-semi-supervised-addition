@@ -1,0 +1,12 @@
+{
+  "description": "increasing Epochs and Patience",
+  "name": "increase_epochs",
+  "variants": {
+    "epochs": {
+      "cv_parallel_folds": 1,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 40
+    }
+  }
+}

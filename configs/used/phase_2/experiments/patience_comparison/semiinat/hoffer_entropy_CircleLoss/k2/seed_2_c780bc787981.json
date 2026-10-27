@@ -1,0 +1,12 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_2/semiinat/hoffer_entropy_CircleLoss.json",
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/semiinat/hoffer_entropy_CircleLoss/k2/c780bc787981",
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/semiinat/hoffer_entropy_CircleLoss/k2/seed_2_c780bc787981.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000
+}

@@ -1,0 +1,31 @@
+{
+  "batch_size": 256,
+  "compcars_strict_paper_counts": true,
+  "compile_train_step": true,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/lrml_NTXentLoss.json",
+  "external_unlabeled_dir": "data/CompCars",
+  "external_unlabeled_filter": "compcars_slade_paper",
+  "external_unlabeled_fraction": 0.1,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.10851783450993405
+  },
+  "lr": 0.00036761685956895055,
+  "save_dir": "thesis/phase_2/external/cars/lrml_NTXentLoss/k99999/2752b4ed17b5",
+  "save_epoch_head_interval": null,
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/external/cars/lrml_NTXentLoss/k99999/seed_2_2752b4ed17b5.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "external",
+  "warmup_loss": "NTXentLoss",
+  "warmup_loss_params": {
+    "temperature": 0.10851783450993405
+  }
+}

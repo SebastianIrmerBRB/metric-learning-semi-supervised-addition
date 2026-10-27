@@ -1,0 +1,42 @@
+{
+  "extends": [
+    "../slade_loss_params/in_shop_10.json",
+    "standardized_ssl_params.json"
+  ],
+  "spaces": {
+    "ssl_config.method_params.regularizer_params.basis_warmup_epochs": {
+      "choices": [
+        0,
+        0.25,
+        0.5,
+        1.0,
+        5.0
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_params.cluster_ratio": {
+      "choices": [
+        0.1,
+        0.5,
+        1,
+        2
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.update_interval_epochs": {
+      "choices": [
+        1,
+        5,
+        10
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 30,
+      "low": 0,
+      "step": 5,
+      "type": "int"
+    }
+  },
+  "study_name": "slade_cars_initial"
+}

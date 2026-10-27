@@ -1,0 +1,76 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cpu",
+  "gpu_batch_size_thresholds": [
+    "NTXentLoss:lrml=0",
+    "CircleLoss:lrml=128",
+    "ArcFaceLoss:lrml=128",
+    "ProxyAnchorLoss:lrml=128",
+    "MultiSimilarityLoss:lrml=128"
+  ],
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "name": "nt-xent",
+      "study_dir": "supervised_losses/nt-xent/class_subset_k_shot_label_1_k_16_NTXentLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised"
+    },
+    {
+      "name": "ms-loss",
+      "study_dir": "supervised_losses/ms-loss/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/cars_imb_search_supervised"
+    },
+    {
+      "name": "circle_loss",
+      "study_dir": "supervised_losses/circle_loss/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised"
+    },
+    {
+      "name": "prx_loss",
+      "study_dir": "supervised_losses/prx_loss/class_subset_k_shot_label_1_k_16_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised"
+    },
+    {
+      "name": "nt-xent1",
+      "study_dir": "supervised_losses/nt-xent/class_subset_k_shot_label_1_k_99999_NTXentLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised"
+    },
+    {
+      "name": "ms-loss1",
+      "study_dir": "supervised_losses/ms-loss/class_subset_k_shot_label_1_k_99999_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/cars_imb_search_supervised",
+      "study_replay": {
+        "final_test_top_n": 1
+      }
+    },
+    {
+      "name": "circle_loss1",
+      "study_dir": "supervised_losses/circle_loss/class_subset_k_shot_label_1_k_99999_CircleLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised",
+      "study_replay": {
+        "final_test_top_n": 3
+      }
+    },
+    {
+      "name": "prx_loss1",
+      "study_dir": "supervised_losses/prx_loss/class_subset_k_shot_label_1_k_99999_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/cars_imb_search_supervised"
+    }
+  ],
+  "save_dir_root": "replay/supervised",
+  "scheduler_log_dir": "logs/run_scheduler/cars_four_losses_replay",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "data_split_seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      7,
+      8,
+      9
+    ],
+    "final_test_top_n": 10,
+    "study_dir_mode": "cross_seed_train_val"
+  },
+  "version": 1
+}

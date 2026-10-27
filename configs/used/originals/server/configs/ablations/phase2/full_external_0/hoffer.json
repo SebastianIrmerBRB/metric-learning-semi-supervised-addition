@@ -1,0 +1,24 @@
+{
+  "description": "M5 control for hoffer at k=99999 (all labels), external-data replay settings (1000 epochs, patience 20). Hoffer cannot run with an empty unlabeled pool (HofferEntropyRegularizer.build_dataset raises 'requires unlabeled samples' at fold setup, whatever the weight), so this is the closest valid control: the unlabeled term at weight 0 exactly as make_phase2_ablations.ZERO_WEIGHT (the term an empty pool would feed is off), and unlabeled_source='labeled' only so build_dataset gets a non-empty pool; at weight 0 the engine never iterates it and trains on the labeled loader alone, with an unchanged epoch length (labeled + 0 split unlabeled).",
+  "name": "full_external_0_hoffer",
+  "variants": {
+    "external_0": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0,
+      "unlabeled_source": "labeled"
+    }
+  }
+}

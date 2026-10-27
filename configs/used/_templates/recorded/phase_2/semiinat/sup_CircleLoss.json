@@ -1,0 +1,119 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay: unmodified tuned run, 600 epochs / patience 10 (Semi-iNat's Phase-1 patience, as its earlier tracking runs) for every method. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_default_uncapped_semi_inat",
+      "path": "configs/ablations/phase2/geometry/uncapped_semi_inat_default.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "batch_size": 128,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "classifier_lr": 1.0,
+    "cv_parallel_folds": 1,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/semi_inat_2021/supervised.json",
+    "experiment_config_resolved": {
+      "batch_size": 256,
+      "feat_dim": 768,
+      "hparam_config": "configs/runs/first/first_run_semi_inat_2021.json",
+      "loss_miner_grid": [
+        "CircleLoss:no_miner"
+      ],
+      "lr": 5e-05,
+      "mode": "supervised",
+      "save_dir": "semi_inat",
+      "ssl_config": "configs/ssl_methods/lrml.json"
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "frozen_feature_batch_size_resolved": 128,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/semi_inat_2021.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "loss.CircleLoss.gamma": {
+          "high": 512,
+          "log": true,
+          "low": 1,
+          "type": "float"
+        },
+        "loss.CircleLoss.m": {
+          "high": 0.5,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        }
+      },
+      "study_name": "tpe_run_supervised"
+    },
+    "hparam_final_from_study": "tpe_run_supervised",
+    "hparam_final_trial_number": 61,
+    "hparam_params": {
+      "batch_sampler": "128:2",
+      "loss.CircleLoss.gamma": 420.51133529794015,
+      "loss.CircleLoss.m": 0.2957513210930461,
+      "lr": 5.66044930205073e-06
+    },
+    "loss": "CircleLoss",
+    "loss_params": {
+      "gamma": 420.51133529794015,
+      "m": 0.2957513210930461
+    },
+    "lr": 5.66044930205073e-06,
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "supervised",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "semi_inat_ood_fraction": 0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": null,
+      "method": "none",
+      "method_params": {},
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": false,
+      "update_interval_epochs": 1,
+      "update_mode": "once",
+      "warmup_epochs": 0
+    },
+    "ssl_gradient_contribution_log_interval": 0,
+    "stml_g_dim": null,
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {},
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": null,
+    "method": "none",
+    "method_params": {},
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": false,
+    "update_interval_epochs": 1,
+    "update_mode": "once",
+    "warmup_epochs": 0
+  }
+}

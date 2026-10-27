@@ -1,0 +1,24 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/iscen_NTXentLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "temperature": 0.08266835108128692
+  },
+  "lr": 4.128636527352567e-05,
+  "save_dir": "thesis/phase_2/external/inshop/iscen_NTXentLoss/k99999/31a1ed8929fa",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/external/inshop/iscen_NTXentLoss/k99999/seed_2_31a1ed8929fa.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "unlabeled_source": "split",
+  "warmup_loss_params": {
+    "temperature": 0.08266835108128692
+  }
+}

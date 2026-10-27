@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/sup_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/semiinat/sup_CircleLoss/k4/1ae7afa9bbac",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/sup_CircleLoss/k4/seed_11_1ae7afa9bbac.json",
+  "support_seed": 11
+}

@@ -1,0 +1,8 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/sup_CircleLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/sup_CircleLoss/k2/5be50c45a2a5",
+  "seed": 8,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/sup_CircleLoss/k2/seed_8_5be50c45a2a5.json",
+  "support_seed": 8
+}

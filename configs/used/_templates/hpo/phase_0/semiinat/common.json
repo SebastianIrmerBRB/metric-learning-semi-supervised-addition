@@ -1,0 +1,12 @@
+{
+  "extends": "../common.json",
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "128:2",
+        "256:2",
+        "512:2"
+      ]
+    }
+  }
+}

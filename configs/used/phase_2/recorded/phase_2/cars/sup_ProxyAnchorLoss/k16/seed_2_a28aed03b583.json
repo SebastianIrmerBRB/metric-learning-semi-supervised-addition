@@ -1,0 +1,53 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_2x2/sup_prx.json",
+    "ablation_config_resolved": {
+      "description": "Supervised corner of the 2x2 for cars/sup/prx.",
+      "name": "cars_2x2_sup_prx",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_2x2/sup_prx.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "epochs": 600,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars/sup_prx_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/supervised/cv_2026-09-27_09-57-14/fold_00/2026-09-27_09-57-14",
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/sup_prx_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/supervised/cv_2026-09-27_09-57-14/fold_00",
+    "ssl_config": "logs/final/phase_2/cars/sup_prx_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/sup_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "cv_k": 4,
+  "dataset": "DeepFashionInShop",
+  "dataset_protocol": "official",
+  "device": "cuda",
+  "evaluation_embedding_residency": "gpu",
+  "extends": "../common.json",
+  "length_before_new_iter": null,
+  "patience": 20,
+  "semi_inat_ood_fraction": 0
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../common.json",
+  "label_sampling_mode": "class_subset_k_shot",
+  "labeled_fraction": 1.0
+}

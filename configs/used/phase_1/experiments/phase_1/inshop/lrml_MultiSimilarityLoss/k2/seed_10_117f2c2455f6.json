@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/lrml_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/lrml_MultiSimilarityLoss/k2/117f2c2455f6",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/lrml_MultiSimilarityLoss/k2/seed_10_117f2c2455f6.json",
+  "support_seed": 10
+}

@@ -1,0 +1,8 @@
+{
+  "cv_parallel_folds": 2,
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/lrml_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/lrml_NTXentLoss/classes_0.5/0e6d5d4496e2",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/lrml_NTXentLoss/classes_0.5/seed_11_0e6d5d4496e2.json",
+  "support_seed": 11
+}

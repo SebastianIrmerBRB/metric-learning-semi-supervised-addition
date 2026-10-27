@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/lrml_NTXentLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/lrml_NTXentLoss/classes_0.05/eec96cdfb8e4",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/lrml_NTXentLoss/classes_0.05/seed_2_eec96cdfb8e4.json"
+}

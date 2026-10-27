@@ -1,0 +1,12 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/sup_ProxyAnchorLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_2/phase_2/inshop/sup_ProxyAnchorLoss/k2/9d0cfd1abb53",
+  "ssl_config": "configs/used/phase_2/ssl/phase_2/inshop/sup_ProxyAnchorLoss/k2/seed_2_9d0cfd1abb53.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000
+}

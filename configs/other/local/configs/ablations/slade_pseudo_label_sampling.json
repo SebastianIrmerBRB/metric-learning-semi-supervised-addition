@@ -1,0 +1,36 @@
+{
+  "description": "SLADE only: how the unlabeled batch is drawn and how Eq 7 mining relates to the pseudo labels. The unmodified run is the literal paper reading, with a uniformly shuffled unlabeled batch and Eq 7 thresholding basis similarity alone. There only ~1/k of batch pairs share a cluster, and ~25% of mined positives did. 'pseudo_label_sampler' draws unlabeled_batch_size/4 clusters x 4 members per batch, the m-per-class sampling of the framework the paper builds on. 'pseudo_label_mining_filter' keeps a mined positive only inside a cluster and a mined negative only across clusters. 'pseudo_label_sampler_and_filter' does both. The number of unlabeled steps per epoch is unchanged. Compare mined_positive_precision and mined_positive_same_cluster_fraction in the activity diagnostics alongside the score. The run's unlabeled batch size must be divisible by 4.",
+  "name": "slade_pseudo_label_sampling",
+  "variants": {
+    "pseudo_label_mining_filter": {
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "mining_pseudo_label_filter": true
+          }
+        }
+      }
+    },
+    "pseudo_label_sampler": {
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "unlabeled_sampler": "pseudo_label_m_per_class",
+            "unlabeled_sampler_m": 4
+          }
+        }
+      }
+    },
+    "pseudo_label_sampler_and_filter": {
+      "ssl_config": {
+        "method_params": {
+          "regularizer_params": {
+            "mining_pseudo_label_filter": true,
+            "unlabeled_sampler": "pseudo_label_m_per_class",
+            "unlabeled_sampler_m": 4
+          }
+        }
+      }
+    }
+  }
+}

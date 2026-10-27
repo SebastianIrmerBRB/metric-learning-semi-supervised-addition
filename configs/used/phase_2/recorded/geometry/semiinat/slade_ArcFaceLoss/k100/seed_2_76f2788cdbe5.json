@@ -1,0 +1,19 @@
+{
+  "args": {
+    "k_shot_grid": [
+      100
+    ],
+    "length_before_new_iter_num_labeled": 29635,
+    "length_before_new_iter_num_unlabeled": 16537,
+    "log_dir": "logs/final/phase_2/semi_inat_geometry_k100/slade_arc_defaults/class_subset_k_shot_label_1_k_100_comparison_seed_2/final/ssl/cv_2026-10-13_11-59-32/fold_00/2026-10-13_11-59-32",
+    "save_dir": "final/phase_2/semi_inat_geometry_k100/slade_arc_defaults/class_subset_k_shot_label_1_k_100_comparison_seed_2/final/ssl/cv_2026-10-13_11-59-32/fold_00",
+    "ssl_config": "logs/final/phase_2/semi_inat_geometry_k100/slade_arc_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_100_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 100
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/semiinat/slade_ArcFaceLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 100
+  }
+}

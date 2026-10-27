@@ -1,0 +1,61 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0,
+    1
+  ],
+  "launch_delay_seconds": 1,
+  "max_concurrent_per_gpu": 8,
+  "max_total_runs": 20,
+  "poll_interval_seconds": 1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "args": [
+        "--ablation_config",
+        "configs/final_manifests/changes/epochs.json"
+      ],
+      "name": "sup_prx",
+      "study_dir": "final/phase_1/in_shop_10/supervised/prx_loss/class_subset_label_0p1_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised"
+    }
+  ],
+  "save_dir_root": "/home/irmers/metric-learning/final/phase_1/seeded_runs_in_shop_10",
+  "scheduler_log_dir": "/home/irmers/metric-learning/final/phase_1/seeded_runs/_scheduler/all",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "tsne"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "label_budget_grid": [
+      0.05,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "ssl_label_sampling_modes": [
+      "class_subset"
+    ],
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ]
+  },
+  "version": 1
+}

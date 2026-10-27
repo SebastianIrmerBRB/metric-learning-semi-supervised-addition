@@ -1,0 +1,84 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 60,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "tpe",
+  "sampler_params": {
+    "group": true,
+    "multivariate": true
+  },
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "16:8",
+        "32:8",
+        "64:8",
+        "128:8",
+        "256:8",
+        "512:16"
+      ],
+      "type": "categorical"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 20,
+      "log": false,
+      "low": 0.01,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 160,
+      "log": true,
+      "low": 20,
+      "type": "float"
+    },
+    "lr": {
+      "high": 1e-05,
+      "log": true,
+      "low": 1e-06,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.regularizer_params.n_neighbors": {
+      "choices": [
+        3,
+        6,
+        10,
+        15,
+        25
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.method_params.regularizer_weight": {
+      "high": 10,
+      "log": true,
+      "low": 0.001,
+      "type": "float"
+    },
+    "ssl_config.method_params.supervised_weight": {
+      "high": 2.0,
+      "log": true,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cifar",
+  "timeout": null,
+  "tpe_startup_trials": 20
+}

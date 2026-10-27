@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/cars/sup_ProxyAnchorLoss.json",
+  "labeled_per_class": 32,
+  "seed": 8,
+  "support_seed": 8
+}

@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/hoffer_entropy_MultiSimilarityLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.5/bec0b119b6de",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/hoffer_entropy_MultiSimilarityLoss/classes_0.5/seed_2_bec0b119b6de.json"
+}

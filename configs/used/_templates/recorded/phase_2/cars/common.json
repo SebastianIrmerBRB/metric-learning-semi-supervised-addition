@@ -1,0 +1,55 @@
+{
+  "args": {
+    "backbone_cache_dir": "data/Cars196/backbone_cache/v3/dinov2_vitb14",
+    "dataset": "Cars196",
+    "dataset_protocol": "official",
+    "experiment_config_resolved": {
+      "dataset": "Cars196",
+      "dataset_protocol": "official",
+      "epochs": 600,
+      "feat_dim": 768,
+      "k_shot_grid": [
+        16
+      ],
+      "label_budget_grid": [
+        1.0
+      ],
+      "patience": 20,
+      "ssl_label_sampling_modes": [
+        "class_subset_k_shot"
+      ]
+    },
+    "hparam_config_resolved": {
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "32:4",
+            "64:4",
+            "128:4",
+            "256:4"
+          ]
+        },
+        "lr": {
+          "low": 1e-05
+        }
+      }
+    },
+    "hparam_final_epoch_plan": {
+      "patience": 20
+    },
+    "label_budget_grid": null,
+    "patience": 20,
+    "sampler_m": 4,
+    "semi_inat_ood_fraction": 0,
+    "ssl_config_resolved": {
+      "label_sampling_mode": "class_subset_k_shot",
+      "labeled_fraction": 1.0
+    },
+    "ssl_label_sampling_modes": null
+  },
+  "extends": "../common.json",
+  "ssl_config": {
+    "label_sampling_mode": "class_subset_k_shot",
+    "labeled_fraction": 1.0
+  }
+}

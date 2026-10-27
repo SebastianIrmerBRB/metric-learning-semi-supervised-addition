@@ -1,0 +1,32 @@
+{
+  "classifier_lr": 1.569891154003262,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "alpha": 0.31847110473996687,
+    "margin": 0.24072443600363824
+  },
+  "lr": 0.0004632785040660739,
+  "patience_delay_epochs": 20,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop/slade_ProxyAnchorLoss/k2/bdb3b74db89b",
+  "save_epoch_head_interval": null,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop/slade_ProxyAnchorLoss/k2/seed_2_bdb3b74db89b.json",
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 0.31847110473996687,
+    "margin": 0.24072443600363824
+  }
+}

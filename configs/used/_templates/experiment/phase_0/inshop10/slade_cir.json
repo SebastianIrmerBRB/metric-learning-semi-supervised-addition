@@ -1,0 +1,21 @@
+{
+  "ablation_variant": null,
+  "compile_train_step": true,
+  "extends": "common.json",
+  "fold_test_embedding_storage": "temporary",
+  "graph_projection": false,
+  "hparam_config": "configs/used/phase_0/hpo/inshop10/slade_cir.json",
+  "loss": "CircleLoss",
+  "max_unlabeled_samples": null,
+  "miner": "no_miner",
+  "mode": "ssl",
+  "report_test_metrics": true,
+  "save_dir": "thesis/phase_0/hpo/inshop10/slade_cir",
+  "ssl_config": "configs/used/phase_0/hpo_ssl/inshop10/slade_cir.json",
+  "ssl_gradient_contribution_log_interval": 0,
+  "test_measurements": null,
+  "test_recall_at_k": null,
+  "unlabeled_class_scope": null,
+  "unlabeled_fraction": null,
+  "warmup_loss": "same_as_loss"
+}

@@ -1,0 +1,95 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/hoffer_eta_sweep/hoffer.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "ssl_config.method_params.regularizer_target_ratio": 3.0
+      },
+      "description": "Hoffer eta (ssl_config.method_params.regularizer_target_ratio, the target ratio of the Hoffer gradient to the supervised gradient at the calibration probes), one at a time around the tuned configuration of whichever Hoffer study is replayed (any loss, Cars196 k=16 or In-Shop k=2); every other parameter keeps its tuned value. Closes the status-table row 'LRML, Hoffer: Staerke eta ... Hoffer: nicht variiert'. Same grid as the LRML eta sweep (configs/ablations/phase2/lrml_mult/*_ablations/lrml.json), which contains the SLADE grid (configs/ablations/phase2/sweeps/slade.json); Phase 1 searched [0.5, 1.5]. Unlike LRML (uncapped), the step-wise cap regularizer_max_ratio keeps the study's value 3, as in Phase 1 and in the SLADE sweep. eta is calibrated on the studies' max_mean gradient statistic while the cap bounds the Euclidean ratio, so the cap can bind below eta = 3 (train/regularizer_max_ratio/*uncapped_ratio records when it does). Seed 2, 1000 epochs as a ceiling, patience 20.",
+      "name": "hoffer_eta_sweep",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/hoffer_eta_sweep/hoffer.json",
+      "variant": "regularizer_target_ratio_3p0"
+    },
+    "ablation_variant": "regularizer_target_ratio_3p0",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 256,
+    "classifier_lr": 2.2360298002902112e-05,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/phase_2/in_shop_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_3p0/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-17_20-02-28/fold_00/2026-10-17_20-02-28",
+    "loss_params": {
+      "alpha": 0.208392043101982,
+      "margin": 0.3845762284195105
+    },
+    "lr": 0.01324866126220826,
+    "save_dir": "final/phase_2/in_shop_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_3p0/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-17_20-02-28/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_3p0/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 10.449606263253672
+        },
+        "regularizer_target_ratio": 3.0,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      }
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split"
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/hoffer_entropy_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 10.449606263253672
+      },
+      "regularizer_target_ratio": 3.0,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    }
+  }
+}

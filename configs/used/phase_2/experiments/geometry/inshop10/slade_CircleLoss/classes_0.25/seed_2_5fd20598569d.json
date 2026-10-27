@@ -1,0 +1,7 @@
+{
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/slade_CircleLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "save_dir": "thesis/phase_2/geometry/inshop10/slade_CircleLoss/classes_0.25/5fd20598569d",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/slade_CircleLoss/classes_0.25/seed_2_5fd20598569d.json"
+}

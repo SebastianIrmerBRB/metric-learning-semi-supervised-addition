@@ -1,0 +1,45 @@
+{
+  "description": "External unlabeled data for cars/hoffer, any loss: data/CompCars (compcars_slade_paper) at 10 %, 25 %, 50 %, 100 % of the pool, replacing the in-split pool.",
+  "name": "cars_full_external_hoffer",
+  "variants": {
+    "external_10": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.1,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "external_100": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "external_25": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.25,
+      "patience": 20,
+      "unlabeled_source": "external"
+    },
+    "external_50": {
+      "compcars_strict_paper_counts": true,
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "external_unlabeled_dir": "data/CompCars",
+      "external_unlabeled_filter": "compcars_slade_paper",
+      "external_unlabeled_fraction": 0.5,
+      "patience": 20,
+      "unlabeled_source": "external"
+    }
+  }
+}

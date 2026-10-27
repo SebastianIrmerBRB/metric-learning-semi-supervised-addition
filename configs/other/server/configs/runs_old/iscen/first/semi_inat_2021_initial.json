@@ -1,0 +1,49 @@
+{
+  "extends": "../first_run_semi_inat_2021.json",
+  "spaces": {
+    "labeled_batch_fraction": {
+      "choices": [
+        0.125,
+        0.25,
+        0.5
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.confidence_threshold": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    },
+    "ssl_config.method_params.alpha": {
+      "high": 0.99,
+      "log": false,
+      "low": 0.2,
+      "type": "float"
+    },
+    "ssl_config.method_params.gamma": {
+      "high": 10,
+      "low": 1,
+      "step": 1,
+      "type": "float"
+    },
+    "ssl_config.method_params.n_neighbors": {
+      "choices": [
+        3,
+        5,
+        10,
+        50,
+        100,
+        300,
+        500
+      ],
+      "type": "categorical"
+    },
+    "ssl_config.warmup_epochs": {
+      "high": 10,
+      "low": 0,
+      "step": 2,
+      "type": "int"
+    }
+  }
+}

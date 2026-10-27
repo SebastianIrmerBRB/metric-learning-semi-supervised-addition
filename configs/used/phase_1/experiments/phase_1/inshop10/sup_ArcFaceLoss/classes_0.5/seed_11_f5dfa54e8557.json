@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/sup_ArcFaceLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop10/sup_ArcFaceLoss/classes_0.5/f5dfa54e8557",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/sup_ArcFaceLoss/classes_0.5/seed_11_f5dfa54e8557.json",
+  "support_seed": 11
+}

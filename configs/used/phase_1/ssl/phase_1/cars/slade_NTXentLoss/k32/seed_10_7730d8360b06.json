@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/cars/slade_NTXentLoss.json",
+  "labeled_per_class": 32,
+  "seed": 10,
+  "support_seed": 10
+}

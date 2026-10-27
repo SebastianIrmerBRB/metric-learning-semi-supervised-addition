@@ -1,0 +1,18 @@
+{
+  "confidence_threshold": 0.0,
+  "embedding_batch_size": 256,
+  "extends": "common.json",
+  "graph_diagnostics_class_context": true,
+  "graph_diagnostics_class_count": 6,
+  "graph_diagnostics_class_focus": "off",
+  "graph_diagnostics_classes": null,
+  "labeled_batch_size": null,
+  "method": "none",
+  "method_params": {},
+  "pseudo_label_diagnostics_mode": "save",
+  "restart_selection_after_warmup": false,
+  "update_interval_epochs": 1,
+  "update_interval_samples": null,
+  "update_mode": "once",
+  "warmup_epochs": 0
+}

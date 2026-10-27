@@ -1,0 +1,141 @@
+{
+  "args": {
+    "ablation_config": "configs/ablations/phase2/geometry/uncapped_lrml.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600,
+        "ssl_config.method_params.regularizer_max_ratio": null,
+        "track_epoch_max_samples": 0
+      },
+      "description": "Geometry replay of LRML without the regularizer max-ratio cap (regularizer_max_ratio = null); 600 epochs / patience 20. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+      "name": "geometry_lrml_uncapped",
+      "path": "configs/ablations/phase2/geometry/uncapped_lrml.json",
+      "variant": "defaults"
+    },
+    "ablation_variant": "defaults",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "cifar_imbalance_factor": null,
+    "cifar_test_fraction": 0.5,
+    "cifar_train_fraction": 0.5,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "compile_train_step": false,
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "evaluate_test",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k",
+      "track_epoch_artifacts",
+      "track_epoch_interval",
+      "track_epoch_layout"
+    ],
+    "fold_test_embedding_storage": "file",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_config_resolved": {
+      "sampler_params": {}
+    },
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "hparam_final_trial_number": 77,
+    "hparam_params": {
+      "loss.CircleLoss.gamma": 233.79664272241828,
+      "loss.CircleLoss.m": 0.018960109668786855,
+      "lr": 2.3548606144103405e-05,
+      "ssl_config.method_params.regularizer_params.n_neighbors": 77,
+      "ssl_config.method_params.regularizer_target_ratio": 0.6386952576908896
+    },
+    "k_shot_grid": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars_geometry_uncapped/lrml_cir_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-30_23-23-39/fold_00/2026-09-30_23-23-39",
+    "loss_params": {
+      "gamma": 233.79664272241828,
+      "m": 0.018960109668786855
+    },
+    "lr": 2.3548606144103405e-05,
+    "save_dir": "final/phase_2/cars_geometry_uncapped/lrml_cir_defaults/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-30_23-23-39/fold_00",
+    "seed": 2,
+    "ssl_config": "logs/final/phase_2/cars_geometry_uncapped/lrml_cir_defaults/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "graph_diagnostics_layout": "pacmap",
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 16,
+      "method_params": {
+        "regularizer_max_ratio": null,
+        "regularizer_params": {
+          "n_neighbors": 77,
+          "oracle_same_class_edges": false
+        },
+        "regularizer_target_ratio": 0.6386952576908896,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "seed": 2,
+      "support_seed": 2,
+      "update_mode": "every_n_epochs",
+      "warmup_epochs": 20
+    },
+    "stml_g_dim": null,
+    "support_seed": 2,
+    "track_epoch_artifacts": [
+      "geometry",
+      "test"
+    ],
+    "track_epoch_interval": 1,
+    "track_epoch_max_samples": 0,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 233.79664272241828,
+      "m": 0.018960109668786855
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/lrml_CircleLoss.json",
+  "ssl_config": {
+    "graph_diagnostics_layout": "pacmap",
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 16,
+    "method_params": {
+      "regularizer_max_ratio": null,
+      "regularizer_params": {
+        "n_neighbors": 77,
+        "oracle_same_class_edges": false
+      },
+      "regularizer_target_ratio": 0.6386952576908896,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "seed": 2,
+    "support_seed": 2,
+    "update_mode": "every_n_epochs",
+    "warmup_epochs": 20
+  }
+}

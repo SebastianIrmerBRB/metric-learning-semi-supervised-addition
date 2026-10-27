@@ -1,0 +1,61 @@
+{
+  "description": "LRML uncapped (regularizer_max_ratio = null). eta extended below the Phase 1 bound 0.5 (sec:phase2:sensitivity-conclusions). One-at-a-time range sweep around the tuned cars/lrml/cir configuration (best trial 77); every other parameter keeps its tuned value.",
+  "name": "cars_cir_sweeps_lrml_cir",
+  "variants": {
+    "regularizer_target_ratio_0p1": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 0.1
+    },
+    "regularizer_target_ratio_0p2": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 0.2
+    },
+    "regularizer_target_ratio_0p35": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 0.35
+    },
+    "regularizer_target_ratio_0p5": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 0.5
+    },
+    "regularizer_target_ratio_0p75": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 0.75
+    },
+    "regularizer_target_ratio_1p0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 1.0
+    },
+    "regularizer_target_ratio_1p5": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": 1.5
+    },
+    "warmup_epochs_0": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.warmup_epochs": 0
+    },
+    "warmup_epochs_10": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.warmup_epochs": 10
+    },
+    "warmup_epochs_15": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.warmup_epochs": 15
+    },
+    "warmup_epochs_30": {
+      "evaluation_embedding_residency": "gpu",
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.warmup_epochs": 30
+    }
+  }
+}

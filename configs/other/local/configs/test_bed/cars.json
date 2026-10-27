@@ -1,0 +1,33 @@
+{
+  "backbone_tuning": "frozen",
+  "batch_size": 256,
+  "cv_k": 1,
+  "cv_mode": "group_kfold",
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "epochs": 500,
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": null,
+  "k_shot_grid": [
+    16
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "loss_miner_grid": [
+    "NTXentLoss:no_miner"
+  ],
+  "lr": 1e-05,
+  "mode": "ssl",
+  "patience": 20,
+  "save_dir": "test123",
+  "ssl_config": "configs/ssl_methods/lrml_contrastive_alternating.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all",
+  "warmup_loss": "NTXentLoss",
+  "warmup_miner": "no_miner"
+}

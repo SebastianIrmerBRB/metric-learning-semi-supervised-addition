@@ -1,0 +1,78 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 0.1,
+  "max_concurrent_per_gpu": 3,
+  "max_total_runs": 30,
+  "poll_interval_seconds": 0.1,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/ablations/phase2/in_shop_controls/lrml.json",
+      "ablation_variants": [
+        "zero_weight"
+      ],
+      "args": [
+        "--epochs",
+        "1000"
+      ],
+      "enabled": true,
+      "name": "lrml_prx",
+      "study_dir": "final/phase_2_studies/geometry/in_shop_10/lrml/lrml_prx/class_subset_label_0p1_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio"
+    },
+    {
+      "ablation_config": "configs/ablations/phase2/in_shop_sweeps/lrml.json",
+      "ablation_variants": [
+        "n_neighbors_500",
+        "regularizer_target_ratio_0p5",
+        "regularizer_target_ratio_0p75",
+        "regularizer_target_ratio_1p0",
+        "regularizer_target_ratio_1p5",
+        "regularizer_target_ratio_3p0",
+        "warmup_epochs_0",
+        "warmup_epochs_30"
+      ],
+      "args": [
+        "--epochs",
+        "1000"
+      ],
+      "enabled": true,
+      "name": "lrml_prx",
+      "study_dir": "final/phase_2_studies/geometry/in_shop_10/lrml/lrml_prx/class_subset_label_0p1_ProxyAnchorLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio"
+    }
+  ],
+  "save_dir_root": "final/phase_2/in_shop_10",
+  "scheduler_log_dir": "final/phase_2/in_shop_10/_scheduler/in_shop_10_lrml_prx_rest",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      2
+    ],
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "label_budget_grid": [
+      0.1
+    ],
+    "ssl_label_sampling_modes": [
+      "class_subset"
+    ],
+    "study_dir_mode": "final_train",
+    "test_recall_at_k": [
+      1,
+      10,
+      20,
+      40,
+      100
+    ]
+  },
+  "version": 1
+}

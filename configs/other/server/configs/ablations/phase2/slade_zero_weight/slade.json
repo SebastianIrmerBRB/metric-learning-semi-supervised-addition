@@ -1,0 +1,24 @@
+{
+  "description": "SLADE mechanism control zero_weight for any SLADE study (any loss, any dataset), with the SLADE sweep cell settings (1000 epochs as a ceiling, patience 20, as configs/ablations/phase2/sweeps/slade.json) so it pairs with the sweep runs. The unlabeled term at weight 0 exactly as make_phase2_ablations.ZERO_WEIGHT does it for Hoffer/LRML: regularizer_weight 0 and the target-ratio calibration with all its companions and the max-ratio cap switched off. At weight 0 SLADE attaches no basis W_a (configure_model), builds no pool or clusters (begin_unlabeled_pool) and the engine trains on the labeled loader only, so L_Basis is never computed and lambda_basis / basis_target_ratio are left at their tuned values (inert: calibration only runs on regularized steps). restart_selection_after_warmup is switched off because SLADE's steady_state_active() waits for Eq 7 mining, which never starts at weight 0; with the restart left on, early stopping stays suspended and every fold trains the full 1000 epochs with selection spanning the warm-up. Without the restart, patience still counts only after warmup_epochs, so the only difference to the Hoffer/LRML zero_weight runs is that a warm-up epoch stays eligible as the selected checkpoint.",
+  "name": "slade_zero_weight",
+  "variants": {
+    "zero_weight": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0,
+      "ssl_config.restart_selection_after_warmup": false
+    }
+  }
+}

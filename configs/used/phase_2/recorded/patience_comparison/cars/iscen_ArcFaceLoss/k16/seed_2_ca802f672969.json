@@ -1,0 +1,129 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 600,
+        "evaluation_embedding_residency": "gpu",
+        "patience": 20,
+        "patience_delay_epochs": 20,
+        "ssl_config.graph_edge_ablation": "random_pruned",
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "iscen_cir__graph_random_pruned"
+    },
+    "ablation_variant": "iscen_cir__graph_random_pruned",
+    "appended_unlabeled_pool_size": 0,
+    "classifier_lr": 0.0009021639342406636,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 600,
+    "evaluation_embedding_residency": "gpu",
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/patience_delay/phase_2/cars/iscen_arc_controls_graph_random_pruned/k16_s2/iscen_cir__graph_random_pruned/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-20_06-29-22/fold_00/2026-10-20_06-29-22",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "margin": 38.59149418111065,
+      "scale": 2.9001616152522476
+    },
+    "lr": 0.8308332084865383,
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/patience_delay/phase_2/cars/iscen_arc_controls_graph_random_pruned/k16_s2/iscen_cir__graph_random_pruned/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-20_06-29-22/fold_00",
+    "save_epoch_head_interval": null,
+    "seed": 2,
+    "ssl_config": "logs/final/patience_delay/phase_2/cars/iscen_arc_controls_graph_random_pruned/k16_s2/iscen_cir__graph_random_pruned/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.29994914330808375,
+      "graph_edge_ablation": "random_pruned",
+      "labeled_per_class": 16,
+      "method_params": {
+        "n_neighbors": 92
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "seed": 2,
+      "support_seed": 2,
+      "update_mode": "every_epoch",
+      "warmup_epochs": 10
+    },
+    "support_seed": 2,
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 38.59149418111065,
+      "scale": 2.9001616152522476
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_ArcFaceLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.29994914330808375,
+    "graph_edge_ablation": "random_pruned",
+    "labeled_per_class": 16,
+    "method_params": {
+      "n_neighbors": 92
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "seed": 2,
+    "support_seed": 2,
+    "update_mode": "every_epoch",
+    "warmup_epochs": 10
+  }
+}

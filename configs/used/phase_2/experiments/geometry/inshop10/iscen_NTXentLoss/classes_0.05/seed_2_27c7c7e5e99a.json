@@ -1,0 +1,15 @@
+{
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/iscen_NTXentLoss.json",
+  "fold_test_embedding_storage": "file",
+  "save_dir": "thesis/phase_2/geometry/inshop10/iscen_NTXentLoss/classes_0.05/27c7c7e5e99a",
+  "seed": 2,
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/iscen_NTXentLoss/classes_0.05/seed_2_27c7c7e5e99a.json",
+  "support_seed": 2,
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0
+}

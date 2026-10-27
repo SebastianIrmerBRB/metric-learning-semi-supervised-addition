@@ -1,0 +1,105 @@
+{
+  "direction": "maximize",
+  "enabled": true,
+  "load_if_exists": true,
+  "metric": "best_valid_mean_average_precision_at_r",
+  "n_trials": 50,
+  "pruner": "none",
+  "pruner_params": {},
+  "sampler": "random",
+  "sampler_params": {},
+  "spaces": {
+    "batch_sampler": {
+      "choices": [
+        "32:4",
+        "64:4",
+        "128:4",
+        "256:4",
+        "512:4"
+      ],
+      "type": "categorical"
+    },
+    "classifier_lr": {
+      "high": 100.0,
+      "log": true,
+      "low": 0.0001,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.margin": {
+      "high": 75.0,
+      "log": false,
+      "low": 15,
+      "type": "float"
+    },
+    "loss.ArcFaceLoss.scale": {
+      "high": 250.0,
+      "log": true,
+      "low": 10,
+      "type": "float"
+    },
+    "loss.CircleLoss.gamma": {
+      "high": 512.0,
+      "log": true,
+      "low": 32,
+      "type": "float"
+    },
+    "loss.CircleLoss.m": {
+      "high": 0.5,
+      "log": false,
+      "low": 0.01,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.alpha": {
+      "high": 25,
+      "log": false,
+      "low": 2,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.base": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.3,
+      "type": "float"
+    },
+    "loss.MultiSimilarityLoss.beta": {
+      "high": 160,
+      "log": true,
+      "low": 20,
+      "type": "float"
+    },
+    "loss.NTXentLoss.temperature": {
+      "high": 0.5,
+      "log": true,
+      "low": 0.001,
+      "type": "float"
+    },
+    "loss.ProxyAnchorLoss.alpha": {
+      "high": 100.0,
+      "log": true,
+      "low": 1,
+      "type": "float"
+    },
+    "loss.ProxyAnchorLoss.margin": {
+      "high": 1.0,
+      "log": false,
+      "low": 0.01,
+      "type": "float"
+    },
+    "lr": {
+      "high": 10,
+      "log": true,
+      "low": 1e-05,
+      "type": "float"
+    },
+    "miner.MultiSimilarityMiner.epsilon": {
+      "high": 0.9,
+      "log": false,
+      "low": 0.1,
+      "type": "float"
+    }
+  },
+  "storage": null,
+  "study_dir": null,
+  "study_name": "cars_cub",
+  "timeout": null
+}

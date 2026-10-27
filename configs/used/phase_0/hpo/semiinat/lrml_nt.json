@@ -1,0 +1,11 @@
+{
+  "extends": "../../../_templates/hpo/phase_0/semiinat/lrml.json",
+  "spaces": {
+    "loss.NTXentLoss.temperature": {
+      "high": 0.5,
+      "log": true,
+      "low": 0.001,
+      "type": "float"
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "patience_delay_epochs": 20,
+        "ssl_config.method_params.n_neighbors": 50,
+        "ssl_config.pseudo_label_diagnostics_mode": "save"
+      },
+      "description": "Reruns of every thesis CV run (CUB exempt) that patience stopped with its last improvement before the 20th epoch after the warm-up (after the training start without warm-up); found by Thesis/review/patience_recovery_2026-10-19/finde_faelle.py. Rule: patience_delay_epochs 20 -- those 20 epochs consume no patience, selection still covers them, patience counts fresh after them. Each variant is the run's original resolved ablation variant (name: <original config>__<original variant>) plus its epoch cap, the normal patience (20, Semi-iNat 10) and the delay.",
+      "name": "patience_delay_rerun_2026-10-19",
+      "path": "/home/irmers/metric-learning/configs/ablations/patience_delay/rerun_2026-10-19.json",
+      "variant": "iscen__n_neighbors_50"
+    },
+    "ablation_variant": "iscen__n_neighbors_50",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "classifier_lr": 2.322378191557241,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epochs",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000,
+      "patience_delay_epochs": 20
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/patience_delay/phase_2/in_shop_ablation/iscen_arc_n_neighbors_50/k2_s2/iscen__n_neighbors_50/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-20_02-29-04/fold_00/2026-10-20_02-29-04",
+    "loss_params": {
+      "margin": 27.12528442036004,
+      "scale": 12.206473413721833
+    },
+    "lr": 0.05654291641418013,
+    "patience_delay_epochs": 20,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/patience_delay/phase_2/in_shop_ablation/iscen_arc_n_neighbors_50/k2_s2/iscen__n_neighbors_50/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-20_02-29-04/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/patience_delay/phase_2/in_shop_ablation/iscen_arc_n_neighbors_50/k2_s2/iscen__n_neighbors_50/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.5799344988742959,
+      "graph_edge_ablation": "off",
+      "labeled_batch_size": 32,
+      "labeled_per_class": 2,
+      "method_params": {
+        "n_neighbors": 50
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "method",
+      "update_mode": "every_epoch",
+      "warmup_epochs": 15
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 27.12528442036004,
+      "scale": 12.206473413721833
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/iscen_ArcFaceLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.5799344988742959,
+    "graph_edge_ablation": "off",
+    "labeled_batch_size": 32,
+    "labeled_per_class": 2,
+    "method_params": {
+      "n_neighbors": 50
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "method",
+    "update_mode": "every_epoch",
+    "warmup_epochs": 15
+  }
+}

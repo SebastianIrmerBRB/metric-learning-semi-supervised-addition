@@ -1,0 +1,4 @@
+{
+  "extends": "common.json",
+  "study_name": "in_shop_supervised"
+}

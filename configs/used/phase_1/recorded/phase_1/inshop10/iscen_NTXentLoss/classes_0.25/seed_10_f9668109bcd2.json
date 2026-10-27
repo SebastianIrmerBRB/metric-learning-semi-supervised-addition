@@ -1,0 +1,41 @@
+{
+  "args": {
+    "ablation_config": "configs/final_manifests/final/changes/epochs.json",
+    "ablation_config_resolved": {
+      "description": "increasing Epochs and Patience",
+      "name": "increase_epochs",
+      "path": "configs/final_manifests/final/changes/epochs.json"
+    },
+    "comparison_seeds": [
+      2,
+      8,
+      9,
+      10,
+      11
+    ],
+    "label_budget_grid": [
+      0.05,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "length_before_new_iter_num_labeled": 4765,
+    "length_before_new_iter_num_unlabeled": 14856,
+    "log_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/iscen_nt/class_subset_label_0p25_comparison_seed_10/final/ssl/cv_2026-10-10_17-57-44/fold_00/2026-10-10_17-57-44",
+    "save_dir": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/iscen_nt/class_subset_label_0p25_comparison_seed_10/final/ssl/cv_2026-10-10_17-57-44/fold_00",
+    "seed": 10,
+    "ssl_config": "/home/irmers/metric-learning/final/seeded_runs/in_shop_10/iscen_nt/study_replay_grid/ssl_configs/class_subset_label_0p25_comparison_seed_10.json",
+    "ssl_config_resolved": {
+      "labeled_fraction": 0.25,
+      "seed": 10,
+      "support_seed": 10
+    },
+    "support_seed": 10
+  },
+  "extends": "../../../../../../_templates/recorded/phase_1/inshop10/iscen_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_fraction": 0.25,
+    "seed": 10,
+    "support_seed": 10
+  }
+}

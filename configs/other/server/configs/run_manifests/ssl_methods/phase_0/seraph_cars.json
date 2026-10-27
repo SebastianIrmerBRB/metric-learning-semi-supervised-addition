@@ -1,0 +1,62 @@
+{
+  "default_gpu_memory_mib": 2048,
+  "gpus": [
+    0,
+    1,
+    2
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 4,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 4096,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/seraph/cars/cars_nt.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_0/seraph/cars/cars_nt.json",
+      "name": "nt-xent"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/seraph/cars/cars_ms.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_0/seraph/cars/cars_ms.json",
+      "name": "ms-loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/seraph/cars/cars_cir.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_0/seraph/cars/cars_cir.json",
+      "name": "circle_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/seraph/cars/cars_arc.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_0/seraph/cars/cars_arc.json",
+      "name": "arc_loss"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/phase_0/ssl_methods/seraph/cars/cars_prx.json",
+      "hparam_config": "configs/hpo/ssl_methods/phase_0/seraph/cars/cars_prx.json",
+      "name": "prx_loss"
+    }
+  ],
+  "save_dir_root": "scheduled/ssl_methods/phase_0/seraph/cars",
+  "scheduler_log_dir": "logs/run_scheduler/ssl_methods/phase_0/seraph/cars",
+  "version": 1
+}

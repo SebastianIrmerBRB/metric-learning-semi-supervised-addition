@@ -1,0 +1,12 @@
+{
+  "description": "Mechanism control no_warmup for any Hoffer study (any loss, Cars196 k=16 or In-Shop k=2), defined exactly like the no_warmup variant of Hoffer on Cars196 (configs/ablations/phase2/cars_cir_controls/hoffer_cir.json: ssl_config.warmup_epochs 0, evaluation embeddings on the GPU), plus the Phase-2 standard of 1000 epochs as a ceiling and patience 20 (the Cars196 Hoffer runs inherited the studies' 600). Makes the Phase-2 grid symmetric: Hoffer on In-Shop, SLADE on Cars196 and In-Shop. Where the tuned warm-up is already 0 (In-Shop Circle and Proxy-Anchor) the variant equals the tuned configuration.",
+  "name": "no_warmup_rest_hoffer",
+  "variants": {
+    "no_warmup": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.warmup_epochs": 0
+    }
+  }
+}

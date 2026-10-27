@@ -1,0 +1,12 @@
+{
+  "description": "Geometry replay: unmodified tuned run, 600 epochs / patience 10 (Semi-iNat's Phase-1 patience, as its earlier tracking runs) for every method. Uncapped epoch tracking (track_epoch_max_samples = 0): the whole fold training pool, all validation classes and the whole test set, as Roth et al. (2020) measure on the whole training set.",
+  "name": "geometry_default_uncapped_semi_inat",
+  "variants": {
+    "defaults": {
+      "epochs": 1000,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 10,
+      "track_epoch_max_samples": 0
+    }
+  }
+}

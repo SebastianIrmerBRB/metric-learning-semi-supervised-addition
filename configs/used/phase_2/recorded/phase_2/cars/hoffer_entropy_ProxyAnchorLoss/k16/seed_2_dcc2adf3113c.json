@@ -1,0 +1,112 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/hoffer_eta_sweep/hoffer.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "ssl_config.method_params.regularizer_target_ratio": 0.35
+      },
+      "description": "Hoffer eta (ssl_config.method_params.regularizer_target_ratio, the target ratio of the Hoffer gradient to the supervised gradient at the calibration probes), one at a time around the tuned configuration of whichever Hoffer study is replayed (any loss, Cars196 k=16 or In-Shop k=2); every other parameter keeps its tuned value. Closes the status-table row 'LRML, Hoffer: Staerke eta ... Hoffer: nicht variiert'. Same grid as the LRML eta sweep (configs/ablations/phase2/lrml_mult/*_ablations/lrml.json), which contains the SLADE grid (configs/ablations/phase2/sweeps/slade.json); Phase 1 searched [0.5, 1.5]. Unlike LRML (uncapped), the step-wise cap regularizer_max_ratio keeps the study's value 3, as in Phase 1 and in the SLADE sweep. eta is calibrated on the studies' max_mean gradient statistic while the cap bounds the Euclidean ratio, so the cap can bind below eta = 3 (train/regularizer_max_ratio/*uncapped_ratio records when it does). Seed 2, 1000 epochs as a ceiling, patience 20.",
+      "name": "hoffer_eta_sweep",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/hoffer_eta_sweep/hoffer.json",
+      "variant": "regularizer_target_ratio_0p35"
+    },
+    "ablation_variant": "regularizer_target_ratio_0p35",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 256,
+    "classifier_lr": 0.0002053266784799968,
+    "compcars_strict_paper_counts": false,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 256,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_0p35/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-17_10-43-52/fold_00/2026-10-17_10-43-52",
+    "log_head_dynamics": false,
+    "loss_params": {
+      "alpha": 0.6469217605071583,
+      "margin": 0.22445712604408888
+    },
+    "lr": 0.0001069731516770278,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2/cars_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_0p35/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-10-17_10-43-52/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/cars_hoffer_eta_sweep/hoffer_prx_regularizer_target_ratio_0p35/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 10.987410932612656
+        },
+        "regularizer_target_ratio": 0.35,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "warmup_epochs": 5
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_loss_params": {
+      "alpha": 0.6469217605071583,
+      "margin": 0.22445712604408888
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/hoffer_entropy_ProxyAnchorLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 10.987410932612656
+      },
+      "regularizer_target_ratio": 0.35,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "warmup_epochs": 5
+  }
+}

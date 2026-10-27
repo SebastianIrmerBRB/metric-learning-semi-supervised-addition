@@ -1,0 +1,49 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "device": "cuda",
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 3,
+  "max_total_runs": 2,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "ablation_config": "configs/other/local/configs/ablations/phase2/weight_decay/cars_lrml_ms_huge_lr.json",
+      "args": [
+        "--log_head_dynamics",
+        "--cv_parallel_folds",
+        "2",
+        "--no-resume_interrupted_runs"
+      ],
+      "name": "lrml_ms",
+      "study_dir": "/mnt/f/server_logs/final/cars/lrml/lrml_ms/class_subset_k_shot_label_1_k_16_MultiSimilarityLoss_MultiSimilarityMiner_tune_seed_7/hpo/in-shop"
+    }
+  ],
+  "save_dir_root": "phase_2/weight_decay/cars_huge_lr",
+  "scheduler_log_dir": "logs/run_scheduler/weight_decay_cars_lrml_ms_huge_lr",
+  "study_replay": {
+    "comparison_seed_targets": [
+      "seed",
+      "support_seed"
+    ],
+    "comparison_seeds": [
+      7
+    ],
+    "epoch_head_dtype": "bfloat16",
+    "final_test_top_n": 1,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "k_shot_grid": [
+      16
+    ],
+    "save_epoch_head_interval": 0,
+    "save_head_state": false,
+    "study_dir_mode": "final_train"
+  },
+  "version": 1
+}

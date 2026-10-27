@@ -1,0 +1,22 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 2.2360298002902112e-05,
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/hoffer_entropy_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "loss_params": {
+    "alpha": 0.208392043101982,
+    "margin": 0.3845762284195105
+  },
+  "lr": 0.01324866126220826,
+  "save_dir": "thesis/phase_2/geometry/inshop/hoffer_entropy_ProxyAnchorLoss/k2/14e63604e092",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/hoffer_entropy_ProxyAnchorLoss/k2/seed_2_14e63604e092.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "unlabeled_source": "split"
+}

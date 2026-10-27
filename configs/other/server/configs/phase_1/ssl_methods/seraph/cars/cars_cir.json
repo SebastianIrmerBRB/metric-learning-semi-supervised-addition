@@ -1,0 +1,30 @@
+{
+  "backbone_tuning": "frozen",
+  "cv_k": 4,
+  "cv_mode": "stratified_group_kfold",
+  "dataset": "Cars196",
+  "dataset_protocol": "official",
+  "epochs": 600,
+  "feat_dim": 768,
+  "final_test_after_hpo": true,
+  "hparam_config": "configs/hpo/ssl_methods/phase_1/seraph/cars/cars_cir.json",
+  "k_shot_grid": [
+    16
+  ],
+  "label_budget_grid": [
+    1
+  ],
+  "length_before_new_iter": 6041,
+  "loss_miner_grid": [
+    "CircleLoss:no_miner"
+  ],
+  "mode": "ssl",
+  "patience": 20,
+  "save_dir": "ssl_methods/phase_1/seraph/cars/cir",
+  "ssl_config": "configs/other/server/configs/ssl_methods/seraph.json",
+  "ssl_label_sampling_modes": [
+    "class_subset_k_shot"
+  ],
+  "use_cache": true,
+  "val_mode": "all"
+}

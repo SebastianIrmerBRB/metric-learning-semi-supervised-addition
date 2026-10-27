@@ -1,0 +1,29 @@
+{
+  "confidence_threshold": 0.43906394709324725,
+  "embedding_batch_size": 1024,
+  "embedding_num_workers": 0,
+  "extends": "common.json",
+  "graph_diagnostics_layout": "tsne",
+  "graph_edge_ablation": "off",
+  "graph_edge_ablation_seed": null,
+  "labeled_batch_size": 32,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.582346925761046,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 3,
+    "linear_solver": "torch_block_cg",
+    "n_neighbors": 90
+  },
+  "pseudo_label_diagnostics_mode": "off",
+  "pseudo_label_oracle_noise": 0.0,
+  "pseudo_label_source": "method",
+  "restart_selection_after_warmup": true,
+  "unlabeled_class_scope": "all",
+  "unlabeled_fraction": null,
+  "update_interval_epochs": 1,
+  "update_mode": "every_epoch",
+  "warmup_checkpoint_mode": "keep_last",
+  "warmup_epochs": 15
+}

@@ -1,0 +1,90 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/iscen_arc.json",
+      "name": "iscen_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/iscen_cir.json",
+      "name": "iscen_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/iscen_ms.json",
+      "name": "iscen_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/iscen_nt.json",
+      "name": "iscen_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/iscen_prx.json",
+      "name": "iscen_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/lrml_arc.json",
+      "name": "lrml_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/lrml_cir.json",
+      "name": "lrml_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/lrml_ms.json",
+      "name": "lrml_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/lrml_nt.json",
+      "name": "lrml_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/lrml_prx.json",
+      "name": "lrml_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/slade_arc.json",
+      "name": "slade_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/slade_cir.json",
+      "name": "slade_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/slade_ms.json",
+      "name": "slade_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/slade_nt.json",
+      "name": "slade_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/slade_prx.json",
+      "name": "slade_prx"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/sup_arc.json",
+      "name": "sup_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/sup_cir.json",
+      "name": "sup_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/sup_ms.json",
+      "name": "sup_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/sup_nt.json",
+      "name": "sup_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_0/hpo_experiments/cub/sup_prx.json",
+      "name": "sup_prx"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_0/hpo/cub/cuda_ssl_cuda"
+}

@@ -1,0 +1,61 @@
+{
+  "default_gpu_memory_mib": 1024,
+  "gpus": [
+    0
+  ],
+  "launch_delay_seconds": 2,
+  "max_concurrent_per_gpu": 10,
+  "max_total_runs": 10,
+  "poll_interval_seconds": 2,
+  "reserve_gpu_memory_mib": 1024,
+  "runs": [
+    {
+      "args": [
+        "--loss_miner_grid",
+        "NTXentLoss:no_miner"
+      ],
+      "experiment_config": "configs/other/local/configs/phase_1/cars/lrml_cont.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/lrml/cars.json",
+      "name": "lrml_nt"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "MultiSimilarityLoss:MultiSimilarityMiner"
+      ],
+      "experiment_config": "configs/other/local/configs/phase_1/cars/lrml_cont.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/lrml/cars.json",
+      "name": "lrml_ms"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "CircleLoss:no_miner"
+      ],
+      "experiment_config": "configs/other/local/configs/phase_1/cars/lrml_cont.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/lrml/cars.json",
+      "name": "lrml_cir"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ArcFaceLoss:no_miner"
+      ],
+      "experiment_config": "configs/other/local/configs/phase_1/cars/lrml_cont.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/lrml/cars.json",
+      "name": "lrml_arc"
+    },
+    {
+      "args": [
+        "--loss_miner_grid",
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "experiment_config": "configs/other/local/configs/phase_1/cars/lrml_cont.json",
+      "hparam_config": "configs/used/originals/local/configs/runs/lrml/cars.json",
+      "name": "lrml_prx"
+    }
+  ],
+  "save_dir_root": "ssl/cars/lrml_contrastive_pre_norm",
+  "scheduler_log_dir": "logs/run_scheduler/lrml",
+  "version": 1
+}

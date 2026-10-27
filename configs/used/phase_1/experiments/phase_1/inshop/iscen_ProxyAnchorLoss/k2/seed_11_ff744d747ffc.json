@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop/iscen_ProxyAnchorLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/inshop/iscen_ProxyAnchorLoss/k2/ff744d747ffc",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop/iscen_ProxyAnchorLoss/k2/seed_11_ff744d747ffc.json",
+  "support_seed": 11
+}

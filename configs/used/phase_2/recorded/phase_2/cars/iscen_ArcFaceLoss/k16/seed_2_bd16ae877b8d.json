@@ -1,0 +1,115 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "evaluation_embedding_residency": "gpu",
+        "ssl_config.pseudo_label_diagnostics_mode": "save",
+        "ssl_config.pseudo_label_oracle_noise": 0.0,
+        "ssl_config.pseudo_label_source": "oracle"
+      },
+      "description": "Mechanism controls for cars/lp/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+      "name": "cars_cir_controls_iscen_cir",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_cir_controls/iscen_cir.json",
+      "variant": "oracle_noise_0"
+    },
+    "ablation_variant": "oracle_noise_0",
+    "classifier_lr": 0.0009021639342406636,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "epochs": 600,
+    "evaluation_embedding_residency": "gpu",
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars/iscen_arc_controls_oracle_noise_0/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_18-40-32/fold_00/2026-09-25_18-40-32",
+    "loss_params": {
+      "margin": 38.59149418111065,
+      "scale": 2.9001616152522476
+    },
+    "lr": 0.8308332084865383,
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/iscen_arc_controls_oracle_noise_0/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-25_18-40-32/fold_00",
+    "seed": 2,
+    "ssl_config": "logs/final/phase_2/cars/iscen_arc_controls_oracle_noise_0/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.29994914330808375,
+      "graph_edge_ablation": "off",
+      "labeled_per_class": 16,
+      "method_params": {
+        "n_neighbors": 92
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "pseudo_label_oracle_noise": 0.0,
+      "pseudo_label_source": "oracle",
+      "seed": 2,
+      "support_seed": 2,
+      "update_mode": "every_epoch",
+      "warmup_epochs": 10
+    },
+    "support_seed": 2,
+    "test_recall_at_k": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "ArcFaceLoss",
+    "warmup_loss_params": {
+      "margin": 38.59149418111065,
+      "scale": 2.9001616152522476
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/iscen_ArcFaceLoss.json",
+  "ssl_config": {
+    "confidence_threshold": 0.29994914330808375,
+    "graph_edge_ablation": "off",
+    "labeled_per_class": 16,
+    "method_params": {
+      "n_neighbors": 92
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "pseudo_label_oracle_noise": 0.0,
+    "pseudo_label_source": "oracle",
+    "seed": 2,
+    "support_seed": 2,
+    "update_mode": "every_epoch",
+    "warmup_epochs": 10
+  }
+}

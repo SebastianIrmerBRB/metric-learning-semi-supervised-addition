@@ -1,0 +1,157 @@
+{
+  "args": {
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "compile_train_step": true,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/class_subset_10/lrml.json",
+    "experiment_config_resolved": {
+      "epochs": 600,
+      "final_test_after_hpo": true,
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/lrml/in_shop/class_subset_10",
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/in_shop_10.json",
+    "hparam_config_resolved": {
+      "spaces": {
+        "batch_sampler": {
+          "choices": [
+            "64:8",
+            "128:8",
+            "256:8",
+            "512:8"
+          ]
+        },
+        "classifier_lr": {
+          "high": 10,
+          "log": true,
+          "low": 1e-05,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.alpha": {
+          "high": 30.0,
+          "log": true,
+          "low": 0.1,
+          "type": "float"
+        },
+        "loss.ProxyAnchorLoss.margin": {
+          "high": 1.0,
+          "log": true,
+          "low": 0.01,
+          "type": "float"
+        },
+        "lr": {
+          "high": 10
+        },
+        "ssl_config.method_params.regularizer_params.graph_batch_size": {
+          "choices": [
+            16,
+            32,
+            64,
+            128,
+            256,
+            512
+          ],
+          "type": "categorical"
+        },
+        "ssl_config.method_params.regularizer_params.n_neighbors": {
+          "high": 50,
+          "log": false,
+          "low": 2,
+          "type": "int"
+        },
+        "ssl_config.method_params.regularizer_target_ratio": {
+          "high": 1.5,
+          "log": false,
+          "low": 0.5,
+          "type": "float"
+        },
+        "ssl_config.warmup_epochs": {
+          "high": 30,
+          "low": 0,
+          "step": 5,
+          "type": "int"
+        }
+      },
+      "study_name": "in_shop_target_ratio"
+    },
+    "hparam_final_from_study": "in_shop_target_ratio",
+    "hparam_params": {
+      "batch_sampler": "64:8"
+    },
+    "loss": "ProxyAnchorLoss",
+    "miner": "no_miner",
+    "miner_params": {},
+    "mode": "ssl",
+    "model_total_parameters": 87171072,
+    "model_trainable_parameters": 590592,
+    "replaced_split_unlabeled_size": 0,
+    "ssl_config_resolved": {
+      "confidence_threshold": 0.0,
+      "embedding_batch_size": 256,
+      "embedding_num_workers": 0,
+      "labeled_batch_size": null,
+      "method": "regularized",
+      "method_params": {
+        "regularizer": "lrml",
+        "regularizer_params": {
+          "edge_weighting": "binary",
+          "graph_on": "all",
+          "normalized_laplacian": true,
+          "reduction": "torch_sum"
+        },
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01,
+        "supervised_weight": 1.0
+      },
+      "pseudo_label_diagnostics_mode": "save",
+      "restart_selection_after_warmup": true,
+      "update_interval_epochs": 1,
+      "update_mode": "every_n_epochs"
+    },
+    "ssl_gradient_contribution_log_interval": 30,
+    "warmup_loss": "ProxyAnchorLoss",
+    "warmup_miner": "no_miner",
+    "warmup_miner_params": {}
+  },
+  "extends": "common.json",
+  "ssl_config": {
+    "confidence_threshold": 0.0,
+    "embedding_batch_size": 256,
+    "embedding_num_workers": 0,
+    "labeled_batch_size": null,
+    "method": "regularized",
+    "method_params": {
+      "regularizer": "lrml",
+      "regularizer_params": {
+        "edge_weighting": "binary",
+        "graph_on": "all",
+        "normalized_laplacian": true,
+        "reduction": "torch_sum"
+      },
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01,
+      "supervised_weight": 1.0
+    },
+    "pseudo_label_diagnostics_mode": "save",
+    "restart_selection_after_warmup": true,
+    "update_interval_epochs": 1,
+    "update_mode": "every_n_epochs"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/inshop10/slade_MultiSimilarityLoss.json",
+  "projection_3d": true,
+  "save_dir": "thesis/phase_1/phase_1/inshop10/slade_MultiSimilarityLoss/classes_0.5/c7641a4624a8",
+  "seed": 11,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/inshop10/slade_MultiSimilarityLoss/classes_0.5/seed_11_c7641a4624a8.json",
+  "support_seed": 11
+}

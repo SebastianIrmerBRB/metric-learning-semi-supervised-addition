@@ -1,0 +1,17 @@
+{
+  "confidence_threshold": 0.5518935732637209,
+  "embedding_batch_size": 32,
+  "embedding_num_workers": 0,
+  "labeled_batch_size": 64,
+  "max_unlabeled_samples": null,
+  "method": "iscen_label_spreading",
+  "method_params": {
+    "alpha": 0.2088868676631643,
+    "cg_max_iter": 2000,
+    "cg_rtol": 1e-05,
+    "gamma": 8.0,
+    "linear_solver": "torch_block_cg"
+  },
+  "update_mode": "every_epoch",
+  "warmup_epochs": 25
+}

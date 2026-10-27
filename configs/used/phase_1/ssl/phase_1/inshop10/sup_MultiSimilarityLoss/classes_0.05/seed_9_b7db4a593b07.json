@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../../_templates/ssl/phase_1/inshop10/sup_MultiSimilarityLoss.json",
+  "labeled_fraction": 0.05,
+  "seed": 9,
+  "support_seed": 9
+}

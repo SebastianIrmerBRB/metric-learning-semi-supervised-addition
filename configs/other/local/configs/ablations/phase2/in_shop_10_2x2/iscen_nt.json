@@ -1,0 +1,18 @@
+{
+  "description": "2x2 of in_shop/lp/nt: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/in_shop_10/supervised/supervised_nt/class_subset_label_0p1_NTXentLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+  "name": "in_shop_10_2x2_iscen_nt",
+  "variants": {
+    "defaults": {
+      "evaluation_embedding_residency": "gpu"
+    },
+    "pool_labeled": {
+      "evaluation_embedding_residency": "gpu",
+      "unlabeled_source": "labeled"
+    },
+    "sup_all_shared": {
+      "evaluation_embedding_residency": "gpu",
+      "loss.NTXentLoss.temperature": 0.1353,
+      "lr": 1.028e-05
+    }
+  }
+}

@@ -1,0 +1,430 @@
+{
+  "device": "cuda",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "gpus": [
+    0
+  ],
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_NTXentLoss/k99999/seed_2_0608199797d4.json",
+      "name": "0608199797d4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_CircleLoss/k99999/seed_2_070404b84c5b.json",
+      "name": "070404b84c5b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_CircleLoss/k99999/seed_2_07c49299a96a.json",
+      "name": "07c49299a96a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/sup_ArcFaceLoss/k99999/seed_2_087c23a2afc9.json",
+      "name": "087c23a2afc9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ArcFaceLoss/k99999/seed_2_08b7888d121d.json",
+      "name": "08b7888d121d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ProxyAnchorLoss/k99999/seed_2_08e45a23a5da.json",
+      "name": "08e45a23a5da"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ArcFaceLoss/k99999/seed_2_10f026fc263f.json",
+      "name": "10f026fc263f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_CircleLoss/k99999/seed_2_115411890dde.json",
+      "name": "115411890dde"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_1280c9aa4366.json",
+      "name": "1280c9aa4366"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_CircleLoss/k99999/seed_2_181fd85edf8c.json",
+      "name": "181fd85edf8c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ArcFaceLoss/k99999/seed_2_1918448315dc.json",
+      "name": "1918448315dc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_NTXentLoss/k99999/seed_2_2101cc9d672e.json",
+      "name": "2101cc9d672e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_NTXentLoss/k99999/seed_2_23ce692859da.json",
+      "name": "23ce692859da"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_CircleLoss/k99999/seed_2_23d215ef3dff.json",
+      "name": "23d215ef3dff"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_NTXentLoss/k99999/seed_2_29c3d78f55cc.json",
+      "name": "29c3d78f55cc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_NTXentLoss/k99999/seed_2_2a5a0e90c501.json",
+      "name": "2a5a0e90c501"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_CircleLoss/k99999/seed_2_2ad63eef743e.json",
+      "name": "2ad63eef743e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_2c6efd8abef2.json",
+      "name": "2c6efd8abef2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_MultiSimilarityLoss/k99999/seed_2_2d33341d899c.json",
+      "name": "2d33341d899c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_CircleLoss/k99999/seed_2_2e94cf84b5a5.json",
+      "name": "2e94cf84b5a5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_2ee016ad69b5.json",
+      "name": "2ee016ad69b5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_NTXentLoss/k99999/seed_2_31a1ed8929fa.json",
+      "name": "31a1ed8929fa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ProxyAnchorLoss/k99999/seed_2_35119caa46a7.json",
+      "name": "35119caa46a7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ArcFaceLoss/k99999/seed_2_35aa65a6117d.json",
+      "name": "35aa65a6117d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_CircleLoss/k99999/seed_2_379f17a245a3.json",
+      "name": "379f17a245a3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ArcFaceLoss/k99999/seed_2_39731a91aae3.json",
+      "name": "39731a91aae3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ProxyAnchorLoss/k99999/seed_2_397bbd0df58d.json",
+      "name": "397bbd0df58d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_3a1050775812.json",
+      "name": "3a1050775812"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_3dfb7b0fecdb.json",
+      "name": "3dfb7b0fecdb"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_3e8872d19f70.json",
+      "name": "3e8872d19f70"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_42458835defc.json",
+      "name": "42458835defc"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ArcFaceLoss/k99999/seed_2_4417816dd259.json",
+      "name": "4417816dd259"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_NTXentLoss/k99999/seed_2_469a0a8d9494.json",
+      "name": "469a0a8d9494"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_CircleLoss/k99999/seed_2_48ac26372f55.json",
+      "name": "48ac26372f55"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ProxyAnchorLoss/k99999/seed_2_4b80421d46b1.json",
+      "name": "4b80421d46b1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_4c67072e935c.json",
+      "name": "4c67072e935c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ArcFaceLoss/k99999/seed_2_4f239a5b1820.json",
+      "name": "4f239a5b1820"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ArcFaceLoss/k99999/seed_2_5153e542c1f3.json",
+      "name": "5153e542c1f3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_MultiSimilarityLoss/k99999/seed_2_5239475370e4.json",
+      "name": "5239475370e4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_NTXentLoss/k99999/seed_2_525b9751583c.json",
+      "name": "525b9751583c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ProxyAnchorLoss/k99999/seed_2_55fabeb3d01c.json",
+      "name": "55fabeb3d01c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_58065a66f230.json",
+      "name": "58065a66f230"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_58971487824e.json",
+      "name": "58971487824e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/sup_NTXentLoss/k99999/seed_2_58ea7770a4fa.json",
+      "name": "58ea7770a4fa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ArcFaceLoss/k99999/seed_2_5f67ff753713.json",
+      "name": "5f67ff753713"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ProxyAnchorLoss/k99999/seed_2_64e9fa03630b.json",
+      "name": "64e9fa03630b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_CircleLoss/k99999/seed_2_670660186b2f.json",
+      "name": "670660186b2f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_NTXentLoss/k99999/seed_2_6afa167a84e0.json",
+      "name": "6afa167a84e0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_MultiSimilarityLoss/k99999/seed_2_6c56fe541306.json",
+      "name": "6c56fe541306"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_NTXentLoss/k99999/seed_2_6e6828181822.json",
+      "name": "6e6828181822"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_NTXentLoss/k99999/seed_2_6e79202bd3c6.json",
+      "name": "6e79202bd3c6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ProxyAnchorLoss/k99999/seed_2_6ee1a1181166.json",
+      "name": "6ee1a1181166"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ArcFaceLoss/k99999/seed_2_7030c6bcfd9e.json",
+      "name": "7030c6bcfd9e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_70a9213f6b84.json",
+      "name": "70a9213f6b84"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ProxyAnchorLoss/k99999/seed_2_73f9c823f3b4.json",
+      "name": "73f9c823f3b4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ArcFaceLoss/k99999/seed_2_7804bb7444e0.json",
+      "name": "7804bb7444e0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_MultiSimilarityLoss/k99999/seed_2_7af1ece2d412.json",
+      "name": "7af1ece2d412"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ArcFaceLoss/k99999/seed_2_7f0f697103ab.json",
+      "name": "7f0f697103ab"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_NTXentLoss/k99999/seed_2_80344532852b.json",
+      "name": "80344532852b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_823bf629dec9.json",
+      "name": "823bf629dec9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ProxyAnchorLoss/k99999/seed_2_849446c96430.json",
+      "name": "849446c96430"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_CircleLoss/k99999/seed_2_8dd040913e56.json",
+      "name": "8dd040913e56"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ArcFaceLoss/k99999/seed_2_90da889cf70e.json",
+      "name": "90da889cf70e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_9260a76e8ca0.json",
+      "name": "9260a76e8ca0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_MultiSimilarityLoss/k99999/seed_2_9717e5edaa8e.json",
+      "name": "9717e5edaa8e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_MultiSimilarityLoss/k99999/seed_2_97f7cc3aa3f7.json",
+      "name": "97f7cc3aa3f7"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_MultiSimilarityLoss/k99999/seed_2_9a21a60581f9.json",
+      "name": "9a21a60581f9"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_MultiSimilarityLoss/k99999/seed_2_a1dc36281c9a.json",
+      "name": "a1dc36281c9a"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ArcFaceLoss/k99999/seed_2_abd53cf2f71f.json",
+      "name": "abd53cf2f71f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_MultiSimilarityLoss/k99999/seed_2_ae99936ee02d.json",
+      "name": "ae99936ee02d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_b0fbbb778926.json",
+      "name": "b0fbbb778926"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ProxyAnchorLoss/k99999/seed_2_b11c61d5ed26.json",
+      "name": "b11c61d5ed26"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_MultiSimilarityLoss/k99999/seed_2_b155fd354a9f.json",
+      "name": "b155fd354a9f"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ProxyAnchorLoss/k99999/seed_2_b18392c57846.json",
+      "name": "b18392c57846"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_NTXentLoss/k99999/seed_2_b1e4e12e4805.json",
+      "name": "b1e4e12e4805"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/sup_MultiSimilarityLoss/k99999/seed_2_b25e71bdd510.json",
+      "name": "b25e71bdd510"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_MultiSimilarityLoss/k99999/seed_2_b2d2f4ee9290.json",
+      "name": "b2d2f4ee9290"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_MultiSimilarityLoss/k99999/seed_2_b2dee038f857.json",
+      "name": "b2dee038f857"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_CircleLoss/k99999/seed_2_b5280e27c840.json",
+      "name": "b5280e27c840"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_b74b3f11b508.json",
+      "name": "b74b3f11b508"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ArcFaceLoss/k99999/seed_2_b8b4c9005690.json",
+      "name": "b8b4c9005690"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ProxyAnchorLoss/k99999/seed_2_bab272f0659c.json",
+      "name": "bab272f0659c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_MultiSimilarityLoss/k99999/seed_2_bbda32be7890.json",
+      "name": "bbda32be7890"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_NTXentLoss/k99999/seed_2_bd7d2ae2130e.json",
+      "name": "bd7d2ae2130e"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ArcFaceLoss/k99999/seed_2_c4173d1ab7e5.json",
+      "name": "c4173d1ab7e5"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_NTXentLoss/k99999/seed_2_c4aafc1156d4.json",
+      "name": "c4aafc1156d4"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_CircleLoss/k99999/seed_2_ca1d8028211c.json",
+      "name": "ca1d8028211c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_cded5cf2fc97.json",
+      "name": "cded5cf2fc97"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ArcFaceLoss/k99999/seed_2_ce75d06515e3.json",
+      "name": "ce75d06515e3"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ArcFaceLoss/k99999/seed_2_cfd185622c2d.json",
+      "name": "cfd185622c2d"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_CircleLoss/k99999/seed_2_d11672c64ea1.json",
+      "name": "d11672c64ea1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_MultiSimilarityLoss/k99999/seed_2_d8cdbc496fd0.json",
+      "name": "d8cdbc496fd0"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ArcFaceLoss/k99999/seed_2_daa885c817aa.json",
+      "name": "daa885c817aa"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ProxyAnchorLoss/k99999/seed_2_de92ffee23d6.json",
+      "name": "de92ffee23d6"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_ProxyAnchorLoss/k99999/seed_2_e7354c27f199.json",
+      "name": "e7354c27f199"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_ArcFaceLoss/k99999/seed_2_eb4d882b431b.json",
+      "name": "eb4d882b431b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_ProxyAnchorLoss/k99999/seed_2_ed353ab98dcf.json",
+      "name": "ed353ab98dcf"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_MultiSimilarityLoss/k99999/seed_2_ee0753c100a2.json",
+      "name": "ee0753c100a2"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_MultiSimilarityLoss/k99999/seed_2_ee89f4748e31.json",
+      "name": "ee89f4748e31"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/lrml_CircleLoss/k99999/seed_2_f4f04480adf1.json",
+      "name": "f4f04480adf1"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/sup_CircleLoss/k99999/seed_2_f77b9626ec78.json",
+      "name": "f77b9626ec78"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/hoffer_entropy_CircleLoss/k99999/seed_2_f85af1a1548c.json",
+      "name": "f85af1a1548c"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/iscen_ProxyAnchorLoss/k99999/seed_2_fab4324b932b.json",
+      "name": "fab4324b932b"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/slade_NTXentLoss/k99999/seed_2_fb9dc395c281.json",
+      "name": "fb9dc395c281"
+    },
+    {
+      "experiment_config": "configs/used/phase_2/experiments/external/inshop/sup_ProxyAnchorLoss/k99999/seed_2_fc5b7136d218.json",
+      "name": "fc5b7136d218"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_2/external/inshop/cuda_ssl_cuda"
+}

@@ -1,0 +1,17 @@
+{
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/iscen_NTXentLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/80edb388e737",
+  "save_epoch_head_interval": null,
+  "seed": 8,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop10/iscen_NTXentLoss/classes_0.1/seed_8_80edb388e737.json",
+  "support_seed": 8,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000
+}

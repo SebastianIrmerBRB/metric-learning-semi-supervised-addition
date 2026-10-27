@@ -1,0 +1,102 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/no_warmup_rest/hoffer.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "epochs": 1000,
+        "patience": 20,
+        "ssl_config.warmup_epochs": 0
+      },
+      "description": "Mechanism control no_warmup for any Hoffer study (any loss, Cars196 k=16 or In-Shop k=2), defined exactly like the no_warmup variant of Hoffer on Cars196 (configs/ablations/phase2/cars_cir_controls/hoffer_cir.json: ssl_config.warmup_epochs 0, evaluation embeddings on the GPU), plus the Phase-2 standard of 1000 epochs as a ceiling and patience 20 (the Cars196 Hoffer runs inherited the studies' 600). Makes the Phase-2 grid symmetric: Hoffer on In-Shop, SLADE on Cars196 and In-Shop. Where the tuned warm-up is already 0 (In-Shop Circle and Proxy-Anchor) the variant equals the tuned configuration.",
+      "name": "no_warmup_rest_hoffer",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/no_warmup_rest/hoffer.json",
+      "variant": "no_warmup"
+    },
+    "ablation_variant": "no_warmup",
+    "appended_unlabeled_pool_size": 0,
+    "batch_size": 64,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 1000,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "epoch_head_dtype",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "save_epoch_head_interval",
+      "save_final_head_state",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "frozen_feature_batch_size_resolved": 64,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 1000
+    },
+    "k_shot_grid": [
+      2
+    ],
+    "length_before_new_iter_excluded_unlabeled": 0,
+    "length_before_new_iter_num_labeled": 5984,
+    "length_before_new_iter_num_unlabeled": 13637,
+    "log_dir": "logs/final/phase_2/in_shop_no_warmup_rest/hoffer_nt_no_warmup/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-17_14-28-38/fold_00/2026-10-17_14-28-38",
+    "loss_params": {
+      "temperature": 0.23808912125621443
+    },
+    "lr": 2.84106647895727e-05,
+    "projection_3d": false,
+    "replaced_split_unlabeled_size": 0,
+    "save_dir": "final/phase_2/in_shop_no_warmup_rest/hoffer_nt_no_warmup/class_subset_k_shot_label_1_k_2_comparison_seed_2/final/ssl/cv_2026-10-17_14-28-38/fold_00",
+    "save_epoch_head_interval": null,
+    "ssl_config": "logs/final/phase_2/in_shop_no_warmup_rest/hoffer_nt_no_warmup/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_2_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 2,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "distance_scale": 9.654615783359288
+        },
+        "regularizer_target_ratio": 0.7997141000625925,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "warmup_epochs": 0
+    },
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "unlabeled_source": "split",
+    "warmup_loss": "same_as_loss",
+    "warmup_loss_params": {}
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/inshop/hoffer_entropy_NTXentLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 2,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "distance_scale": 9.654615783359288
+      },
+      "regularizer_target_ratio": 0.7997141000625925,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "warmup_epochs": 0
+  }
+}

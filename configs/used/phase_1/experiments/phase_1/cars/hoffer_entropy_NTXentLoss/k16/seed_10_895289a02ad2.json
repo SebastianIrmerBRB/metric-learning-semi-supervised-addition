@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../../../_templates/experiment/phase_1/cars/hoffer_entropy_NTXentLoss.json",
+  "save_dir": "thesis/phase_1/phase_1/cars/hoffer_entropy_NTXentLoss/k16/895289a02ad2",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/cars/hoffer_entropy_NTXentLoss/k16/seed_10_895289a02ad2.json",
+  "support_seed": 10
+}

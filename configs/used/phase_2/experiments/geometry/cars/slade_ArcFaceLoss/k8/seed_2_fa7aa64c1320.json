@@ -1,0 +1,33 @@
+{
+  "batch_size": 256,
+  "classifier_lr": 0.0021904246875039356,
+  "compcars_strict_paper_counts": false,
+  "epochs": 600,
+  "extends": "../../../../../../_templates/experiment/phase_2/cars/slade_ArcFaceLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_filter": "none",
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "file",
+  "loss_params": {
+    "margin": 11.660590903103149,
+    "scale": 3.9390877490915535
+  },
+  "lr": 0.00014675501774168558,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/cars/slade_ArcFaceLoss/k8/fa7aa64c1320",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/cars/slade_ArcFaceLoss/k8/seed_2_fa7aa64c1320.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "ArcFaceLoss",
+  "warmup_loss_params": {
+    "margin": 11.660590903103149,
+    "scale": 3.9390877490915535
+  }
+}

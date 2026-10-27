@@ -1,0 +1,125 @@
+{
+  "args": {
+    "ablation_config": "/home/irmers/metric-learning/configs/ablations/phase2/cars_2x2/slade_cir.json",
+    "ablation_config_resolved": {
+      "changes": {
+        "batch_sampler": "32:4",
+        "epochs": 600,
+        "loss.CircleLoss.gamma": 22.68,
+        "loss.CircleLoss.m": 0.03954,
+        "lr": 3.717e-05
+      },
+      "description": "2x2 of cars/slade/cir: tuned SSL (defaults), supervised hyperparameters + SSL (sup_all_shared, from /mnt/f/server_logs/final/cars/supervised/supervised_cir/class_subset_k_shot_label_1_k_16_CircleLoss_no_miner_tune_seed_7/hpo/tpe_run_supervised), SSL hyperparameters without genuinely unlabeled data (pool_labeled).",
+      "name": "cars_2x2_slade_cir",
+      "path": "/home/irmers/metric-learning/configs/ablations/phase2/cars_2x2/slade_cir.json",
+      "variant": "sup_all_shared"
+    },
+    "ablation_variant": "sup_all_shared",
+    "batch_size": 32,
+    "comparison_seeds": [
+      2
+    ],
+    "compcars_strict_paper_counts": false,
+    "cv_parallel_folds": 1,
+    "epochs": 600,
+    "external_unlabeled_dir": null,
+    "external_unlabeled_filter": "none",
+    "external_unlabeled_fraction": null,
+    "final_study_request_overrides": [
+      "ablation_config",
+      "ablation_variant",
+      "comparison_seed_targets",
+      "comparison_seeds",
+      "device",
+      "final_test_top_n",
+      "final_test_visualization",
+      "fold_test_embedding_storage",
+      "k_shot_grid",
+      "save_dir",
+      "ssl_device",
+      "study_dir_mode",
+      "test_recall_at_k"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "frozen_feature_batch_size_resolved": 32,
+    "hparam_final_epoch_plan": {
+      "max_training_epochs": 600
+    },
+    "k_shot_grid": [
+      16
+    ],
+    "length_before_new_iter_num_labeled": 1168,
+    "length_before_new_iter_num_unlabeled": 4835,
+    "log_dir": "logs/final/phase_2/cars/slade_cir_sup_all_shared/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-27_09-35-25/fold_00/2026-09-27_09-35-25",
+    "loss_params": {
+      "gamma": 22.68,
+      "m": 0.03954
+    },
+    "lr": 3.717e-05,
+    "model_total_parameters": 87227136,
+    "model_trainable_parameters": 646656,
+    "projection_3d": true,
+    "save_dir": "final/phase_2/cars/slade_cir_sup_all_shared/class_subset_k_shot_label_1_k_16_comparison_seed_2/final/ssl/cv_2026-09-27_09-35-25/fold_00",
+    "seed": 2,
+    "ssl_config": "logs/final/phase_2/cars/slade_cir_sup_all_shared/study_replay_grid/ssl_configs/class_subset_k_shot_label_1_k_16_comparison_seed_2.json",
+    "ssl_config_resolved": {
+      "labeled_per_class": 16,
+      "method_params": {
+        "regularizer_max_ratio": 3,
+        "regularizer_params": {
+          "basis_target_ratio": 0.7789658027626528,
+          "cluster_ratio": 2,
+          "num_clusters": null,
+          "sd_margin": 0.5810187263799318,
+          "unlabeled_batch_size": 256
+        },
+        "regularizer_target_ratio": 0.7900995207446015,
+        "regularizer_target_ratio_ema_alpha": 0.1,
+        "regularizer_target_ratio_statistic": "max_mean",
+        "regularizer_target_ratio_update_interval_samples": 1000,
+        "regularizer_weight": 0.01
+      },
+      "restart_selection_after_warmup": true,
+      "seed": 2,
+      "support_seed": 2,
+      "update_interval_epochs": 5,
+      "warmup_epochs": 20
+    },
+    "support_seed": 2,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_max_samples": 4000,
+    "unlabeled_source": "split",
+    "warmup_loss": "CircleLoss",
+    "warmup_loss_params": {
+      "gamma": 22.68,
+      "m": 0.03954
+    }
+  },
+  "extends": "../../../../../../_templates/recorded/phase_2/cars/slade_CircleLoss.json",
+  "ssl_config": {
+    "labeled_per_class": 16,
+    "method_params": {
+      "regularizer_max_ratio": 3,
+      "regularizer_params": {
+        "basis_target_ratio": 0.7789658027626528,
+        "cluster_ratio": 2,
+        "num_clusters": null,
+        "sd_margin": 0.5810187263799318,
+        "unlabeled_batch_size": 256
+      },
+      "regularizer_target_ratio": 0.7900995207446015,
+      "regularizer_target_ratio_ema_alpha": 0.1,
+      "regularizer_target_ratio_statistic": "max_mean",
+      "regularizer_target_ratio_update_interval_samples": 1000,
+      "regularizer_weight": 0.01
+    },
+    "restart_selection_after_warmup": true,
+    "seed": 2,
+    "support_seed": 2,
+    "update_interval_epochs": 5,
+    "warmup_epochs": 20
+  }
+}

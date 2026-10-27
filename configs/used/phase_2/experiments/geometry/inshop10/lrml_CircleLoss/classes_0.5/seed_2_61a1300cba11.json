@@ -1,0 +1,6 @@
+{
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/lrml_CircleLoss.json",
+  "save_dir": "thesis/phase_2/geometry/inshop10/lrml_CircleLoss/classes_0.5/61a1300cba11",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop10/lrml_CircleLoss/classes_0.5/seed_2_61a1300cba11.json"
+}

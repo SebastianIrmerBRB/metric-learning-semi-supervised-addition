@@ -1,0 +1,30 @@
+{
+  "device": "cpu",
+  "extends": "../../../_templates/run_manifests/common.json",
+  "runs": [
+    {
+      "experiment_config": "configs/used/phase_1/hpo_experiments/cars/sup_arc.json",
+      "name": "sup_arc"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/hpo_experiments/cars/sup_cir.json",
+      "name": "sup_cir"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/hpo_experiments/cars/sup_ms.json",
+      "name": "sup_ms"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/hpo_experiments/cars/sup_nt.json",
+      "name": "sup_nt"
+    },
+    {
+      "experiment_config": "configs/used/phase_1/hpo_experiments/cars/sup_prx.json",
+      "name": "sup_prx"
+    }
+  ],
+  "scheduler_log_dir": "logs/thesis_scheduler/phase_1/hpo/cars/cpu_ssl_cuda",
+  "ssl_gpus": [
+    0
+  ]
+}

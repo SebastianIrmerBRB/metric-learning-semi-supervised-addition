@@ -1,0 +1,70 @@
+{
+  "description": "Mechanism controls for in_shop/slade/cir. graph_*_pruned and oracle_noise_* use hidden labels and are diagnostic only; never report them as SSL results or use them for selection.",
+  "name": "in_shop_cir_slade_controls_slade_cir",
+  "variants": {
+    "clusters_once": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.update_mode": "once"
+    },
+    "no_warmup": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.warmup_epochs": 0
+    },
+    "oracle_noise_0": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.0,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_10": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.1,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_20": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.2,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_40": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.4,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "oracle_noise_60": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.pseudo_label_oracle_noise": 0.6,
+      "ssl_config.pseudo_label_source": "oracle"
+    },
+    "zero_weight": {
+      "epochs": 600,
+      "evaluation_embedding_residency": "gpu",
+      "patience": 20,
+      "ssl_config.method_params.regularizer_max_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio": null,
+      "ssl_config.method_params.regularizer_target_ratio_aggregation": null,
+      "ssl_config.method_params.regularizer_target_ratio_batches": null,
+      "ssl_config.method_params.regularizer_target_ratio_diagnostics": null,
+      "ssl_config.method_params.regularizer_target_ratio_ema_alpha": null,
+      "ssl_config.method_params.regularizer_target_ratio_probe_memory": null,
+      "ssl_config.method_params.regularizer_target_ratio_recalibration_interval_samples": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic": null,
+      "ssl_config.method_params.regularizer_target_ratio_statistic_anchor": null,
+      "ssl_config.method_params.regularizer_target_ratio_update_interval_samples": null,
+      "ssl_config.method_params.regularizer_weight": 0.0
+    }
+  }
+}

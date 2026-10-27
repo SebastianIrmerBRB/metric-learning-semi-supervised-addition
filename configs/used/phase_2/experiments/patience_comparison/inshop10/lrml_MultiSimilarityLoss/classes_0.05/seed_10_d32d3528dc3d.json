@@ -1,0 +1,37 @@
+{
+  "batch_size": 512,
+  "cv_parallel_folds": 1,
+  "epoch_head_dtype": "bfloat16",
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop10/lrml_MultiSimilarityLoss.json",
+  "fold_test_embedding_storage": "temporary",
+  "length_before_new_iter": null,
+  "loss_params": {
+    "alpha": 21.539150916887056,
+    "base": 0.8096906692655761,
+    "beta": 3.1741218872483943
+  },
+  "lr": 0.00016723203314264367,
+  "miner_params": {
+    "epsilon": 0.5395108352882699
+  },
+  "patience_delay_epochs": 20,
+  "save_dir": "thesis/phase_2/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.05/d32d3528dc3d",
+  "save_epoch_head_interval": null,
+  "seed": 10,
+  "ssl_config": "configs/used/phase_2/ssl/patience_comparison/inshop10/lrml_MultiSimilarityLoss/classes_0.05/seed_10_d32d3528dc3d.json",
+  "support_seed": 10,
+  "track_epoch_artifacts": [
+    "none"
+  ],
+  "track_epoch_interval": null,
+  "track_epoch_max_samples": 4000,
+  "warmup_loss_params": {
+    "alpha": 21.539150916887056,
+    "base": 0.8096906692655761,
+    "beta": 3.1741218872483943
+  },
+  "warmup_miner_params": {
+    "epsilon": 0.5395108352882699
+  }
+}

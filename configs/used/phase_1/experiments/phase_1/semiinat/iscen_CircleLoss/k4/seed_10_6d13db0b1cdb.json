@@ -1,0 +1,11 @@
+{
+  "cv_parallel_folds": 1,
+  "extends": "../../../../../../_templates/experiment/phase_1/semiinat/iscen_CircleLoss.json",
+  "external_unlabeled_fraction": null,
+  "external_unlabeled_seed": null,
+  "log_head_dynamics": false,
+  "save_dir": "thesis/phase_1/phase_1/semiinat/iscen_CircleLoss/k4/6d13db0b1cdb",
+  "seed": 10,
+  "ssl_config": "configs/used/phase_1/ssl/phase_1/semiinat/iscen_CircleLoss/k4/seed_10_6d13db0b1cdb.json",
+  "support_seed": 10
+}

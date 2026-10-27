@@ -1,0 +1,30 @@
+{
+  "classifier_lr": 1.569891154003262,
+  "epochs": 1000,
+  "extends": "../../../../../../_templates/experiment/phase_2/inshop/slade_ProxyAnchorLoss.json",
+  "external_unlabeled_dir": null,
+  "external_unlabeled_fraction": null,
+  "fold_test_embedding_storage": "temporary",
+  "loss_params": {
+    "alpha": 0.31847110473996687,
+    "margin": 0.24072443600363824
+  },
+  "lr": 0.0004632785040660739,
+  "projection_3d": false,
+  "save_dir": "thesis/phase_2/geometry/inshop/slade_ProxyAnchorLoss/k2/343fc3df42aa",
+  "ssl_config": "configs/used/phase_2/ssl/geometry/inshop/slade_ProxyAnchorLoss/k2/seed_2_343fc3df42aa.json",
+  "track_epoch_artifacts": [
+    "geometry",
+    "test"
+  ],
+  "track_epoch_interval": 1,
+  "track_epoch_max_samples": 0,
+  "track_epoch_pool_sampling": "images",
+  "track_epoch_workers": 4,
+  "unlabeled_source": "split",
+  "warmup_loss": "ProxyAnchorLoss",
+  "warmup_loss_params": {
+    "alpha": 0.31847110473996687,
+    "margin": 0.24072443600363824
+  }
+}

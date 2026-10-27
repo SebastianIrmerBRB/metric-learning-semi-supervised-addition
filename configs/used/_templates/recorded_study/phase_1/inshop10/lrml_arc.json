@@ -1,0 +1,141 @@
+{
+  "base_args": {
+    "ablation_config": null,
+    "ablation_variant": null,
+    "compile_train_step": true,
+    "cv_parallel_backend": "process",
+    "cv_parallel_folds": 1,
+    "epoch_head_dtype": "bfloat16",
+    "epochs": 600,
+    "experiment_config": "/home/irmers/metric-learning/configs/phase_1/in_shop/class_subset_10/lrml.json",
+    "experiment_config_resolved": {
+      "cv_parallel_folds": 1,
+      "epochs": 600,
+      "final_test_after_hpo": true,
+      "loss_miner_grid": [
+        "ProxyAnchorLoss:no_miner"
+      ],
+      "mode": "ssl",
+      "save_dir": "ssl_methods/phase_1/lrml/in_shop/class_subset_10",
+      "ssl_config": "configs/ssl_methods/lrml.json",
+      "ssl_gradient_contribution_log_interval": 30
+    },
+    "explicit_cli_args": [
+      "device",
+      "hparam_config",
+      "loss_miner_grid",
+      "save_dir",
+      "ssl_device"
+    ],
+    "external_unlabeled_fraction": null,
+    "external_unlabeled_seed": null,
+    "final_test_after_hpo": true,
+    "final_test_visualization": [
+      "none"
+    ],
+    "fold_test_embedding_storage": "temporary",
+    "graph_projection": false,
+    "hparam_config": "/home/irmers/metric-learning/configs/runs/lrml/in_shop_10.json",
+    "log_head_dynamics": false,
+    "loss": "ArcFaceLoss",
+    "loss_miner_grid": [
+      "ArcFaceLoss:no_miner"
+    ],
+    "lr": 1e-06,
+    "max_unlabeled_samples": null,
+    "miner": "no_miner",
+    "mode": "ssl",
+    "projection_3d": false,
+    "report_test_metrics": true,
+    "save_dir": "phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo",
+    "save_epoch_head_interval": null,
+    "save_final_head_state": false,
+    "ssl_config": "logs/phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/experiment_grid/ssl_configs/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7.json",
+    "ssl_gradient_contribution_log_interval": 30,
+    "test_measurements": null,
+    "test_recall_at_k": null,
+    "track_epoch_artifacts": [
+      "none"
+    ],
+    "track_epoch_interval": null,
+    "track_epoch_layout": "tsne",
+    "track_epoch_max_samples": 4000,
+    "track_epoch_pool_sampling": "images",
+    "track_epoch_workers": 4,
+    "tsne_backend": "exact",
+    "tsne_max_dense_gpu_gb": 3.0,
+    "unlabeled_class_scope": null,
+    "unlabeled_fraction": null,
+    "warmup_loss": "same_as_loss"
+  },
+  "extends": "common.json",
+  "hparam_config": {
+    "max_replaced_pruned_trials": null,
+    "spaces": {
+      "batch_sampler": {
+        "choices": [
+          "64:8",
+          "128:8",
+          "256:8",
+          "512:8"
+        ]
+      },
+      "classifier_lr": {
+        "high": 10,
+        "log": true,
+        "low": 1e-05,
+        "type": "float"
+      },
+      "loss.ArcFaceLoss.margin": {
+        "high": 80.0,
+        "log": false,
+        "low": 1,
+        "type": "float"
+      },
+      "loss.ArcFaceLoss.scale": {
+        "high": 80.0,
+        "log": true,
+        "low": 0.1,
+        "type": "float"
+      },
+      "lr": {
+        "high": 10
+      },
+      "ssl_config.method_params.regularizer_params.graph_batch_size": {
+        "choices": [
+          16,
+          32,
+          64,
+          128,
+          256,
+          512
+        ],
+        "type": "categorical"
+      },
+      "ssl_config.method_params.regularizer_params.n_neighbors": {
+        "high": 50,
+        "log": false,
+        "low": 2,
+        "type": "int"
+      },
+      "ssl_config.method_params.regularizer_target_ratio": {
+        "high": 1.5,
+        "log": false,
+        "low": 0.5,
+        "type": "float"
+      },
+      "ssl_config.warmup_epochs": {
+        "high": 30,
+        "low": 0,
+        "step": 5,
+        "type": "int"
+      }
+    },
+    "study_name": "in_shop_target_ratio"
+  },
+  "in_flight_sampler_state_path": "logs/phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio/sampler_in_flight.pkl",
+  "resolved_storage": "sqlite:////home/irmers/metric-learning/logs/phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio/optuna_study.db",
+  "resolved_study_name": "in_shop_target_ratio",
+  "sampler_state_path": "logs/phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio/sampler.pkl",
+  "tpe_transition_sampler_state_path": "logs/phase_1/ssl/in_shop/class_subset/lrml_mult/lrml_arc/class_subset_label_0p1_ArcFaceLoss_no_miner_tune_seed_7/hpo/in_shop_target_ratio/sampler_before_tpe.pkl"
+}
