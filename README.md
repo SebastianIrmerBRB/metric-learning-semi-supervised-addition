@@ -1,63 +1,165 @@
 # Semi-supervised metric learning
 
-Current training, evaluation, and analysis code for semi-supervised deep metric
-learning with DINOv2 features. The project builds on
+Training, evaluation, and thesis figure generation for semi-supervised deep
+metric learning with DINOv2 features. Built on
 [gmberton/image-retrieval](https://github.com/gmberton/image-retrieval).
 
-This snapshot contains the current source code and general-purpose scripts.
-Recovered thesis configs and run manifests are organized under `configs/used/`;
-other local and server config versions are under `configs/other/`. See the
-[configuration guide](configs/README.md) for the phase structure, inheritance,
-recorded run provenance, and validation commands. Tests, datasets, checkpoints,
-training-result archives, machine-specific launch scripts, and generated
-frontend snapshots are excluded.
+## Install and run a small training job
 
-## Setup
-
-Use Python 3.12 and create a virtual environment:
+Use Python **3.12**. These commands are for Linux or WSL and use a CPU build of
+PyTorch; an NVIDIA GPU is not required.
 
 ```bash
-python3 -m venv .venv
+git clone https://github.com/SebastianIrmerBRB/metric-learning-semi-supervised-addition.git
+cd metric-learning-semi-supervised-addition
+python3.12 -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python scripts/check_environment.py
+python main.py --experiment_config configs/other/quickstart/ssl.json
 ```
 
-On Windows, activate the environment with `.venv\Scripts\Activate.ps1`.
-Install a PyTorch build compatible with your device when using CUDA. The base
-requirements use CPU FAISS; optional GPU backends such as CUDA FAISS, CuPy,
-cuML, TorchDR, and Triton depend on your hardware and chosen training options.
+The example downloads the public **Oxford Flowers 102** dataset and DINOv2-S
+weights on first use, so the first run needs internet access. No dataset account
+or local research files are needed. It trains a 128-dimensional projection head
+for two epochs: supervised warm-up followed by LRML semi-supervised training.
+The small labeled support, capped unlabeled pool, and four batches per epoch
+make this an installation check rather than a thesis benchmark.
 
-Inspect the available experiment and scheduler options with:
+For a supervised example:
 
 ```bash
+python main.py --experiment_config configs/other/quickstart/supervised.json
+```
+
+Logs and resolved settings are written below `logs/quickstart/`, including
+`info.log`, `metrics.csv`, and `run_config.json`. Downloads and backbone features
+are cached in `data/` and the standard PyTorch cache for subsequent runs. Both
+examples perform validation; the held-out final test set is not evaluated by
+default.
+
+On Windows, create the environment with `py -3.12 -m venv .venv` and activate it
+with `.venv\Scripts\Activate.ps1`. The validated environment is Linux/Python
+3.12; GPU builds on other platforms should follow the
+[PyTorch installation instructions](https://pytorch.org/get-started/locally/).
+
+## NVIDIA GPU installation
+
+Use a **separate** environment for CUDA rather than installing CPU and CUDA
+builds on top of each other. The supplied CUDA requirements select CUDA 13
+PyTorch wheels and CuPy; the NVIDIA driver must support that CUDA generation.
+
+```bash
+python3.12 -m venv .venv-cuda
+source .venv-cuda/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-cuda.txt
+CUDA_VISIBLE_DEVICES=0 python scripts/check_environment.py --cuda
+CUDA_VISIBLE_DEVICES=0 python main.py --experiment_config configs/other/quickstart/ssl.json --device cuda --ssl-device cuda
+```
+
+Change `CUDA_VISIBLE_DEVICES` to an available GPU on a shared server. CPU FAISS
+is sufficient for these examples and is also used in the CUDA environment.
+For another CUDA generation, choose matching PyTorch and CuPy builds using the
+upstream installation instructions.
+
+## Reproduce thesis figures and tables
+
+The complete generator and compact data are included in
+[`thesis_generator/`](thesis_generator/README.md). The root requirements cover
+both training and figure generation; no extra installation is needed.
+
+```bash
+python thesis_generator/generate.py
+```
+
+This validates the bundled data and writes PDFs, LaTeX tables, PNG previews,
+and script logs under `thesis_generator/ausgabe/`. It requires neither image
+datasets nor training logs, model weights, LaTeX, or network access.
+
+```bash
+python thesis_generator/generate.py --only fig_phase2 tab_extern
+python thesis_generator/generate.py --output /path/to/figures
+```
+
+The data are the compact experiment measurements and detailed inputs from the
+provided generator package. They are separate from the image datasets used for
+training. Raw training logs, full image datasets, checkpoints, and test suites
+are not included in this repository.
+
+## Run the recovered thesis experiments
+
+[`configs/used/`](configs/README.md) contains inherited Phase-0, Phase-1 and
+Phase-2 settings and run manifests, with source hashes and historical trial
+inputs. `configs/other/local/` and `configs/other/server/` preserve the remaining
+config versions. These full experiments need their corresponding datasets and
+can take substantially longer than the quickstart.
+
+From the repository root, select the `experiment` path in
+`configs/used/catalog/runs.jsonl`, then run:
+
+```bash
+python main.py --experiment_config <experiment-path>
+# Or inspect one of the recovered schedules before launching it:
+python launch_runs.py --manifest <manifest-path> --dry-run
+```
+
+The dataset loaders download supported public datasets automatically. In-Shop,
+Semi-iNaturalist, and other restricted datasets require the corresponding
+source access and terms; see [dataset protocols](docs/dataset_protocols.md) and
+the download scripts in `scripts/`. Existing datasets can be placed or linked
+under `data/<dataset-name>/`. Never delete a dataset while a training job uses it.
+
+Historical Phase-0 searches sometimes resumed with changed fixed settings;
+those regimes are retained in the recorded trial inputs. The
+[configuration guide](configs/README.md) explains which files are runnable
+recipes and which preserve historical metadata.
+
+## Checks and troubleshooting
+
+```bash
+python -m pip check
+python scripts/check_environment.py
 python main.py --help
 python launch_runs.py --help
+python scripts/validate_thesis_configs.py --native
 ```
 
-The supported config format is described in
-[docs/experiment_config.md](docs/experiment_config.md), with scheduler usage in
-[docs/parallel_runs.md](docs/parallel_runs.md). References in the detailed docs
-to historical experiment paths describe local workflows; recovered files now
-live under `configs/used/` or `configs/other/`.
+- **CUDA unavailable:** use the CPU quickstart, or install the CUDA requirements
+  in a fresh environment and check the driver with `nvidia-smi`.
+- **Not enough home-directory quota:** put the virtual environment and pip cache
+  on a filesystem with space. For example, set `PIP_CACHE_DIR` to a scratch
+  directory and create the venv there; do not change a shared training environment.
+- **First run is slower:** dataset/model downloads and initial backbone feature
+  extraction happen once and are reused on later runs. CPU feature extraction
+  can take several minutes, even though each quickstart epoch has four batches.
+- **xFormers warnings:** DINOv2 can report that this optional accelerator is
+  unavailable. Both quickstarts work without it.
+- **Dataset access or download failure:** check the dataset's access requirements;
+  a partial/incomplete dataset is not a successful training run.
 
-## Code
+## Verification
 
-- `main.py` dispatches experiments; `launch_runs.py` starts the independent-run scheduler.
-- `training/` implements training, HPO, scheduling, tracking, and SSL algorithms.
-- `models/`, `losses/`, and `utils/` contain models, losses, datasets, and shared helpers.
-- `scripts/` contains download, diagnostic, benchmarking, and analysis tools.
-- `evaluate/`, `main_eval/`, and `exporter/` process experiment results.
-- `react_trial_visualizer/` contains the experiment browser source and its package configs.
+Verified on Linux with fresh Python 3.12.3 environments: the supervised and
+LRML examples completed real two-epoch training runs on CPU; the CUDA example
+completed on an NVIDIA H100 with CUDA 13 and driver 580.173.02. The CUDA check
+also covered CuPy and a fresh DINOv2 model-download cache. TensorBoard logging,
+all recovered config/manifests, and all 25 figure/table generator groups passed.
 
-The visualizer is optional. Start it with `npm ci` and `npm run dev` inside
-`react_trial_visualizer/`; consult its [README](react_trial_visualizer/README.md)
-for local data sources and exports.
+## Code and optional visualizer
 
-Dataset downloaders and full training runs require their corresponding data,
-dependencies, and device resources.
+`main.py` dispatches experiments; `launch_runs.py` schedules independent runs.
+`training/`, `models/`, `losses/`, and `utils/` implement training, SSL, model,
+loss, and dataset functionality. `evaluate/`, `main_eval/`, `exporter/`, and
+`scripts/` contain evaluation and analysis tools.
+
+`react_trial_visualizer/` is an optional experiment browser. Its Node/npm
+installation is separate from Python training; consult its
+[README](react_trial_visualizer/README.md).
 
 ## Attribution
 
-Retained upstream licensing and third-party attribution are in
-[LICENSE-image-retrieval](LICENSE-image-retrieval) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+See [LICENSE-image-retrieval](LICENSE-image-retrieval) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The figure bundle includes its
+plotting font license inside `thesis_generator/daten/details.zip`.

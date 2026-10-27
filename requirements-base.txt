@@ -1,0 +1,20 @@
+# Shared runtime dependencies; Python 3.12.
+# PyTorch is selected by requirements.txt or requirements-cuda.txt.
+faiss-cpu==1.14.3
+filelock==3.29.0
+kagglehub==1.0.2
+loguru==0.7.3
+matplotlib==3.11.1
+numpy==2.4.6
+optuna==4.9.0
+pacmap==0.9.1
+pandas==3.0.3
+Pillow==12.3.0
+plotly==6.9.0
+pytorch-metric-learning==2.9.0
+requests==2.34.0
+scikit-learn==1.9.0
+scipy==1.18.0
+tensorboard==2.20.0
+threadpoolctl==3.6.0
+tqdm==4.70.1

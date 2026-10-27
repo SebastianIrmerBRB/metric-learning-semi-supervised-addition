@@ -1,0 +1,7 @@
+# NVIDIA CUDA 13 build, tested on Linux with an H100 and driver 580.
+# Use a separate environment rather than mixing this with the CPU wheels.
+-r requirements-base.txt
+torch==2.13.0
+torchvision==0.28.0
+# Required by experiment configs that select the cupy_cg sparse solver.
+cupy-cuda13x==14.1.1; sys_platform == "linux"

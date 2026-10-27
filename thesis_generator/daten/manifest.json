@@ -1,0 +1,1192 @@
+{
+  "schema_version": 1,
+  "views": {
+    "cars_ergebnisse/data/phase1_runs.csv": {
+      "file": "results.csv",
+      "where": {
+        "dataset_key": "cars"
+      },
+      "columns": [
+        "method",
+        "series",
+        "k",
+        "seed",
+        "scope",
+        "epochs",
+        "patience",
+        "source",
+        "r_precision",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "NMI",
+        "AMI",
+        "recall_at_1",
+        "recall_at_16",
+        "recall_at_2",
+        "recall_at_32",
+        "recall_at_4",
+        "recall_at_8",
+        "fold_std_r_precision",
+        "fold_std_mean_average_precision_at_r",
+        "fold_std_precision_at_1",
+        "fold_std_NMI",
+        "fold_std_AMI"
+      ],
+      "rows": 1000,
+      "source_id": "s_c64a38520ffbdd4b"
+    },
+    "cars_ergebnisse/data/phase1_folds.csv": {
+      "file": "folds.csv",
+      "where": {
+        "dataset_key": "cars",
+        "experiment": "phase1"
+      },
+      "columns": [
+        "method",
+        "series",
+        "k",
+        "seed",
+        "fold",
+        "selected_epoch",
+        "last_epoch",
+        "best_valid_map",
+        "warmup_epochs",
+        "batch_size",
+        "source",
+        "r_precision",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "NMI",
+        "AMI",
+        "num_labeled",
+        "num_unlabeled"
+      ],
+      "rows": 2000,
+      "source_id": "s_038ca04799f2f594"
+    },
+    "cars_ergebnisse/data/phase1_paired_differences.csv": {
+      "derived": "paired_differences",
+      "dataset": "cars",
+      "columns": [
+        "method",
+        "k",
+        "scope",
+        "metric",
+        "mean",
+        "std",
+        "positive_seeds",
+        "min",
+        "max"
+      ],
+      "rows": 480,
+      "source_id": "s_51982a20a77f0319"
+    },
+    "cub_ergebnisse/data/phase1_runs.csv": {
+      "file": "results.csv",
+      "where": {
+        "dataset_key": "cub"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "scope",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_16",
+        "recall_at_2",
+        "recall_at_32",
+        "recall_at_4",
+        "recall_at_8",
+        "fold_std_AMI",
+        "fold_std_NMI",
+        "fold_std_mean_average_precision_at_r",
+        "fold_std_precision_at_1",
+        "fold_std_r_precision",
+        "series",
+        "epochs",
+        "patience"
+      ],
+      "rows": 1000,
+      "source_id": "s_a6213a546b724ab3"
+    },
+    "cub_ergebnisse/data/phase1_folds_enriched.csv": {
+      "file": "folds.csv",
+      "where": {
+        "dataset_key": "cub",
+        "experiment": "phase1"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "fold",
+        "selected_epoch",
+        "last_epoch",
+        "best_valid_map",
+        "warmup_best_valid_map",
+        "warmup_epochs",
+        "pseudo_diagnostics",
+        "batch_size",
+        "labeled_batch_size",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_16",
+        "recall_at_2",
+        "recall_at_32",
+        "recall_at_4",
+        "recall_at_8",
+        "labeled_samples",
+        "labeled_classes",
+        "unlabeled_pool",
+        "unlabeled_classes",
+        "max_epochs",
+        "patience",
+        "surgery_config",
+        "labeled_pool_fraction",
+        "series"
+      ],
+      "rows": 2500,
+      "source_id": "s_1e9d5ee97bb3de71"
+    },
+    "cub_ergebnisse/data/phase1_paired_differences.csv": {
+      "derived": "paired_differences",
+      "dataset": "cub",
+      "columns": [
+        "method",
+        "k",
+        "scope",
+        "metric",
+        "mean",
+        "std",
+        "positive_seeds",
+        "min",
+        "max"
+      ],
+      "rows": 480,
+      "source_id": "s_250453d74ab97b15"
+    },
+    "inshop_ergebnisse/data/phase1_runs.csv": {
+      "file": "results.csv",
+      "where": {
+        "dataset_key": "inshop"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "scope",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40",
+        "fold_std_AMI",
+        "fold_std_NMI",
+        "fold_std_mean_average_precision_at_r",
+        "fold_std_precision_at_1",
+        "fold_std_r_precision",
+        "series",
+        "epochs",
+        "patience"
+      ],
+      "rows": 500,
+      "source_id": "s_c5a23f5f5b5e612d"
+    },
+    "inshop_ergebnisse/data/phase1_folds_enriched.csv": {
+      "file": "folds.csv",
+      "where": {
+        "dataset_key": "inshop",
+        "experiment": "phase1"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "fold",
+        "selected_epoch",
+        "last_epoch",
+        "best_valid_map",
+        "warmup_best_valid_map",
+        "warmup_epochs",
+        "pseudo_diagnostics",
+        "batch_size",
+        "labeled_batch_size",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40",
+        "labeled_samples",
+        "labeled_classes",
+        "classes_below_k",
+        "unlabeled_pool",
+        "labeled_pool_fraction",
+        "patience",
+        "surgery_config",
+        "series",
+        "max_epochs"
+      ],
+      "rows": 1000,
+      "source_id": "s_e6f9e05fa78d8a08"
+    },
+    "inshop_ergebnisse/data/phase1_paired_differences.csv": {
+      "derived": "paired_differences",
+      "dataset": "inshop",
+      "columns": [
+        "method",
+        "k",
+        "scope",
+        "metric",
+        "mean",
+        "std",
+        "positive_seeds",
+        "min",
+        "max"
+      ],
+      "rows": 240,
+      "source_id": "s_8429fa2af15286fc"
+    },
+    "inshop10_ergebnisse/data/phase1_runs.csv": {
+      "file": "results.csv",
+      "where": {
+        "dataset_key": "inshop10"
+      },
+      "columns": [
+        "method",
+        "budget_percent",
+        "seed",
+        "scope",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40",
+        "fold_std_AMI",
+        "fold_std_NMI",
+        "fold_std_mean_average_precision_at_r",
+        "fold_std_precision_at_1",
+        "fold_std_r_precision",
+        "series",
+        "epochs",
+        "patience"
+      ],
+      "rows": 1000,
+      "source_id": "s_d0661db50159640b"
+    },
+    "inshop10_ergebnisse/data/phase1_folds_enriched.csv": {
+      "file": "folds.csv",
+      "where": {
+        "dataset_key": "inshop10",
+        "experiment": "phase1"
+      },
+      "columns": [
+        "method",
+        "budget_percent",
+        "seed",
+        "fold",
+        "selected_epoch",
+        "last_epoch",
+        "best_valid_map",
+        "warmup_best_valid_map",
+        "warmup_epochs",
+        "pseudo_diagnostics",
+        "batch_size",
+        "labeled_batch_size",
+        "source",
+        "AMI",
+        "NMI",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "r_precision",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40",
+        "labeled_samples",
+        "labeled_classes",
+        "unlabeled_pool",
+        "unlabeled_classes",
+        "max_epochs",
+        "patience",
+        "surgery_config",
+        "labeled_pool_fraction",
+        "series",
+        "regularizer_max_ratio"
+      ],
+      "rows": 2000,
+      "source_id": "s_be1096d1a2539e9a"
+    },
+    "inshop10_ergebnisse/data/phase1_paired_differences.csv": {
+      "derived": "paired_differences",
+      "dataset": "inshop10",
+      "columns": [
+        "method",
+        "budget_percent",
+        "scope",
+        "metric",
+        "mean",
+        "std",
+        "positive_seeds",
+        "min",
+        "max",
+        "n_seeds"
+      ],
+      "rows": 480,
+      "source_id": "s_a1e750136f4a0d71"
+    },
+    "semiinat_ergebnisse/data/phase1_runs.csv": {
+      "file": "results.csv",
+      "where": {
+        "dataset_key": "semiinat"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "scope",
+        "source",
+        "epochs",
+        "patience",
+        "r_precision",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "NMI",
+        "AMI",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40",
+        "fold_std_r_precision",
+        "fold_std_mean_average_precision_at_r",
+        "fold_std_precision_at_1",
+        "fold_std_NMI",
+        "fold_std_AMI"
+      ],
+      "rows": 1000,
+      "source_id": "s_b6bb8c027699a7d4"
+    },
+    "semiinat_ergebnisse/data/phase1_folds_enriched.csv": {
+      "file": "folds.csv",
+      "where": {
+        "dataset_key": "semiinat",
+        "experiment": "phase1"
+      },
+      "columns": [
+        "method",
+        "k",
+        "seed",
+        "fold",
+        "selected_epoch",
+        "last_epoch",
+        "best_valid_map",
+        "warmup_best_valid_map",
+        "batch_size",
+        "source",
+        "labeled_samples",
+        "labeled_classes",
+        "classes_below_budget",
+        "unlabeled_pool",
+        "max_epochs",
+        "patience",
+        "regularizer_max_ratio",
+        "labeled_pool_fraction",
+        "r_precision",
+        "mean_average_precision_at_r",
+        "precision_at_1",
+        "NMI",
+        "AMI",
+        "recall_at_1",
+        "recall_at_10",
+        "recall_at_100",
+        "recall_at_20",
+        "recall_at_40"
+      ],
+      "rows": 2000,
+      "source_id": "s_0ea5eb4def191160"
+    },
+    "semiinat_ergebnisse/data/phase1_paired_differences.csv": {
+      "derived": "paired_differences",
+      "dataset": "semiinat",
+      "columns": [
+        "method",
+        "k",
+        "scope",
+        "metric",
+        "mean",
+        "std",
+        "positive_seeds",
+        "min",
+        "max"
+      ],
+      "rows": 480,
+      "source_id": "s_67d13e895b402442"
+    },
+    "cars_ergebnisse/data/phase1_settings.csv": {
+      "derived": "run_settings",
+      "dataset": "cars"
+    },
+    "cub_ergebnisse/data/phase1_settings.csv": {
+      "derived": "run_settings",
+      "dataset": "cub"
+    },
+    "inshop_ergebnisse/data/phase1_settings.csv": {
+      "derived": "run_settings",
+      "dataset": "inshop"
+    },
+    "inshop10_ergebnisse/data/phase1_settings.csv": {
+      "derived": "run_settings",
+      "dataset": "inshop10"
+    },
+    "semiinat_ergebnisse/data/phase1_settings.csv": {
+      "derived": "run_settings",
+      "dataset": "semiinat"
+    },
+    "phase2/variants.csv": {
+      "file": "ablations.csv",
+      "where": {
+        "table_key": "phase2"
+      },
+      "columns": [
+        "dataset",
+        "k",
+        "loss",
+        "method",
+        "variant",
+        "label_de",
+        "group",
+        "cell",
+        "uses_hidden_labels",
+        "mean_value",
+        "mean_sd",
+        "mean_seeds",
+        "mean_diff_baseline",
+        "mean_p_baseline",
+        "mean_diff_supervised",
+        "mean_p_supervised",
+        "concat_value",
+        "concat_sd",
+        "concat_seeds",
+        "concat_diff_baseline",
+        "concat_p_baseline",
+        "concat_diff_supervised",
+        "concat_p_supervised"
+      ],
+      "rows": 800,
+      "source_id": "s_665a3142f17852e7"
+    },
+    "phase2/laeufe.csv": {
+      "member": "tables/phase2/laeufe.csv",
+      "source_id": "s_5826977e32153bb2",
+      "selection": "all"
+    },
+    "phase2/two_by_two.csv": {
+      "member": "tables/phase2/two_by_two.csv",
+      "source_id": "s_d1ec1e075445ea5b",
+      "selection": "all"
+    },
+    "phase2_k8/variants.csv": {
+      "file": "ablations.csv",
+      "where": {
+        "table_key": "phase2_k8"
+      },
+      "columns": [
+        "dataset",
+        "k",
+        "loss",
+        "method",
+        "variant",
+        "label_de",
+        "group",
+        "cell",
+        "uses_hidden_labels",
+        "mean_value",
+        "mean_sd",
+        "mean_seeds",
+        "mean_diff_baseline",
+        "mean_p_baseline",
+        "mean_diff_supervised",
+        "mean_p_supervised",
+        "concat_value",
+        "concat_sd",
+        "concat_seeds",
+        "concat_diff_baseline",
+        "concat_p_baseline",
+        "concat_diff_supervised",
+        "concat_p_supervised"
+      ],
+      "rows": 518,
+      "source_id": "s_98e30eb4d2058ea0"
+    },
+    "phase2_k8/laeufe.csv": {
+      "member": "tables/phase2_k8/laeufe.csv",
+      "source_id": "s_e842c95b25ba4767",
+      "selection": "all"
+    },
+    "phase2_k8/two_by_two.csv": {
+      "member": "tables/phase2_k8/two_by_two.csv",
+      "source_id": "s_c20a3780967bbce5",
+      "selection": "all"
+    },
+    "phase2/slade_sweeps.csv": {
+      "file": "ablations.csv",
+      "where": {
+        "table_key": "slade_sweeps"
+      },
+      "columns": [
+        "dataset",
+        "loss",
+        "param",
+        "value",
+        "mean_value",
+        "mean_source",
+        "concat_value",
+        "source",
+        "tuned_value",
+        "is_tuned",
+        "regular_mean",
+        "regular_concat",
+        "diff_mean",
+        "diff_concat",
+        "threshold_mean",
+        "threshold_concat",
+        "tuned_dev_mean"
+      ],
+      "rows": 235,
+      "source_id": "s_2cba94107dad8217"
+    },
+    "phase2_k4_ensemble/runs.csv": {
+      "file": "ablations.csv",
+      "where": {
+        "table_key": "k4_ensemble"
+      },
+      "columns": [
+        "loss",
+        "variant",
+        "seed",
+        "mean",
+        "concat",
+        "cv_dir",
+        "gap",
+        "fp_also_in_other_fold_topR",
+        "topR_jaccard"
+      ],
+      "rows": 125,
+      "source_id": "s_8aaf99f463bd4df3"
+    },
+    "extern/laeufe.csv": {
+      "file": "external.csv",
+      "where": {},
+      "columns": [
+        "dataset",
+        "method",
+        "loss",
+        "pct",
+        "seed",
+        "kind",
+        "sweep_value",
+        "mean_map",
+        "mean_p1",
+        "mean_rp",
+        "concat_map",
+        "concat_p1",
+        "concat_rp",
+        "fold_sd_map",
+        "n_external",
+        "n_labeled_fold0",
+        "external_source",
+        "external_filter",
+        "lp_pseudo_share",
+        "selected_epoch_median",
+        "folds_at_cap",
+        "max_epochs",
+        "patience",
+        "trial",
+        "study",
+        "werte",
+        "source"
+      ],
+      "rows": 525,
+      "source_id": "s_18bb6a32ab494865"
+    },
+    "extern/folds.csv": {
+      "file": "folds.csv",
+      "where": {
+        "experiment": "external",
+        "dataset_key": "external"
+      },
+      "columns": [
+        "dataset",
+        "method",
+        "loss",
+        "pct",
+        "seed",
+        "kind",
+        "sweep_value",
+        "fold",
+        "source",
+        "test_map",
+        "test_p1",
+        "test_rp",
+        "selected_epoch",
+        "last_epoch",
+        "max_epochs",
+        "patience",
+        "warmup_end",
+        "n_external",
+        "external_source",
+        "external_filter",
+        "n_labeled",
+        "n_classes",
+        "lp_pseudo_share",
+        "trial",
+        "study"
+      ],
+      "rows": 2100,
+      "source_id": "s_494d61ec8b80cc8f"
+    },
+    "geometrie/laeufe_cars.csv": {
+      "member": "tables/geometrie/laeufe_cars.csv",
+      "source_id": "s_314eaecf44051a5a",
+      "selection": "all"
+    },
+    "geometrie/epochen_cars.csv": {
+      "member": "tables/geometrie/epochen_cars.csv",
+      "source_id": "s_348174ba1a7c60ba",
+      "selection": "all epochs, figure columns",
+      "rows": 35631,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "test_mean_average_precision_at_r",
+        "train_rho_roth",
+        "train_pi_ratio_roth",
+        "train_pi_intra_roth",
+        "train_pi_inter_roth",
+        "train_embedding_effective_rank",
+        "train_embedding_uniformity",
+        "train_embedding_alignment",
+        "prototype_unlabeled_accuracy",
+        "graph_edge_purity",
+        "graph_n_neighbors",
+        "labeled_pi_ratio_roth",
+        "labeled_pi_intra_roth",
+        "unlabeled_pi_ratio_roth",
+        "unlabeled_pi_intra_roth",
+        "unlabeled_pi_inter_roth",
+        "validation_pi_ratio_roth",
+        "validation_pi_intra_roth",
+        "validation_pi_inter_roth",
+        "test_rho_roth",
+        "test_pi_ratio_roth",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
+    },
+    "geometrie/validierung_cars.csv": {
+      "member": "tables/geometrie/validierung_cars.csv",
+      "source_id": "s_00eaa2c08f2bc393",
+      "selection": "all"
+    },
+    "geometrie/laeufe_semiinat.csv": {
+      "member": "tables/geometrie/laeufe_semiinat.csv",
+      "source_id": "s_6bd24c30ed346607",
+      "selection": "all"
+    },
+    "geometrie/epochen_semiinat.csv": {
+      "member": "tables/geometrie/epochen_semiinat.csv",
+      "source_id": "s_43ea1c44591bd136",
+      "selection": "head (-1) and last tracked epoch <= selected_epoch; figure columns",
+      "rows": 800,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "tracked_seconds",
+        "test_mean_average_precision_at_r",
+        "train_rho_roth",
+        "train_pi_ratio_roth",
+        "train_pi_intra_roth",
+        "train_pi_inter_roth",
+        "train_embedding_effective_rank",
+        "train_embedding_uniformity",
+        "train_embedding_alignment",
+        "train_pi_ratio_multi",
+        "train_pi_intra_multi",
+        "train_pi_inter_multi",
+        "train_pi_single_class_count",
+        "train_pi_class_count",
+        "prototype_unlabeled_accuracy",
+        "graph_edge_purity",
+        "graph_n_neighbors",
+        "labeled_rho_roth",
+        "labeled_pi_ratio_roth",
+        "labeled_pi_intra_roth",
+        "labeled_pi_inter_roth",
+        "labeled_embedding_effective_rank",
+        "labeled_embedding_uniformity",
+        "labeled_embedding_alignment",
+        "labeled_pi_ratio_multi",
+        "labeled_pi_intra_multi",
+        "labeled_pi_inter_multi",
+        "labeled_pi_single_class_count",
+        "labeled_pi_class_count",
+        "unlabeled_rho_roth",
+        "unlabeled_pi_ratio_roth",
+        "unlabeled_pi_intra_roth",
+        "unlabeled_pi_inter_roth",
+        "unlabeled_embedding_effective_rank",
+        "unlabeled_embedding_uniformity",
+        "unlabeled_embedding_alignment",
+        "unlabeled_pi_ratio_multi",
+        "unlabeled_pi_intra_multi",
+        "unlabeled_pi_inter_multi",
+        "unlabeled_pi_single_class_count",
+        "unlabeled_pi_class_count",
+        "validation_rho_roth",
+        "validation_pi_ratio_roth",
+        "validation_pi_intra_roth",
+        "validation_pi_inter_roth",
+        "validation_embedding_effective_rank",
+        "validation_embedding_uniformity",
+        "validation_embedding_alignment",
+        "validation_pi_ratio_multi",
+        "validation_pi_intra_multi",
+        "validation_pi_inter_multi",
+        "validation_pi_single_class_count",
+        "validation_pi_class_count",
+        "test_rho_roth",
+        "test_pi_ratio_roth",
+        "test_pi_intra_roth",
+        "test_pi_inter_roth",
+        "test_embedding_effective_rank",
+        "test_embedding_uniformity",
+        "test_embedding_alignment",
+        "test_pi_ratio_multi",
+        "test_pi_intra_multi",
+        "test_pi_inter_multi",
+        "test_pi_single_class_count",
+        "test_pi_class_count",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
+    },
+    "geometrie/validierung_semiinat.csv": {
+      "member": "tables/geometrie/validierung_semiinat.csv",
+      "source_id": "s_15ff0781afaffb50",
+      "selection": "all"
+    },
+    "geometrie/laeufe_inshop.csv": {
+      "member": "tables/geometrie/laeufe_inshop.csv",
+      "source_id": "s_274c39d7c2c8cd07",
+      "selection": "all"
+    },
+    "geometrie/epochen_inshop.csv": {
+      "member": "tables/geometrie/epochen_inshop.csv",
+      "source_id": "s_36a267c26f85857d",
+      "selection": "head (-1) and last tracked epoch <= selected_epoch; figure columns",
+      "rows": 400,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "tracked_seconds",
+        "test_mean_average_precision_at_r",
+        "train_rho_roth",
+        "train_pi_ratio_roth",
+        "train_pi_intra_roth",
+        "train_pi_inter_roth",
+        "train_embedding_effective_rank",
+        "train_embedding_uniformity",
+        "train_embedding_alignment",
+        "train_pi_ratio_multi",
+        "train_pi_intra_multi",
+        "train_pi_inter_multi",
+        "train_pi_single_class_count",
+        "train_pi_class_count",
+        "prototype_unlabeled_accuracy",
+        "graph_edge_purity",
+        "graph_n_neighbors",
+        "labeled_rho_roth",
+        "labeled_pi_ratio_roth",
+        "labeled_pi_intra_roth",
+        "labeled_pi_inter_roth",
+        "labeled_embedding_effective_rank",
+        "labeled_embedding_uniformity",
+        "labeled_embedding_alignment",
+        "labeled_pi_ratio_multi",
+        "labeled_pi_intra_multi",
+        "labeled_pi_inter_multi",
+        "labeled_pi_single_class_count",
+        "labeled_pi_class_count",
+        "unlabeled_rho_roth",
+        "unlabeled_pi_ratio_roth",
+        "unlabeled_pi_intra_roth",
+        "unlabeled_pi_inter_roth",
+        "unlabeled_embedding_effective_rank",
+        "unlabeled_embedding_uniformity",
+        "unlabeled_embedding_alignment",
+        "unlabeled_pi_ratio_multi",
+        "unlabeled_pi_intra_multi",
+        "unlabeled_pi_inter_multi",
+        "unlabeled_pi_single_class_count",
+        "unlabeled_pi_class_count",
+        "validation_rho_roth",
+        "validation_pi_ratio_roth",
+        "validation_pi_intra_roth",
+        "validation_pi_inter_roth",
+        "validation_embedding_effective_rank",
+        "validation_embedding_uniformity",
+        "validation_embedding_alignment",
+        "validation_pi_ratio_multi",
+        "validation_pi_intra_multi",
+        "validation_pi_inter_multi",
+        "validation_pi_single_class_count",
+        "validation_pi_class_count",
+        "test_rho_roth",
+        "test_pi_ratio_roth",
+        "test_pi_intra_roth",
+        "test_pi_inter_roth",
+        "test_embedding_effective_rank",
+        "test_embedding_uniformity",
+        "test_embedding_alignment",
+        "test_pi_ratio_multi",
+        "test_pi_intra_multi",
+        "test_pi_inter_multi",
+        "test_pi_single_class_count",
+        "test_pi_class_count",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
+    },
+    "geometrie/validierung_inshop.csv": {
+      "member": "tables/geometrie/validierung_inshop.csv",
+      "source_id": "s_c758c9355b730f33",
+      "selection": "all"
+    },
+    "geometrie/laeufe_inshop10.csv": {
+      "member": "tables/geometrie/laeufe_inshop10.csv",
+      "source_id": "s_41373b48191d8485",
+      "selection": "all"
+    },
+    "geometrie/epochen_inshop10.csv": {
+      "member": "tables/geometrie/epochen_inshop10.csv",
+      "source_id": "s_d2fb98e6dd3eb887",
+      "selection": "head (-1) and last tracked epoch <= selected_epoch; figure columns",
+      "rows": 797,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "tracked_seconds",
+        "test_mean_average_precision_at_r",
+        "train_rho_roth",
+        "train_pi_ratio_roth",
+        "train_pi_intra_roth",
+        "train_pi_inter_roth",
+        "train_embedding_effective_rank",
+        "train_embedding_uniformity",
+        "train_embedding_alignment",
+        "train_pi_ratio_multi",
+        "train_pi_intra_multi",
+        "train_pi_inter_multi",
+        "train_pi_single_class_count",
+        "train_pi_class_count",
+        "prototype_unlabeled_accuracy",
+        "graph_edge_purity",
+        "graph_n_neighbors",
+        "labeled_rho_roth",
+        "labeled_pi_ratio_roth",
+        "labeled_pi_intra_roth",
+        "labeled_pi_inter_roth",
+        "labeled_embedding_effective_rank",
+        "labeled_embedding_uniformity",
+        "labeled_embedding_alignment",
+        "labeled_pi_ratio_multi",
+        "labeled_pi_intra_multi",
+        "labeled_pi_inter_multi",
+        "labeled_pi_single_class_count",
+        "labeled_pi_class_count",
+        "unlabeled_rho_roth",
+        "unlabeled_pi_ratio_roth",
+        "unlabeled_pi_intra_roth",
+        "unlabeled_pi_inter_roth",
+        "unlabeled_embedding_effective_rank",
+        "unlabeled_embedding_uniformity",
+        "unlabeled_embedding_alignment",
+        "unlabeled_pi_ratio_multi",
+        "unlabeled_pi_intra_multi",
+        "unlabeled_pi_inter_multi",
+        "unlabeled_pi_single_class_count",
+        "unlabeled_pi_class_count",
+        "validation_rho_roth",
+        "validation_pi_ratio_roth",
+        "validation_pi_intra_roth",
+        "validation_pi_inter_roth",
+        "validation_embedding_effective_rank",
+        "validation_embedding_uniformity",
+        "validation_embedding_alignment",
+        "validation_pi_ratio_multi",
+        "validation_pi_intra_multi",
+        "validation_pi_inter_multi",
+        "validation_pi_single_class_count",
+        "validation_pi_class_count",
+        "test_rho_roth",
+        "test_pi_ratio_roth",
+        "test_pi_intra_roth",
+        "test_pi_inter_roth",
+        "test_embedding_effective_rank",
+        "test_embedding_uniformity",
+        "test_embedding_alignment",
+        "test_pi_ratio_multi",
+        "test_pi_intra_multi",
+        "test_pi_inter_multi",
+        "test_pi_single_class_count",
+        "test_pi_class_count",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
+    },
+    "geometrie/validierung_inshop10.csv": {
+      "member": "tables/geometrie/validierung_inshop10.csv",
+      "source_id": "s_59c923b7913ec4fb",
+      "selection": "all"
+    },
+    "geometrie/epoch_metrics_cars.csv": {
+      "member": "tables/geometrie/epoch_metrics_cars.csv",
+      "source_id": "s_7e42315260835eef",
+      "selection": "Circle, columns used by fig_dynamik.py",
+      "rows": 1424,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "prototype_unlabeled_accuracy",
+        "lp_unlabeled_accuracy",
+        "graph_edge_purity"
+      ]
+    },
+    "geometrie/korrelation_weitere.csv": {
+      "member": "tables/geometrie/korrelation_weitere.csv",
+      "source_id": "s_4da2ab63189eb59c",
+      "selection": "all",
+      "derived": "generated"
+    },
+    "geometrie/mittel_weitere.csv": {
+      "member": "tables/geometrie/mittel_weitere.csv",
+      "source_id": "s_a8eab0899c65537a",
+      "selection": "all",
+      "derived": "generated"
+    },
+    "geometrie/ausgeschlossen_weitere.csv": {
+      "member": "tables/geometrie/ausgeschlossen_weitere.csv",
+      "source_id": "s_11afb3e3214cce91",
+      "selection": "all",
+      "derived": "generated"
+    },
+    "studies.json": {
+      "member": "studies.json",
+      "rows": 235,
+      "source_id": "s_2a154354d91db07d"
+    },
+    "datensaetze/statistik.json": {
+      "member": "tables/datensaetze/statistik.json",
+      "source_id": "s_f23e062db2760ce1",
+      "selection": "all"
+    },
+    "qualitative/retrieval_neighbors.csv": {
+      "member": "qualitative/retrieval_neighbors.csv"
+    },
+    "qualitative/cars_test.csv": {
+      "member": "qualitative/cars_test.csv"
+    },
+    "qualitative/lp_20.csv": {
+      "member": "qualitative/lp_20.csv",
+      "array_dtypes": {
+        "x": "float64",
+        "y": "float64",
+        "label": "int64",
+        "kind": "str",
+        "position": "int64",
+        "lp_pred": "int32",
+        "lp_cert": "float16"
+      },
+      "threshold": 0.8058219112925765,
+      "accepted_count": 1833
+    },
+    "qualitative/lp_140.csv": {
+      "member": "qualitative/lp_140.csv",
+      "array_dtypes": {
+        "x": "float64",
+        "y": "float64",
+        "label": "int64",
+        "kind": "str",
+        "position": "int64",
+        "lp_pred": "int32",
+        "lp_cert": "float16"
+      },
+      "threshold": 0.8058219112925765,
+      "accepted_count": 2715
+    },
+    "qualitative/lp_epochs.json": {
+      "member": "qualitative/lp_epochs.json"
+    },
+    "ausgangsleistung/alle_labels.csv": {
+      "member": "tables/ausgangsleistung/alle_labels.csv",
+      "source_id": "s_450d2ce3e73031bb",
+      "selection": "all"
+    },
+    "ausgangsleistung/cub_baseline.json": {
+      "member": "tables/ausgangsleistung/cub_baseline.json",
+      "source_id": "s_8e3193fc3b70d848",
+      "selection": "all"
+    },
+    "ausgangsleistung/untrained_baseline.json": {
+      "member": "tables/ausgangsleistung/untrained_baseline.json",
+      "source_id": "s_781fd6537a338355",
+      "selection": "all"
+    },
+    "ausgangsleistung/cub_2026-09-25/untrained_baseline.json": {
+      "member": "tables/ausgangsleistung/cub_2026-09-25/untrained_baseline.json",
+      "source_id": "s_95246274f55e4041",
+      "selection": "all"
+    },
+    "ausgangsleistung/semiinat_2026-10-18/untrained_baseline.json": {
+      "member": "tables/ausgangsleistung/semiinat_2026-10-18/untrained_baseline.json",
+      "source_id": "s_e024afe6c7016ec3",
+      "selection": "all"
+    },
+    "cars_ergebnisse/data/phase1_validation_vs_test.csv": {
+      "member": "tables/cars_ergebnisse/data/phase1_validation_vs_test.csv",
+      "source_id": "s_770e02b2373faea2",
+      "selection": "all"
+    },
+    "phase2/tuned.csv": {
+      "member": "tables/phase2/tuned.csv",
+      "source_id": "s_519b0e02b7ac4f7c",
+      "selection": "all"
+    },
+    "phase2_lp_diagnostik.csv": {
+      "member": "tables/phase2_lp_diagnostik.csv",
+      "source_id": "s_d9019945b52f013c",
+      "selection": "all"
+    },
+    "phase2/lp_schwellen.csv": {
+      "member": "tables/phase2/lp_schwellen.csv",
+      "source_id": "s_ef97daec0719ccd7",
+      "selection": "all"
+    },
+    "phase2/lp_hersteller.csv": {
+      "member": "tables/phase2/lp_hersteller.csv",
+      "source_id": "s_dfeaf3812663d15f",
+      "selection": "all"
+    },
+    "phase2_k4_ensemble/geteilte_fehler.jsonl": {
+      "member": "tables/phase2_k4_ensemble/geteilte_fehler.jsonl",
+      "source_id": "s_f8253d82c2b8ae56",
+      "selection": "all"
+    },
+    "cvsum_rerun/ersatz.csv": {
+      "member": "tables/cvsum_rerun/ersatz.csv",
+      "source_id": "s_3e4ad87e11613397",
+      "selection": "all"
+    },
+    "timings/faelle.csv": {
+      "member": "tables/timings/faelle.csv",
+      "source_id": "s_ab419d632cc40f81",
+      "selection": "all"
+    },
+    "patience_delay/auswahl.csv": {
+      "member": "tables/patience_delay/auswahl.csv",
+      "source_id": "s_79fc8dc587b5b83e",
+      "selection": "all"
+    },
+    "patience_delay/ersatz_p40.csv": {
+      "member": "tables/patience_delay/ersatz_p40.csv",
+      "source_id": "s_cf560ab13592f15f",
+      "selection": "all"
+    },
+    "patience_delay/paare.csv": {
+      "member": "tables/patience_delay/paare.csv",
+      "source_id": "s_0c4aa51add0b8197",
+      "selection": "all"
+    },
+    "patience_delay/pruefung.txt": {
+      "member": "tables/patience_delay/pruefung.txt",
+      "source_id": "s_a021823d672f2d7d",
+      "selection": "all"
+    }
+  },
+  "notes": [],
+  "files": {
+    "ablations.csv": {
+      "bytes": 733020,
+      "sha256": "6f91a8e61b4236258ee583fbe192d24a421cf5ff2a27b1d822f7bb3db70c4b66"
+    },
+    "details.zip": {
+      "bytes": 11537954,
+      "sha256": "f0d547f28a2abf65ae13be17b89d6f0158ae8af9563e4355bf84967027674632"
+    },
+    "external.csv": {
+      "bytes": 320054,
+      "sha256": "734f4fc917f444c255d86fa48dcc55ac1f0d53e8ef845b554db334b807ec8211"
+    },
+    "folds.csv": {
+      "bytes": 9116279,
+      "sha256": "c6425cb9015dfe7d4f21483b26d4af6afe8d505a0fb2e05898ba9ac74f484aaf"
+    },
+    "hyperparameters.csv": {
+      "bytes": 9891275,
+      "sha256": "c21d3e48ace3f4d644f591136fdc6c0d991f59a1b55778ba5f59ab659d5c80a2"
+    },
+    "results.csv": {
+      "bytes": 2330116,
+      "sha256": "ae8740ecd992efa1ff5055e50494cac5cdafb7e071fca4aec9e2b054d2cbc8e2"
+    },
+    "sources.csv": {
+      "bytes": 2194745,
+      "sha256": "64451c220634fb67744e1c258dd5f057e658248256762d82d399cf9117de8d73"
+    }
+  }
+}

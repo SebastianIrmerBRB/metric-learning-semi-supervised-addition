@@ -1,0 +1,6 @@
+{
+  "extends": "common.json",
+  "mode": "ssl",
+  "ssl_config": "configs/other/quickstart/lrml.json",
+  "save_dir": "quickstart/ssl"
+}
