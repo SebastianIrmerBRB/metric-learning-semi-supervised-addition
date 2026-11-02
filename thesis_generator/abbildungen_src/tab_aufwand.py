@@ -38,7 +38,7 @@ IN = "inshop_ergebnisse/data/"
 SHORT = {"supervised": "sup", "iscen_label_spreading": "iscen", "lrml": "lrml", "hoffer_entropy": "hoffer", "slade": "slade"}
 LOSS = {"ArcFaceLoss": "arc", "CircleLoss": "cir", "MultiSimilarityLoss": "ms", "NTXentLoss": "nt", "ProxyAnchorLoss": "prx"}
 M = ["sup", "iscen", "lrml", "hoffer", "slade"]
-LB = {"sup": "\\UEBL", "iscen": "LP", "lrml": "\\ac{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
+LB = {"sup": "\\UEBL", "iscen": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 
 # Rates are collected once; figure/table generation uses the portable data.
 F = sammlung.read_csv("timings/faelle.csv")
@@ -84,15 +84,15 @@ gain = G.groupby("m")["mean"].mean()
 
 T = ["\\begin{table}[tbp]\n\\centering",
      "\\caption[Rechenaufwand auf In-Shop]{Rechenaufwand auf In-Shop bei $k=2$, gemessen je Epoche für einen Fold allein auf einer GPU. "
-     "Epoche: Dauer einer Epoche nach dem Warm-up relativ zu \\UEBL mit derselben Verlustfunktion und Batchgröße, Median und Spanne über "
+     "Epoche: Dauer einer Epoche nach dem Warm-up relativ zur \\UEBL mit derselben Verlustfunktion und Batchgröße, Median und Spanne über "
      "fünf Verlustfunktionen und fünf Batchgrößen. Refresh: Neuberechnung von Graph, Pseudo-Labels oder Clustern je Epoche, Median, Hoffer hat keinen. "
      "Epochen: trainierte Epochen bis zum Abbruch in Phase~1, Median über 100 Folds. Lauf: rechnerische Dauer eines Folds aus den "
-     "gemessenen Raten bei der Batchgröße und dem Warm-up der Phase-1-Folds und deren Epochen, Median. Gewinn: Test-MAP@R der Einzelmodelle gegenüber \\UEBL "
-     "in Prozentpunkten (Tabelle~\\ref{tab:e:gewinne}).}",
+     "gemessenen Raten bei der Batchgröße und dem Warm-up der Phase-1-Folds und deren Epochen, Median. Gewinn: Test-MAP@R der Einzelmodelle gegenüber der \\UEBL "
+     "in Prozentpunkten (Abbildung~\\ref{fig:e:gewinne}).}",
      "\\label{tab:e:aufwand}",
      "\\begin{tabular}{@{}l c S[table-format=1.2] S[table-format=3.0] S[table-format=2.1] S[table-format=+1.1, retain-explicit-plus]@{}}",
      "\\toprule",
-     "{Verfahren} & {Epoche rel.\\ zu \\UEBL} & {Refresh in s} & {Epochen} & {Lauf in min} & {Gewinn} \\\\",
+     "{Verfahren} & {Epoche rel.\\ zur \\UEBL} & {Refresh in s} & {Epochen} & {Lauf in min} & {Gewinn} \\\\",
      "\\midrule"]
 for m in M:
     ep = P[P.m == m].E.median()

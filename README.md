@@ -70,6 +70,20 @@ The complete generator and compact data are included in
 [`thesis_generator/`](thesis_generator/README.md). The root requirements cover
 both training and figure generation; no extra installation is needed.
 
+For the submission data, start with the
+[cross-experiment result overview](thesis_generator/datenansicht/ergebnisuebersicht.csv)
+and [complete data inventory](thesis_generator/datenansicht/dateninventar.csv).
+The core bundle is six CSVs plus `details.zip`, `manifest.json` and the
+[data guide](thesis_generator/daten/README.md). It covers results, folds,
+hyperparameters, provenance, ablations, external-image experiments, geometry,
+timing, HPO and qualitative measurements. The inventory documents 87 logical
+views without duplicating their compressed detail data.
+
+The submission includes the 15,529 recorded trials of 235 evaluated HPO studies
+and the top-six neighbor rankings of all 8,131 Cars196 queries underlying the
+retrieval discussion. [Coverage](thesis_generator/abdeckung.csv) maps the current
+thesis figures/tables to generators, labels and pages.
+
 ```bash
 python thesis_generator/generate.py
 ```
@@ -81,12 +95,14 @@ datasets nor training logs, model weights, LaTeX, or network access.
 ```bash
 python thesis_generator/generate.py --only fig_phase2 tab_extern
 python thesis_generator/generate.py --output /path/to/figures
+python thesis_generator/export_data.py           # refresh overview and inventory
+python thesis_generator/export_data.py --expand  # optional individual data views
 ```
 
 The data are the compact experiment measurements and detailed inputs from the
 provided generator package. They are separate from the image datasets used for
-training. Raw training logs, full image datasets, checkpoints, and test suites
-are not included in this repository.
+training. Raw training logs, full image datasets, and checkpoints are not
+included in this repository.
 
 ## Run the recovered thesis experiments
 
@@ -145,7 +161,10 @@ Verified on Linux with fresh Python 3.12.3 environments: the supervised and
 LRML examples completed real two-epoch training runs on CPU; the CUDA example
 completed on an NVIDIA H100 with CUDA 13 and driver 580.173.02. The CUDA check
 also covered CuPy and a fresh DINOv2 model-download cache. TensorBoard logging,
-all recovered config/manifests, and all 25 figure/table generator groups passed.
+all recovered config/manifests passed. For the current submission snapshot,
+all 30 figure/table generator groups, 1,576 recomputed HPO correlations, trial
+plateau counts, and all-query retrieval counts passed validation. The bundle
+includes `SHA256SUMS` and the validation report `pruefung.json`.
 
 ## Code and optional visualizer
 

@@ -137,6 +137,21 @@ def _refresh_references(name, frame):
     return frame
 
 
+def _write_generated(script):
+    """Run the generator of the derived views in a temporary folder and copy only those views to OUTPUT/generiert,
+    so a caller's output gets no extra tables, figures or previews."""
+    import subprocess
+    names = [k for k, v in manifest()["views"].items() if v.get("derived") == "generated"]
+    with tempfile.TemporaryDirectory(prefix="thesis-generated-") as tmp:
+        env = dict(os.environ, THESIS_DATA_DIR=str(DATA), THESIS_OUTPUT_DIR=tmp,
+                   STIL_PREVIEW=str(Path(tmp) / "vorschau"), MPLCONFIGDIR=str(Path(tmp) / ".matplotlib"))
+        subprocess.run([sys.executable, str(script)], env=env, check=True, stdout=subprocess.DEVNULL)
+        for name in names:
+            target = OUTPUT / "generiert" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(Path(tmp) / "generiert" / name, target)
+
+
 def read_csv(path, **kwargs):
     name = key(path)
     view = manifest()["views"][name]
@@ -145,15 +160,16 @@ def read_csv(path, **kwargs):
             return _paired_differences(view["dataset"], view["columns"])
         if view["derived"] == "run_settings":
             return _run_settings(view["dataset"])
-        # Data written by a preceding generator, e.g. geometry correlations. A file older than the data could describe
-        # other values, so it is only used when it is newer; without it the copy stored in the bundle is used.
+        # Data written by a preceding generator (fig_geometrie_weitere.py: geometry correlations, means, exclusions). The copies
+        # stored in the bundle are older than its geometry views (number check 26.10.2026), so a missing file, or one older
+        # than the data, the generator or the modules it imports, is written first.
         generated = OUTPUT / "generiert" / name
-        if generated.is_file():
-            newest = max(p.stat().st_mtime for p in DATA.iterdir() if p.is_file())
-            if generated.stat().st_mtime < newest:
-                raise SystemExit(f"{generated} is older than the data in {DATA}. Run the script that writes it first "
-                                 f"(fig_geometrie_weitere.py) or delete it.")
-            return pd.read_csv(generated, **kwargs)
+        producer = Path(__file__).with_name("fig_geometrie_weitere.py")
+        inputs = [p for p in DATA.iterdir() if p.is_file()] + [producer] + [
+            Path(__file__).with_name(m) for m in ("geodaten.py", "stil.py", "datensammlung.py")]
+        if not generated.is_file() or generated.stat().st_mtime < max(p.stat().st_mtime for p in inputs):
+            _write_generated(producer)
+        return pd.read_csv(generated, **kwargs)
     if "file" in view:
         frame = _csv_file(view["file"])
         for column, value in view.get("where", {}).items():

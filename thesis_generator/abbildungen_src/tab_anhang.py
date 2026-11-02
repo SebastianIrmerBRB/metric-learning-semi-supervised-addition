@@ -1,7 +1,8 @@
 """Erzeugt die Ergebnistabellen des Anhangs (MAP@R Mean / Concat je Budget). Phase 2: tab_phase02.py.
 
-Seit 18.10.2026 jede Zelle als Mittel ± Standardabweichung über die fünf Seeds (ddof=1); Tabellen mit vier Budgets quer
-(sidewaystable), weil acht Spalten mit Unsicherheit nicht in die Textbreite passen."""
+Jede Zelle zeigt Mittel ± Standardabweichung über fünf Seeds (ddof=1). Die Verlustfunktionen stehen in den Spalten,
+die Budgets in aufeinanderfolgenden Zeilenblöcken mit Mean / Concat je Verfahren. So passen alle Tabellen ins Hochformat.
+"""
 import datensammlung as sammlung
 import numpy as np
 import pandas as pd
@@ -18,9 +19,23 @@ DATA = [("cars", "Cars196", "k", [4, 8, 16, 32], "$k={}$"), ("cub", "CUB", "k", 
         ("semiinat", "Semi-iNat-2021", "k", [2, 4, 16, 100], "$k={}$")]
 
 
+FORMAT = "table-format=2.2(3), retain-zero-uncertainty"
+
+
 def f(x, sd):
     """Zahl mit Unsicherheit für eine siunitx-S-Spalte (Eingabe mit Punkt, Ausgabe mit Komma und ±)."""
     return "{--}" if np.isnan(x) else f"{x:.2f} +- {sd:.2f}"
+
+
+def markiert(s, x, je_verlust, gesamt):
+    """Fett: bestes Verfahren je Verlust, Budget und Modelltyp. Unterstrichen: bester Wert je Budget und Modelltyp.
+    Die Linie zieht \\uline (ulem) mit \\ULdepth=1.5pt dicht unter der Grundlinie, \\underline läge unter der ganzen Zeile. Die Zahl steht
+    dort in \\mbox{\\tablenum} (für ulem eine Einheit) mit dem Spaltenformat, damit sie wie die übrigen Zellen ausgerichtet bleibt."""
+    if np.isnan(x) or abs(x - je_verlust) >= 1e-9:
+        return s
+    if abs(x - gesamt) < 1e-9:
+        return f"{{\\bfseries\\ULdepth=1.5pt\\uline{{\\mbox{{\\tablenum[{FORMAT}]{{{s}}}}}}}}}"
+    return "\\bfseries " + s
 
 
 for key, name, kc, ks, fmt in DATA:
@@ -29,34 +44,38 @@ for key, name, kc, ks, fmt in DATA:
     g = r.groupby(["method", kc, "scope"])["map"].mean()
     gs = r.groupby(["method", kc, "scope"])["map"].std()
     best = {(k, sc): g.xs((k, sc), level=[1, 2]).max() for k in ks for sc in ("mean", "concat")}
+    # bester Wert je Verlustfunktion: Methoden heißen <Verfahren>_<Verlust>
+    loss_of = g.index.get_level_values(0).str.rsplit("_", n=1).str[1]
+    best_loss = g.groupby([loss_of, g.index.get_level_values(1), g.index.get_level_values(2)]).max()
     lines = []
-    quer = len(ks) > 2
-    lines.append("\\begin{sidewaystable}\n\\centering" if quer else "\\begin{table}[p]\n\\centering")
+    lines.append("\\begin{table}[p]\n\\centering")
     extra = ""  # seit 15.10.2026 alle Mean-Werte exakt aus cv_summary.json, keine gerundeten Fold-Werte mehr
     sdnote = ("" if key != "inshop10" else
               " Die großen Standardabweichungen bei LP mit ArcFace bei 25 und 50\\,\\% entstehen, weil dort einzelne Fold-Modelle deutlich schlechter sind.")
-    lines.append(f"\\caption[Test-MAP@R {name}]{{Test-MAP@R in \\% auf {name}, Mittel $\\pm$ Standardabweichung über fünf Seeds. M: einzelne Fold-Modelle (Mean), C: Ensemble (Concat). Fett: bester Mittelwert je Spalte.{sdnote}{extra}}}")
+    lines.append(f"\\caption[Test-MAP@R {name}]{{Test-MAP@R in \\% auf {name}, Mittel $\\pm$ Standardabweichung über fünf Seeds. M: einzelne Fold-Modelle (Mean), C: Ensemble (Concat). Fett: bester Mittelwert je Verlustfunktion, Budget und Modelltyp; zusätzlich unterstrichen: bester Mittelwert je Budget und Modelltyp.{sdnote}{extra}}}")
     lines.append(f"\\label{{tab:anhang:{key}}}\n\\footnotesize\\setlength{{\\tabcolsep}}{{4pt}}")
-    lines.append("\\begin{tabular}{@{}ll" + "S[table-format=2.2(3), retain-zero-uncertainty]" * (2 * len(ks)) + "@{}}\n\\toprule")
-    lines.append(" & & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{{fmt.format(k)}}}" for k in ks) + " \\\\")
-    lines.append("".join(f"\\cmidrule(lr){{{3 + 2 * i}-{4 + 2 * i}}}" for i in range(len(ks))))
-    lines.append("Verlust & Verfahren & " + " & ".join("{M} & {C}" for _ in ks) + " \\\\\n\\midrule")
-    for li, (lk, ln) in enumerate(LOSS.items()):
+    lines.append("\\begin{tabular}{@{}ll" + f"S[{FORMAT}]" * len(LOSS) + "@{}}\n\\toprule")
+    lines.append("Verfahren & Modell & " + " & ".join("{" + ln + "}" for ln in LOSS.values()) + " \\\\\n\\midrule")
+    for ki, k in enumerate(ks):
+        if ki:
+            lines.append("\\midrule")
+        lines.append(f"\\multicolumn{{7}}{{@{{}}l}}{{{fmt.format(k)}}} \\\\\n\\addlinespace[2pt]")
+        first_method = True
         for fk, fn in FAM.items():
-            m = f"{fk}_{lk}"
-            if (m, ks[0], "mean") not in g.index:
+            if not any((f"{fk}_{lk}", k, "mean") in g.index for lk in LOSS):
                 continue
-            cells = []
-            for k in ks:
-                a, b = g.get((m, k, "mean"), np.nan), g.get((m, k, "concat"), np.nan)
-                sa = f(a, gs.get((m, k, "mean"), np.nan)); sb = f(b, gs.get((m, k, "concat"), np.nan))
-                if abs(a - best[(k, "mean")]) < 1e-9: sa = "\\bfseries " + sa
-                if abs(b - best[(k, "concat")]) < 1e-9: sb = "\\bfseries " + sb
-                cells.append(f"{sa} & {sb}")
-            lines.append(f"{ln if fk == 'sup' else ''} & {fn} & " + " & ".join(cells) + " \\\\")
-        if li < 4:
-            lines.append("\\addlinespace[2pt]")
-    lines.append("\\bottomrule\n\\end{tabular}\n" + ("\\end{sidewaystable}" if quer else "\\end{table}"))
+            if not first_method:
+                lines.append("\\addlinespace[1pt]")
+            first_method = False
+            for sc, model in (("mean", "M"), ("concat", "C")):
+                cells = []
+                for lk in LOSS:
+                    m = f"{fk}_{lk}"
+                    x = g.get((m, k, sc), np.nan)
+                    value = f(x, gs.get((m, k, sc), np.nan))
+                    cells.append(markiert(value, x, best_loss.get((lk, k, sc), np.nan), best[(k, sc)]))
+                lines.append(f"{fn if sc == 'mean' else ''} & {model} & " + " & ".join(cells) + " \\\\")
+    lines.append("\\bottomrule\n\\end{tabular}\n\\end{table}")
     sd = r.groupby(["method", kc, "scope"])["map"].std().max()
     print(key, "max SD", round(sd, 2))
     open(OUT + f"map_{key}.tex", "w", encoding="utf-8").write("\n".join(lines) + "\n")

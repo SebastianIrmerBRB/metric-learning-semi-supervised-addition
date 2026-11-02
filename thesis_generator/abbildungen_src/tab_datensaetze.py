@@ -8,7 +8,7 @@ import datensammlung as sammlung
 STATS = sammlung.read_json("datensaetze/statistik.json")
 STUDIES = [s for s in sammlung.read_json("studies.json") if s["phase"] == 1]
 # dataset_key, Zeile, Statistik
-ROWS = [("cars", "Cars196", "cars"), ("cub", "\\ac{CUB}", "cub"), ("inshop", "In-Shop", "inshop"),
+ROWS = [("cars", "Cars196", "cars"), ("cub", "\\acs{CUB}", "cub"), ("inshop", "In-Shop", "inshop"),
         ("inshop10", "In-Shop (Klassen)", "inshop"), ("semiinat", "Semi-iNat-2021", "semiinat")]
 
 
@@ -21,7 +21,7 @@ def unique(values, what):
 
 lines = [
     "\\begin{table}[tbp]", "  \\centering",
-    "  \\caption[Datensätze und Label-Budgets]{Datensätze, Aufteilung und untersuchte Label-Budgets. $k$: gelabelte Bilder je Trainingsklasse, die übrigen Bilder der Trainingsklassen bilden den ungelabelten Pool. In-Shop-Test: Queries / Gallery. In-Shop (Klassen): Anteil vollständig gelabelter Trainingsklassen. \\ac{HPO}: Budget, bei dem die Hyperparameter gesucht werden. Klassen- und Bildzahlen für Cars196 und \\ac{CUB}~\\cite{song_deep_2016} und für In-Shop~\\cite{wang_multi-similarity_2019}, Semi-iNat-2021 in eigener Aufteilung (Abschnitt~\\ref{sec:daten}).}",
+    "  \\caption[Datensätze und Label-Budgets]{Datensätze, Aufteilung und untersuchte Label-Budgets. $k$: gelabelte Bilder je Trainingsklasse, In-Shop-Test: Querys / Gallery, In-Shop (Klassen): Anteil vollständig gelabelter Trainingsklassen, \\acs{HPO}: Budget der Hyperparametersuche. Klassen- und Bildzahlen für Cars196 und \\acs{CUB}~\\cite{song_deep_2016} und für In-Shop~\\cite{wang_multi-similarity_2019}, Semi-iNat-2021 in eigener Aufteilung (Abschnitt~\\ref{sec:daten}).}",
     "  \\label{tab:datensaetze}", "  \\setlength{\\tabcolsep}{3pt}",
     "  \\begin{tabular}{@{}lS[table-format=4.0]S[table-format=5.0]S[table-format=4.0]c>{\\raggedright\\arraybackslash}p{2.35cm}>{\\raggedright\\arraybackslash}p{1.25cm}@{}}",
     "    \\toprule", "    & \\multicolumn{2}{c}{Training} & \\multicolumn{2}{c}{Test} & & \\\\",

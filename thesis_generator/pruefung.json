@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "counts": {
+    "hpo_correlations_recomputed": 1576,
+    "hpo_studies": 235,
+    "hpo_trials": 15529,
+    "retrieval_query_method_rows": 24393,
+    "results.csv": 4500,
+    "folds.csv": 17400,
+    "ablations.csv": 1693,
+    "external.csv": 525,
+    "configurations": 1793,
+    "hyperparameters": 100418,
+    "sources": 8021
+  },
+  "errors": [],
+  "notes": [
+    "Changed since import: ablations.csv",
+    "Changed since import: details.zip",
+    "Changed since import: folds.csv",
+    "Changed since import: hyperparameters.csv",
+    "Changed since import: sources.csv"
+  ]
+}

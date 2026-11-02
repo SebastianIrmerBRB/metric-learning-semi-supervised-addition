@@ -1,0 +1,6 @@
+series,n_within_1pp,n_within_1se,second_gap_pp
+CUB,48,79,0.0240918138615
+Cars196,19,44,0.131327638465
+DeepFashionInShop,13,6,0.0897433703025
+In-Shop (classes),12,4,0.104819129752
+iNat,41,25,0.0252957609923

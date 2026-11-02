@@ -52,42 +52,55 @@ def selbst():
     return ", bei " + liste(teile) + " die reguläre Konfiguration selbst" if teile else ""
 
 
-def ausserhalb():
-    """Satz der Bildunterschrift: Sweep-Werte außerhalb der Suchräume der Phase 1 (studies.json, SLADE, Budget der HPO)."""
+KURZ = {"regularizer_target_ratio": "$\\eta$ = {}", "basis_target_ratio": "Basis-Zielgradientenverhältnis {}",
+        "update_interval_epochs": "Teacher-Aktualisierung alle {} Epochen", "cluster_ratio": "Clusterverhältnis {}",
+        "unlabeled_batch_size": "ungelabelte Batchgröße {}", "sd_margin": "Margin von $\\mathcal{{L}}_{{\\mathrm{{SD}}}}$ {}"}
+
+
+def ausserhalb_werte():
+    """Sweep-Werte außerhalb der Suchräume der Phase 1 (studies.json, SLADE, Budget der HPO): {(param, wert): Datensätze}."""
     studies = [x for x in sammlung.read_json("studies.json")
                if x["phase"] == 1 and x["method"] == "slade" and x["dataset_key"] in ("cars", "inshop")]
     space = {}
     for x in studies:
         for key, sp in x["hparam_config"]["spaces"].items():
             space.setdefault((x["dataset_key"], key), set()).add(json.dumps(sp, sort_keys=True))
-    teile = []
-    for p, satz in (("regularizer_target_ratio", "$\\eta$ = {}"), ("basis_target_ratio", "das Basis-Zielgradientenverhältnis {}"),
-                    ("update_interval_epochs", "die Teacher-Aktualisierung alle {} Epochen"),
-                    ("cluster_ratio", "das Clusterverhältnis {}"), ("unlabeled_batch_size", "die ungelabelte Batchgröße {}"),
-                    ("sd_margin", "die Margin von $\\mathcal{{L}}_{{\\mathrm{{SD}}}}$ {}")):
-        je = {}
+    aus = {}
+    for p in KURZ:
         for d, key in (("Cars196", "cars"), ("DeepFashionInShop", "inshop")):
             sp = [json.loads(v) for k, v in space.items() for v in v if k[0] == key and k[1].split(".")[-1] == p]
             assert len(sp) == 1, (key, p, sp)  # ein Suchraum je Datensatz und Parameter
             sp = sp[0]
             inside = (lambda v: any(np.isclose(v, c) for c in sp["choices"])) if "choices" in sp else \
                 (lambda v: sp["low"] - 1e-12 <= v <= sp["high"] + 1e-12)
-            je[d] = [v for v in sorted(S[(S.dataset == d) & (S.param == p)].value.unique()) if not inside(v)]
-        if je["Cars196"] == je["DeepFashionInShop"]:
-            if je["Cars196"]:
-                teile.append(satz.format(liste([val(v).replace("{,}", ",") for v in je["Cars196"]])))
-        else:
-            orte = [f"{liste([val(v).replace('{,}', ',') for v in je[d]])} auf {n}" for d, n in
-                    (("Cars196", "Cars196"), ("DeepFashionInShop", "In-Shop")) if je[d]]
-            teile.append(satz.format(" sowie ".join(orte)))
-    return "Außerhalb der Suchräume der Phase~1 liegen " + liste(teile) + ". " if teile else ""
+            for v in S[(S.dataset == d) & (S.param == p)].value.unique():
+                if not inside(v):
+                    aus.setdefault((p, float(v)), set()).add(d)
+    return aus
+
+
+AUS = ausserhalb_werte()
+
+
+def marke(p, v):
+    """Kennzeichen am Zeilenwert: außerhalb der Suchräume der Phase 1 (auf mindestens einem Datensatz)."""
+    return "$^\\dagger$" if any(q == p and np.isclose(w, v) for q, w in AUS) else ""
+
+
+def ausserhalb():
+    """Schlüssel der Bildunterschrift zu marke(), mit den Werten, die nur auf einem Datensatz außerhalb liegen."""
+    if not AUS:
+        return ""
+    nur = [KURZ[p].format(val(v).replace("{,}", ",")) + " nur auf " + ("Cars196" if ds == {"Cars196"} else "In-Shop")
+           for (p, v), ds in sorted(AUS.items()) if len(ds) == 1]
+    return "$^\\dagger$: außerhalb der Suchräume der Phase~1" + (" (" + liste(nur) + ")" if nur else "") + ". "
 
 
 L = ["\\begin{table}[p]\n\\centering",
      "\\caption[Sweeps von SLADE in Phase~2]{Sweeps einzelner Hyperparameter von SLADE (Phase~2, Seed~2, Cars196 mit $k=16$, "
-     "In-Shop mit $k=2$): Änderung der Test-MAP@R der Einzelmodelle gegenüber der regulären SLADE-Konfiguration in "
-     "Prozentpunkten, übrige Werte wie in Phase~1. Fett: Betrag über der Schwelle $2\\sqrt{2}\\,\\sigma$ (Abschnitt~\\ref{sec:m:phase2}). "
-     "Kursiv: in Phase~1 gewählter Wert, also eine Wiederholung der regulären Konfiguration" + selbst() + ". "
+     "In-Shop mit $k=2$): Änderung der Test-MAP@R (Mean) gegenüber der regulären SLADE-Konfiguration in "
+     "Prozentpunkten. Fett: Betrag über der Rauschschwelle $2\\sqrt{2}\\,\\sigma$, "
+     "kursiv: in Phase~1 gewählter Wert (Wiederholung der regulären Konfiguration" + selbst() + "). "
      + ausserhalb() + "Arc: ArcFace, Cir: Circle, "
      "NT: NT-Xent, PA: Proxy-Anchor.}",
      "\\label{tab:anhang:phase2:slade}",
@@ -98,7 +111,7 @@ L = ["\\begin{table}[p]\n\\centering",
      "Wert & " + " & ".join(LOSS_NAME[l] for _ in DS for l in LOSS) + " \\\\\n\\midrule"]
 reg = S.drop_duplicates(["dataset", "loss"]).set_index(["dataset", "loss"])
 L.append("reguläre Konfiguration [\\%] & " + " & ".join(de(reg.loc[(d, l), "regular_mean"]) for d in DS for l in LOSS) + " \\\\")
-L.append("Schwelle & " + " & ".join(de(reg.loc[(d, l), "threshold_mean"]) for d in DS for l in LOSS) + " \\\\")
+L.append("Rauschschwelle & " + " & ".join(de(reg.loc[(d, l), "threshold_mean"]) for d in DS for l in LOSS) + " \\\\")
 for p, name in PARAM:
     g = S[S.param == p]
     L.append(f"\\addlinespace\n\\multicolumn{{11}}{{@{{}}l}}{{\\emph{{{name}}}}} \\\\")
@@ -120,7 +133,7 @@ for p, name in PARAM:
                 elif abs(x.diff_mean) > x.threshold_mean:
                     c = "\\textbf{" + c + "}"
                 cells.append(c)
-        L.append(f"\\quad {val(v)} & " + " & ".join(cells) + " \\\\")
+        L.append(f"\\quad {val(v)}{marke(p, v)} & " + " & ".join(cells) + " \\\\")
 L.append("\\bottomrule\n\\end{tabular}\n\\end{table}")
 open(OUT, "w", encoding="utf-8").write("\n".join(L) + "\n")
 print("geschrieben", OUT, len(L), "Zeilen")

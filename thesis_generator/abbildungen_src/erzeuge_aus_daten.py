@@ -12,12 +12,13 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 JOBS = [
-    ("fig_konzepte", []), ("fig_phase1_uebersicht", []), ("fig_phase1_verluste", []),
+    ("fig_konzepte", []), ("fig_phase1_uebersicht", []), ("fig_phase1_verluste", []), ("fig_phase1_gewinne", []),
     ("fig_inshop10", []), ("fig_phase2", []), ("fig_geometrie_weitere", []),
-    ("fig_geometrie", []), ("fig_verlauf", []), ("fig_lp_cars", []),
+    ("fig_geometrie", []), ("tab_korrelation_budgets", []), ("fig_graphreinheit", []),
+    ("fig_verlauf", []), ("fig_lp_cars", []),
     ("fig_retrieval", ["758,5348", "dino,sup,lp", "retrieval_ergebnisse"]),
     ("tab_hauptteil", []), ("tab_anhang", []), ("tab_extern", []),
-    ("tab_phase02", []), ("tab_phase2_concat", []), ("tab_phase2_k8", []),
+    ("tab_phase02", []), ("tab_phase2_concat", []), ("tab_phase2_k8", []), ("tab_klassen_2x2", []), ("tab_beste", []),
     ("tab_slade_sweeps", []), ("tab_aufwand", []), ("k4_ensemble", []), ("fig_verzoegerung", []),
     ("tab_hpo", []), ("tab_suchraeume", []), ("tab_datensaetze", []), ("zahlen_ergebnisse", []),
     ("erstelle_uebersicht", []),
@@ -42,7 +43,7 @@ def main():
     logdir = output / "protokoll"
     logdir.mkdir(exist_ok=True)
     only = set(args.only or [])
-    if "fig_geometrie" in only:  # liest die Korrelationen, die fig_geometrie_weitere.py schreibt
+    if only & {"fig_geometrie", "tab_korrelation_budgets"}:  # lesen Dateien, die fig_geometrie_weitere.py schreibt
         only.add("fig_geometrie_weitere")
     jobs = [(n, a) for n, a in JOBS if args.only is None or n in only]
     for name, extra in jobs:

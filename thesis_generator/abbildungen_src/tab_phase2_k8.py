@@ -14,11 +14,11 @@ import pandas as pd
 RD = ""
 OUT = sammlung.output_dir("kapitel/anhang_tabellen") + "phase2_varianten_k8.tex"
 LOSS2 = ["arc", "cir", "ms", "nt", "prx"]
-LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\ac{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
-METHOD_NAME = {"lp": "LP", "lrml": "\\ac{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
+LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
+METHOD_NAME = {"lp": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 PRE = {"sup": "sup", "iscen": "lp", "lrml": "lrml", "hoffer": "hoffer", "slade": "slade"}
 NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Term abgeschaltet",
-         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter von \\UEBL", "no_warmup": "ohne Warm-up",
+         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter der \\UEBL", "no_warmup": "ohne Warm-up",
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
 SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwelle", "regularizer_target_ratio": "$\\eta$",
@@ -75,11 +75,7 @@ def f2(x):
     return "{--}" if np.isnan(x) else f"{x:.2f}"
 
 
-cap = ("\\caption[Alle Varianten der Phase~2 auf Cars196 mit $k=8$]{Alle Varianten der Phase~2 auf Cars196 mit $k=8$ "
-       "(Seed~2, Konfigurationen der Phase~1, verzögerte Patience für jeden Lauf, Abschnitt~\\ref{sec:m:phase2}) mit allen fünf "
-       "Verlustfunktionen: Test-Mean-MAP@R in \\%, aufgebaut wie Tabelle~\\ref{tab:anhang:phase2}, hier mit den Sweeps von SLADE. "
-       "Schwelle: $2\\sqrt{2}\\,\\sigma$ der jeweiligen Kombination aus den fünf Seeds der Phase~1 bei $k=8$ in Prozentpunkten. "
-       "--: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:k8}")
+cap = ("\\caption[Alle Varianten der Phase~2 auf Cars196 mit $k=8$]{Alle Varianten der Phase~2 auf Cars196 mit $k=8$ (Seed~2, verzögerte Patience für jeden Lauf), aufgebaut wie Tabelle~\\ref{tab:anhang:phase2}, hier mit den Sweeps von SLADE. Rauschschwelle aus den fünf Seeds der Phase~1 bei $k=8$. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:k8}")
 head = "\\toprule\nVariante & " + " & ".join(f"{{{LOSS_NAME[l]}}}" for l in LOSS2) + " \\\\\n\\midrule"
 L = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=2em\\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}",
@@ -90,7 +86,7 @@ L = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
 n = 0
 for m in ["lp", "lrml", "hoffer", "slade"]:
     L.append(f"\\addlinespace\n\\multicolumn{{6}}{{@{{}}l}}{{\\textit{{{METHOD_NAME[m]}}}}} \\\\*")
-    L.append("\\quad Schwelle & " + " & ".join(f"{2 * np.sqrt(2) * S8[(l, m)]:.1f}" for l in LOSS2) + " \\\\")
+    L.append("\\quad Rauschschwelle & " + " & ".join(f"{2 * np.sqrt(2) * S8[(l, m)]:.1f}" for l in LOSS2) + " \\\\")
     for v in sorted(V8[V8.method == m].variant.unique(), key=order):
         L.append(f"\\quad {label(v)} & " + " & ".join(f2(val(V8, m, v, l)) for l in LOSS2) + " \\\\")
         n += 1

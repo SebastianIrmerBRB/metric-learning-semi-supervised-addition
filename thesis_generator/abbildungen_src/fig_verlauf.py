@@ -1,4 +1,4 @@
-"""Trainingsverlauf bei k=4 (Hauptteil) und k=32 (Anhang), Cars196, Seed 2, alle fünf Verlustfunktionen.
+"""Trainingsverlauf bei k=4 (seit 26.10. nicht mehr in der Arbeit) und k=32 (Anhang), Cars196, Seed 2, alle fünf Verlustfunktionen.
 
 verlauf_k4.pdf, verlauf_k32.pdf  Mittel über fünf Verlustfunktionen und vier Folds (20 Läufe je Verfahren), jeder Lauf
     ausgerichtet am Ende seines Warm-ups: x = Epoche - Warm-up, x = 0 ist die erste Epoche mit Mechanismus (Ü: Epoche).

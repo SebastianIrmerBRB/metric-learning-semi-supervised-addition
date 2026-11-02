@@ -42,12 +42,15 @@ for (name, key, ks, step), (r, c) in zip(DATA, [(0, 0), (0, 3), (1, 0), (1, 3)])
         pdf = pdf[(pdf.metric == "mean_average_precision_at_r") & (pdf.scope == scope)].copy()
         pdf["fam"] = pdf.method.str.split("_").str[0]
         g = pdf.groupby(["fam", "k"])["mean"].agg(["mean", "min", "max"]).reset_index()
+        reihen = []
         for fi, fam in enumerate(FAMS):
             d = g[g.fam == fam].sort_values("k")
             x = d.k * (2 ** ((fi - 1.5) * dodge))
+            reihen.append((d.k.values, d["mean"].values))
             ax.vlines(x, d["min"], d["max"], color=stil.METHOD_COLORS[fam], lw=0.8)
             ax.plot(x, d["mean"], color=stil.METHOD_COLORS[fam], marker=stil.METHOD_MARKERS[fam],
-                    label=stil.METHOD_LABELS[fam])
+                    label=stil.METHOD_LABELS[fam], **stil.PUNKT)
+        stil.trend(ax, reihen, log=True, label="Trend")
         ax.axhline(0, color=stil.BLACK, lw=0.8, ls=(0, (4, 2)), zorder=1)
         ax.set_xscale("log", base=2)
         ax.set_xticks(ks, [str(k) for k in ks])
@@ -66,7 +69,7 @@ for (name, key, ks, step), (r, c) in zip(DATA, [(0, 0), (0, 3), (1, 0), (1, 3)])
     pair[0].add_patch(Rectangle((0, 1), 0.5, 0, alpha=0, clip_on=False,
                                 transform=pair[0].transAxes + ScaledTranslation(0, 30 / 72, fig.dpi_scale_trans)))
 h, l = grid[0, 0].get_legend_handles_labels()
-fig.legend(h, l, loc="outside upper center", ncol=4)
+fig.legend(h, l, loc="outside upper center", ncol=5)
 fig.supylabel("Differenz in Prozentpunkten", fontsize=10)
 fig.supxlabel("Gelabelte Bilder je Klasse $k$", fontsize=10)
 stil.save(fig, "phase1_uebersicht")

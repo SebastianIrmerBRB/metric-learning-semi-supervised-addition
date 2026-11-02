@@ -1,0 +1,30 @@
+{
+  "views": 87,
+  "assets": 37,
+  "expanded": false,
+  "overview_rows": 2728,
+  "overview_rows_by_family": {
+    "all_labels_reference": 60,
+    "external": 525,
+    "k4_ensemble": 125,
+    "phase1": 450,
+    "phase2": 800,
+    "phase2_k8": 518,
+    "phase2_klassen": 15,
+    "slade_sweeps": 235
+  },
+  "prose_checks": {
+    "hpo_studies": 235,
+    "hpo_phase1_studies": 125,
+    "lp_significant": 10,
+    "lp_tests": 100,
+    "retrieval_queries": 8131,
+    "sup_at_most2_lp_at_least5": 32,
+    "lp_at_most2_sup_at_least5": 4,
+    "correct_top6_percent": {
+      "dino": 64.04091337678842,
+      "lp": 85.03874062230969,
+      "sup": 83.84372565900053
+    }
+  }
+}

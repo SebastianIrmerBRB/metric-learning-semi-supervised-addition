@@ -45,9 +45,10 @@ F = np.linalg.solve(np.eye(N) - alpha * S, Y)
 P = F / F.sum(1, keepdims=True)
 pred = P.argmax(1)
 H = -(P * np.log(np.clip(P, 1e-12, 1))).sum(1)
-omega = 1 - H / np.log(C)
-omega = omega / omega.max()
-thr = 0.5
+omega = 1 - H / np.log(C)  # Konfidenz nach Iscen et al., Gl. 11
+omega = omega / omega.max()  # wie im Training auf das Maximum skaliert
+SCHWELLE = 0.7  # einer der Werte der Konfidenzschwelle in Phase 2
+GROSS, KLEIN = 26.0, 3.0  # Markerflächen über und unter der Schwelle
 fig, axes = plt.subplots(1, 2, figsize=(stil.TEXTWIDTH, 2.45))
 for ax in axes:
     ii, jj = np.nonzero(np.triu(W))
@@ -67,23 +68,22 @@ stil.panel(ax, "a", "$k$NN-Graph mit zwei Labels je Klasse")
 ax = axes[1]
 acc = (pred == y).mean()
 for c in range(C):
-    m = (pred == c) & (omega >= thr)
-    ax.scatter(X[m, 0], X[m, 1], s=11, color=CAT[c], zorder=2, lw=0, marker=stil.CAT_MARKERS[c])
-    m = (pred == c) & (omega < thr)
-    ax.scatter(X[m, 0], X[m, 1], s=11, facecolor="white", edgecolor=CAT[c], zorder=2, lw=0.7, marker=stil.CAT_MARKERS[c])
+    for m, s in (((pred == c) & (omega >= SCHWELLE), GROSS), ((pred == c) & (omega < SCHWELLE), KLEIN)):
+        ax.scatter(X[m, 0], X[m, 1], s=s, color=CAT[c], zorder=2, lw=0, marker=stil.CAT_MARKERS[c])
 wrong = pred != y
-ax.scatter(X[wrong, 0], X[wrong, 1], s=34, marker="x", color=stil.BLACK, lw=0.8, zorder=4)
+# Ringe statt Kreuze: Kreuze verdecken die kleinen Marker mit niedriger Konfidenz
+ax.scatter(X[wrong, 0], X[wrong, 1], s=30, marker="o", facecolor="none", edgecolor=stil.BLACK, lw=0.6, zorder=4)
 for c in range(C):
     m = lab[y[lab] == c]
     ax.scatter(X[m, 0], X[m, 1], s=42, color=CAT[c], edgecolor=stil.BLACK, lw=0.8, zorder=3, marker=stil.CAT_MARKERS[c])
 stil.panel(ax, "b", "Propagierte Pseudo-Labels")
-leg = [Line2D([], [], marker="o", ls="", color=stil.NEUTRAL, label=r"Konfidenz $\tilde\omega\geq\mathrm{0{,}5}$"),
-       Line2D([], [], marker="o", ls="", mfc="white", mec=stil.NEUTRAL, label=r"Konfidenz $\tilde\omega<\mathrm{0{,}5}$"),
-       Line2D([], [], marker="x", ls="", color=stil.BLACK, ms=5, label="falsches Pseudo-Label")]
+leg = [Line2D([], [], marker="o", ls="", color=stil.NEUTRAL, ms=np.sqrt(GROSS), label=r"Konfidenz $\tilde\omega\geq\mathrm{0{,}7}$"),
+       Line2D([], [], marker="o", ls="", color=stil.NEUTRAL, ms=np.sqrt(KLEIN), label=r"Konfidenz $\tilde\omega<\mathrm{0{,}7}$"),
+       Line2D([], [], marker="o", ls="", mfc="none", mec=stil.BLACK, mew=0.6, ms=np.sqrt(30), label="falsches Pseudo-Label")]
 fig.legend(handles=leg, loc="outside lower center", ncol=3)
 stil.save(fig, "lp_toy")
-print("LP toy: acc", round(acc, 3), "wrong", int(wrong.sum()), "low conf", int((omega < thr).sum()),
-      "wrong&low", int((wrong & (omega < thr)).sum()))
+print("LP toy: acc", round(acc, 3), "wrong", int(wrong.sum()), "unter Schwelle", int((omega < SCHWELLE).sum()),
+      "davon falsch", int((wrong & (omega < SCHWELLE)).sum()))
 
 # ------------------------------------------------------------------ Hoffer-Skala
 s = np.logspace(np.log10(0.25), np.log10(32), 300)

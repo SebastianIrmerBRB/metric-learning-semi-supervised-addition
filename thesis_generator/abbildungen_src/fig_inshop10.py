@@ -16,17 +16,22 @@ BEST_FAM, BEST_LOSS = BEST.split("_")
 fig, axes = plt.subplots(1, 2, figsize=(stil.TEXTWIDTH, 2.9), sharey=True)
 ps = [5, 10, 25, 50]
 for ax, letter, scope, title in zip(axes, "ab", ["mean", "concat"], ["Mean (Einzelmodell)", "Concat (Ensemble)"]):
+    reihen = []
     for fi, fam in enumerate(["iscen", "lrml", "hoffer", "slade"]):
         d = pdf[(pdf.scope == scope) & (pdf.fam == fam)]
-        # pooled over all paired comparisons (weights = seeds per loss), as in tab:e:klassen; bars: range over losses
+        # pooled over all paired comparisons (weights = seeds per loss), as in tab:anhang:klassen; bars: range over losses
         w = d.assign(gew=d["mean"] * d["n_seeds"]).groupby("budget_percent")
         g = pd.DataFrame({"mean": w.gew.sum() / w.n_seeds.sum(), "min": w["mean"].min(), "max": w["mean"].max()}).reindex(ps)
         x = [p * (2 ** ((fi - 1.5) * 0.06)) for p in ps]
+        reihen.append((ps, g["mean"].values))
         ax.vlines(x, g["min"], g["max"], color=stil.METHOD_COLORS[fam], lw=0.8)
         ax.plot(x, g["mean"], color=stil.METHOD_COLORS[fam], marker=stil.METHOD_MARKERS[fam],
-                label=stil.METHOD_LABELS[fam])
+                label=stil.METHOD_LABELS[fam], **stil.PUNKT)
     d = pdf[(pdf.scope == scope) & (pdf.method == BEST)].set_index("budget_percent").reindex(ps)
-    ax.plot(ps, d["mean"], color=stil.METHOD_COLORS[BEST_FAM], ls=(0, (1, 1.5)), marker="none",
+    # beste Einzelkonfiguration: hohle Marke des Verfahrens auf einem fünften Versatzplatz (nicht im Trend)
+    stil.trend(ax, reihen, log=True, label="Trend")
+    ax.plot([p * (2 ** (2.5 * 0.06)) for p in ps], d["mean"], color=stil.METHOD_COLORS[BEST_FAM],
+            marker=stil.METHOD_MARKERS[BEST_FAM], ls="none", ms=5.0, mfc="white", mew=1.0,
             label=f"{stil.METHOD_LABELS[BEST_FAM]} mit {stil.LOSS_LABELS[BEST_LOSS]}")
     ax.axhline(0, color=stil.BLACK, lw=0.8, ls=(0, (4, 2)))
     ax.set_xscale("log")
@@ -36,6 +41,6 @@ for ax, letter, scope, title in zip(axes, "ab", ["mean", "concat"], ["Mean (Einz
     stil.panel(ax, letter, title)
 axes[0].set_ylabel("Differenz in Prozentpunkten")
 h, l = axes[0].get_legend_handles_labels()
-fig.legend(h, l, loc="outside upper center", ncol=5)
+fig.legend(h, l, loc="outside upper center", ncol=6, columnspacing=1.2)
 fig.supxlabel("Vollständig gelabelte Trainingsklassen in %", fontsize=10)
 stil.save(fig, "inshop10_gewinn")
