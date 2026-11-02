@@ -3,8 +3,11 @@ gelabelten Klassen (5, 10, 25, 50 %): Phase-2-Geometrieläufe (seit 09.10.2026 i
 Verlustfunktionen, Maße nach jeder Epoche auf allen Bildern (sammle_geometrie.py semiinat inshop inshop10).
 
 anhang_tabellen/geometrie_weitere_budgets.tex  Maße am gewählten Stand für alle Budgets (Anhang)
-generiert/geometrie/korrelation_weitere.csv     Korrelationen je Datensatz, gelesen von fig_geometrie.py (tab:e:korrelation)
-generiert/geometrie/ausgeschlossen_weitere.csv  ausgeschlossene Kombinationen mit Grund
+generiert/geometrie/korrelation_weitere.csv     Korrelationen je Datensatz, gelesen von fig_geometrie.py und
+                                                tab_korrelation_budgets.py (tab:e:korrelation)
+generiert/geometrie/mittel_weitere.csv          Mittel je Verfahren und Budget, gelesen von tab_korrelation_budgets.py
+generiert/geometrie/ausgeschlossen_weitere.csv  ausgeschlossene Kombinationen mit Grund, gelesen von tab_korrelation_budgets.py
+Fehlen die drei Dateien oder sind sie veraltet, führt datensammlung.read_csv dieses Skript selbst aus (26.10.2026).
 
 pi aus den Spalten *_multi (nur Klassen mit mindestens zwei Bildern, Methodik). Ausgeschlossen werden Folds ohne Testwert,
 Folds, deren Verfolgung vor der gewählten Epoche endet, und Kombinationen, in denen ein Fold den Head vor dem Training
@@ -85,13 +88,7 @@ AHEAD = ("{Budget} & {Modell} & {$n$} & {$\\rho$} & {$\\pi_{\\mathrm{ratio}}$} &
 A = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\begin{longtable}{@{}ll S[table-format=1.0] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]"
      " S[table-format=2.1] S[table-format=3.0] S[table-format=2.1]@{}}",
-     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie am per Validierung gewählten Stand für alle "
-     "Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed~2, Mittel über vier Folds "
-     "und die Verlustfunktionen, die bei diesem Budget für alle fünf Verfahren vollständig vorliegen, Spalte $n$). "
-     "$\\rho$ und $\\pi_{\\mathrm{ratio}}$ auf dem Trainingspool, $\\pi^{U}_{\\mathrm{intra}}$ auf seinen ungelabelten Bildern, "
-     "Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in "
-     "Tabelle~\\ref{tab:e:geometrie}, "
-     "$\\pi^{V}_{\\mathrm{ratio}}$ auf den Validierungsklassen.}\\label{tab:a:geometrie:weitere}\\\\",
+     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed~2, Mittel über die vier Folds und die $n$ Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen). $\\pi^{U}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{V}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle~\\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
      "\\toprule", AHEAD, "\\endfirsthead",
      "\\multicolumn{10}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\", "\\toprule", AHEAD, "\\endhead",
      "\\bottomrule", "\\endlastfoot"]
@@ -108,7 +105,7 @@ for i, ds in enumerate(DS):
             x = g.loc[m]
             first = budget_label(ds, k) if m == "sup" else ""
             pr = "{--}" if ds == "inshop10" else n(x.proto, 1)
-            name = LB[m].replace("LRML", "\\ac{LRML}").replace("ÜBl.", "\\UEBL")
+            name = LB[m].replace("LRML", "\\acs{LRML}").replace("ÜBl.", "\\UEBL")
             A.append(f"{first} & {name} & {len(ok) if m == 'sup' else ''} & {n(x.rho)} & {n(x.pr)} & {n(x.unl)} & {n(x.vpr)} & "
                      f"{pr} & {x.ep:.0f} & {n(x.m, 1)} \\\\")
 A.append("\\end{longtable}\n\\endgroup")

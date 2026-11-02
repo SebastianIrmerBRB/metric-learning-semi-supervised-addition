@@ -10,8 +10,8 @@ TAB = sammlung.output_dir("kapitel/ergebnisse_tabellen")
 V = sammlung.read_csv("phase2/variants.csv")
 V["variant"] = V.variant.fillna("defaults").replace("", "defaults")
 LOSS2 = ["arc", "cir", "ms", "nt", "prx"]
-LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\ac{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
-METHOD_NAME = {"lp": "LP", "lrml": "\\ac{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
+LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
+METHOD_NAME = {"lp": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 
 
 def val2(ds, m, var, loss="cir"):
@@ -40,7 +40,7 @@ for ds, path, k in (("Cars196", "cars_ergebnisse", 16), ("DeepFashionInShop", "i
 
 ROWS2 = [("zero_weight", "SSL-Term abgeschaltet"),
          ("pool_labeled", "ohne ungelabelte Bilder"),
-         ("sup_all_shared", "Hyperparameter von \\UEBL"),
+         ("sup_all_shared", "Hyperparameter der \\UEBL"),
          ("no_warmup", "ohne Warm-up"),
          ("pl_once|graph_once", "Labels bzw.\\ Graph eingefroren"),
          ("graph_rewired", "Graph umverdrahtet"),
@@ -60,30 +60,43 @@ def delta(ds, m, key, loss="cir"):
 BLOCKS = [("lp", ROWS2[:8]), ("lrml", ROWS2[:8]), ("hoffer", ROWS2[:4]), ("slade", ROWS2[:4])]
 
 
-def loss_table(ds, caption, label, path):
+def marke(x, thr):
+    """Fett, wenn die Änderung über der Rauschschwelle liegt (ungerundet verglichen, Abschnitt sec:m:phase2)."""
+    return ("\\bfseries " if abs(x) > thr else "") + cell(x)
+
+
+def loss_table(caption, label, path):
+    """Cars196 und In-Shop nebeneinander, eine Spalte je Verlustfunktion und Datensatz, Zeilen wie in BLOCKS."""
+    def zeile(name, f):
+        return name + " & " + " & ".join(f(ds, l) for ds in ("Cars196", "DeepFashionInShop") for l in LOSS2) + " \\\\"
+    S = "*{5}{S[table-format=+2.1, retain-explicit-plus]}"
     B = ["\\begin{table}[tbp]\n\\centering", caption, f"\\label{{{label}}}",
-         "\\footnotesize\\setlength{\\tabcolsep}{4pt}\\renewcommand{\\arraystretch}{0.95}\n\\begin{tabular}{@{}l *{5}{S[table-format=+2.1, retain-explicit-plus]}@{}}\n\\toprule",
-         "{Variante} & " + " & ".join(f"{{{LOSS_NAME[l]}}}" for l in LOSS2) + " \\\\\n\\midrule",
-         "\\UEBL (MAP@R) & " + " & ".join(f"{val2(ds, 'sup', 'defaults', l):.1f}" for l in LOSS2) + " \\\\"]
+         "\\footnotesize\\setlength{\\tabcolsep}{3.2pt}\\setlength{\\hfuzz}{1.2pt}\\renewcommand{\\arraystretch}{0.95}\n\\begin{tabular}{@{}l " + S
+         + " @{\\hspace{12pt}} " + S + "@{}}\n\\toprule",
+         "& \\multicolumn{5}{c}{\\textbf{Cars196} ($k=16$)} & \\multicolumn{5}{c}{\\textbf{In-Shop} ($k=2$)} \\\\\n\\cmidrule(lr){2-6}\\cmidrule(l){7-11}",
+         "{Variante} & " + " & ".join(["{Arc}", "{Cir}", "{\\acs{MS}}", "{NT}", "{PA}"] * 2) + " \\\\\n\\midrule",
+         zeile("\\textit{\\UEBL (MAP@R)}", lambda ds, l: f"{val2(ds, 'sup', 'defaults', l):.1f}")]
     for m, rows in BLOCKS:
-        B.append(f"\\addlinespace\n\\multicolumn{{6}}{{@{{}}l}}{{\\textit{{{METHOD_NAME[m]}}}}} \\\\")
-        B.append("\\quad regulär (MAP@R) & " + " & ".join(f"{val2(ds, m, 'defaults', l):.1f}" for l in LOSS2) + " \\\\")
-        B.append("\\quad Schwelle & " + " & ".join(f"{THR[(ds, l, m)]:.1f}" for l in LOSS2) + " \\\\")
+        B.append(f"\\midrule\n\\multicolumn{{11}}{{@{{}}l}}{{\\textbf{{{METHOD_NAME[m]}}}}} \\\\")
+        B.append(zeile("\\quad\\textit{regulär (MAP@R)}", lambda ds, l: f"{val2(ds, m, 'defaults', l):.1f}"))
+        B.append(zeile("\\quad\\textit{Rauschschwelle}", lambda ds, l: f"{THR[(ds, l, m)]:.1f}"))
+        B.append("\\cmidrule{1-11}")
         for key, lab in rows:
-            B.append(f"\\quad {lab} & " + " & ".join(cell(delta(ds, m, key, l)) for l in LOSS2) + " \\\\")
+            if key.startswith("pl_once"):
+                B.append("\\addlinespace[2pt]")  # Eingriffe in Pseudo-Labels und Graph als eigene Gruppe
+            B.append(zeile("\\quad " + lab.replace("Labels bzw.\\ Graph eingefroren", "eingefroren"),
+                           lambda ds, l: marke(delta(ds, m, key, l), THR[(ds, l, m)])))
     B.append("\\bottomrule\n\\end{tabular}\n\\end{table}")
     open(path, "w", encoding="utf-8").write("\n".join(B) + "\n")
 
 
 AN = sammlung.output_dir("kapitel/anhang_tabellen")
-loss_table("Cars196", '\\caption[Ablationen der Phase~2 auf Cars196]{Ablationen der Phase~2 auf Cars196 ($k=16$, Seed~2) mit allen fünf Verlustfunktionen: Änderung der Test-MAP@R (Mean) gegenüber der regulären Konfiguration desselben Mechanismus und derselben Verlustfunktion in Prozentpunkten. \\UEBL und regulär: absolute Werte in \\%. Schwelle: $2\\sqrt{2}\\,\\sigma$ der jeweiligen Kombination, ab der ein Unterschied als Befund gilt (Abschnitt~\\ref{sec:m:phase2}). SSL-Term abgeschaltet: \\ac{SSL}-Konfiguration ohne \\ac{SSL}-Term, bei LP ohne Pseudo-Labels. Ohne ungelabelte Bilder: \\ac{SSL}-Hyperparameter, der Mechanismus erhält die gelabelten Bilder. Hyperparameter von \\UEBL: mit ungelabelten Bildern. Ohne Warm-up: wo Phase~1 kein Warm-up gewählt hat, dieselbe Einstellung wie die reguläre Konfiguration, Abweichungen zeigen dann nur die Streuung wiederholter Läufe. Eingefroren: Pseudo-Labels (LP) bzw.\\ Graph (\\ac{LRML}) nach dem Warm-up nicht mehr erneuert. Oracle-Kanten entfernt: alle Kanten zwischen verschiedenen Klassen entfernt. Oracle-Varianten verwenden verdeckte Labels und dienen nur der Diagnose. SLADE wurde außer in der $2\\times2$-Zerlegung nur mit abgeschaltetem \\ac{SSL}-Term, ohne Warm-up und in Sweeps untersucht (Tabelle~\\ref{tab:anhang:phase2:slade}). Die Oracle-Labels zeigt Abbildung~\\ref{fig:e:lpqualitaet}, alle Einzelwerte stehen in Anhang~\\ref{chap:anhang:phase2}.}',
+loss_table('\\caption[Ablationen der Phase~2 auf Cars196 und In-Shop]{Ablationen der Phase~2 auf Cars196 und In-Shop (Seed~2): Änderung der Test-MAP@R (Mean) gegenüber der regulären Konfiguration in Prozentpunkten, \\UEBL und regulär absolut in \\%. Eingriffe wie in den Tabellen~\\ref{tab:phase2:eingriffe} und~\\ref{tab:m:2x2}, eingefroren: Pseudo-Labels bzw.\\ Graph, Rauschschwelle $2\\sqrt{2}\\,\\sigma$ (Abschnitt~\\ref{sec:m:phase2}). Fett: Änderung größer als die Rauschschwelle. Ohne Warm-up: gleich der regulären Konfiguration, wo Phase~1 kein Warm-up gewählt hat. Arc: ArcFace, Cir: Circle, NT: NT-Xent, PA: Proxy-Anchor.}',
            "tab:e:ablationen:verluste", TAB + "ablationen_verluste.tex")
-loss_table("DeepFashionInShop", '\\caption[Ablationen der Phase~2 auf In-Shop]{Ablationen der Phase~2 auf In-Shop ($k=2$, Seed~2) mit allen fünf Verlustfunktionen, aufgebaut wie Tabelle~\\ref{tab:e:ablationen:verluste}. Die Oracle-Labels zeigt Abbildung~\\ref{fig:e:lpqualitaet}, die Sweeps Abbildung~\\ref{fig:e:sweeps:inshop}, alle Einzelwerte Tabelle~\\ref{tab:anhang:phase2:inshop}.}',
-           "tab:e:ablationen:inshop", TAB + "ablationen_inshop.tex")
 
 # Anhang: alle Varianten als absolute Test-Mean-MAP@R, je Datensatz eine Tabelle mit allen fünf Verlustfunktionen
 NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Term abgeschaltet",
-         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter von \\UEBL", "no_warmup": "ohne Warm-up",
+         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter der \\UEBL", "no_warmup": "ohne Warm-up",
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
 SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwelle", "regularizer_target_ratio": "$\\eta$",
@@ -123,7 +136,7 @@ def all_variants(ds, caption, path):
     n = 0
     for m in ["lp", "lrml", "hoffer", "slade"]:
         L.append(f"\\addlinespace\n\\multicolumn{{6}}{{@{{}}l}}{{\\textit{{{METHOD_NAME[m]}}}}} \\\\*")
-        L.append("\\quad Schwelle & " + " & ".join(f"{THR[(ds, l, m)]:.1f}" for l in LOSS2) + " \\\\")
+        L.append("\\quad Rauschschwelle & " + " & ".join(f"{THR[(ds, l, m)]:.1f}" for l in LOSS2) + " \\\\")
         for v in sorted(V[(V.dataset == ds) & (V.method == m)].variant.unique(), key=order):
             L.append(f"\\quad {label(v)} & " + " & ".join(f2(val2(ds, m, v, l)) for l in LOSS2) + " \\\\")
             n += 1
@@ -132,7 +145,7 @@ def all_variants(ds, caption, path):
     print(path, n, "Zeilen")
 
 
-all_variants("Cars196", "\\caption[Alle Varianten der Phase~2 auf Cars196]{Alle Varianten der Phase~2 auf Cars196 ($k=16$, Seed~2) mit allen fünf Verlustfunktionen: Test-Mean-MAP@R in \\%. Die Differenzen zur regulären Konfiguration und zu \\UEBL ergeben sich aus den Zeilen \\enquote{reguläre Konfiguration} und \\UEBL. Schwelle: $2\\sqrt{2}\\,\\sigma$ der jeweiligen Kombination in Prozentpunkten (Abschnitt~\\ref{sec:m:phase2}). Bezeichnungen der Varianten wie in Tabelle~\\ref{tab:e:ablationen:verluste}. Bei \\ac{LRML} sind \\enquote{ohne Warm-up} und \\enquote{Warm-up $= 0$} dieselbe Einstellung. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2}",
+all_variants("Cars196", "\\caption[Alle Varianten der Phase~2 auf Cars196]{Alle Varianten der Phase~2 auf Cars196 ($k=16$, Seed~2): Test-MAP@R (Mean) in \\%. Bezeichnungen wie in den Tabellen~\\ref{tab:phase2:eingriffe} und~\\ref{tab:m:2x2}, Rauschschwelle $2\\sqrt{2}\\,\\sigma$ in Prozentpunkten (Abschnitt~\\ref{sec:m:phase2}). Bei \\acs{LRML} sind \\enquote{ohne Warm-up} und \\enquote{Warm-up $= 0$} dieselbe Einstellung. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2}",
              AN + "phase2_varianten.tex")
-all_variants("DeepFashionInShop", "\\caption[Alle Varianten der Phase~2 auf In-Shop]{Alle Varianten der Phase~2 auf In-Shop ($k=2$, Seed~2) mit allen fünf Verlustfunktionen, aufgebaut wie Tabelle~\\ref{tab:anhang:phase2}: Test-Mean-MAP@R in \\%. Die $2\\times2$-Zerlegung besteht aus \\UEBL und den Zeilen \\enquote{reguläre Konfiguration}, \\enquote{ohne ungelabelte Bilder} und \\enquote{Hyperparameter von \\UEBL}. SLADE wurde außer in der $2\\times2$-Zerlegung nur mit abgeschaltetem \\ac{SSL}-Term, ohne Warm-up und in Sweeps untersucht (Tabelle~\\ref{tab:anhang:phase2:slade}). --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:inshop}",
+all_variants("DeepFashionInShop", "\\caption[Alle Varianten der Phase~2 auf In-Shop]{Alle Varianten der Phase~2 auf In-Shop ($k=2$, Seed~2), aufgebaut wie Tabelle~\\ref{tab:anhang:phase2}. Fehlende SLADE-Werte: nicht untersucht, Sweeps in Tabelle~\\ref{tab:anhang:phase2:slade}. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:inshop}",
              AN + "phase2_varianten_inshop.tex")

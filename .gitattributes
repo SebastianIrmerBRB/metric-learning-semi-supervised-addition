@@ -7,4 +7,5 @@
 *.zip binary
 configs/other/** -text
 configs/used/originals/** -text
-thesis_generator/daten/** -text whitespace=cr-at-eol
+# Preserve the submission snapshot bytes so SHA256SUMS also works on Windows.
+thesis_generator/** -text whitespace=cr-at-eol

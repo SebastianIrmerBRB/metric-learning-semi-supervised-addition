@@ -103,8 +103,8 @@ P0_BLOCKS = [
     ("slade", "SLADE", [
         ("loss.NTXentLoss.temperature", "NT-Xent $\\tau$"), (WARMUP, "Warm-up [Epochen]"),
         (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße"), (RP + "beta", "SLADE $\\beta$"),
-        (RP + "basis_warmup_epochs", "Basis-Warm-up [Epochen]"), (RP + "sd_margin", "SD-Margin (\\texttt{sd\\_margin})"),
-        (RP + "sd_variance_weight", "SD-Varianzgewicht $\\lambda_v$"), (RP + "contrastive_pos_margin", "Positive kontrastive Margin"),
+        (RP + "basis_warmup_epochs", "Basis-Warm-up [Epochen]"), (RP + "sd_margin", "Margin von $\\mathcal{L}_{\\mathrm{SD}}$ (\\texttt{sd\\_margin})"),
+        (RP + "sd_variance_weight", "Varianzgewicht $\\lambda_v$ von $\\mathcal{L}_{\\mathrm{SD}}$"), (RP + "contrastive_pos_margin", "Positive kontrastive Margin"),
         (RP + "contrastive_neg_margin", "Negative kontrastive Margin"), ("ssl_config.update_interval_epochs", "Aktualisierung [Epochen]")]),
 ]
 
@@ -286,7 +286,7 @@ PHASE1_HEAD = [
     "\\newcommand*{\\spFuenf}[1]{\\multicolumn{5}{>{\\centering\\arraybackslash}p{\\dimexpr0.775\\textwidth-26pt+8\\tabcolsep\\relax}}{#1}}",
     "\\small\\setstretch{1}", "\\setlength{\\tabcolsep}{2.5pt}", "\\renewcommand{\\arraystretch}{1.15}",
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=1em\\hangafter=1}p{0.22\\textwidth}*{5}{>{\\centering\\arraybackslash}p{\\dimexpr0.155\\textwidth-5.2pt\\relax}}@{}}",
-    "\\caption[Hyperparametersuchräume der Phase~1]{Hyperparametersuchräume der Phase~1, gelesen aus den Konfigurationen der ausgewerteten Studien.}\\label{tab:hyperparameter-spaces}\\\\",
+    "\\caption[Hyperparametersuchräume der Phase~1]{Hyperparametersuchräume der Phase~1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\\label{tab:hyperparameter-spaces}\\\\",
     "\\toprule", "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endfirsthead",
     "\\multicolumn{6}{l}{\\tablename~\\thetable: Phase~1 (Fortsetzung)}\\\\", "\\toprule",
     "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endhead", "\\midrule",
@@ -345,7 +345,7 @@ def protocol():
         n, start = one(st, "n_trials", "hparam_config"), one(st, "tpe_startup_trials", "hparam_config")
         if one(st, "sampler", "hparam_config") != "tpe":
             raise ValueError("sampler")
-        return f"{n}: zuerst {start} zufällige Startup-Trials, danach {n - start} \\acs{{TPE}}-Trials"
+        return f"{n}: zuerst {start} zufällige Versuche, danach {n - start} \\acs{{TPE}}-Versuche"
 
     def sampler(st, d):
         params = one(st, "sampler_params", "hparam_config")
@@ -377,10 +377,10 @@ def protocol():
     pruning = per(lambda st, d: {"none": "keines"}[one(st, "pruner", "hparam_config")])
     rows = [("Label-Budget der \\acs{HPO}", " & ".join(per(budget))),
             ("Folds (klassendisjunkt)", " & ".join(str(c) for c in per(lambda st, d: one(st, "cv_k")))),
-            ("Trials je Studie", span(per(trials))), ("Sampler", span(per(sampler))), ("Pruning", span(pruning)),
+            ("Versuche je Suche", span(per(trials))), ("Sampler", span(per(sampler))), ("Pruning", span(pruning)),
             ("Seeds", span(per(seeds))), ("Zielgröße", span(per(target))), ("Max.\\ Epochen (Patience)", span(per(epochs))),
             ("Obergrenze des Gradienten\\-verhältnisses", span(per(caps))),
-            ("Gesuchte Hyperparameter je Studie", span(per(counts)))]
+            ("Gesuchte Hyperparameter je Suche", span(per(counts)))]
     body = []
     for i, (label, cells) in enumerate(rows):
         if i:
@@ -458,7 +458,7 @@ def fixed():
 FIXED_HEAD = [
     "\\begingroup", "\\small\\setstretch{1}", "\\setlength{\\tabcolsep}{4pt}", "\\renewcommand{\\arraystretch}{1.12}",
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash}p{0.13\\textwidth}>{\\raggedright\\arraybackslash}p{0.30\\textwidth}>{\\raggedright\\arraybackslash}p{\\dimexpr0.57\\textwidth-4\\tabcolsep\\relax}@{}}",
-    "\\caption[Fest gesetzte Einstellungen der SSL-Verfahren]{Fest gesetzte Einstellungen der SSL-Verfahren in den Phase-1-Studien (nicht gesucht, auf allen Datensätzen gleich, sofern nicht anders angegeben).}\\label{tab:phase1:feste-einstellungen}\\\\",
+    "\\caption[Fest gesetzte Einstellungen der SSL-Verfahren]{Fest gesetzte Einstellungen der SSL-Verfahren in den Phase-1-Suchen (nicht gesucht, auf allen Datensätzen gleich, sofern nicht anders angegeben).}\\label{tab:phase1:feste-einstellungen}\\\\",
     "\\toprule", "Verfahren & Einstellung & Wert \\\\", "\\midrule", "\\endfirsthead",
     "\\multicolumn{3}{l}{\\tablename~\\thetable: Fortsetzung}\\\\", "\\toprule", "Verfahren & Einstellung & Wert \\\\",
     "\\midrule", "\\endhead", "\\bottomrule", "\\endlastfoot"]

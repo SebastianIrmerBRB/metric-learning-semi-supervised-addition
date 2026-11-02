@@ -56,6 +56,54 @@ TOL = {
 PALETTE = [TOL["blue"], TOL["red"], TOL["green"], TOL["purple"], TOL["yellow"], TOL["cyan"]]
 MARKERS = ["s", "^", "D", "v", "P", "X"]
 
+# Gemessene Einstellungen (Budget, Klassenanteil, Anteil falscher Labels, Sweep-Wert) als Punkte ohne Verbindungslinie
+# (Betreuer, 01.11.2026): Eine Linie legt Werte zwischen den Messpunkten nahe, die nicht gemessen wurden. Überlappungen
+# verhindert ein leichter seitlicher Versatz (versatz), kein weißer Ring, der Dreiecke und "P" zu klein wirken ließ.
+# Verläufe über die Epochen bleiben Linien, dort ist jede Epoche gemessen.
+PUNKT = dict(ls="none", ms=5.0)
+
+
+def versatz(x, i, n, schritt, log=True):
+    """Leichter seitlicher Versatz der Serie i von n um die gemeinsame Position, damit sich Punkte nicht verdecken.
+    log=True: multiplikativ um schritt Dekaden je Serie (logarithmische Achse), sonst additiv um schritt."""
+    import numpy as _np
+    o = (i - (n - 1) / 2) * schritt
+    return _np.asarray(x, dtype=float) * 10 ** o if log else _np.asarray(x, dtype=float) + o
+
+
+# Trend grau gestrichelt (Autor, 01.11.2026), längere Striche als die schwarze Nulllinie (4, 2), hinter den Punkten
+TREND = dict(color="#808080", lw=1.4, ls=(0, (6, 3)), zorder=1.2)
+
+
+def trend(ax, reihen, log=False, **kw):
+    """Allgemeiner Trend eines Feldes (Autor, 01.11.2026): eine Linie für alle Serien zusammen, nicht je Serie.
+    reihen: Liste von (x, y) je Serie. Je x-Wert, den alle Serien haben, wird der Median der Serien genommen (robust
+    gegen einzelne weit abliegende Serien wie ArcFace in den In-Shop-Sweeps; Werte nur einzelner Serien, etwa der
+    Phase-1-Wert in den Sweeps, gehen nicht ein). Durch die Mediane wird ein Kleinste-Quadrate-Polynom in der
+    Achsenkoordinate gelegt (log10 x bei logarithmischer Achse), quadratisch ab fünf x-Werten, linear bei drei oder
+    vier, keine Linie bei weniger. Nur über den gemessenen Bereich. Gibt die Mediane zurück."""
+    import numpy as _np
+    gemeinsam = None
+    for x, _ in reihen:
+        w = {round(float(v), 9) for v in _np.asarray(x, dtype=float)}
+        gemeinsam = w if gemeinsam is None else gemeinsam & w
+    xs = _np.array(sorted(gemeinsam or []))
+    if len(xs) < 3:
+        return None
+    ys = []
+    for v in xs:
+        werte = [float(_np.asarray(y, dtype=float)[_np.isclose(_np.asarray(x, dtype=float), v)][0]) for x, y in reihen]
+        ys.append(_np.nanmedian(werte))
+    ys = _np.array(ys)
+    u = _np.log10(xs) if log else xs
+    c = _np.polyfit(u, ys, 2 if len(xs) >= 5 else 1)
+    uu = _np.linspace(u.min(), u.max(), 200)
+    style = dict(TREND)
+    style.update(kw)
+    ax.plot(10 ** uu if log else uu, _np.polyval(c, uu), **style)
+    return xs, ys
+
+
 # Kompatibel zu den bisherigen Namen
 INK = BLACK
 MUTED = NEUTRAL

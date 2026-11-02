@@ -53,7 +53,7 @@ ax.axvline(0, color=stil.INK, lw=0.6)
 ax.set_yticks(range(len(G)))
 ax.set_yticklabels([f"{lab} ({len(d)})" for _, lab, d in G], fontsize=7)
 ax.invert_yaxis()
-ax.set_xlabel("Differenz im Test (Mean) [PP]", fontsize=8)
+ax.set_xlabel("Differenz im Test (Mean) in Prozentpunkten", fontsize=8)
 ax.margins(x=0.04)
 stil.panel(ax, "a", "je Versuch")
 ax = axes[1]
@@ -66,8 +66,8 @@ hi = max(P.d_val.max(), P.d_mean.max()) + 0.3
 ax.plot([lo, hi], [lo, hi], color=stil.MUTED, lw=0.7, ls="--", zorder=1)
 ax.axhline(0, color=stil.INK, lw=0.6)
 ax.axvline(0, color=stil.INK, lw=0.6)
-ax.set_xlabel("Differenz in der Validierung [PP]", fontsize=8)
-ax.set_ylabel("Differenz im Test (Mean) [PP]", fontsize=8)
+ax.set_xlabel("Differenz in der Validierung\nin Prozentpunkten", fontsize=8)
+ax.set_ylabel("Differenz im Test (Mean)\nin Prozentpunkten", fontsize=8)
 stil.panel(ax, "b", "Validierung und Test")
 methoden = [m for m in stil.METHOD_ORDER if (P.method == m).any()]
 fig.legend([Line2D([], [], ls="", marker=stil.METHOD_MARKERS[m], color=stil.METHOD_COLORS[m]) for m in methoden],
@@ -82,9 +82,7 @@ def num(x, nd=1):
 
 
 L = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Wirkung der verzögerten Patience]{Läufe mit einem zu früh beendeten Fold (Abschnitt~\\ref{sec:training}): "
-     "Differenz der Test-MAP@R mit verzögerter Patience minus der Test-MAP@R ohne Verzögerung, die die Arbeit berichtet, in "
-     "Prozentpunkten, Mittel und Spanne über die Läufe, und Zahl der Läufe, die mit Verzögerung besser validieren.}",
+     "\\caption[Wirkung der verzögerten Patience]{Läufe mit einem zu früh beendeten Fold (Abschnitt~\\ref{sec:training}): Test-MAP@R mit verzögerter Patience minus der ohne Verzögerung in Prozentpunkten, Mittel und Spanne über die Läufe sowie die Zahl der Läufe, die mit Verzögerung besser validieren.}",
      "\\label{tab:anhang:verzoegerung}",
      "\\small\n\\begin{tabular}{@{}l S[table-format=3.0] S[table-format=-1.2] c S[table-format=-1.2] S[table-format=3.0]@{}}"
      "\n\\toprule",

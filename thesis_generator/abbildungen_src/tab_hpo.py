@@ -1,9 +1,9 @@
 """Übernommene HPO-Konfigurationen der Phase 1 je Datensatz: kapitel/<ds>_tabellen/phase1_hpo.tex.
 
-Trial, Lernrate, Batchgröße, Warm-up, Epochengrenze und Patience aus den aufgelösten Einstellungen der Wiederholungen
-(Sicht phase1_settings), Budget und Seed der Suche aus studies.json, verzögerte Patience aus patience_delay/.
+Trial, Lernrate, Batchgröße, Warm-up, Epochengrenze, Patience und verzögerte Patience aus den aufgelösten Einstellungen
+der Wiederholungen (Sicht phase1_settings), Budget und Seed der Suche aus studies.json.
 """
-import re
+import pandas as pd
 
 import datensammlung as sammlung
 
@@ -16,8 +16,6 @@ COLUMNS = {"trial": "hparam_final_trial_number", "lr": "lr", "b": "batch_size", 
            "epochs": "epochs", "patience": "patience"}
 
 STUDIES = [s for s in sammlung.read_json("studies.json") if s["phase"] == 1]
-CHOSEN = sammlung.read_csv("patience_delay/auswahl.csv")
-DELAY_ONLY = sammlung.read_csv("patience_delay/ersatz_p40.csv")
 
 
 def unique(values, what):
@@ -37,48 +35,46 @@ def search(key):
     return f"$k={k[0]}$", seed
 
 
-def delayed(key, settings):
-    """Kombinationen, deren Läufe alle nur mit verzögerter Patience eingehen, und ob weitere Läufe sie verwenden."""
-    runs = settings.groupby("method").size()
-    named, partial = [], False
-    for group, g in DELAY_ONLY.groupby("gruppe"):
-        m = re.fullmatch(rf"phase1_{key}_([a-z]+)_([a-z]+)", group)
-        if m is None:
-            partial |= group.startswith(f"phase1_{key}_")
-        elif len(g) == runs.get(f"{m[1]}_{m[2]}", -1):
-            named.append((m[1], m[2]))
-        else:
-            partial = True
-    chosen = CHOSEN[(CHOSEN.quelle == f"phase1_{key}") & CHOSEN.wiederholung_gewaehlt].shape[0] > 0
-    names = [f"{FAM[f]} mit {LOSS[l]}" for f, l in sorted(named, key=lambda x: (list(FAM).index(x[0]), list(LOSS).index(x[1])))]
-    if chosen or partial:
-        names.append("Läufe mit zu frühem Abbruch")
+def delayed(settings):
+    """Kombinationen, die mit verzögerter Patience berichtet werden, aus den Einstellungen der berichteten Läufe."""
+    if "patience_delay_epochs" not in settings:
+        return []
+    used = settings[pd.to_numeric(settings.patience_delay_epochs, errors="coerce").fillna(0) > 0]
+    names = []
+    for method, g in used.groupby("method", sort=False):
+        fam, loss = method.rsplit("_", 1)
+        name = f"{'die ' if fam == 'sup' else ''}{FAM[fam]} mit {LOSS[loss]}"
+        if "budget_percent" in g:
+            shares = sorted(g.budget_percent.dropna().astype(int).unique())
+            if shares:
+                name += f" bei {shares[0]} bis {shares[-1]}\\% gelabelter Klassen"
+        names.append(name)
     return names
 
 
 for key, name, ep_column, small in DATA:
     settings = sammlung.read_csv(f"{key}_ergebnisse/data/phase1_settings.csv")
     budget, seed = search(key)
-    legend = "$B$: supervised bzw. gemischte Batchgröße, $T_{\\mathrm{W}}$: Warm-up-Epochen"
+    legend = "Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, $T_{\\mathrm{W}}$: Warm-up-Epochen"
     if ep_column:
         legend += ", $E/P$: Epochenlimit und Early-Stopping-Patience der Wiederholungen."
     else:
         patience = unique(settings.patience, f"Patience {key}")
-        legend += (f". Die Wiederholungen laufen mit höchstens \\num{{{settings.epochs.max()}}} Epochen und einer Patience "
+        legend += (f". Wiederholungen mit höchstens \\num{{{settings.epochs.max()}}} Epochen und einer Patience "
                    f"von {patience} Epochen")
-        names = delayed(key, settings)
+        names = delayed(settings)
         if names:
-            legend += ", " + " und ".join(names) + " mit verzögerter Patience (Abschnitt~\\ref{sec:training})"
+            legend += ". Verzögerte Patience (Abschnitt~\\ref{sec:training}) für " + " und ".join(names)
         legend += "."
     lines = ["\\begin{table}[htbp]", "\\centering",
              f"\\caption[Übernommene Konfigurationen {name}]{{Für die Wiederholungen übernommene HPO-Konfigurationen "
-             f"(Optimierung bei {budget}, Seed~{seed}). Die Trial-Nummer ist nur innerhalb der jeweiligen Studie eindeutig. "
-             f"{legend} Sämtliche Loss-, Miner- und SSL-Parameter sind im digitalen Anhang gespeichert.}}",
+             f"(Optimierung bei {budget}, Seed~{seed}). "
+             f"{legend} Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}}",
              f"\\label{{tab:{key}:hpo}}"]
     if small:
         lines.append("\\small")
     lines += ["\\begin{tabular}{@{}llrrrr" + ("r" if ep_column else "") + "@{}}", "\\toprule",
-              "Verlust & Verf. & Trial & Lernrate & $B$ & $T_{\\mathrm{W}}$" + (" & $E/P$" if ep_column else "") + " \\\\",
+              "Verlust & Verf. & Versuch & Lernrate & $B$ & $T_{\\mathrm{W}}$" + (" & $E/P$" if ep_column else "") + " \\\\",
               "\\midrule"]
     for i, (lk, ln) in enumerate(LOSS.items()):
         if i:

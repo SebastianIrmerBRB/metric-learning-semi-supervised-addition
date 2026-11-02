@@ -18,3 +18,9 @@ def frame(tdir, ep):
     # Original confidences use float16. Both their values and threshold
     # comparisons depend on retaining this dtype after a CSV round trip.
     return {c: r[c].to_numpy().astype(types[c]) for c in r}
+
+
+def adopted(ds):
+    """The two frames of fig_lp_cars with the pseudo-labels the training adopted (adopted = -1: none), per epoch."""
+    f = sammlung.read_csv(f"qualitative/lp_adopted_{ds}.csv")
+    return {int(ep): g.reset_index(drop=True) for ep, g in f.groupby("epoch")}

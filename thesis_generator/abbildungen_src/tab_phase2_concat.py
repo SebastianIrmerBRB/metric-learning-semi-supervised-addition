@@ -11,8 +11,8 @@ AN = sammlung.output_dir("kapitel/anhang_tabellen")
 V = sammlung.read_csv("phase2/variants.csv")
 V["variant"] = V.variant.fillna("defaults").replace("", "defaults")
 LOSS2 = ["arc", "cir", "ms", "nt", "prx"]
-LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\ac{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
-METHOD_NAME = {"lp": "LP", "lrml": "\\ac{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
+LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
+METHOD_NAME = {"lp": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 IS = "DeepFashionInShop"
 
 
@@ -34,7 +34,7 @@ for ds, path, k in (("Cars196", "cars_ergebnisse", 16), (IS, "inshop_ergebnisse"
         THR[(ds, loss, m)] = 2 * np.sqrt(2) * 100 * g.mean_average_precision_at_r.std(ddof=1)
 
 NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Term abgeschaltet",
-         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter von \\UEBL", "no_warmup": "ohne Warm-up",
+         "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter der \\UEBL", "no_warmup": "ohne Warm-up",
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
 SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwelle", "regularizer_target_ratio": "$\\eta$",
@@ -77,11 +77,11 @@ def all_variants(ds, caption, path):
          "\\multicolumn{6}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
          "\\bottomrule\n\\endlastfoot",
          "\\UEBL & " + " & ".join(f2(val(ds, "sup", "defaults", l)) for l in LOSS2) + " \\\\",
-         "Schwelle \\UEBL & " + " & ".join(thr(ds, l, "sup") for l in LOSS2) + " \\\\"]
+         "Rauschschwelle \\UEBL & " + " & ".join(thr(ds, l, "sup") for l in LOSS2) + " \\\\"]
     n = 0
     for m in ["lp", "lrml", "hoffer", "slade"]:
         L.append(f"\\addlinespace\n\\multicolumn{{6}}{{@{{}}l}}{{\\textit{{{METHOD_NAME[m]}}}}} \\\\*")
-        L.append("\\quad Schwelle & " + " & ".join(thr(ds, l, m) for l in LOSS2) + " \\\\")
+        L.append("\\quad Rauschschwelle & " + " & ".join(thr(ds, l, m) for l in LOSS2) + " \\\\")
         for v in sorted(V[(V.dataset == ds) & (V.method == m)].variant.unique(), key=order):
             L.append(f"\\quad {label(v)} & " + " & ".join(f2(val(ds, m, v, l)) for l in LOSS2) + " \\\\")
             n += 1
@@ -92,10 +92,10 @@ def all_variants(ds, caption, path):
     print(path, n, "Zeilen")
 
 
-SCHWELLE = "Schwelle: $2\\sqrt{2}\\,\\sigma$ in Prozentpunkten, mit $\\sigma$ der Seed-Standardabweichung der Concat-MAP@R in Phase~1 (Abschnitt~\\ref{sec:m:phase2})."
-all_variants("Cars196", "\\caption[Alle Varianten der Phase~2 auf Cars196 als Ensemble]{Alle Varianten der Phase~2 auf Cars196 wie in Tabelle~\\ref{tab:anhang:phase2}, aber als Test-Concat-MAP@R in \\%, also für das Ensemble der Fold-Heads (Seed~2, $k=16$). " + SCHWELLE + " Bezeichnungen der Varianten wie in Tabelle~\\ref{tab:e:ablationen:verluste}. --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:concat}",
+SCHWELLE = "Rauschschwelle aus der Seed-Standardabweichung der Concat-MAP@R in Phase~1 (Abschnitt~\\ref{sec:m:phase2})."
+all_variants("Cars196", "\\caption[Alle Varianten der Phase~2 auf Cars196 als Ensemble]{Alle Varianten der Phase~2 auf Cars196 wie in Tabelle~\\ref{tab:anhang:phase2}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:concat}",
              "phase2_varianten_concat.tex")
-all_variants(IS, "\\caption[Alle Varianten der Phase~2 auf In-Shop als Ensemble]{Alle Varianten der Phase~2 auf In-Shop wie in Tabelle~\\ref{tab:anhang:phase2:inshop}, aber als Test-Concat-MAP@R in \\%, also für das Ensemble der Fold-Heads (Seed~2, $k=2$). " + SCHWELLE + " Bezeichnungen der Varianten wie in Tabelle~\\ref{tab:e:ablationen:verluste}. --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:inshop:concat}",
+all_variants(IS, "\\caption[Alle Varianten der Phase~2 auf In-Shop als Ensemble]{Alle Varianten der Phase~2 auf In-Shop wie in Tabelle~\\ref{tab:anhang:phase2:inshop}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:inshop:concat}",
              "phase2_varianten_inshop_concat.tex")
 
 miss = V[V.concat_value.isna()]

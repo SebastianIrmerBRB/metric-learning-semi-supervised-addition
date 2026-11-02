@@ -1,0 +1,4 @@
+chapter,thesis_label,empirical_prose,data_files
+ergebnisse,sec:e:phase0,Preliminary searches and learning-rate boundary discussion,phase0_vergleich/trials.csv; hpo/trials.jsonl
+ergebnisse,sec:e:sensitivitaet,"Plateau counts, nearly optimal trials and parameter correlations",hpo_sensitivitaet/; hpo/; hpo_plateau.csv
+ergebnisse,fig:e:retrieval,All-query top-six accuracy and 32-versus-4 example-selection counts,qualitative/retrieval_all_queries_top6.csv; qualitative/retrieval_all_queries_provenance.json

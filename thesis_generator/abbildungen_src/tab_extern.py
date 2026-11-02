@@ -15,10 +15,21 @@ R = sammlung.read_csv("extern/laeufe.csv")
 R = R[R.seed == 2]
 ET = sammlung.output_dir("kapitel/ergebnisse_tabellen")
 AN = sammlung.output_dir("kapitel/anhang_tabellen")
-LOSS = {"arc": "ArcFace", "cir": "Circle", "ms": "\\ac{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
-METH = {"iscen": "LP", "lrml": "\\ac{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
+LOSS = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
+METH = {"iscen": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 PCT = {"Cars196": [0, 10, 25, 50, 100], "In-Shop": [0, 5, 10, 25, 50]}
 
+
+def fett(zeilen):
+    """Fett: größter Gewinn je Spalte, sofern er auf eine Nachkommastelle gerundet positiv ist. Gleichstände nach dem
+    Runden werden alle fett. zeilen: {Verfahren: (Zellen, Werte)}, gibt {Verfahren: Zellen} zurück."""
+    for j in range(len(next(iter(zeilen.values()))[1])):
+        top = max((round(v[j], 1) for _, v in zeilen.values() if v[j] == v[j]), default=0)
+        if top > 0:
+            for txt, v in zeilen.values():
+                if v[j] == v[j] and round(v[j], 1) == top:
+                    txt[j] = "\\bfseries " + txt[j]
+    return {k: txt for k, (txt, _) in zeilen.items()}
 
 def n(x, d=1, plus=False):
     return ("{--}" if np.isnan(x) else (f"{x:+.{d}f}" if plus else f"{x:.{d}f}"))
@@ -47,12 +58,7 @@ M = D[D.kind.isin(["regulär", "kontrolle"])]  # Haupttabelle: Kontrolle (Anteil
 cols = [(ds, p) for ds in PCT for p in PCT[ds]]
 nx = {(ds, p): int(M[(M.dataset == ds) & (M.pct == p)].n_external.iloc[0]) for ds, p in cols}
 T = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Externe ungelabelte Bilder]{Externe ungelabelte Bilder bei vollständig gelabelten Trainingsklassen "
-     "(Seed~2): gepaarter Gewinn der Test-MAP@R gegenüber \\UEBL mit denselben Labels und ohne externe Bilder in "
-     "Prozentpunkten, gemittelt über die fünf Verlustfunktionen. Anteil: verwendeter Anteil des externen Pools "
-     "(CompCars für Cars196, Fashion200k für In-Shop), darunter die Zahl der Bilder. Ohne: Kontrolle mit der "
-     "\\ac{SSL}-Konfiguration ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \\ac{SSL}-Term. \\UEBL: Test-MAP@R in \\%. "
-     "M: Mean, C: Concat. Positiv: Zahl der Verlustfunktionen mit positivem Gewinn (Mean) von fünf.}",
+     "\\caption[Externe ungelabelte Bilder]{Externe ungelabelte Bilder bei vollständig gelabelten Trainingsklassen (Seed~2): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL ohne externe Bilder in Prozentpunkten, Mittel über die fünf Verlustfunktionen. Anteil: genutzter Anteil von CompCars (Cars196) bzw.\\ Fashion200k (In-Shop), darunter die Bildzahl. Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \\acs{SSL}-Term. \\UEBL: Test-MAP@R in \\%. Fett: größter Gewinn je Spalte, sofern er positiv ist. M: Mean, C: Concat.}",
      "\\label{tab:e:extern}",
      "\\setlength{\\tabcolsep}{2.9pt}\n\\small\n\\begin{tabular}{@{}ll *{10}{S[table-format=+2.1, retain-explicit-plus]}@{}}\n\\toprule",
      " & & \\multicolumn{5}{c}{Cars196 + CompCars} & \\multicolumn{5}{c}{In-Shop + Fashion200k} \\\\",
@@ -64,14 +70,14 @@ T.append("\\UEBL & M & \\multicolumn{5}{c}{\\num{" + n(us["Cars196"][0]) + "}} &
 T.append(" & C & \\multicolumn{5}{c}{\\num{" + n(us["Cars196"][1]) + "}} & \\multicolumn{5}{c}{\\num{" + n(us["In-Shop"][1]) + "}} \\\\\n\\addlinespace")
 for scope, col, label in (("M", "gain_m", "Gewinn (M)"), ("C", "gain_c", "Gewinn (C)")):
     T.append(f"\\multicolumn{{2}}{{@{{}}l}}{{\\emph{{{label}}}}}" + " &" * 10 + " \\\\")
-    for m, mn in METH.items():
-        cells = [n(M[(M.dataset == ds) & (M.pct == p) & (M.method == m)][col].mean(), plus=True) for ds, p in cols]
-        T.append(f"{mn} & & " + " & ".join(cells) + " \\\\")
+    zeilen = {}
+    for m in METH:
+        v = [M[(M.dataset == ds) & (M.pct == p) & (M.method == m)][col].mean() for ds, p in cols]
+        zeilen[m] = ([n(x, plus=True) for x in v], v)
+    for m, cells in fett(zeilen).items():
+        T.append(f"{METH[m]} & & " + " & ".join(cells) + " \\\\")
     T.append("\\addlinespace")
-T.append("\\multicolumn{2}{@{}l}{\\emph{Positiv (M)}}" + " &" * 10 + " \\\\")
-for m, mn in METH.items():
-    cells = [str(int((M[(M.dataset == ds) & (M.pct == p) & (M.method == m)].gain_m > 0).sum())) for ds, p in cols]
-    T.append(f"{mn} & & " + " & ".join(f"{{{c}}}" for c in cells) + " \\\\")
+T.pop()  # kein Abstand vor \bottomrule
 T.append("\\bottomrule\n\\end{tabular}\n\\end{table}")
 open(ET + "extern.tex", "w", encoding="utf-8").write("\n".join(T) + "\n")
 
@@ -80,9 +86,9 @@ for ds, key, ext in (("Cars196", "cars", "CompCars"), ("In-Shop", "inshop", "Fas
     ps = PCT[ds]
     L = ["\\begin{table}[p]\n\\centering",
          f"\\caption[Externe ungelabelte Bilder auf {ds}]{{Test-MAP@R in \\% auf {ds} mit allen Trainingslabels und "
-         f"einem Anteil von {ext} als externem ungelabeltem Pool (Seed~2). Ohne: Kontrolle mit der \\ac{{SSL}}-Konfiguration "
-         f"ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \\ac{{SSL}}-Term. M: einzelne Fold-Modelle (Mean), C: Ensemble "
-         f"(Concat). Die Zeile \\UEBL nennt die Referenz mit denselben Labels ohne externe Bilder.}}",
+         f"einem Anteil von {ext} als externem ungelabeltem Pool (Seed~2). Ohne: Kontrolle ohne externe Bilder, "
+         f"bei Hoffer und SLADE mit abgeschaltetem \\acs{{SSL}}-Term. Zeile \\UEBL: Referenz ohne externe Bilder. "
+         f"M: Mean, C: Concat.}}",
          f"\\label{{tab:anhang:extern:{key}}}\n\\small\\setlength{{\\tabcolsep}}{{2.6pt}}",
          "\\begin{tabular}{@{}ll" + "S[table-format=2.2]" * (2 * len(ps)) + "@{}}\n\\toprule",
          " & & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{{'ohne' if p == 0 else chr(92) + 'qty{' + str(p) + '}{' + chr(92) + 'percent}'}}}" for p in ps) + " \\\\",
@@ -106,17 +112,13 @@ for ds, key, ext in (("Cars196", "cars", "CompCars"), ("In-Shop", "inshop", "Fas
 S = D[(D.dataset == "Cars196") & (D.kind.isin(["regulär", "sweep"])) & (D.method.isin(["iscen", "lrml", "slade"]))]
 ps = [10, 25, 50, 100]
 L = ["\\begin{table}[p]\n\\centering",
-     "\\caption[Nachbar- und Clusterzahl bei externen Bildern auf Cars196]{Externe ungelabelte Bilder auf Cars196 (CompCars, "
-     "Seed~2) mit veränderter Nachbarzahl (LP, \\ac{LRML}) bzw.\\ fester Clusterzahl (SLADE): gepaarter Gewinn der Test-MAP@R "
-     "gegenüber \\UEBL in Prozentpunkten, gemittelt über die fünf Verlustfunktionen, übrige Werte wie in Phase~1. Phase~1: "
-     "Nachbarzahl bzw.\\ Clusterverhältnis aus Phase~1 (Tabelle~\\ref{tab:e:extern}). Positiv: Zahl der Läufe mit positivem "
-     "Gewinn (Mean) von 20 (vier Anteile, fünf Verlustfunktionen). M: Mean, C: Concat.}",
+     "\\caption[Nachbar- und Clusterzahl bei externen Bildern auf Cars196]{Externe ungelabelte Bilder auf Cars196 (CompCars, Seed~2) mit veränderter Nachbarzahl (LP, \\acs{LRML}) bzw.\\ fester Clusterzahl (SLADE): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL, Mittel über die fünf Verlustfunktionen. Phase~1: Wert aus Phase~1 (Tabelle~\\ref{tab:e:extern}). Positiv: Läufe mit positivem Gewinn (Mean) von 20. M: Mean, C: Concat.}",
      "\\label{tab:anhang:extern:sweeps}\n\\small\\setlength{\\tabcolsep}{3.2pt}",
      "\\begin{tabular}{@{}ll" + "S[table-format=+1.1, retain-explicit-plus]" * (2 * len(ps)) + "S[table-format=1.0]@{}}\n\\toprule",
      " & & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{\\qty{{{p}}}{{\\percent}}}}" for p in ps) + " & \\\\",
      "".join(f"\\cmidrule(lr){{{3 + 2 * i}-{4 + 2 * i}}}" for i in range(len(ps))),
      "Verfahren & Wert & " + " & ".join("{M} & {C}" for _ in ps) + " & {Positiv} \\\\\n\\midrule"]
-for mi, (m, mn, what) in enumerate((("iscen", "LP", "Nachbarn"), ("lrml", "\\ac{LRML}", "Nachbarn"), ("slade", "SLADE", "Cluster"))):
+for mi, (m, mn, what) in enumerate((("iscen", "LP", "Nachbarn"), ("lrml", "\\acs{LRML}", "Nachbarn"), ("slade", "SLADE", "Cluster"))):
     g = S[S.method == m]
     vals = [np.nan] + sorted(g[g.kind == "sweep"].sweep_value.unique())
     for vi, v in enumerate(vals):

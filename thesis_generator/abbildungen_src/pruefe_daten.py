@@ -1,6 +1,7 @@
 """Validate the editable data bundle, optionally compare it to the raw exports."""
 import argparse
 import hashlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -37,6 +38,68 @@ def validate(raw=None, verify_snapshot=False):
     sources = pd.read_csv(data.DATA / "sources.csv")
     check(not sources.source_id.duplicated().any(), "Duplicate source IDs")
     sid = set(sources.source_id)
+    check(all(v.get("source_id") is None or v["source_id"] in sid for v in m["views"].values()),
+          "Unknown source_id in documented views")
+    if "submission_extension" in m:
+        for name, expected in m["submission_extension"]["snapshot_sha256"].items():
+            actual = hashlib.sha256((data.DATA / name).read_bytes()).hexdigest()
+            if actual != expected:
+                (errors if verify_snapshot else notes).append(f"Changed since submission extension: {name}")
+        study_rows = data.read_csv("hpo/studies.csv")
+        trials = [json.loads(line) for line in data.asset_bytes(m["views"]["hpo/trials.jsonl"]["member"]).splitlines()]
+        t = pd.DataFrame(trials)
+        check(not study_rows.study_id.duplicated().any(), "Duplicate HPO study ID")
+        check(not t.duplicated(["study_id", "number"]).any(), "Duplicate HPO study/trial")
+        check(set(t.study_id) == set(study_rows.study_id), "HPO trials and study inventory disagree")
+        check(set(study_rows.source_id) <= sid and set(study_rows.config_source_id) <= sid,
+              "Unknown HPO trial/config source reference")
+        actual_counts = t.groupby("study_id").size().reindex(study_rows.study_id)
+        check(np.array_equal(actual_counts.to_numpy(), study_rows.trials.to_numpy()), "Incomplete HPO trial export")
+        summaries = data.read_csv("hpo_sensitivitaet/study_stats.csv").set_index("study_id")
+        completed = t[(t.state == "COMPLETE") & t.value.notna()]
+        best = 100 * completed.groupby("study_id").value.max().reindex(summaries.index)
+        check(np.allclose(best, summaries.best_value_pct, rtol=0, atol=1e-10), "HPO best values disagree with sensitivity snapshot")
+        for study_id, g in completed.groupby("study_id"):
+            summary = summaries.loc[study_id]
+            scores = g.value.to_numpy()
+            best_trial = g.iloc[np.argsort(-scores)[0]]
+            values = best_trial.validation_fold_values
+            se = np.std(values, ddof=1) / np.sqrt(len(values)) if len(values) > 1 else np.nan
+            check(int((scores >= scores.max() - 0.01).sum()) == summary.n_within_1pp,
+                  f"HPO within-one-point count disagrees: {study_id}")
+            if np.isfinite(se):
+                check(int((scores >= scores.max() - se).sum()) == summary.n_within_1se,
+                      f"HPO within-one-standard-error count disagrees: {study_id}")
+        from scipy.stats import spearmanr
+        parameter_stats = data.read_csv("hpo_sensitivitaet/param_stats.csv")
+        random = {study: g for study, g in completed[completed.is_random].groupby("study_id")}
+        checked = 0
+        for row in parameter_stats[(parameter_stats.kind == "numeric") & parameter_stats.spearman_random_p.notna()].itertuples():
+            pairs = [(r.params.get(row.param), r.value) for r in random[row.study_id].itertuples()]
+            pairs = [(float(x), y) for x, y in pairs if isinstance(x, (int, float)) and np.isfinite(x)]
+            x, y = map(np.array, zip(*pairs))
+            if row.scale == "log":
+                x = np.log(x)
+            rho, p = spearmanr(x, y)
+            check(np.isclose(rho, row.spearman_random, atol=1e-12, rtol=0) and
+                  np.isclose(p, row.spearman_random_p, atol=1e-12, rtol=0),
+                  f"HPO Spearman statistic disagrees with retained trials: {row.study_id}/{row.param}")
+            checked += 1
+        counts["hpo_correlations_recomputed"] = checked
+        counts.update(hpo_studies=len(study_rows), hpo_trials=len(t))
+        retrieval = data.read_csv("qualitative/retrieval_all_queries_top6.csv")
+        labels = data.read_csv("qualitative/cars_test.csv").label.to_numpy()
+        check(not retrieval.duplicated(["method", "query"]).any(), "Duplicate retrieval method/query")
+        for method, g in retrieval.groupby("method"):
+            g = g.sort_values("query")
+            check(np.array_equal(g["query"], np.arange(len(labels))), f"Incomplete retrieval queries: {method}")
+            top = g[[f"neighbor_{i}" for i in range(1, 7)]].to_numpy(dtype=int)
+            check((top >= 0).all() and (top < len(labels)).all(), f"Invalid retrieval neighbor index: {method}")
+            check(not (top == g["query"].to_numpy()[:, None]).any(), f"Retrieval includes self: {method}")
+            check(np.array_equal((labels[top] == labels[:, None]).sum(axis=1), g.correct_top6),
+                  f"Retrieval correct-neighbor counts disagree with labels: {method}")
+        check(set(retrieval.method) == {"dino", "sup", "lp"}, "Missing retrieval method")
+        counts["retrieval_query_method_rows"] = len(retrieval)
     hp = pd.read_csv(data.DATA / "hyperparameters.csv", keep_default_na=False)
     check(not hp.duplicated(["config_id", "parameter"]).any(), "Duplicate hyperparameter keys")
     check(set(hp.source_id) <= sid, "Unknown hyperparameter source_id")
@@ -99,7 +162,7 @@ def validate(raw=None, verify_snapshot=False):
             check(not (g.patience == 40).any(), f"Patience 40 outside CUB: {experiment}")
     # Phase 2: every run with all four folds, Mean of the variant table equal to the mean of its runs' fold means
     ab = pd.read_csv(data.DATA / "ablations.csv", low_memory=False)
-    for experiment in ("phase2", "phase2_k8"):
+    for experiment in ("phase2", "phase2_k8", "phase2_klassen"):
         g = folds[folds.experiment == experiment].copy()
         check((g.groupby("run_id").fold.nunique() == 4).all(), f"Incomplete folds: {experiment}")
         g["variant"] = g.variant.fillna("").replace("", "defaults")
@@ -126,7 +189,8 @@ def validate(raw=None, verify_snapshot=False):
             path = raw / name
             if path.suffix != ".csv" or not path.exists():
                 continue
-            a = data.read_csv(name)
+            # Generated views: compare the copy stored in the bundle; read_csv would recompute them (fig_geometrie_weitere.py).
+            a = pd.read_csv(io.BytesIO(data.asset_bytes(view["member"]))) if view.get("derived") == "generated" else data.read_csv(name)
             b = pd.read_csv(path, low_memory=False)
             # Selected geometry views intentionally retain only required rows/columns.
             if name.startswith("geometrie/epochen_"):

@@ -1156,37 +1156,188 @@
       "member": "tables/patience_delay/pruefung.txt",
       "source_id": "s_a021823d672f2d7d",
       "selection": "all"
+    },
+    "geometrie/lp_pseudolabels_semiinat.csv": {
+      "member": "tables/geometrie/lp_pseudolabels_semiinat.csv",
+      "source_id": "s_43ea1c44591bd136",
+      "selection": "LP (iscen), every epoch with pseudo-labels, pseudo-label columns",
+      "rows": 4371,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
+    },
+    "qualitative/lp_adopted_cars.csv": {
+      "member": "qualitative/lp_adopted_cars.csv",
+      "rows": 8000,
+      "epochs": [
+        20,
+        135
+      ],
+      "pl_epochs": [
+        21,
+        136
+      ],
+      "note": "epoch: t-SNE frame after that epoch (-1: head before training); adopted: pseudo-label the training adopted for epoch pl_epoch from that state (pseudo_labels/*.npz of the run), -1 if none"
+    },
+    "qualitative/lp_adopted_semiinat.csv": {
+      "member": "qualitative/lp_adopted_semiinat.csv",
+      "rows": 8000,
+      "epochs": [
+        -1,
+        90
+      ],
+      "pl_epochs": [
+        0,
+        91
+      ],
+      "note": "epoch: t-SNE frame after that epoch (-1: head before training); adopted: pseudo-label the training adopted for epoch pl_epoch from that state (pseudo_labels/*.npz of the run), -1 if none"
+    },
+    "phase2_klassen/variants.csv": {
+      "file": "ablations.csv",
+      "where": {
+        "table_key": "phase2_klassen"
+      },
+      "columns": [
+        "dataset",
+        "k",
+        "loss",
+        "method",
+        "variant",
+        "label_de",
+        "group",
+        "cell",
+        "uses_hidden_labels",
+        "mean_value",
+        "mean_sd",
+        "mean_seeds",
+        "mean_diff_baseline",
+        "mean_p_baseline",
+        "mean_diff_supervised",
+        "mean_p_supervised",
+        "concat_value",
+        "concat_sd",
+        "concat_seeds",
+        "concat_diff_baseline",
+        "concat_p_baseline",
+        "concat_diff_supervised",
+        "concat_p_supervised"
+      ],
+      "rows": 15,
+      "source_id": "s_d37264f8aaef2802"
+    },
+    "hpo_sensitivitaet/study_stats.csv": {
+      "member": "tables/hpo_sensitivitaet/study_stats.csv",
+      "selection": "all",
+      "source_id": "s_30a898a01639f205"
+    },
+    "hpo_sensitivitaet/param_stats.csv": {
+      "member": "tables/hpo_sensitivitaet/param_stats.csv",
+      "selection": "all",
+      "source_id": "s_9bd34de235422f3e"
+    },
+    "hpo_sensitivitaet/best_params.csv": {
+      "member": "tables/hpo_sensitivitaet/best_params.csv",
+      "selection": "all",
+      "source_id": "s_60833dc5c93233bb"
+    },
+    "hpo_sensitivitaet/response_shape.csv": {
+      "member": "tables/hpo_sensitivitaet/response_shape.csv",
+      "selection": "all",
+      "source_id": "s_23b09ca72e718bbd"
+    },
+    "hpo_sensitivitaet/zahlen.txt": {
+      "member": "tables/hpo_sensitivitaet/zahlen.txt",
+      "selection": "all",
+      "source_id": "s_e697fd28cd5114f2"
+    },
+    "hpo/studies.csv": {
+      "member": "tables/hpo/studies.csv",
+      "selection": "all",
+      "rows": 235
+    },
+    "hpo/trials.jsonl": {
+      "member": "tables/hpo/trials.jsonl",
+      "selection": "All recorded trials of the 235 evaluated studies; parameters/objective/state, validation fold values and selected epochs. Full epoch logs are not included.",
+      "rows": 15529
+    },
+    "hpo/study_configs.json": {
+      "member": "tables/hpo/study_configs.json",
+      "selection": "all",
+      "rows": 235
+    },
+    "phase0_vergleich/trials.csv": {
+      "member": "tables/phase0_vergleich/trials.csv",
+      "selection": "all",
+      "source_id": "s_d048d5e7dcb4d661"
+    },
+    "phase0_vergleich/sources.json": {
+      "member": "tables/phase0_vergleich/sources.json",
+      "selection": "all",
+      "source_id": "s_3ae4fdaf042037ab"
+    },
+    "phase0_vergleich/plot_audit.json": {
+      "member": "tables/phase0_vergleich/plot_audit.json",
+      "selection": "all",
+      "source_id": "s_710dd6e97da14e28"
+    },
+    "qualitative/retrieval_all_queries_top6.csv": {
+      "member": "tables/qualitative/retrieval_all_queries_top6.csv",
+      "selection": "all",
+      "rows": 24393,
+      "source_id": "s_144ca0a558572a83"
+    },
+    "qualitative/retrieval_all_queries_provenance.json": {
+      "member": "tables/qualitative/retrieval_all_queries_provenance.json",
+      "selection": "Source embeddings and backbone feature cache hashes, extraction method and checks"
     }
   },
-  "notes": [],
+  "notes": [
+    "2026-10-27: newest eligible In-Shop k=4 supervised Circle seeds 10/11 and NT-Xent seed 8 selected; full audit in review/run_freshness_2026-10-27."
+  ],
   "files": {
     "ablations.csv": {
       "bytes": 733020,
       "sha256": "6f91a8e61b4236258ee583fbe192d24a421cf5ff2a27b1d822f7bb3db70c4b66"
     },
     "details.zip": {
-      "bytes": 11537954,
-      "sha256": "f0d547f28a2abf65ae13be17b89d6f0158ae8af9563e4355bf84967027674632"
+      "bytes": 11969498,
+      "sha256": "7dc95e737a69ad7041dc6bdb21df0e7aa9a4c00fe86c7608947a2d268bb185a9"
     },
     "external.csv": {
       "bytes": 320054,
       "sha256": "734f4fc917f444c255d86fa48dcc55ac1f0d53e8ef845b554db334b807ec8211"
     },
     "folds.csv": {
-      "bytes": 9116279,
-      "sha256": "c6425cb9015dfe7d4f21483b26d4af6afe8d505a0fb2e05898ba9ac74f484aaf"
+      "bytes": 9116862,
+      "sha256": "0d304a5cc92069e3b5d5b06a79cb05ac40972c9203333eb1fca6264f47523532"
     },
     "hyperparameters.csv": {
-      "bytes": 9891275,
-      "sha256": "c21d3e48ace3f4d644f591136fdc6c0d991f59a1b55778ba5f59ab659d5c80a2"
+      "bytes": 9899486,
+      "sha256": "a76874663c45118e8b12509e1f7a111deaf38bcdcc3f5e22483037b4a5c5086c"
     },
     "results.csv": {
-      "bytes": 2330116,
-      "sha256": "ae8740ecd992efa1ff5055e50494cac5cdafb7e071fca4aec9e2b054d2cbc8e2"
+      "bytes": 2330435,
+      "sha256": "c43587dc55cc3d549b01881336317160abe6ccf19038c763262ddb7b219aa8e4"
     },
     "sources.csv": {
-      "bytes": 2194745,
-      "sha256": "64451c220634fb67744e1c258dd5f057e658248256762d82d399cf9117de8d73"
+      "bytes": 2200404,
+      "sha256": "9bebe66917d26657a0be6cc84fa96c635289bbd79409c40546243d2075c76250"
+    }
+  },
+  "submission_extension": {
+    "date": "2026-11-02",
+    "studies": 235,
+    "trials": 15529,
+    "description": "Added evidence for prose-only empirical claims: Phase-0 selection, HPO sensitivity, and all-query retrieval counts.",
+    "snapshot_sha256": {
+      "sources.csv": "36b6ee43df8c9bad2722073142d7eeb6ed5a923169d75104815f58c9107cac58",
+      "details.zip": "08a3c1973b8354bcfecd7efa8ffc2f32b942b60772f48bf8ddca238106eeb714"
     }
   }
 }

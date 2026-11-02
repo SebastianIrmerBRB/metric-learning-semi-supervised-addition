@@ -1,0 +1,14 @@
+column,meaning
+experiment,Experiment family; different families are never pooled.
+source_view / source_data_row,"Logical view from dateninventar.csv and 1-based data-row number, excluding the CSV header. ../uebersicht.csv is the Phase-1 summary. Use export_data.py --expand for individual view files."
+dataset,cars=Cars196; cub=CUB; inshop=In-Shop; inshop10=In-Shop with fully labeled classes; semiinat=Semi-iNat-2021.
+method,"sup=supervised; iscen/lp=Label Propagation; lrml, hoffer, slade as in the thesis."
+budget_type / budget,"Images per class, percent of labeled classes, percent of external images, or all labels; these are different protocols."
+aggregation / n_seeds / seed,Phase 1 averages five seeds per setting; ablation summaries and individual runs keep their recorded seed coverage.
+mean_map_percent / concat_map_percent,Test MAP@R in percent. Mean averages folds; Concat is a separately measured fold ensemble.
+mean_seed_sd_pp / concat_seed_sd_pp,Sample standard deviation across seeds in percentage points; blank for a single seed.
+gain_*_pp,Paired differences in percentage points; the reference is named in the column.
+uses_hidden_labels,Oracle diagnosis using hidden labels. Blank means the source view has no such column.
+thesis_selection,"For external data, only seed 2 enters the thesis tables. True elsewhere identifies a retained thesis experiment family, not a claim that each row is individually printed."
+missing values,Empty cells mean absent or inapplicable; never replace them with zero.
+overlap,Families contain controls and repeated references; do not count rows as independent experiments or pool their statistics.
