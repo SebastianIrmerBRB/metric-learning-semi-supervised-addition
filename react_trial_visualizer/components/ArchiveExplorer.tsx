@@ -1,6 +1,6 @@
 "use client";
 
-import { withBase } from "@/lib/site";
+import { THESIS_SITE, withBase } from "@/lib/site";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -3793,7 +3793,7 @@ type Tab =
   | "ranges"
   | "trials";
 
-const TABS: Array<{ value: Tab; label: string; icon: ReactNode }> = [
+const ALL_TABS: Array<{ value: Tab; label: string; icon: ReactNode }> = [
   { value: "compare", label: "Compare", icon: <Grid3x3 size={14} /> },
   { value: "studies", label: "Studies", icon: <Layers3 size={14} /> },
   { value: "folds", label: "Folds", icon: <Rows3 size={14} /> },
@@ -3802,6 +3802,8 @@ const TABS: Array<{ value: Tab; label: string; icon: ReactNode }> = [
   { value: "ranges", label: "Range finder", icon: <Ruler size={14} /> },
   { value: "trials", label: "Trials", icon: <Table2 size={14} /> },
 ];
+// The compact thesis data has no per-fold gradient diagnostics, so the hosted thesis site leaves this tab out.
+const TABS = ALL_TABS.filter((entry) => !(THESIS_SITE && entry.value === "gradients"));
 
 interface PersistedFilters {
   filters?: FilterState;

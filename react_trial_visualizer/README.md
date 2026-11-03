@@ -363,14 +363,18 @@ answer is known by construction and re-runs the statistics over the exported arc
 `.github/workflows/datenansicht.yml` publishes the Atlas at
 https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/trial-atlas/ without local Optuna databases or
 run folders. `scripts/export_thesis_bundle.py` reads the compact thesis data (`../thesis_generator/daten`) and writes the
-235 HPO studies of the thesis to `public/optuna-studies.json` (with fANOVA importances computed like
-`../scripts/optuna_param_importance.py`), one trials table per study to `../trials-files/scheduled/`, and the Phase-1
-test results to `../trials-files/test-results.csv`. Two build variables (`lib/site.ts`) adapt the export:
+235 HPO studies of the thesis (110 Vorexperimente as `phase_0`, 125 Phase-1 searches as `phase_1`) to
+`public/optuna-studies.json` (with fANOVA importances computed like `../scripts/optuna_param_importance.py`) and to
+`public/sorted-studies.json` for the HPO archive (Compare, Studies, Folds, Hyperparameters, Range finder, Trials, with
+every trial's fold scores and selected epochs). It also writes one trials table per study to `../trials-files/scheduled/`
+and the Phase-1 test results to `../trials-files/test-results.csv`. The compact data has no per-fold gradient
+diagnostics and no last epoch per fold, so the archive's Gradients tab is hidden and its epoch-budget and
+truncation-risk figures stay empty. Two build variables (`lib/site.ts`) adapt the export:
 
 | Variable | Effect |
 | --- | --- |
 | `NEXT_PUBLIC_BASE_PATH` | Path the site is served below (`/<repository>/trial-atlas`), passed to Next as `basePath` and used for snapshot fetches. |
-| `NEXT_PUBLIC_THESIS_SITE=1` | Starts with every bundled study and hides the workspaces that need local run folders or the dev server. |
+| `NEXT_PUBLIC_THESIS_SITE=1` | Starts with every bundled study and hides what needs local run folders, the dev server or data the compact bundle lacks (config studio, epoch tracking, embeddings, Phase-2 explorer, todo, timings, run configs, the archive's Gradients tab). |
 
 ```bash
 python scripts/export_thesis_bundle.py --daten ../thesis_generator/daten

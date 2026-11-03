@@ -10,6 +10,11 @@ Reads daten/details.zip (studies.json, tables/hpo/studies.csv, tables/hpo/trials
                                                         (seed 7, 64 trees, depth 64, normalized)
     trials-files/scheduled/*.csv                        All-studies and study pages: one Optuna-style trials table per
                                                         study, with fold values, selected epochs and random/TPE marker
+    react_trial_visualizer/public/sorted-studies.json   HPO archive (Compare, Studies, Trials, Hyperparameters, Folds, Range
+                                                        finder): the same studies with every trial's fold scores and selected
+                                                        epochs; validation only, like the original archive
+    react_trial_visualizer/public/sorted-gradients.json Gradients tab: empty, the per-fold gradient diagnostics are not part
+                                                        of the compact data
     trials-files/test-results.csv                       Compare runs and test results: every Phase-1 run, Mean and Concat
 
 Without optuna installed, or with --skip-importance, importances are 0 and the parameters keep their search-space order.
@@ -30,6 +35,14 @@ DATASET = {"cars": "Cars196", "cub": "CUB", "inshop": "In-Shop", "inshop10": "In
 METHOD = {"sup": "ÜBl. (supervised)", "iscen": "LP", "lrml": "LRML", "hoffer": "Hoffer", "slade": "SLADE"}
 LOSS = {"arc": "ArcFace", "cir": "Circle", "ms": "MS", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
 PHASE = {0: "Vorexperimente (Phase 0)", 1: "Phase 1"}
+# Facets of the HPO archive (lib/sorted-studies.ts), in the conventions of scripts/export-sorted-studies.mjs
+ARCHIVE_DATASET = {"cars": ("cars196", "Cars196"), "cub": ("cub", "CUB"), "inshop": ("in_shop", "In-Shop"),
+                   "inshop10": ("in_shop", "In-Shop"), "semiinat": ("semi_inat2021", "Semi-iNat-2021")}
+ARCHIVE_METHOD = {"sup": ("supervised", "ÜBl. (supervised)"), "iscen": ("iscen", "LP"), "lrml": ("lrml", "LRML"),
+                  "hoffer": ("hoffer", "Hoffer"), "slade": ("slade", "SLADE")}
+ARCHIVE_LOSS = {"arc": ("arcface", "ArcFace", "ArcFaceLoss"), "cir": ("circle", "Circle", "CircleLoss"),
+                "ms": ("multi_similarity", "MS", "MultiSimilarityLoss"), "nt": ("ntxent", "NT-Xent", "NTXentLoss"),
+                "prx": ("proxy_anchor", "Proxy-Anchor", "ProxyAnchorLoss")}
 FILE_DATASET = {"cars": "Cars196", "cub": "CUB", "inshop": "InShop", "inshop10": "InShop", "semiinat": "SemiiNat2021"}
 FILE_METHOD = {"sup": "ÜBl", "iscen": "LP", "lrml": "LRML", "hoffer": "Hoffer", "slade": "SLADE"}
 FILE_LOSS = {"arc": "ArcFace", "cir": "Circle", "ms": "MS", "nt": "NTXent", "prx": "ProxyAnchor"}
@@ -107,7 +120,7 @@ def main():
 
     out_csv = REPO / "trials-files" / "scheduled"
     out_csv.mkdir(parents=True, exist_ok=True)
-    studies, n_trials = [], 0
+    studies, archive, n_trials = [], [], 0
     for row in sorted(index, key=lambda r: (int(r["phase"]), r["dataset"], r["method"], r["loss"])):
         cfg = configs[row["config_source_id"]]
         hp, base = cfg["hparam_config"], cfg["base_args"]
@@ -139,6 +152,31 @@ def main():
             bestTrial=dict(number=best["number"], objective=best["objective"]) if best else None,
             parameters=order, trials=trials))
         n_trials += len(trials)
+        (ds_key, ds_label), (m_key, m_label), (l_key, l_label, l_class) = (
+            ARCHIVE_DATASET[cfg["dataset_key"]], ARCHIVE_METHOD[cfg["method"]], ARCHIVE_LOSS[cfg["loss"]])
+        archive.append(dict(
+            id=f"thesis/{slug}", path=f"phase_{phase}/{'supervised' if cfg['method'] == 'sup' else 'ssl'}/{ds_key}/"
+            + ("" if cfg["method"] == "sup" else f"{m_key}/") + l_key,
+            bucket="complete", phase=f"phase_{phase}", mode="supervised" if cfg["method"] == "sup" else "ssl",
+            dataset=ds_key, datasetLabel=ds_label, method=m_key, methodLabel=m_label, variant=None,
+            loss=l_key, lossLabel=l_label, lossClass=l_class, miner=base.get("miner") or "no_miner",
+            labelBudget=setting, sampler=hp.get("sampler", ""), direction="maximize", metric=TARGET,
+            plannedTrials=hp.get("n_trials"), studyName=row["study_id"].rsplit("/", 1)[-1], runName=None, campaign=None,
+            sourcePath=None, experimentConfig=None, hparamConfigPath=None, seed=base.get("seed"), cvK=base.get("cv_k"),
+            cvMode=base.get("cv_mode"), epochs=base.get("epochs"), patience=base.get("patience"),
+            earlyStoppingMetric=base.get("selection_metric"), backboneTuning="frozen", trialCount=len(raw),
+            completeTrials=len(trials), best=dict(number=best["number"], value=best["objective"]) if best else None,
+            sslConfig={},
+            parameters=[dict({k: v for k, v in p.items() if k not in ("rank", "importance")},
+                             importance=p["importance"], importanceRank=p["rank"], searched=True) for p in order],
+            trials=[dict(number=t["number"], state=t["state"], value=t["value"], params=t["params"],
+                         metrics={TARGET: t["value"], "sampling": "random" if t.get("is_random") else "tpe",
+                                  **({"selected_epoch": round(statistics.median(t["selected_epochs"]))}
+                                     if t.get("selected_epochs") else {})},
+                         folds=[dict(fold=i, value=v, **({"selectedEpoch": t["selected_epochs"][i]}
+                                                         if i < len(t.get("selected_epochs") or []) else {}))
+                                for i, v in enumerate(t.get("validation_fold_values") or [])])
+                    for t in raw]))
 
         folds = max((len(t.get("validation_fold_values") or []) for t in raw), default=0)
         # lib/trials.ts names a study after its file: the dataset before "__", the rest with "_" read as spaces
@@ -162,6 +200,12 @@ def main():
                     totalStudyDirectories=len(index), skippedStudyDirectories=0, studies=studies, failures=[])
     (APP / "public").mkdir(exist_ok=True)
     (APP / "public" / "optuna-studies.json").write_text(json.dumps(snapshot), encoding="utf-8")
+    (APP / "public" / "sorted-studies.json").write_text(json.dumps(dict(
+        schemaVersion=1, generatedAt="", source="thesis_generator/daten/details.zip (compact thesis data)",
+        metricKeys=[TARGET, "selected_epoch", "sampling"], studyDirectories=len(index), mappedStudies=len(index),
+        missingFromDisk=[], objectiveMetrics=[TARGET], studies=archive)), encoding="utf-8")
+    (APP / "public" / "sorted-gradients.json").write_text(json.dumps(dict(schemaVersion=1, generatedAt="", studies={})),
+                                                          encoding="utf-8")
 
     # Phase-1 test results, one row per run and scope, in the columns lib/test-results.ts reads
     rows = list(csv.DictReader((a.daten / "results.csv").open(encoding="utf-8")))
