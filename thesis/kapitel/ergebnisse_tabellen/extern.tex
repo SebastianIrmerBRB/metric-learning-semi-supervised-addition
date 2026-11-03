@@ -1,0 +1,30 @@
+\begin{table}[tbp]
+\centering
+\caption[Externe ungelabelte Bilder]{Externe ungelabelte Bilder bei vollständig gelabelten Trainingsklassen (Seed~2): gepaarter Gewinn der Test-MAP@R gegenüber der \UEBL ohne externe Bilder in Prozentpunkten, Mittel über die fünf Verlustfunktionen. Anteil: genutzter Anteil von CompCars (Cars196) bzw.\ Fashion200k (In-Shop), darunter die Bildzahl. Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \acs{SSL}-Term. \UEBL: Test-MAP@R in \%. Fett: größter Gewinn je Spalte, sofern er positiv ist. M: Mean, C: Concat.}
+\label{tab:e:extern}
+\setlength{\tabcolsep}{2.9pt}
+\small
+\begin{tabular}{@{}ll *{10}{S[table-format=+2.1, retain-explicit-plus]}@{}}
+\toprule
+ & & \multicolumn{5}{c}{Cars196 + CompCars} & \multicolumn{5}{c}{In-Shop + Fashion200k} \\
+\cmidrule(lr){3-7}\cmidrule(lr){8-12}
+\multicolumn{2}{@{}l}{Anteil} & {ohne} & {\qty{10}{\percent}} & {\qty{25}{\percent}} & {\qty{50}{\percent}} & {\qty{100}{\percent}} & {ohne} & {\qty{5}{\percent}} & {\qty{10}{\percent}} & {\qty{25}{\percent}} & {\qty{50}{\percent}} \\
+\multicolumn{2}{@{}l}{Bilder} & {\num{0}} & {\num{1654}} & {\num{4134}} & {\num{8268}} & {\num{16537}} & {\num{0}} & {\num{16917}} & {\num{33834}} & {\num{84585}} & {\num{169170}} \\
+\midrule
+\UEBL & M & \multicolumn{5}{c}{\num{43.1}} & \multicolumn{5}{c}{\num{60.1}} \\
+ & C & \multicolumn{5}{c}{\num{45.3}} & \multicolumn{5}{c}{\num{60.9}} \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{Gewinn (M)}} & & & & & & & & & & \\
+LP & & +0.1 & -5.5 & -5.3 & -5.3 & -4.9 & -1.1 & -8.6 & -8.5 & -8.1 & -8.0 \\
+\acs{LRML} & & \bfseries +0.7 & -0.7 & -1.4 & -2.0 & -2.3 & -1.3 & -3.8 & -4.9 & -6.4 & -8.2 \\
+Hoffer & & -0.3 & -4.6 & -4.5 & -4.7 & -4.4 & -3.2 & -8.0 & -7.8 & -7.5 & -7.6 \\
+SLADE & & +0.4 & -3.7 & -3.6 & -3.7 & -3.7 & -5.0 & -4.0 & -4.1 & -3.9 & -4.0 \\
+\addlinespace
+\multicolumn{2}{@{}l}{\emph{Gewinn (C)}} & & & & & & & & & & \\
+LP & & +0.1 & -6.6 & -6.3 & -6.2 & -6.0 & -1.0 & -8.2 & -8.2 & -7.9 & -7.9 \\
+\acs{LRML} & & \bfseries +0.5 & -0.6 & -1.4 & -2.2 & -3.2 & -1.1 & -3.1 & -4.0 & -6.3 & -8.1 \\
+Hoffer & & -0.5 & -4.2 & -4.3 & -4.4 & -4.4 & -2.9 & -7.7 & -7.4 & -7.0 & -7.3 \\
+SLADE & & +0.4 & -3.9 & -3.9 & -4.1 & -4.1 & -4.7 & -3.8 & -3.9 & -3.7 & -3.7 \\
+\bottomrule
+\end{tabular}
+\end{table}

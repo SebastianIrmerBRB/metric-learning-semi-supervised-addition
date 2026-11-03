@@ -1,0 +1,40 @@
+\begin{table}[htbp]
+\centering
+\caption[Übernommene Konfigurationen In-Shop]{Für die Wiederholungen übernommene HPO-Konfigurationen (Optimierung bei $k=2$, Seed~7). Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, Warm-up in Epochen. Wiederholungen mit höchstens \num{1000} Epochen und einer Patience von 20 Epochen. Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}
+\label{tab:inshop:hpo}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Verlust & Verf. & Versuch & Lernrate & $B$ & Warm-up \\
+\midrule
+ArcFace & \UEBL & 42 & \num{6.684e-01} & 512 & 0 \\
+ArcFace & LP & 73 & \num{5.654e-02} & 64 & 15 \\
+ArcFace & LRML & 63 & \num{2.025e-04} & 512 & 30 \\
+ArcFace & Hoffer & 50 & \num{1.599e-01} & 256 & 30 \\
+ArcFace & SLADE & 48 & \num{1.137e-04} & 256 & 0 \\
+\addlinespace[3pt]
+Circle & \UEBL & 45 & \num{1.153e-05} & 128 & 0 \\
+Circle & LP & 75 & \num{2.150e-05} & 256 & 10 \\
+Circle & LRML & 44 & \num{2.009e-05} & 128 & 15 \\
+Circle & Hoffer & 65 & \num{5.250e-05} & 128 & 0 \\
+Circle & SLADE & 61 & \num{1.324e-05} & 256 & 20 \\
+\addlinespace[3pt]
+Multi-Similarity & \UEBL & 77 & \num{1.315e-05} & 256 & 0 \\
+Multi-Similarity & LP & 78 & \num{5.384e-05} & 256 & 25 \\
+Multi-Similarity & LRML & 58 & \num{3.606e-05} & 128 & 20 \\
+Multi-Similarity & Hoffer & 75 & \num{4.516e-05} & 64 & 15 \\
+Multi-Similarity & SLADE & 44 & \num{3.350e-04} & 512 & 15 \\
+\addlinespace[3pt]
+NT-Xent & \UEBL & 69 & \num{1.949e-05} & 512 & 0 \\
+NT-Xent & LP & 58 & \num{4.129e-05} & 512 & 20 \\
+NT-Xent & LRML & 65 & \num{7.505e-05} & 256 & 20 \\
+NT-Xent & Hoffer & 45 & \num{2.841e-05} & 64 & 20 \\
+NT-Xent & SLADE & 62 & \num{6.076e-05} & 512 & 15 \\
+\addlinespace[3pt]
+Proxy-Anchor & \UEBL & 52 & \num{1.905e-05} & 128 & 0 \\
+Proxy-Anchor & LP & 41 & \num{5.646e-05} & 128 & 25 \\
+Proxy-Anchor & LRML & 74 & \num{5.762e-02} & 512 & 10 \\
+Proxy-Anchor & Hoffer & 75 & \num{1.325e-02} & 256 & 0 \\
+Proxy-Anchor & SLADE & 46 & \num{4.633e-04} & 128 & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}

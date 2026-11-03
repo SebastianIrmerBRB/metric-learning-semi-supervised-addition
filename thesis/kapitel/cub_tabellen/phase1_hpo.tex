@@ -1,0 +1,40 @@
+\begin{table}[htbp]
+\centering
+\caption[Übernommene Konfigurationen CUB]{Für die Wiederholungen übernommene HPO-Konfigurationen (Optimierung bei $k=16$, Seed~7). Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, Warm-up in Epochen. Wiederholungen mit höchstens \num{1000} Epochen und einer Patience von 40 Epochen. Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}
+\label{tab:cub:hpo}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Verlust & Verf. & Versuch & Lernrate & $B$ & Warm-up \\
+\midrule
+ArcFace & \UEBL & 63 & \num{7.573e-05} & 32 & 0 \\
+ArcFace & LP & 65 & \num{3.147e+00} & 256 & 8 \\
+ArcFace & LRML & 66 & \num{7.448e-05} & 64 & 12 \\
+ArcFace & Hoffer & 79 & \num{1.914e-04} & 256 & 6 \\
+ArcFace & SLADE & 46 & \num{7.016e-05} & 64 & 10 \\
+\addlinespace[3pt]
+Circle & \UEBL & 77 & \num{5.327e-05} & 128 & 0 \\
+Circle & LP & 14 & \num{1.784e-05} & 128 & 12 \\
+Circle & LRML & 53 & \num{3.461e-05} & 128 & 12 \\
+Circle & Hoffer & 77 & \num{7.473e-05} & 256 & 6 \\
+Circle & SLADE & 50 & \num{5.005e-05} & 128 & 2 \\
+\addlinespace[3pt]
+Multi-Similarity & \UEBL & 50 & \num{2.283e-05} & 64 & 0 \\
+Multi-Similarity & LP & 63 & \num{1.650e-05} & 128 & 0 \\
+Multi-Similarity & LRML & 78 & \num{7.680e-05} & 256 & 8 \\
+Multi-Similarity & Hoffer & 70 & \num{4.738e-05} & 128 & 10 \\
+Multi-Similarity & SLADE & 73 & \num{4.141e-05} & 128 & 8 \\
+\addlinespace[3pt]
+NT-Xent & \UEBL & 72 & \num{5.022e-05} & 256 & 0 \\
+NT-Xent & LP & 47 & \num{2.186e-05} & 256 & 4 \\
+NT-Xent & LRML & 49 & \num{5.863e-05} & 256 & 12 \\
+NT-Xent & Hoffer & 45 & \num{5.468e-05} & 256 & 0 \\
+NT-Xent & SLADE & 70 & \num{4.260e-05} & 256 & 10 \\
+\addlinespace[3pt]
+Proxy-Anchor & \UEBL & 61 & \num{7.044e-05} & 128 & 0 \\
+Proxy-Anchor & LP & 49 & \num{1.834e-04} & 32 & 2 \\
+Proxy-Anchor & LRML & 40 & \num{3.401e-04} & 128 & 6 \\
+Proxy-Anchor & Hoffer & 74 & \num{2.856e-04} & 128 & 8 \\
+Proxy-Anchor & SLADE & 57 & \num{9.107e-05} & 256 & 10 \\
+\bottomrule
+\end{tabular}
+\end{table}

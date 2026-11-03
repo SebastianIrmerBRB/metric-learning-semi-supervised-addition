@@ -1,0 +1,45 @@
+\begin{table}[tbp]
+\centering
+\caption[Negative Vergleiche gegenüber der supervised Referenz]{Zahl der gepaarten Vergleiche (von 25), in denen ein \acs{SSL}-Verfahren eine niedrigere Test-MAP@R erreicht als die \UEBL, zu den Gewinnen in Tabelle~\ref{tab:anhang:gewinne}. M: Mean, C: Concat.}
+\label{tab:anhang:negativ}
+\small
+\begin{tabular}{@{}l *{8}{S[table-format=2.0]}@{}}
+\toprule
+\multicolumn{9}{@{}l}{\emph{Cars196}} \\
+ & \multicolumn{2}{c}{$k=4$} & \multicolumn{2}{c}{$k=8$} & \multicolumn{2}{c}{$k=16$} & \multicolumn{2}{c}{$k=32$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} \\
+LP & 0 & 0 & 0 & 0 & 0 & 0 & 5 & 5 \\
+\acs{LRML} & 6 & 0 & 10 & 0 & 5 & 0 & 1 & 0 \\
+Hoffer & 0 & 3 & 0 & 0 & 8 & 5 & 12 & 11 \\
+SLADE & 2 & 0 & 0 & 0 & 3 & 2 & 11 & 13 \\
+\midrule
+\multicolumn{9}{@{}l}{\emph{\acs{CUB}}} \\
+ & \multicolumn{2}{c}{$k=4$} & \multicolumn{2}{c}{$k=8$} & \multicolumn{2}{c}{$k=16$} & \multicolumn{2}{c}{$k=32$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} \\
+LP & 10 & 0 & 9 & 2 & 7 & 5 & 10 & 12 \\
+\acs{LRML} & 25 & 0 & 25 & 0 & 14 & 2 & 6 & 5 \\
+Hoffer & 16 & 1 & 19 & 5 & 21 & 8 & 17 & 14 \\
+SLADE & 25 & 4 & 22 & 3 & 15 & 7 & 10 & 10 \\
+\midrule
+\multicolumn{9}{@{}l}{\emph{In-Shop}} \\
+ & \multicolumn{2}{c}{$k=2$} & \multicolumn{2}{c}{$k=4$} & {} & {} & {} & {} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+ & {M} & {C} & {M} & {C} & {} & {} & {} & {} \\
+LP & 0 & 0 & 17 & 5 & {} & {} & {} & {} \\
+\acs{LRML} & 3 & 3 & 19 & 20 & {} & {} & {} & {} \\
+Hoffer & 0 & 0 & 14 & 12 & {} & {} & {} & {} \\
+SLADE & 20 & 20 & 21 & 18 & {} & {} & {} & {} \\
+\midrule
+\multicolumn{9}{@{}l}{\emph{Semi-iNat-2021}} \\
+ & \multicolumn{2}{c}{$k=2$} & \multicolumn{2}{c}{$k=4$} & \multicolumn{2}{c}{$k=16$} & \multicolumn{2}{c}{$k=100$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+ & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} \\
+LP & 0 & 0 & 0 & 0 & 0 & 0 & 25 & 25 \\
+\acs{LRML} & 23 & 8 & 23 & 14 & 19 & 17 & 20 & 17 \\
+Hoffer & 19 & 15 & 17 & 18 & 10 & 16 & 14 & 11 \\
+SLADE & 17 & 16 & 19 & 15 & 15 & 13 & 20 & 20 \\
+\bottomrule
+\end{tabular}
+\end{table}

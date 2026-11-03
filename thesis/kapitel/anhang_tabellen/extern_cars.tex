@@ -1,0 +1,43 @@
+\begin{table}[p]
+\centering
+\caption[Externe ungelabelte Bilder auf Cars196]{Test-MAP@R in \% auf Cars196 mit allen Trainingslabels und einem Anteil von CompCars als externem ungelabeltem Pool (Seed~2). Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \acs{SSL}-Term. Zeile \UEBL: Referenz ohne externe Bilder. M: Mean, C: Concat.}
+\label{tab:anhang:extern:cars}
+\small\setlength{\tabcolsep}{2.6pt}
+\begin{tabular}{@{}llS[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]@{}}
+\toprule
+ & & \multicolumn{2}{c}{ohne} & \multicolumn{2}{c}{\qty{10}{\percent}} & \multicolumn{2}{c}{\qty{25}{\percent}} & \multicolumn{2}{c}{\qty{50}{\percent}} & \multicolumn{2}{c}{\qty{100}{\percent}} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}\cmidrule(lr){11-12}
+Verlust & Verfahren & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} \\
+\midrule
+ArcFace & \UEBL & \multicolumn{10}{l}{M 43{,}20, C 45{,}18} \\
+ & LP & 42.45 & 44.98 & 37.40 & 39.74 & 37.83 & 40.06 & 38.17 & 40.19 & 38.68 & 40.57 \\
+ & \acs{LRML} & 44.15 & 45.49 & 42.56 & 44.01 & 41.49 & 42.98 & 40.53 & 42.04 & 39.65 & 41.18 \\
+ & Hoffer & 43.54 & 45.14 & 37.24 & 41.16 & 37.49 & 40.67 & 37.14 & 40.30 & 37.54 & 40.44 \\
+ & SLADE & 43.89 & 45.95 & 41.56 & 43.57 & 41.67 & 43.62 & 41.51 & 43.49 & 41.62 & 43.62 \\
+\addlinespace[2pt]
+Circle & \UEBL & \multicolumn{10}{l}{M 43{,}05, C 45{,}19} \\
+ & LP & 43.37 & 45.16 & 38.48 & 39.13 & 38.71 & 39.30 & 38.98 & 39.52 & 39.26 & 39.77 \\
+ & \acs{LRML} & 43.68 & 45.71 & 41.66 & 44.45 & 41.08 & 43.60 & 40.78 & 42.87 & 40.63 & 41.37 \\
+ & Hoffer & 43.32 & 45.56 & 39.75 & 41.05 & 39.78 & 41.06 & 39.97 & 41.26 & 39.64 & 40.93 \\
+ & SLADE & 43.02 & 45.49 & 40.38 & 43.23 & 40.60 & 43.35 & 40.74 & 42.95 & 40.57 & 42.99 \\
+\addlinespace[2pt]
+\acs{MS} & \UEBL & \multicolumn{10}{l}{M 44{,}69, C 46{,}61} \\
+ & LP & 44.16 & 46.79 & 39.09 & 39.97 & 38.91 & 39.76 & 38.67 & 39.45 & 38.87 & 39.63 \\
+ & \acs{LRML} & 44.96 & 47.27 & 43.03 & 45.86 & 41.85 & 44.57 & 40.75 & 43.56 & 40.71 & 42.75 \\
+ & Hoffer & 41.67 & 43.91 & 39.53 & 40.50 & 39.39 & 40.36 & 39.46 & 40.40 & 39.49 & 40.46 \\
+ & SLADE & 44.45 & 46.91 & 40.95 & 42.10 & 40.76 & 41.97 & 40.53 & 41.75 & 40.78 & 42.04 \\
+\addlinespace[2pt]
+NT-Xent & \UEBL & \multicolumn{10}{l}{M 42{,}49, C 44{,}68} \\
+ & LP & 42.44 & 44.76 & 38.55 & 39.01 & 38.59 & 39.02 & 38.54 & 38.99 & 38.71 & 39.17 \\
+ & \acs{LRML} & 43.80 & 45.52 & 42.99 & 44.69 & 42.60 & 44.31 & 42.23 & 43.96 & 41.87 & 43.62 \\
+ & Hoffer & 42.69 & 44.85 & 34.59 & 38.75 & 34.67 & 38.83 & 33.88 & 38.62 & 35.56 & 39.01 \\
+ & SLADE & 42.89 & 45.19 & 39.06 & 41.09 & 39.89 & 42.14 & 39.41 & 41.60 & 39.66 & 41.61 \\
+\addlinespace[2pt]
+Proxy-Anchor & \UEBL & \multicolumn{10}{l}{M 42{,}13, C 44{,}90} \\
+ & LP & 43.65 & 45.49 & 34.49 & 35.63 & 35.06 & 37.16 & 34.86 & 37.60 & 35.43 & 37.29 \\
+ & \acs{LRML} & 42.66 & 44.88 & 42.06 & 44.52 & 41.65 & 44.32 & 41.21 & 43.02 & 41.15 & 41.72 \\
+ & Hoffer & 43.03 & 44.66 & 41.55 & 43.90 & 41.57 & 43.92 & 41.47 & 43.87 & 41.54 & 43.87 \\
+ & SLADE & 43.11 & 45.24 & 35.07 & 36.92 & 34.48 & 36.15 & 34.66 & 36.26 & 34.24 & 36.01 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -232,7 +232,7 @@ nn = L.groupby("loss").graph_n_neighbors.first().astype(int)
 pur = (100 * L.groupby(["loss", "k"]).graph_edge_purity.mean()).unstack()
 pre = 100 * E[(E.method == "lrml") & (E.epoch == -1)].groupby("loss").graph_edge_purity.mean()
 P = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Reinheit des $k$NN-Graphen von LRML]{Reinheit des $k$NN-Graphen von \\acs{LRML} nach dem Training (Anteil der Kanten innerhalb einer Klasse in \\%) mit der Nachbarzahl der Phase-1-Konfiguration (Cars196, Seed~2, Mittel über vier Folds). Head ($-1$): vor dem ersten Optimierungsschritt. Nur innerhalb einer Zeile vergleichbar, weil sich die Nachbarzahlen unterscheiden.}",
+     "\\caption[Reinheit des $k$NN-Graphen von LRML]{Reinheit des $k$NN-Graphen von \\acs{LRML} nach dem Training (Anteil der Kanten innerhalb einer Klasse in \\%) mit der Nachbarzahl der Konfiguration der Geometrieläufe (Cars196, Seed~2, Mittel über vier Folds). Head ($-1$): vor dem ersten Optimierungsschritt. Nur innerhalb einer Zeile vergleichbar, weil sich die Nachbarzahlen unterscheiden.}",
      "\\label{tab:a:reinheit:lrml}",
      "\\begin{tabular}{@{}l S[table-format=2.0] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1]@{}}",
      "\\toprule",

@@ -1,0 +1,35 @@
+\begin{tikzpicture}[diagram,
+  ssl/.style={box, align=left, text width=23mm, minimum height=16mm, execute at begin node={\setstretch{1}\hyphenpenalty=10000}},
+]
+\node[box, text width=13mm] (img) at (0.85,0) {Bild\\$224{\times}224$};
+\node[box, text width=27mm, fill=tolcyan!25] (vit) at (3.6,0) {DINOv2 ViT-B/14\\CLS-Token};
+\node[box, text width=25mm, fill=tolcyan!25] (phi) at (6.95,0) {$\bm{\varphi}_i\in\mathbb{R}^{768}$\\gespeichert};
+\node[box, text width=23mm, fill=tolyellow!30] (head) at (10.05,0) {Linearer Head\\$\bm{A}\bm{\varphi}_i+\bm{b}$};
+\node[box, text width=24mm, fill=tolyellow!30] (f) at (13.2,0) {Normierung\\$\bm{f}_i\in\mathbb{R}^{768}$};
+\draw[arr] (img) -- (vit);
+\draw[arr] (vit) -- (phi);
+\draw[arr] (phi) -- (head);
+\draw[arr] (head) -- (f);
+\node[above=2pt of vit] {eingefroren};
+\node[above=2pt of head] {trainiert};
+\node[above=2pt of f, align=center] {Retrieval über\\Kosinusähnlichkeit};
+\node[box, text width=22mm] (lab) at (1.2,-2.2) {gelabelte Bilder\\$k$ je Klasse};
+\node[box, text width=31mm, fill=tolyellow!30] (sup) at (5.35,-2.2) {DML-Verlust $\mathcal{L}_{\mathrm{sup}}$};
+\node[box, text width=36mm, fill=tolyellow!30] (tot) at (10.05,-2.2) {$\mathcal{L}=\mathcal{L}_{\mathrm{sup}}+w_{\mathrm{reg}}\,\mathcal{L}_{\mathrm{reg}}$};
+\node[box, text width=22mm] (unl) at (1.2,-4.6) {ungelabelte\\Bilder};
+\node[ssl, fill=tolblue!25] (lp) at (4.2,-4.6) {LP\\Pseudo-Labels aus dem $k$NN-Graphen};
+\node[ssl, fill=tolred!25] (lrml) at (6.95,-4.6) {LRML\\Laplace-Term auf dem $k$NN-Graphen};
+\node[ssl, fill=tolgreen!25] (hof) at (9.7,-4.6) {Hoffer\\Entropie der Zuordnung};
+\node[ssl, fill=tolpurple!25] (sla) at (12.45,-4.6) {SLADE\\sichere Paare aus Clustern};
+\node[group, fit=(lp)(sla)] (grp) {};
+\node[anchor=north east] at (grp.south east) {je Lauf genau einer der vier Mechanismen};
+\draw[arr] (lab) -- (sup);
+\draw[arr] (sup) -- (tot);
+\draw[arr] (unl) -- (grp.west |- unl);
+\draw[aux] (lp.north) -- node[lbl, right=1pt, pos=0.55] {Pseudo-Labels} (lp.north |- sup.south);
+\coordinate (bus) at ($(grp.north)+(0,0.3)$);
+\foreach \n in {lrml,hof,sla} {\draw[line width=0.6pt] (\n.north) -- (\n.north |- bus);}
+\draw[line width=0.6pt] (lrml.north |- bus) -- (sla.north |- bus);
+\draw[arr] (tot.south |- bus) -- node[lbl, right=1pt] {$\mathcal{L}_{\mathrm{reg}}$} (tot.south);
+\draw[arr] (tot.north) -- node[lbl, right=1pt] {Gradient} (head.south);
+\end{tikzpicture}

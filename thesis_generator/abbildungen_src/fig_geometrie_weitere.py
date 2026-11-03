@@ -83,12 +83,12 @@ def n(x, nd=2):
 
 # ------------------------------------------------------------------ Anhang: alle Budgets
 # als longtable (passte als Gleitobjekt nicht auf eine Seite)
-AHEAD = ("{Budget} & {Modell} & {$n$} & {$\\rho$} & {$\\pi_{\\mathrm{ratio}}$} & {$\\pi^{U}_{\\mathrm{intra}}$} & "
-         "{$\\pi^{V}_{\\mathrm{ratio}}$} & {Prototyp} & {Epoche} & {MAP@R} \\\\\n\\midrule")
+AHEAD = ("{Budget} & {Modell} & {Anzahl} & {$\\rho$} & {$\\pi_{\\mathrm{ratio}}$} & {$\\pi^{\\mathrm{U}}_{\\mathrm{intra}}$} & "
+         "{$\\pi^{\\mathrm{V}}_{\\mathrm{ratio}}$} & {Prototyp} & {Epoche} & {MAP@R} \\\\\n\\midrule")
 A = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\begin{longtable}{@{}ll S[table-format=1.0] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]"
      " S[table-format=2.1] S[table-format=3.0] S[table-format=2.1]@{}}",
-     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed~2, Mittel über die vier Folds und die $n$ Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen). $\\pi^{U}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{V}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle~\\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
+     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed~2, Mittel über die vier Folds und die Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen, Anzahl: Zahl dieser Verlustfunktionen). $\\pi^{\\mathrm{U}}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{\\mathrm{V}}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle~\\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
      "\\toprule", AHEAD, "\\endfirsthead",
      "\\multicolumn{10}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\", "\\toprule", AHEAD, "\\endhead",
      "\\bottomrule", "\\endlastfoot"]

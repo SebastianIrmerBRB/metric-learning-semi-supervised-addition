@@ -1,0 +1,36 @@
+\begin{table}[tbp]
+\centering\small\setlength{\tabcolsep}{3.2pt}
+\caption[Geometrie nach dem Training je Verlustfunktion]{$\pi_{\mathrm{intra}}$ der ungelabelten und, in Klammern, der gelabelten Bilder des Trainingspools und Test-MAP@R (Mean) nach dem Training je Verlustfunktion (Cars196, Seed~2, Mittel über vier Folds). Fett: kleinstes $\pi_{\mathrm{intra}}$ der ungelabelten Bilder und größte MAP@R je Zeile, bei gleichen gerundeten Werten nach dem ungerundeten Wert.}
+\label{tab:a:geometrie}
+\begin{tabular}{@{}l S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1]@{}}
+\toprule
+& \multicolumn{5}{c}{$\pi_{\mathrm{intra}}$ ungelabelt (gelabelt)} & \multicolumn{5}{c}{Test-MAP@R in \%} \\
+\cmidrule(lr){2-6}\cmidrule(l){7-11}
+{Verlust} & {\UEBL} & {LP} & {\acs{LRML}} & {Hoffer} & {SLADE} & {\UEBL} & {LP} & {\acs{LRML}} & {Hoffer} & {SLADE} \\
+\midrule
+\multicolumn{11}{@{}l}{\emph{$k=4$}} \\
+ArcFace & 0.60 & \bfseries 0.26 & 0.57 & 0.56 & 0.60 & 32.1 & \bfseries 38.0 & 32.0 & 34.3 & 32.1 \\
+ & {(0,16)} & {(0,07)} & {(0,08)} & {(0,16)} & {(0,05)} & & & & & \\
+Circle & 0.52 & \bfseries 0.34 & 0.38 & 0.42 & 0.39 & 32.3 & \bfseries 41.0 & 34.1 & 36.7 & 35.7 \\
+ & {(0,24)} & {(0,19)} & {(0,12)} & {(0,08)} & {(0,08)} & & & & & \\
+MS & 0.31 & \bfseries 0.16 & 0.19 & 0.42 & 0.30 & 34.2 & \bfseries 41.3 & 33.4 & 37.3 & 35.5 \\
+ & {(0,14)} & {(0,08)} & {(0,08)} & {(0,10)} & {(0,04)} & & & & & \\
+NT-Xent & 0.51 & \bfseries 0.29 & 0.32 & 0.43 & 0.42 & 32.5 & \bfseries 40.1 & 34.0 & 34.6 & 35.4 \\
+ & {(0,20)} & {(0,13)} & {(0,06)} & {(0,22)} & {(0,09)} & & & & & \\
+Proxy-Anchor & 0.47 & \bfseries 0.23 & 0.27 & 0.62 & 0.40 & 31.5 & \bfseries 40.4 & 28.8 & 32.3 & 33.2 \\
+ & {(0,11)} & {(0,12)} & {(0,03)} & {(0,20)} & {(0,10)} & & & & & \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{$k=32$}} \\
+ArcFace & 0.29 & \bfseries 0.21 & 0.25 & 0.32 & 0.30 & \bfseries 41.9 & 41.8 & 40.6 & 41.6 & 41.5 \\
+ & {(0,20)} & {(0,21)} & {(0,18)} & {(0,25)} & {(0,23)} & & & & & \\
+Circle & 0.35 & 0.31 & \bfseries 0.23 & 0.26 & 0.25 & 40.6 & 42.6 & 42.0 & 41.2 & \bfseries 42.7 \\
+ & {(0,25)} & {(0,32)} & {(0,19)} & {(0,22)} & {(0,21)} & & & & & \\
+MS & 0.21 & \bfseries 0.14 & 0.21 & 0.25 & 0.18 & 42.5 & \bfseries 43.3 & 42.7 & 40.1 & 42.8 \\
+ & {(0,16)} & {(0,14)} & {(0,18)} & {(0,20)} & {(0,16)} & & & & & \\
+NT-Xent & 0.30 & 0.23 & \bfseries 0.20 & 0.28 & 0.26 & 40.6 & 41.6 & \bfseries 42.8 & 41.1 & 41.5 \\
+ & {(0,21)} & {(0,24)} & {(0,16)} & {(0,23)} & {(0,21)} & & & & & \\
+Proxy-Anchor & 0.24 & 0.18 & \bfseries 0.18 & 0.29 & 0.22 & 41.2 & \bfseries 42.9 & 42.0 & 42.5 & 41.1 \\
+ & {(0,17)} & {(0,19)} & {(0,13)} & {(0,20)} & {(0,17)} & & & & & \\
+\bottomrule
+\end{tabular}
+\end{table}
