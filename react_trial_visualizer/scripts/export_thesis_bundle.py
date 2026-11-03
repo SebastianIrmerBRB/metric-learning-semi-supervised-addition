@@ -128,7 +128,9 @@ def main():
         raw = sorted(trials_by_study.get(row["study_id"], []), key=lambda t: t["number"])
         done = [t for t in raw if t["state"] == "COMPLETE" and t["value"] is not None and math.isfinite(t["value"])]
         trials = [dict(number=t["number"], objective=t["value"], params=t["params"]) for t in done]
-        names = list(hp.get("spaces", {}))
+        # Only parameters some trial sampled. Phase-0 LRML on Cars196 and In-Shop lists an inert
+        # method_params.contrastive_margin space that no trial sampled (the repulsion term was off).
+        names = [n for n in hp.get("spaces", {}) if any(n in t["params"] for t in raw)]
         names += sorted({k for t in raw for k in t["params"]} - set(names))
         params = [parameter(n, hp.get("spaces", {}).get(n), [t["params"][n] for t in raw if n in t["params"]])
                   for n in names if any(n in t["params"] for t in raw)]
