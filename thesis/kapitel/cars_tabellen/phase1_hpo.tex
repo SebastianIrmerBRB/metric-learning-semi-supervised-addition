@@ -1,0 +1,40 @@
+\begin{table}[htbp]
+\centering
+\caption[Übernommene Konfigurationen Cars196]{Für die Wiederholungen übernommene HPO-Konfigurationen (Optimierung bei $k=16$, Seed~7). Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, Warm-up in Epochen. Wiederholungen mit höchstens \num{1000} Epochen und einer Patience von 20 Epochen. Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}
+\label{tab:cars:hpo}
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Verlust & Verf. & Versuch & Lernrate & $B$ & Warm-up \\
+\midrule
+ArcFace & \UEBL & 56 & \num{1.052e-05} & 32 & 0 \\
+ArcFace & LP & 41 & \num{8.308e-01} & 32 & 10 \\
+ArcFace & LRML & 66 & \num{1.782e-04} & 128 & 30 \\
+ArcFace & Hoffer & 73 & \num{2.428e-05} & 32 & 15 \\
+ArcFace & SLADE & 65 & \num{1.468e-04} & 256 & 15 \\
+\addlinespace[3pt]
+Circle & \UEBL & 71 & \num{3.717e-05} & 32 & 0 \\
+Circle & LP & 74 & \num{1.304e-05} & 32 & 20 \\
+Circle & LRML & 56 & \num{3.775e-05} & 64 & 20 \\
+Circle & Hoffer & 37 & \num{8.366e-05} & 64 & 10 \\
+Circle & SLADE & 67 & \num{1.188e-04} & 64 & 20 \\
+\addlinespace[3pt]
+Multi-Similarity & \UEBL & 65 & \num{1.002e-05} & 32 & 0 \\
+Multi-Similarity & LP & 76 & \num{8.125e-05} & 64 & 5 \\
+Multi-Similarity & LRML & 70 & \num{1.258e-04} & 64 & 30 \\
+Multi-Similarity & Hoffer & 58 & \num{2.185e-05} & 64 & 25 \\
+Multi-Similarity & SLADE & 55 & \num{7.300e-05} & 64 & 15 \\
+\addlinespace[3pt]
+NT-Xent & \UEBL & 61 & \num{1.688e-05} & 128 & 0 \\
+NT-Xent & LP & 74 & \num{2.213e-05} & 128 & 15 \\
+NT-Xent & LRML & 28 & \num{3.676e-04} & 256 & 10 \\
+NT-Xent & Hoffer & 0 & \num{2.114e-04} & 128 & 5 \\
+NT-Xent & SLADE & 67 & \num{1.654e-04} & 256 & 5 \\
+\addlinespace[3pt]
+Proxy-Anchor & \UEBL & 79 & \num{8.236e-04} & 32 & 0 \\
+Proxy-Anchor & LP & 39 & \num{1.544e-05} & 64 & 10 \\
+Proxy-Anchor & LRML & 54 & \num{2.539e-05} & 64 & 30 \\
+Proxy-Anchor & Hoffer & 55 & \num{1.070e-04} & 256 & 5 \\
+Proxy-Anchor & SLADE & 66 & \num{7.725e-05} & 32 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}

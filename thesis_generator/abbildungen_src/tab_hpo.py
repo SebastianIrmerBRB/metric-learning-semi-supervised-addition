@@ -55,9 +55,9 @@ def delayed(settings):
 for key, name, ep_column, small in DATA:
     settings = sammlung.read_csv(f"{key}_ergebnisse/data/phase1_settings.csv")
     budget, seed = search(key)
-    legend = "Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, $T_{\\mathrm{W}}$: Warm-up-Epochen"
+    legend = "Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, Warm-up in Epochen"
     if ep_column:
-        legend += ", $E/P$: Epochenlimit und Early-Stopping-Patience der Wiederholungen."
+        legend += ", Ep./Patience: Epochenlimit und Early-Stopping-Patience der Wiederholungen."
     else:
         patience = unique(settings.patience, f"Patience {key}")
         legend += (f". Wiederholungen mit höchstens \\num{{{settings.epochs.max()}}} Epochen und einer Patience "
@@ -74,7 +74,7 @@ for key, name, ep_column, small in DATA:
     if small:
         lines.append("\\small")
     lines += ["\\begin{tabular}{@{}llrrrr" + ("r" if ep_column else "") + "@{}}", "\\toprule",
-              "Verlust & Verf. & Versuch & Lernrate & $B$ & $T_{\\mathrm{W}}$" + (" & $E/P$" if ep_column else "") + " \\\\",
+              "Verlust & Verf. & Versuch & Lernrate & $B$ & Warm-up" + (" & Ep./Patience" if ep_column else "") + " \\\\",
               "\\midrule"]
     for i, (lk, ln) in enumerate(LOSS.items()):
         if i:

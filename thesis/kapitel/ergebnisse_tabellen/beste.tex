@@ -1,0 +1,40 @@
+\begin{table}[tbp]
+\centering\small\setlength{\tabcolsep}{4pt}
+\caption[Beste Kombination aus Verfahren und Verlustfunktion]{Höchste Test-MAP@R in \% je Datensatz, Budget und Modelltyp, Mittel über die fünf Seeds. \acs{SSL}: beste der 20 Kombinationen aus den vier \acs{SSL}-Verfahren und den fünf Verlustfunktionen (Spalten Verfahren und Verlust), \UEBL: mit der besten der fünf Verlustfunktionen.}
+\label{tab:e:beste}
+\begin{tabular}{@{}l *{2}{l l S[table-format=2.1] S[table-format=2.1]}@{}}
+\toprule
+ & \multicolumn{4}{c}{Einzelmodell (Mean)} & \multicolumn{4}{c}{Ensemble (Concat)} \\
+\cmidrule(lr){2-5}\cmidrule(l){6-9}
+Budget & Verfahren & Verlust & {\acs{SSL}} & {\UEBL} & Verfahren & Verlust & {\acs{SSL}} & {\UEBL} \\
+\midrule
+\multicolumn{9}{@{}l}{\textbf{Cars196}} \\
+\quad $k=4$ & \acs{LP} & \acs{MS} & 41.5 & 34.3 & \acs{LP} & \acs{MS} & 45.6 & 36.5 \\
+\quad $k=8$ & \acs{LP} & \acs{MS} & 42.6 & 38.6 & \acs{LP} & \acs{MS} & 46.1 & 41.6 \\
+\quad $k=16$ & \acs{LP} & \acs{MS} & 43.3 & 41.3 & \acs{LP} & \acs{MS} & 46.3 & 44.5 \\
+\quad $k=32$ & \acs{LP} & \acs{MS} & 43.4 & 43.0 & \acs{LP} & \acs{MS} & 46.4 & 45.9 \\
+\midrule
+\multicolumn{9}{@{}l}{\textbf{\acs{CUB}}} \\
+\quad $k=4$ & \acs{LP} & \acs{MS} & 52.4 & 51.8 & \acs{LP} & \acs{MS} & 53.3 & 52.5 \\
+\quad $k=8$ & \acs{LP} & \acs{MS} & 52.7 & 52.1 & \acs{LP} & \acs{MS} & 53.4 & 52.9 \\
+\quad $k=16$ & \acs{LP} & \acs{MS} & 52.8 & 52.4 & \acs{LP} & \acs{MS} & 53.5 & 53.2 \\
+\quad $k=32$ & \acs{LP} & \acs{MS} & 52.9 & 52.7 & \acs{LP} & \acs{MS} & 53.7 & 53.5 \\
+\midrule
+\multicolumn{9}{@{}l}{\textbf{In-Shop}} \\
+\quad $k=2$ & \acs{LP} & ArcFace & 58.9 & 55.9 & \acs{LP} & \acs{MS} & 61.1 & 58.8 \\
+\quad $k=4$ & \acs{LP} & \acs{MS} & 60.4 & 60.6 & \acs{LP} & \acs{MS} & 62.2 & 61.6 \\
+\midrule
+\multicolumn{9}{@{}l}{\textbf{Semi-iNat-2021}} \\
+\quad $k=2$ & \acs{LP} & \acs{MS} & 35.1 & 34.1 & \acs{LP} & \acs{MS} & 35.9 & 34.6 \\
+\quad $k=4$ & \acs{LP} & \acs{MS} & 35.8 & 34.8 & \acs{LP} & \acs{MS} & 36.7 & 35.5 \\
+\quad $k=16$ & \acs{LP} & NT-Xent & 36.7 & 36.2 & \acs{LP} & NT-Xent & 37.6 & 37.1 \\
+\quad $k=100$ & \acs{LRML} & \acs{MS} & 37.5 & 37.3 & \acs{LRML} & \acs{MS} & 38.2 & 38.0 \\
+\midrule
+\multicolumn{9}{@{}l}{\textbf{In-Shop-Serie mit gelabelten Klassen}} \\
+\quad \qty{5}{\percent} & \acs{LRML} & Circle & 45.2 & 43.4 & \acs{LRML} & Circle & 50.9 & 47.9 \\
+\quad \qty{10}{\percent} & \acs{LRML} & Circle & 50.7 & 48.5 & \acs{LRML} & Circle & 55.4 & 52.9 \\
+\quad \qty{25}{\percent} & \acs{LRML} & Circle & 55.7 & 55.1 & \acs{LRML} & Circle & 58.5 & 58.1 \\
+\quad \qty{50}{\percent} & Hoffer & ArcFace & 58.7 & 58.5 & Hoffer & \acs{MS} & 60.4 & 60.5 \\
+\bottomrule
+\end{tabular}
+\end{table}

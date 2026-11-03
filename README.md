@@ -4,6 +4,14 @@ Training, evaluation, and thesis figure generation for semi-supervised deep
 metric learning with DINOv2 features. Built on
 [gmberton/image-retrieval](https://github.com/gmberton/image-retrieval).
 
+## Thesis material
+
+| Path | Contents |
+| --- | --- |
+| [`thesis/`](thesis/) | LaTeX source of the master's thesis with all figures it includes |
+| [`thesis_generator/`](thesis_generator/) | compact data of all experiments and the scripts that generate every data figure and table |
+| [`viewer/`](viewer/) | data viewer, online at https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/ |
+
 ## Install and run a small training job
 
 Use Python **3.12**. These commands are for Linux or WSL and use a CPU build of

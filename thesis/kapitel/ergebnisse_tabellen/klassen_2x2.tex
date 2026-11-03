@@ -1,0 +1,25 @@
+\begin{table}[tbp]
+\centering
+\caption[Zerlegung des Gewinns von \acs{LRML} bei Klassen ohne Labels]{Zerlegung des Gewinns von \acs{LRML} in der In-Shop-Serie mit \qty{10}{\percent} vollständig gelabelten Klassen (Seed~2): Änderung der Test-MAP@R gegenüber der regulären Konfiguration in Prozentpunkten, \UEBL und regulär absolut in \%. Varianten wie in Tabelle~\ref{tab:m:2x2}. Rauschschwelle $2\sqrt{2}\,\sigma$ aus den fünf Seeds der Phase~1 bei \qty{10}{\percent} (Abschnitt~\ref{sec:m:phase2}).}
+\label{tab:e:klassen:2x2}
+\footnotesize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{@{}l *{5}{S[table-format=+2.1, retain-explicit-plus]}@{}}
+\toprule
+{Variante} & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
+\midrule
+\multicolumn{6}{@{}l}{\textit{Einzelmodell (Mean)}} \\
+\quad \UEBL (MAP@R) & 48.2 & 47.7 & 48.4 & 48.1 & 48.0 \\
+\quad regulär (MAP@R) & 48.4 & 50.7 & 49.2 & 46.9 & 47.4 \\
+\quad Rauschschwelle & 0.9 & 0.2 & 0.5 & 0.4 & 0.5 \\
+\quad Hyperparameter der \UEBL & -1.0 & -4.1 & -0.1 & +0.8 & -19.1 \\
+\quad ohne ungelabelte Bilder & -0.8 & -2.5 & -1.8 & +0.5 & -0.2 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{Ensemble (Concat)}} \\
+\quad \UEBL (MAP@R) & 52.5 & 52.3 & 52.9 & 51.9 & 51.9 \\
+\quad regulär (MAP@R) & 52.9 & 55.4 & 54.7 & 51.8 & 51.6 \\
+\quad Rauschschwelle & 1.0 & 0.4 & 1.1 & 0.6 & 0.4 \\
+\quad Hyperparameter der \UEBL & +0.3 & -5.0 & -1.7 & +0.0 & -20.2 \\
+\quad ohne ungelabelte Bilder & -1.0 & -2.2 & -2.2 & +0.6 & -0.1 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -27,7 +27,7 @@ ORDER = [("ue", "\\UEBL"), ("zero_weight", "SSL-Term abgeschaltet"), ("pool_labe
          ("sup_all_shared", "Hyperparameter der \\UEBL"), ("defaults", "regulär")]
 M = A.groupby("variant").mean(numeric_only=True)
 L = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Ensemble-Gewinn von \\acs{LRML} bei $k=4$]{$2\\times2$-Zerlegung von \\acs{LRML} auf Cars196 bei $k=4$ mit der Kontrolle mit abgeschaltetem \\acs{SSL}-Term: Test-MAP@R (Mean, Concat) in \\%, ihr Abstand in Prozentpunkten und der Anteil falscher Nachbarn eines Fold-Modells unter den ersten $R$ Treffern, die ein anderes ebenfalls zurückgibt, in \\%. Mittel über die fünf Verlustfunktionen und die fünf Seeds. Bezeichnungen wie in den Tabellen~\\ref{tab:phase2:eingriffe} und~\\ref{tab:m:2x2}.}",
+     "\\caption[Ensemble-Gewinn von \\acs{LRML} bei $k=4$]{$2\\times2$-Zerlegung von \\acs{LRML} auf Cars196 bei $k=4$ mit der Kontrolle mit abgeschaltetem \\acs{SSL}-Term: Test-MAP@R (Mean, Concat) in \\%, ihr Abstand in Prozentpunkten und der Anteil falscher Nachbarn eines Fold-Modells unter den ersten $R_q$ Treffern, die ein anderes ebenfalls zurückgibt, in \\%. Mittel über die fünf Verlustfunktionen und die fünf Seeds. Bezeichnungen wie in den Tabellen~\\ref{tab:phase2:eingriffe} und~\\ref{tab:m:2x2}.}",
      "\\label{tab:e:k4ensemble}",
      "\\small\n\\begin{tabular}{@{}l *{3}{S[table-format=2.1]} S[table-format=2.1]@{}}\n\\toprule",
      "{Konfiguration} & {Mean} & {Concat} & {Concat $-$ Mean} & {geteilte Fehler} \\\\\n\\midrule"]

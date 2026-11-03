@@ -38,7 +38,7 @@ NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagno
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
 SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwelle", "regularizer_target_ratio": "$\\eta$",
-         "distance_scale": "Distanzskala $s$", "warmup_epochs": "Warm-up"}
+         "distance_scale": "Distanzskala $\\gamma_{\\mathrm{H}}$", "warmup_epochs": "Warm-up"}
 
 
 def order(v):

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Thesis Data Viewer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%221%22 y=%229%22 width=%223%22 height=%226%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3Crect x=%226.5%22 y=%225%22 width=%223%22 height=%2210%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3Crect x=%2212%22 y=%221%22 width=%223%22 height=%2214%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script>
+    try { const t = localStorage.getItem("datenansicht-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand">
+        <h1>Thesis data</h1>
+        <span class="sub" id="sub">daten/ bundle</span>
+        <span id="status"></span>
+        <button class="iconbtn" id="theme" type="button" title="Switch light / dark / system theme">Theme: system</button>
+      </div>
+      <nav class="nav" id="nav" aria-label="Sections">
+        <a href="#/">Overview</a>
+        <a href="#/phase1">Phase 1</a>
+        <a href="#/phase2">Phase 2</a>
+        <a href="#/external">External images</a>
+        <a href="#/figures">Figures</a>
+        <a href="#/hp">Hyperparameters</a>
+        <a href="#/details">details.zip</a>
+        <a href="#/explore">All tables</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" aria-live="polite"></main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

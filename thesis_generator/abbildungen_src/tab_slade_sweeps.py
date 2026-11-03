@@ -14,12 +14,12 @@ OUT = sammlung.output_dir("kapitel/anhang_tabellen") + "phase2_slade_sweeps.tex"
 DS = ["Cars196", "DeepFashionInShop"]
 LOSS = ["arc", "cir", "ms", "nt", "prx"]
 LOSS_NAME = {"arc": "Arc", "cir": "Cir", "ms": "\\acs{MS}", "nt": "NT", "prx": "PA"}
-PARAM = [("regularizer_target_ratio", "Zielgradientenverhältnis $\\eta$"),
-         ("basis_target_ratio", "Basis: Zielgradientenverhältnis"),
+PARAM = [("regularizer_target_ratio", "Zielverhältnis $\\eta$"),
+         ("basis_target_ratio", "Basis: Zielverhältnis $\\eta_{\\mathrm{basis}}$"),
          ("cluster_ratio", "Clusterverhältnis"),
-         ("update_interval_epochs", "Teacher-Aktualisierung alle $n$ Epochen"),
+         ("update_interval_epochs", "Teacher-Aktualisierung alle $n_{\\mathrm{T}}$ Epochen"),
          ("unlabeled_batch_size", "Ungelabelte Batchgröße"),
-         ("sd_margin", "$\\mathcal{L}_{\\mathrm{SD}}$: Margin")]
+         ("sd_margin", "$\\mathcal{L}_{\\mathrm{SD}}$: Marge")]
 
 
 def de(x, d=1, plus=False):
@@ -40,7 +40,7 @@ def selbst():
     Konfiguration selbst ist (die Tabelle setzt dort +0,0)."""
     satz = {"regularizer_target_ratio": "$\\eta$ = {}", "basis_target_ratio": "dem Basis-Zielgradientenverhältnis {}",
             "cluster_ratio": "dem Clusterverhältnis {}", "update_interval_epochs": "der Teacher-Aktualisierung alle {}~Epochen",
-            "unlabeled_batch_size": "der ungelabelten Batchgröße {}", "sd_margin": "der Margin {}"}
+            "unlabeled_batch_size": "der ungelabelten Batchgröße {}", "sd_margin": "der Marge {}"}
     teile = []
     for p, _ in PARAM:
         g = S[S.param == p]
@@ -54,7 +54,7 @@ def selbst():
 
 KURZ = {"regularizer_target_ratio": "$\\eta$ = {}", "basis_target_ratio": "Basis-Zielgradientenverhältnis {}",
         "update_interval_epochs": "Teacher-Aktualisierung alle {} Epochen", "cluster_ratio": "Clusterverhältnis {}",
-        "unlabeled_batch_size": "ungelabelte Batchgröße {}", "sd_margin": "Margin von $\\mathcal{{L}}_{{\\mathrm{{SD}}}}$ {}"}
+        "unlabeled_batch_size": "ungelabelte Batchgröße {}", "sd_margin": "Marge von $\\mathcal{{L}}_{{\\mathrm{{SD}}}}$ {}"}
 
 
 def ausserhalb_werte():

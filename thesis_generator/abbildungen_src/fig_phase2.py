@@ -188,10 +188,10 @@ plt.close(fig)
 
 # ---------- D: Sweeps ----------
 SW = [("lp", "n_neighbors", "LP: $k_{\\mathrm{NN}}$", True),
-      ("lp", "confidence_threshold", "LP: Schwelle", False),
+      ("lp", "confidence_threshold", "LP: Konfidenzschwelle", False),
       ("lrml", "n_neighbors", "LRML: $k_{\\mathrm{NN}}$", True),
       ("lrml", "regularizer_target_ratio", "LRML: $\\eta$", True),
-      ("hoffer", "distance_scale", "Hoffer: $s_{\\mathrm{H}}$", True),
+      ("hoffer", "distance_scale", "Hoffer: $\\gamma_{\\mathrm{H}}$", True),
       ("hoffer", "regularizer_target_ratio", "Hoffer: $\\eta$", True)]  # seit 17.10.2026
 
 

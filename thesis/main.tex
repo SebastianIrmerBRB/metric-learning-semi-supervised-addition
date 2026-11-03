@@ -1,0 +1,68 @@
+% Vorlage für Abschlussarbeiten
+%
+% arbeit.tex
+%
+% Das ist das zentrale Dokument.
+
+% allgemeine Einstellungen
+\input{einstellungen}
+
+\begin{document}
+
+% neue Länge als Breitenmaß für Plots einfügen
+\newlength{\plotwidth}
+\setlength{\plotwidth}{0.7\columnwidth}
+\newlength{\plotheight}
+\setlength{\plotheight}{0.66\plotwidth}
+\newlength{\semiwidth}
+\setlength{\semiwidth}{0.35\columnwidth}
+\newlength{\semiheight}
+\setlength{\semiheight}{0.66\semiwidth}
+
+% die Titelseite
+\pagenumbering{alph}
+\pagestyle{empty}
+\include{kapitel/titelseite}
+
+% der Vorspann
+\pagenumbering{roman}
+\pagestyle{plain.scrheadings}
+\include{kapitel/kurzfassung}
+\include{kapitel/aufgabe}
+\include{kapitel/erklaerung}
+
+% die Verzeichnisse
+
+\pagestyle{scrheadings}
+{\setstretch{1}\tableofcontents}
+\include{kapitel/notation}
+\include{kapitel/abkuerzungen}
+\listoffigures
+\listoftables
+\clearpage
+
+\pagenumbering{arabic}
+\pagestyle{scrheadings}
+% der eigentliche Inhalt
+\acresetall % Abkürzungen werden ab der Einleitung beim ersten Gebrauch ausgeschrieben
+\include{kapitel/einleitung}
+\include{kapitel/grundlagen}
+\include{kapitel/ssdml}
+\include{kapitel/methodik}
+\include{kapitel/ergebnisse} % Cars196, CUB und In-Shop: gemeinsame Ergebnisdarstellung
+\include{kapitel/diskussion}
+% \include{kapitel/zusammenfassung} % 21.10.2026 entfernt (Autor), Abschluss ist das Fazit in der Diskussion
+
+\printbibliography
+% der Anhang
+\appendix
+\include{kapitel/anhang}
+\include{kapitel/anhang_ergebnisse}
+
+% die Thesen
+\pagestyle{empty}	
+\include{kapitel/thesen}
+
+\end{document}
+
+% Ende der Datei
