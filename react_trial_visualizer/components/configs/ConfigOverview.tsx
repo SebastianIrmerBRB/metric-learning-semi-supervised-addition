@@ -22,6 +22,7 @@ import { ProtocolView } from "@/components/configs/ProtocolView";
 import { SearchSpaceView } from "@/components/configs/SearchSpaceView";
 import { TraceView } from "@/components/configs/TraceView";
 import { Checkbox, Toggle } from "@/components/configs/ui";
+import { withBase } from "@/lib/site";
 
 type Tab = "checks" | "protocol" | "compare" | "trace" | "spaces" | "coverage";
 
@@ -87,7 +88,7 @@ export function ConfigOverview() {
     setCoverageMode(state.coverage);
     setReady(true);
     let cancelled = false;
-    fetch("/study-configs.json", { cache: "no-store" })
+    fetch(withBase("/study-configs.json"), { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`))))
       .then((raw) => {
         if (!cancelled) setSnapshot(decodeSnapshot(raw));
