@@ -1,0 +1,107 @@
+\begingroup\small\setstretch{1}\setlength{\tabcolsep}{4pt}
+\begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=2em\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}
+\caption[Alle Varianten der Phase~2 auf Cars196]{Alle Varianten der Phase~2 auf Cars196 ($k=16$, Seed~2): Test-MAP@R (Mean) in \%. Bezeichnungen wie in den Tabellen~\ref{tab:phase2:eingriffe} und~\ref{tab:m:2x2}, Rauschschwelle $2\sqrt{2}\,\sigma$ in Prozentpunkten (Abschnitt~\ref{sec:m:phase2}). Bei \acs{LRML} sind \enquote{ohne Warm-up} und \enquote{Warm-up $= 0$} dieselbe Einstellung. --: Lauf nicht vorhanden.}\label{tab:anhang:phase2}\\
+\toprule
+Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
+\midrule
+\endfirsthead
+\multicolumn{6}{@{}l}{\small Tabelle~\thetable{} (Fortsetzung)}\\
+\toprule
+Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+\UEBL & 40.33 & 39.15 & 40.76 & 39.21 & 39.22 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{LP}} \\*
+\quad Rauschschwelle & 0.8 & 0.5 & 0.6 & 0.6 & 0.3 \\
+\quad reguläre Konfiguration & 41.95 & 42.28 & 43.30 & 41.37 & 42.60 \\
+\quad Wiederholung mit Diagnose & 41.95 & 42.33 & 43.30 & 41.37 & 42.60 \\
+\quad SSL-Term abgeschaltet & 37.45 & 39.04 & 40.56 & 39.19 & 39.94 \\
+\quad ohne ungelabelte Bilder & 37.49 & 38.89 & 40.33 & 39.07 & 39.92 \\
+\quad Hyperparameter der \UEBL & 41.45 & 41.83 & 43.77 & 41.52 & 40.24 \\
+\quad ohne Warm-up & 40.96 & 42.40 & 42.88 & 41.38 & 42.60 \\
+\quad Pseudo-Labels eingefroren & 41.60 & 41.35 & 42.63 & 41.15 & 41.15 \\
+\quad Graph umverdrahtet & 27.72 & 33.71 & 31.02 & 35.08 & 32.62 \\
+\quad Oracle-Kanten entfernt & 41.70 & 43.14 & 43.85 & 42.53 & 43.61 \\
+\quad zufällige Kanten entfernt & 41.81 & 42.48 & 42.92 & 41.56 & 42.66 \\
+\quad Oracle-Labels, 0\,\% Rauschen & 42.09 & 42.91 & 44.17 & 42.42 & 43.55 \\
+\quad Oracle-Labels, 10\,\% Rauschen & 42.53 & 37.83 & 41.89 & 42.29 & 41.18 \\
+\quad Oracle-Labels, 20\,\% Rauschen & 42.07 & 37.03 & 39.20 & 41.33 & 39.10 \\
+\quad Oracle-Labels, 40\,\% Rauschen & 40.21 & 36.18 & 33.74 & 39.06 & 36.21 \\
+\quad Oracle-Labels, 60\,\% Rauschen & 38.71 & 35.51 & 31.89 & 36.11 & 33.36 \\
+\quad Nachbarzahl $= 2$ & 41.32 & 42.22 & 42.92 & 41.52 & 42.63 \\
+\quad Nachbarzahl $= 25$ & 41.62 & 42.34 & 42.69 & 41.26 & 42.66 \\
+\quad Nachbarzahl $= 50$ & 41.29 & 42.30 & 42.25 & 41.27 & 42.68 \\
+\quad Nachbarzahl $= 75$ & 41.65 & 42.09 & 42.21 & 41.03 & 42.67 \\
+\quad Nachbarzahl $= 100$ & 41.61 & 42.10 & 41.68 & 40.71 & 42.55 \\
+\quad Nachbarzahl $= 500$ & 41.59 & 39.96 & 38.90 & 40.66 & 37.14 \\
+\quad Konfidenzschwelle $= 0{,}1$ & 41.95 & 42.30 & 43.13 & 41.37 & 42.57 \\
+\quad Konfidenzschwelle $= 0{,}3$ & 41.95 & 42.30 & 43.13 & 41.37 & 42.57 \\
+\quad Konfidenzschwelle $= 0{,}5$ & 41.70 & 42.29 & 43.06 & 41.59 & 42.46 \\
+\quad Konfidenzschwelle $= 0{,}7$ & 41.52 & 42.45 & 43.01 & 41.73 & 42.50 \\
+\quad Konfidenzschwelle $= 0{,}9$ & 39.23 & 41.67 & 40.89 & 41.14 & 42.68 \\
+\quad Warm-up $= 30$ & 40.46 & 42.45 & 41.36 & 41.60 & 42.69 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{\acs{LRML}}} \\*
+\quad Rauschschwelle & 0.5 & 0.7 & 1.1 & 0.7 & 0.5 \\
+\quad reguläre Konfiguration & 40.91 & 40.89 & 40.37 & 39.85 & 41.72 \\
+\quad SSL-Term abgeschaltet & 35.56 & 38.80 & 35.96 & 36.72 & 38.64 \\
+\quad ohne ungelabelte Bilder & 37.79 & 40.49 & 38.48 & 39.19 & 40.58 \\
+\quad Hyperparameter der \UEBL & 36.78 & 40.92 & 40.44 & 36.70 & 37.91 \\
+\quad ohne Warm-up & 31.29 & 40.22 & 38.20 & 33.42 & 39.67 \\
+\quad Graph eingefroren & 40.40 & 40.72 & 39.75 & 39.98 & 41.62 \\
+\quad Graph umverdrahtet & 35.77 & 38.68 & 34.77 & 37.10 & 38.51 \\
+\quad Oracle-Kanten entfernt & 41.30 & 41.36 & 41.13 & 40.46 & 42.45 \\
+\quad zufällige Kanten entfernt & 41.08 & 40.94 & 40.10 & 40.14 & 41.67 \\
+\quad Nachbarzahl $= 2$ & 39.60 & 38.98 & 37.46 & 39.46 & 40.57 \\
+\quad Nachbarzahl $= 25$ & 41.05 & 40.38 & 39.99 & 39.69 & 41.58 \\
+\quad Nachbarzahl $= 50$ & 41.01 & 40.60 & 40.35 & 39.89 & 41.61 \\
+\quad Nachbarzahl $= 75$ & 40.66 & 41.03 & 40.16 & 40.24 & 41.63 \\
+\quad Nachbarzahl $= 100$ & 40.03 & 41.10 & 39.67 & 40.07 & 41.21 \\
+\quad Nachbarzahl $= 500$ & 37.32 & 40.43 & 35.45 & 39.19 & 40.13 \\
+\quad $\eta$ $= 0{,}1$ & 36.16 & 39.25 & 36.32 & 36.96 & 39.02 \\
+\quad $\eta$ $= 0{,}2$ & 36.99 & 39.58 & 36.90 & 37.27 & 39.41 \\
+\quad $\eta$ $= 0{,}35$ & 38.25 & 40.07 & 37.43 & 37.69 & 39.98 \\
+\quad $\eta$ $= 0{,}5$ & 39.73 & 40.54 & 38.23 & 38.10 & 40.48 \\
+\quad $\eta$ $= 0{,}75$ & 41.06 & 41.10 & 39.70 & 38.20 & 41.54 \\
+\quad $\eta$ $= 1{,}0$ & 41.23 & 41.33 & 40.59 & 39.76 & 41.82 \\
+\quad $\eta$ $= 1{,}5$ & 40.44 & 40.55 & 41.30 & 40.64 & 41.68 \\
+\quad $\eta$ $= 3{,}0$ & 38.30 & 39.07 & 39.68 & 38.95 & 40.08 \\
+\quad Warm-up $= 0$ & 31.29 & 40.22 & 38.20 & 33.42 & 39.67 \\
+\quad Warm-up $= 30$ & 40.91 & 40.93 & 40.37 & 37.03 & 41.72 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{Hoffer}} \\*
+\quad Rauschschwelle & 0.3 & 0.4 & 0.5 & 0.7 & 0.5 \\
+\quad reguläre Konfiguration & 40.52 & 40.62 & 39.47 & 40.31 & 40.65 \\
+\quad SSL-Term abgeschaltet & 39.20 & 38.89 & 38.56 & 38.11 & 39.56 \\
+\quad ohne ungelabelte Bilder & 38.26 & 39.30 & 38.46 & 38.51 & 39.39 \\
+\quad Hyperparameter der \UEBL & 40.58 & 39.37 & 39.25 & 39.63 & 39.02 \\
+\quad ohne Warm-up & 40.21 & 39.63 & 38.88 & 40.15 & 40.64 \\
+\quad $\eta$ $= 0{,}1$ & 40.02 & 39.39 & 38.85 & 38.43 & 39.80 \\
+\quad $\eta$ $= 0{,}2$ & 40.43 & 39.77 & 39.10 & 39.48 & 39.98 \\
+\quad $\eta$ $= 0{,}35$ & 40.64 & 40.23 & 39.34 & 39.90 & 40.29 \\
+\quad $\eta$ $= 0{,}5$ & 40.68 & 40.50 & 39.43 & 40.08 & 40.49 \\
+\quad $\eta$ $= 0{,}75$ & 40.30 & 40.64 & 39.54 & 40.16 & 40.85 \\
+\quad $\eta$ $= 1{,}0$ & 39.73 & 40.52 & 39.60 & 40.45 & 40.93 \\
+\quad $\eta$ $= 1{,}5$ & 38.90 & 40.33 & 39.46 & 40.26 & 41.04 \\
+\quad $\eta$ $= 3{,}0$ & 39.14 & 40.28 & 39.39 & 40.19 & 39.87 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 1$ & 33.78 & 35.48 & 38.00 & 33.32 & 37.05 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 2$ & 35.21 & 39.65 & 38.45 & 36.40 & 37.17 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 4$ & 38.10 & 40.53 & 38.76 & 39.22 & 40.92 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 16$ & 40.29 & 39.54 & 39.64 & 38.72 & 40.40 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 32$ & 39.88 & 39.02 & 39.22 & 37.95 & 40.06 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 64$ & 39.57 & 38.90 & 38.90 & 37.59 & 39.89 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 128$ & 39.47 & 38.80 & 38.48 & 37.61 & 39.69 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 256$ & 39.52 & 38.69 & 38.50 & 37.55 & 39.65 \\
+\quad Distanzskala $\gamma_{\mathrm{H}}$ $= 512$ & 39.47 & 38.81 & 38.41 & 37.37 & 39.77 \\
+\addlinespace
+\multicolumn{6}{@{}l}{\textit{SLADE}} \\*
+\quad Rauschschwelle & 1.0 & 0.6 & 1.0 & 0.3 & 0.6 \\
+\quad reguläre Konfiguration & 40.20 & 41.60 & 41.68 & 40.61 & 40.38 \\
+\quad SSL-Term abgeschaltet & 39.50 & 38.55 & 40.16 & 38.31 & 38.86 \\
+\quad ohne ungelabelte Bilder & 40.04 & 38.12 & 40.84 & 38.79 & 39.52 \\
+\quad Hyperparameter der \UEBL & 35.65 & 41.07 & 38.87 & 35.33 & 38.24 \\
+\quad ohne Warm-up & 38.97 & 39.53 & 41.23 & 39.16 & 40.38 \\
+\end{longtable}\endgroup

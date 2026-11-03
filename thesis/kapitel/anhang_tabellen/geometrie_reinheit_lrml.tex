@@ -1,0 +1,16 @@
+\begin{table}[tbp]
+\centering
+\caption[Reinheit des $k$NN-Graphen von LRML]{Reinheit des $k$NN-Graphen von \acs{LRML} nach dem Training (Anteil der Kanten innerhalb einer Klasse in \%) mit der Nachbarzahl der Konfiguration der Geometrieläufe (Cars196, Seed~2, Mittel über vier Folds). Head ($-1$): vor dem ersten Optimierungsschritt. Nur innerhalb einer Zeile vergleichbar, weil sich die Nachbarzahlen unterscheiden.}
+\label{tab:a:reinheit:lrml}
+\begin{tabular}{@{}l S[table-format=2.0] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1]@{}}
+\toprule
+{Verlust} & {Nachbarn} & {Head ($-1$)} & {$k=4$} & {$k=8$} & {$k=16$} & {$k=32$} \\
+\midrule
+ArcFace & 49 & 30.8 & 56.3 & 67.2 & 74.1 & 78.5 \\
+Circle & 77 & 24.9 & 48.7 & 57.7 & 62.5 & 65.4 \\
+\acs{MS} & 50 & 30.6 & 57.6 & 68.1 & 74.6 & 76.5 \\
+NT-Xent & 52 & 30.1 & 58.1 & 68.1 & 73.7 & 76.6 \\
+Proxy-Anchor & 25 & 39.4 & 62.1 & 74.5 & 82.2 & 85.2 \\
+\bottomrule
+\end{tabular}
+\end{table}

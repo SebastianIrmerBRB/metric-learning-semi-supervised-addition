@@ -1,0 +1,346 @@
+% Vorlage für Abschlussarbeiten
+%
+% einstellungen.tex
+%
+% Hier werden allgemeine Einstellungen festgelegt.
+
+\documentclass[%
+	a4paper,%							A4 Papier
+	oneside,%							einseitig (linker und rechter Seitenrand sind gleich groß)
+	bibliography=totoc,%	Literaturverzeichnis nummeriert mit ins Inhaltsverzeichnis einfügen
+	listof=totoc,%				Abbildungs- und Tabellenverzeichnis ins Inhaltsverzeichnis einfügen
+	numbers=noenddot,%		hinter der Gliederungsnummer soll kein Punkt gesetzt werden (siehe Duden)
+	parskip=false,%				europäischer Satz mit Abstand zwischen Absätzen
+	headsepline,%					Linie nach Kopfzeile
+	captions=tableheading,%		Tabellenueberschriften mit passendem Abstand setzen
+	headheight=17pt,%
+	chapterprefix=false,%	kein "Kapitel N" über der Kapitelüberschrift
+	11pt,%								11 pt Grundschrift (Leitfäden: 11–12 pt), mit \onehalfspacing 16,5 pt Zeilenabstand = Word 1,3
+]{scrreprt}
+
+% Laut Duden gilt:
+% Bei rein arabischer Nummerierung soll der Punkt
+% weggelassen werden. Werden auch römische Zahlen und
+% Buchstaben für die Gliederung verwendet, soll ein
+% abschließender Punkt gesetzt werden. Als Voreinstellung
+% versucht KOMA-Script, dies automatisch herauszufinden. (Da
+% es sich diese Information in der .aux-Datei merkt, kann ein
+% weiterer LATEX-Lauf notwendig sein.)
+% Paket für Deutsche Sprache (Übersetzungen von Chapter zu Kapitel, 
+% richtige Umlaute, richtige % Silbentrennung)
+% siehe auch http://de.wikipedia.org/wiki/Babel-System
+\usepackage[english,ngerman]{babel}
+
+% Eingabecodierung, deutsche Umlaute oder die akzentuierten Zeichen sind verfügbar 
+% und können direkt eingegeben werden
+% siehe auch http://de.wikipedia.org/wiki/UTF8
+\usepackage[utf8]{inputenc}
+
+% Ausgabeschriftart von LaTeX festlegen
+% siehe auch http://de.wikibooks.org/wiki/LaTeX-Schnellkurs:_Erste_Schritte
+\usepackage[T2A,T1]{fontenc}
+\DeclareUnicodeCharacter{0403}{{\fontencoding{T2A}\fontfamily{cmr}\selectfont\CYRGUP}}
+\DeclareUnicodeCharacter{043D}{{\fontencoding{T2A}\fontfamily{cmr}\selectfont\cyrn}}
+
+% schönere Schriftart
+\renewcommand*{\ttdefault}{lmtt}
+\usepackage{newpxtext}
+
+% mikrotypografische Verbesserungen
+\usepackage{microtype}
+\microtypesetup{protrusion=true,expansion=true}
+\DeclareMicrotypeSet{thesistext}{encoding={T1,TS1}}
+\UseMicrotypeSet[expansion]{thesistext}
+
+% Paket zum Erweitern der Tabelleneigenschaften
+\usepackage{array}
+\usepackage{longtable}
+
+% Paket zum Überprüfen, ob ein pdf oder etwas anderes erstellt wird
+\usepackage{ifpdf}
+
+% Paket um Grafiken einbetten zu können
+% erlaubt sind die Formate png, pdf, jpg
+% nicht erlaubt sind eps/ps für pdftex/pdflatex
+\usepackage{graphicx}
+\usepackage{float}
+% Standardpfad für Grafiken
+\graphicspath{{bilder/}}
+% Standardendung für Grafiken
+\ifpdf
+	% für die pdf-Ausgabe
+	\DeclareGraphicsExtensions{.pdf,.jpg,.png}
+\else
+	% für die html-Ausgabe
+	\DeclareGraphicsExtensions{.png,.jpg}
+\fi
+
+% ermöglicht Punkte in Dateinamen von Bildern
+\usepackage{grffile}
+
+\usepackage{xcolor}
+
+% Paket zum "Zeichnen" von Grafiken (TikZ ist kein Zeichenprogramm)
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,calc,shapes.misc,shapes.geometric}
+
+% Paket zum Zeichnen von elektrischen Schaltkreisen mit TikZ
+\usepackage[european,EFvoltages]{circuitikz}
+\def\TikZ{Ti\emph{k}Z}
+\def\Circuitikz{Circui\TikZ}
+
+% Paket zum Erstellen von Plots mit TikZ
+\usepackage{pgfplots}
+% immer die neueste Version benutzen
+\pgfplotsset{compat=newest}
+% Verbindung von Linien durch eine schräge Kante
+\pgfplotsset{every axis/.append style={line join=bevel}}
+% neue Größenvorlage für zwei Plots nebeneinander anlegen
+\pgfplotsset{
+	scriptsize/.style={
+		width=4.5cm,
+		height=,
+		legend style={font=\scriptsize},
+		tick label style={font=\scriptsize},
+		label style={font=\footnotesize},
+		title style={font=\footnotesize},
+		every axis title shift=0pt,
+		max space between ticks=15,
+		every mark/.append style={mark size=7},
+		major tick length=0.1cm,
+		minor tick length=0.066cm,
+	},
+}
+% Legendeneintrage standardmäßig links ausrichten
+\pgfplotsset{legend cell align=left}
+% Anzahl der kleinen Teilstriche zwischen zwei großen Teilstrichen
+%\pgfplotsset{minor x tick num={3}}
+%\pgfplotsset{minor y tick num={3}}
+% feines Gitternetz zeichnen
+%\pgfplotsset{xminorgrids}
+%\pgfplotsset{yminorgrids}
+% nur nach den Achsen skalieren
+\pgfplotsset{scale only axis}
+% Farben wie in MATLAB definieren (Version R2014a und früher)
+%%%%%%%% Farben wie in MATLAB definieren (ab Version R2014b)
+% siehe: https://de.mathworks.com/help/matlab/graphics_transition/why-are-plot-lines-different-colors.html
+% Die RGB-Werte können auch per
+% >> figure;
+% >> get(gca,'defaultAxesColorOrder');
+% ausgelesen werden.
+% Vielen Dank an Thomas Aab für die Aktualisierung.
+% Farbreihenfolge von pgfplots benutzen
+%\pgfplotsset{cycle list name=color list}
+% nur Graustufen benutzen
+%\pgfplotsset{cycle list name=linestyles}
+% Strichstärke auf 1pt festlegen
+\pgfplotsset{every axis plot/.append style={line width=1pt}}
+% für deutsche Dokumente ein Komma benutzen
+\addto\extrasngerman{\pgfplotsset{/pgf/number format/.cd,set decimal separator={{{,}}}}}
+% ein halbes Leerzeichen als Tausendertrennzeichen benutzen
+\pgfplotsset{/pgf/number format/.cd,1000 sep={\,}}
+
+% Paket um mehrere Grafiken als eine Abbildung darstellen zu können
+\usepackage{subfig}
+
+% mathematische Symbole aus dem AMS (Amerikanische Mathematische Gesellschaft) Paket
+\usepackage{amsmath}
+\numberwithin{equation}{chapter}
+% links-ausgerichtete Gleichungen
+%\usepackage[fleqn]{amsmath}
+\usepackage{newpxmath}
+\usepackage{bm}
+% kein zusätzlicher Abstand nach dem Dezimalkomma im Mathemodus
+\usepackage{icomma}
+
+% Paket um den Zeilenabstand zu ändern
+\usepackage{setspace}
+% Zeilenabstand 1,1 (wie die THB-LaTeX-Vorlage)
+%\setstretch{1.1}
+\onehalfspacing
+\emergencystretch=2em
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+
+% Paket um Textteile drehen zu können
+\usepackage{rotating}
+
+% Paket für bessere Tabellen
+\usepackage{booktabs}
+
+
+% Seitenstil und Typografie werden in gestaltung.tex konfiguriert.
+\usepackage[automark]{scrlayer-scrpage}
+
+% Package für die deutsche BibTeX-Umgebung
+% (sonst kann man keine Auflage eines Buches angeben)
+\usepackage[backend=biber,style=numeric-comp,sorting=none,maxbibnames=99,maxcitenames=2,giveninits=true,
+  uniquename=init,doi=true,isbn=false,url=true,eprint=true,date=year,urldate=long,urldateusetime=true,urltime=24h]{biblatex}
+
+\DefineBibliographyStrings{ngerman}{
+	andothers = {{et\addabbrvspace al\adddot}},
+	urlfrom = {{Verfügbar unter}},
+	urlseen = {Zugriff am},
+}
+
+% Datum und Uhrzeit des Abrufs mit Komma trennen (Leitfaden 4.5.3)
+\DefineBibliographyExtras{ngerman}{\renewcommand*{\bibdatetimesep}{\addcomma\space}}
+
+\DeclareFieldFormat*{url}{\bibstring{urlfrom}\addcolon\space\url{#1}}
+
+\addbibresource{literatur.bib}  % Name deiner .bib-Datei anpassen
+% Paket für bessere Anführungszeichen
+\usepackage{csquotes}
+
+% Paket für bessere Zitate
+
+
+% Paket, um zu Verhindern, dass Zitate im Inhaltsverzeichnis, Abbildungsverzeichnis und Tabellenverzeichnis die Nummerierung beeinflussen
+\usepackage{notoccite}
+
+% Paket für Unterstreichungen
+\usepackage[normalem]{ulem}
+
+% Paket zur Änderung von Aufzählungen
+\usepackage{enumitem}
+
+% neue Umgebung für eine Aufzählung (unnummeriert) mit weniger vertikalen Abständen
+\newenvironment{packed_itemize}{
+\begin{itemize}[topsep=0pt,partopsep=0pt]
+	\setlength{\itemsep}{0pt}
+	\setlength{\parskip}{0pt}
+	\setlength{\parsep}{0pt}
+}{\end{itemize}}
+
+% neue Umgebung für eine Aufzählung (nummeriert) mit weniger vertikalen Abständen
+\newenvironment{packed_enumerate}{
+\begin{enumerate}[topsep=0pt,partopsep=0pt]
+	\setlength{\itemsep}{0pt}
+	\setlength{\parskip}{0pt}
+	\setlength{\parsep}{0pt}
+}{\end{enumerate}}
+
+% Paket für SI-Einheiten
+\usepackage{siunitx}
+% Optionen für das Paket
+% Einstellungen in gestaltung.tex
+
+
+
+
+% Paket zur Darstellung von Algorithmen
+%\usepackage{algorithm2e}
+
+% Paket für ein intelligenter Leerzeichen
+\usepackage{xspace}
+
+% ein paar Befehle für häufig benutzte Abkürzungen
+
+% Markierung für Angaben, die der Verfasser noch bestätigen oder ergänzen muss
+\newcommand{\pruefen}[1]{\textcolor{red!75!black}{[prüfen: #1]}}
+\newcommand{\zB}{z.\,B.\xspace}
+\newcommand{\dH}{d.\,h.\xspace} % den /dh-Befehl gibt es schon
+% Kürzel der supervised Referenz (ÜBl. = überwachte Baseline). Nur hier ändern.
+% Der Punkt entfällt, wenn im Text schon ein Punkt folgt (\UEBL. am Satzende ergibt ÜBl.).
+\makeatletter
+\DeclareRobustCommand{\UEBL}{ÜBl\@ifnextchar.{}{.\xspace}}
+\makeatother
+
+% neue mathematische Funktionen definieren
+\DeclareMathOperator{\arcosh}{arcosh}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+% Differentialoperator (kleines aufrechtes d)
+\newcommand*{\diff}{\mathop{}\!\mathrm{d}}
+
+% e-Funktion umdefinieren
+\newcommand{\e}{\mathrm{e}}
+
+% Indizes aufrecht (in Roman) schreiben
+\newcommand{\ind}[1]{\mathrm{#1}}
+
+% Punkt in einer Formelumgebung, z.B. am Ende einer Formel
+\newcommand{\punkt}{\,\text{.}}
+% ebenso Komma
+\newcommand{\komma}{\,\text{,}}
+
+% Betrag oder Absolutwert
+\newcommand{\abs}[1]{\left| #1 \right|}
+
+% Mittelwert oder Durchschnitt
+\newcommand{\mean}[1]{\left\langle #1 \right\rangle}
+
+% Paket für schönere Brüche im Textmodus
+\usepackage{xfrac}
+% Standardeinstellung wie im herkömmlichen Mathemodus mit schrägen Virgule-Bruchstrich
+%\UseCollection{xfrac}{plainmath}
+
+% Seitenränder: 3 cm auf allen Seiten (Kopfzeile liegt im oberen Rand, Seitenzahl der Kapitelanfänge im unteren)
+\usepackage[margin=30mm,headheight=17pt,headsep=8mm,footskip=12mm]{geometry}
+\raggedbottom
+
+% bestimmte Trennung für bestimmte Wörter
+\hyphenation{Mi-kro-strei-fen-lei-ters ver-schie-den-klas-si-ge ver-schie-den-klas-si-gen Me-cha-nis-mus}
+
+% Paket für ein Symbolverzeichnis/Notationsverzeichnis
+\usepackage[german]{nomencl}
+\makenomenclature
+
+% Paket für ein Abkürzungsverzeichnis
+% - siehe http://de.wikibooks.org/wiki/LaTeX-W%C3%B6rterbuch:_Abk%C3%BCrzungsverzeichnis
+% - ohne die nohyperlinks-Option werden zahlreiche Warnungen erzeugt
+% - mit der nohyperlinks-Option werden aber keine Links mehr aus dem Text zum Abkürzungsverzeichnis erzeugt
+\usepackage[nohyperlinks]{acronym}
+
+% Abbildungen und Tabellen immer versuchen, 'hier' zu platzieren
+\makeatletter
+\renewcommand{\fps@figure}{htbp}
+\renewcommand{\fps@table}{htbp}
+\makeatother
+
+% Legt den Anteil des Platzes am oberen Rand einer Seite fest, bis zu dem Gleitobjekte plaziert werden können.
+% Standardwert: 0.7
+\renewcommand{\topfraction}{0.85}
+
+% Legt den Anteil des Platzes einer Seite fest, den Gleitobjekte (z.B. Abbildungen) am unteren Seitenrand einnehmen können. 
+% Standardwert: 0.3
+\renewcommand{\bottomfraction}{0.33}
+
+% Einer dieser beiden Werte (\topfraction und \bottomfraction) sollte stets größer als \floatpagefraction sein!
+
+% Definiert den Anteil einer Gleitobjekt-Seite, der belegt sein muß, bevor eine weitere Seite angelegt wird. 
+% Standardwert: 0.5
+\renewcommand{\floatpagefraction}{0.8} % eigene Seite nur für große Gleitobjekte, mittelgroße kommen oben auf eine Textseite
+
+% Legt den Anteil des Platzes einer Seite mit Gleitobjekten fest, der mindestens für Text zur Verfügung steht. 
+% Standardwert: 0.2
+\renewcommand{\textfraction}{0.10}
+
+% Gliederung bis subsection im Text
+\setcounter{secnumdepth}{2}
+
+% Gliederung bis subsection im Inhaltsverzeichnis
+\setcounter{tocdepth}{2}
+% Gestaltungsregeln getrennt vom Inhalt halten.
+\input{gestaltung}
+
+% Hyperref-Paket für Links innerhalb des PDF Dokuments einbinden
+% dieses Paket sollte als letztes eingebunden werden
+% siehe auch http://www.math.uni-hamburg.de/home/iffland/Materialien/Einf_hyperref.pdf
+\usepackage{xurl}
+\urlstyle{same}
+\Urlmuskip=0mu plus 2mu minus 0.2mu
+\usepackage[
+hidelinks,
+pdftitle={Semi-Supervised Metric Learning mit Vision-Transformer-Modellen — Helfen ungelabelte Daten?},
+pdfauthor={Sebastian Irmer},
+pdfcreator={MiKTeX, LaTeX mit hyperref und KOMA-Script},
+pdfsubject={Masterarbeit},
+pdfkeywords={Metric Learning, Semi-Supervised Learning, Vision Transformer, Image Retrieval},
+pdfstartview={Fit}
+]{hyperref}
+\usepackage{bookmark}
+
+% Ende der Datei

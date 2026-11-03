@@ -22,9 +22,9 @@ NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagno
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
 SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwelle", "regularizer_target_ratio": "$\\eta$",
-         "distance_scale": "Distanzskala $s$", "warmup_epochs": "Warm-up", "basis_target_ratio": "Basis-Zielgradientenverhältnis",
+         "distance_scale": "Distanzskala $\\gamma_{\\mathrm{H}}$", "warmup_epochs": "Warm-up", "basis_target_ratio": "Basis-Zielgradientenverhältnis",
          "cluster_ratio": "Clusterverhältnis", "update_interval_epochs": "Teacher-Aktualisierung alle", "unlabeled_batch_size":
-         "ungelabelte Batchgröße", "sd_margin": "Margin von $\\mathcal{L}_{\\mathrm{SD}}$"}
+         "ungelabelte Batchgröße", "sd_margin": "Marge von $\\mathcal{L}_{\\mathrm{SD}}$"}
 
 
 def load(path):

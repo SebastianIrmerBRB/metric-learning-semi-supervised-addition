@@ -1,0 +1,35 @@
+\begin{tikzpicture}[diagram,
+  cval/.style={draw=black, line width=0.5pt, fill=white},
+  ctrn/.style={draw=black, line width=0.5pt, fill=tolblue!25},
+]
+\node[box] (ds) at (0.8,-1.0) {Cars196\\196 Klassen};
+\node[box] (tr) at (3.4,0.5) {98 Trainingsklassen\\\num{8054} Bilder};
+\node[box] (te) at (3.4,-2.75) {98 Testklassen\\\num{8131} Bilder};
+\draw[arr] (ds.north) |- (tr.west);
+\draw[arr] (ds.south) |- (te.west);
+\def\x{5.75} \def\w{0.75}
+\node[anchor=south] at (\x+2*\w,1.35) {vier klassendisjunkte Folds};
+\foreach \r in {0,1,2,3} {
+  \foreach \s in {0,1,2,3} {
+    \pgfmathsetmacro{\yy}{1.3-\r*0.42}
+    \ifnum\r=\s \def\cc{cval}\else\def\cc{ctrn}\fi
+    \draw[\cc] (\x+\s*\w,\yy) rectangle (\x+\s*\w+\w,\yy-0.3);
+  }
+  \node[anchor=west] at (\x+4*\w+0.05,1.15-\r*0.42) {Lauf \r};
+}
+\draw[arr] (tr.east) -- (\x,0.5);
+\draw[cval] (\x-0.9,-0.55) rectangle ++(0.3,-0.25); \node[anchor=west] at (\x-0.5,-0.67) {Validierung};
+\draw[ctrn] (\x+1.6,-0.55) rectangle ++(0.3,-0.25); \node[anchor=west] at (\x+2.0,-0.67) {Training};
+\def\y{-1.2}
+\fill[tolblue] (\x-0.9,\y) rectangle (\x-0.65,\y-0.35);
+\draw[ctrn] (\x-0.62,\y) rectangle (\x+3.5,\y-0.35);
+\node at (\x+1.45,\y-0.175) {\num{5746} ungelabelt};
+\node[anchor=north west] at (\x-0.95,\y-0.38) {\strut 294 gelabelt (dunkelblau), $k=4$};
+\node[box] (m) at (12.45,0.5) {4 trainierte Heads};
+\draw[arr] (\x+4*\w+1.2,0.5) -- (m.west);
+\node[box, text width=37mm, align=left, anchor=north west] (mean) at (10.7,-0.35) {Mean: MAP@R je Head, gemittelt};
+\node[box, text width=37mm, align=left, anchor=north west] (cat) at (10.7,-1.55) {Concat: Embeddings der 4 Heads verkettet, eine MAP@R};
+\draw[arr] (m.south) -- (m.south |- mean.north);
+\draw[arr] (te.east) -- (10.35,-2.75) |- (mean.west);
+\draw[arr] (10.35,-2.75) |- (cat.west);
+\end{tikzpicture}

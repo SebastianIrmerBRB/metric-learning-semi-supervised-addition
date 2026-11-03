@@ -1,0 +1,79 @@
+\begin{table}[p]
+\centering
+\caption[Test-MAP@R Cars196]{Test-MAP@R in \% auf Cars196, Mittel $\pm$ Standardabweichung über fünf Seeds. M: einzelne Fold-Modelle (Mean), C: Ensemble (Concat). Fett: bester Mittelwert je Verlustfunktion, Budget und Modelltyp; zusätzlich unterstrichen: bester Mittelwert je Budget und Modelltyp.}
+\label{tab:anhang:cars}
+\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llS[table-format=2.2(3), retain-zero-uncertainty]S[table-format=2.2(3), retain-zero-uncertainty]S[table-format=2.2(3), retain-zero-uncertainty]S[table-format=2.2(3), retain-zero-uncertainty]S[table-format=2.2(3), retain-zero-uncertainty]@{}}
+\toprule
+Verfahren & Modell & {ArcFace} & {Circle} & {MS} & {NT-Xent} & {Proxy-Anchor} \\
+\midrule
+\multicolumn{7}{@{}l}{$k=4$} \\
+\addlinespace[2pt]
+\UEBL & M & 32.28 +- 0.24 & 32.36 +- 0.28 & 34.26 +- 0.26 & 32.55 +- 0.26 & 31.60 +- 0.25 \\
+ & C & 34.52 +- 0.28 & 34.34 +- 0.42 & 36.50 +- 0.23 & 34.62 +- 0.26 & 34.51 +- 0.42 \\
+\addlinespace[1pt]
+LP & M & \bfseries 38.27 +- 0.26 & \bfseries 41.13 +- 0.14 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{41.51 +- 0.45}}}} & \bfseries 40.40 +- 0.21 & \bfseries 40.50 +- 0.29 \\
+ & C & \bfseries 42.26 +- 0.29 & \bfseries 44.29 +- 0.27 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{45.63 +- 0.23}}}} & \bfseries 43.86 +- 0.11 & \bfseries 43.61 +- 0.33 \\
+\addlinespace[1pt]
+LRML & M & 32.93 +- 0.87 & 33.34 +- 0.25 & 33.66 +- 0.19 & 32.91 +- 0.30 & 34.22 +- 0.78 \\
+ & C & 36.55 +- 1.19 & 38.56 +- 0.33 & 39.33 +- 0.23 & 39.14 +- 0.66 & 38.09 +- 1.03 \\
+\addlinespace[1pt]
+Hoffer & M & 34.49 +- 0.24 & 36.61 +- 0.31 & 37.37 +- 0.17 & 35.34 +- 0.89 & 32.56 +- 0.19 \\
+ & C & 37.30 +- 0.35 & 41.52 +- 0.30 & 41.33 +- 0.23 & 38.84 +- 0.95 & 34.67 +- 0.22 \\
+\addlinespace[1pt]
+SLADE & M & 32.32 +- 0.32 & 35.91 +- 0.33 & 35.41 +- 0.40 & 35.47 +- 0.23 & 33.72 +- 0.36 \\
+ & C & 35.71 +- 0.47 & 40.36 +- 0.47 & 40.76 +- 0.55 & 39.44 +- 0.39 & 36.25 +- 0.47 \\
+\midrule
+\multicolumn{7}{@{}l}{$k=8$} \\
+\addlinespace[2pt]
+\UEBL & M & 37.24 +- 0.24 & 36.70 +- 0.26 & 38.61 +- 0.36 & 36.93 +- 0.29 & 36.31 +- 0.22 \\
+ & C & 40.49 +- 0.21 & 39.55 +- 0.25 & 41.64 +- 0.31 & 40.03 +- 0.16 & 40.04 +- 0.27 \\
+\addlinespace[1pt]
+LP & M & \bfseries 40.64 +- 0.37 & \bfseries 42.23 +- 0.15 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{42.63 +- 0.10}}}} & \bfseries 41.19 +- 0.07 & \bfseries 42.15 +- 0.16 \\
+ & C & \bfseries 43.91 +- 0.31 & \bfseries 45.06 +- 0.11 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{46.15 +- 0.17}}}} & \bfseries 44.39 +- 0.09 & \bfseries 45.00 +- 0.13 \\
+\addlinespace[1pt]
+LRML & M & 38.43 +- 0.40 & 38.83 +- 0.47 & 37.89 +- 0.39 & 36.37 +- 0.45 & 40.15 +- 0.33 \\
+ & C & 42.97 +- 0.28 & 43.76 +- 0.35 & 43.73 +- 0.35 & 42.88 +- 0.44 & 44.11 +- 0.27 \\
+\addlinespace[1pt]
+Hoffer & M & 38.33 +- 0.21 & 39.54 +- 0.14 & 39.22 +- 0.08 & 39.42 +- 0.09 & 37.62 +- 0.18 \\
+ & C & 42.20 +- 0.23 & 44.15 +- 0.21 & 43.63 +- 0.19 & 43.25 +- 0.19 & 40.98 +- 0.20 \\
+\addlinespace[1pt]
+SLADE & M & 37.86 +- 0.26 & 39.61 +- 0.23 & 39.67 +- 0.29 & 38.85 +- 0.17 & 38.53 +- 0.27 \\
+ & C & 41.06 +- 0.28 & 44.18 +- 0.30 & 44.17 +- 0.38 & 43.28 +- 0.39 & 41.52 +- 0.18 \\
+\midrule
+\multicolumn{7}{@{}l}{$k=16$} \\
+\addlinespace[2pt]
+\UEBL & M & 40.67 +- 0.23 & 39.48 +- 0.23 & 41.34 +- 0.34 & 39.55 +- 0.23 & 39.63 +- 0.28 \\
+ & C & 43.80 +- 0.25 & 42.86 +- 0.19 & 44.49 +- 0.22 & 42.97 +- 0.25 & 43.38 +- 0.33 \\
+\addlinespace[1pt]
+LP & M & \bfseries 41.57 +- 0.27 & \bfseries 42.61 +- 0.18 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{43.25 +- 0.21}}}} & \bfseries 41.64 +- 0.20 & \bfseries 42.72 +- 0.12 \\
+ & C & 44.40 +- 0.19 & 45.06 +- 0.21 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{46.34 +- 0.11}}}} & 44.43 +- 0.12 & 45.19 +- 0.12 \\
+\addlinespace[1pt]
+LRML & M & 41.14 +- 0.19 & 41.11 +- 0.25 & 40.68 +- 0.37 & 40.22 +- 0.26 & 41.94 +- 0.18 \\
+ & C & \bfseries 44.76 +- 0.25 & 44.85 +- 0.24 & 45.37 +- 0.21 & 44.42 +- 0.27 & \bfseries 45.35 +- 0.12 \\
+\addlinespace[1pt]
+Hoffer & M & 40.58 +- 0.11 & 40.66 +- 0.13 & 39.76 +- 0.19 & 40.72 +- 0.26 & 40.84 +- 0.17 \\
+ & C & 44.50 +- 0.22 & 44.60 +- 0.19 & 43.77 +- 0.20 & \bfseries 44.62 +- 0.23 & 44.31 +- 0.21 \\
+\addlinespace[1pt]
+SLADE & M & 40.67 +- 0.35 & 41.77 +- 0.22 & 42.00 +- 0.37 & 40.78 +- 0.12 & 40.73 +- 0.21 \\
+ & C & 43.84 +- 0.26 & \bfseries 45.21 +- 0.27 & 45.31 +- 0.26 & 44.48 +- 0.25 & 43.95 +- 0.22 \\
+\midrule
+\multicolumn{7}{@{}l}{$k=32$} \\
+\addlinespace[2pt]
+\UEBL & M & 42.13 +- 0.15 & 41.05 +- 0.30 & 43.00 +- 0.28 & 40.93 +- 0.23 & 41.18 +- 0.23 \\
+ & C & 45.02 +- 0.16 & 44.43 +- 0.27 & 45.86 +- 0.24 & 44.22 +- 0.20 & 44.62 +- 0.23 \\
+\addlinespace[1pt]
+LP & M & 41.84 +- 0.07 & 42.62 +- 0.13 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{43.42 +- 0.21}}}} & 41.81 +- 0.18 & \bfseries 42.96 +- 0.21 \\
+ & C & 44.54 +- 0.07 & 45.13 +- 0.17 & {\bfseries\ULdepth=1.5pt\uline{\mbox{\tablenum[table-format=2.2(3), retain-zero-uncertainty]{46.44 +- 0.11}}}} & 44.54 +- 0.08 & 45.30 +- 0.08 \\
+\addlinespace[1pt]
+LRML & M & \bfseries 43.05 +- 0.13 & 42.28 +- 0.32 & 43.03 +- 0.24 & \bfseries 42.38 +- 0.22 & 42.11 +- 0.19 \\
+ & C & \bfseries 45.54 +- 0.20 & 45.20 +- 0.21 & 46.32 +- 0.17 & \bfseries 45.20 +- 0.16 & 45.07 +- 0.22 \\
+\addlinespace[1pt]
+Hoffer & M & 41.64 +- 0.18 & 41.16 +- 0.18 & 40.17 +- 0.10 & 41.33 +- 0.18 & 42.56 +- 0.21 \\
+ & C & 44.96 +- 0.11 & 44.47 +- 0.16 & 43.59 +- 0.07 & 44.77 +- 0.12 & \bfseries 45.35 +- 0.19 \\
+\addlinespace[1pt]
+SLADE & M & 41.68 +- 0.28 & \bfseries 42.97 +- 0.24 & 42.96 +- 0.12 & 41.84 +- 0.31 & 41.48 +- 0.30 \\
+ & C & 44.57 +- 0.18 & \bfseries 45.69 +- 0.20 & 45.72 +- 0.07 & 44.85 +- 0.16 & 44.55 +- 0.25 \\
+\bottomrule
+\end{tabular}
+\end{table}

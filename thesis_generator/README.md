@@ -68,14 +68,14 @@ axes and text slightly differently (shifts of about one point), so the figure fi
 
 ## Outputs and their place in the thesis
 
-Numbers and pages refer to the thesis PDF built on 2026-11-02 22:01.
+Numbers and pages refer to the thesis PDF built on 2026-11-03 09:23.
 
 | Output | Script | In the thesis | Page | Chapter file | Label |
 | --- | --- | --- | --- | --- | --- |
 | `bilder/neu/geometrie_budget.pdf` | `fig_geometrie.py` | Fig. 5.9 | 70 | ergebnisse | `fig:e:geo:budget` |
 | `bilder/neu/geometrie_konzept.pdf` | `fig_konzepte.py` | Fig. 2.2 | 14 | grundlagen | `fig:geometrie:konzept` |
 | `bilder/neu/geometrie_korrelation.pdf` | `fig_geometrie.py` | Fig. D.4 | 138 | anhang_ergebnisse | `fig:e:geo:korrelation` |
-| `bilder/neu/hoffer_skala.pdf` | `fig_konzepte.py` | (numbers in the text) |  | methodik | `fig:hoffer:skala` |
+| `bilder/neu/hoffer_skala.pdf` | `fig_konzepte.py` | Fig. 4.3 | 40 | methodik | `fig:hoffer:skala` |
 | `bilder/neu/inshop10_gewinn.pdf` | `fig_inshop10.py` | Fig. 5.3 | 56 | ergebnisse | `fig:e:klassen` |
 | `bilder/neu/lp_cars.pdf` | `fig_lp_cars.py` | Fig. 5.6 | 63 | ergebnisse | `fig:e:lpcars` |
 | `bilder/neu/lp_toy.pdf` | `fig_konzepte.py` | Fig. 3.1 | 23 | ssdml | `fig:lp:toy` |
