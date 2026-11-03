@@ -1,6 +1,7 @@
-# Publishes the data viewer (viewer/) over thesis_generator/daten on GitHub Pages.
-# The figures and tables are regenerated from the data on every run, so the Figures page always shows what the
-# committed generators produce.
+# Publishes two read-only sites over the compact thesis data (thesis_generator/daten) on GitHub Pages:
+#   /             the data viewer (viewer/), with every figure and table regenerated from the data on each run
+#   /trial-atlas/ the Trial Atlas (react_trial_visualizer/) over the 235 HPO studies and the Phase-1 test results,
+#                 fed by react_trial_visualizer/scripts/export_thesis_bundle.py instead of local Optuna databases
 name: Datenansicht
 
 on:
@@ -9,6 +10,7 @@ on:
     paths:
       - "thesis_generator/**"
       - "viewer/**"
+      - "react_trial_visualizer/**"
       - ".github/workflows/datenansicht.yml"
   workflow_dispatch:
 
@@ -31,14 +33,33 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: thesis_generator/requirements-getestet.txt
-      - name: Install the tested generator dependencies
-        run: pip install -r thesis_generator/requirements-getestet.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: react_trial_visualizer/package-lock.json
+      - name: Install the tested generator dependencies and optuna for the fANOVA importances
+        run: pip install -r thesis_generator/requirements-getestet.txt optuna==4.9.0 scikit-learn==1.9.0
       - name: Generate all figures and tables from the data
         run: python thesis_generator/generate.py --output "$RUNNER_TEMP/ausgabe"
-      - name: Build the static viewer
+      - name: Build the data viewer
         env:
           SITE_LABEL: "thesis_generator/daten @ ${{ github.sha }}"
-        run: python viewer/build_site.py --data thesis_generator/daten --ausgabe "$RUNNER_TEMP/ausgabe" --out _site
+        run: >-
+          python viewer/build_site.py --data thesis_generator/daten --ausgabe "$RUNNER_TEMP/ausgabe" --out _site
+          --atlas trial-atlas/
+      - name: Export the thesis HPO studies and test results for the Trial Atlas
+        run: python react_trial_visualizer/scripts/export_thesis_bundle.py --daten thesis_generator/daten
+      - name: Build the Trial Atlas (static export below /<repository>/trial-atlas)
+        working-directory: react_trial_visualizer
+        env:
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}/trial-atlas
+          NEXT_PUBLIC_THESIS_SITE: "1"
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npx next build
+          cp -r out ../_site/trial-atlas
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -1,5 +1,6 @@
 "use client";
 
+import { withBase } from "@/lib/site";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -72,8 +73,9 @@ import {
   type ArchiveTrial,
 } from "@/lib/sorted-studies";
 
-const SNAPSHOT_URL = "/sorted-studies.json";
-const GRADIENT_URL = "/sorted-gradients.json";
+const SNAPSHOT_URL = withBase("/sorted-studies.json");
+const GRADIENT_URL = withBase("/sorted-gradients.json");
+
 const FILTER_STORAGE_KEY = "trial-atlas:archive-filters";
 const STUDY_STORAGE_KEY = "trial-atlas:archive-study";
 

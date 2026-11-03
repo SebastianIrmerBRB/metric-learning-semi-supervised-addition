@@ -43,8 +43,9 @@ import {
   type OptunaTrialSnapshot,
 } from "@/lib/optuna";
 import { formatMetric, formatNumber, slugify } from "@/lib/trials";
+import { withBase } from "@/lib/site";
 
-const SNAPSHOT_URL = "/optuna-studies.json";
+const SNAPSHOT_URL = withBase("/optuna-studies.json");
 const STUDY_STORAGE_KEY = "trial-atlas:optuna-study";
 const PARAMETER_STORAGE_PREFIX = "trial-atlas:optuna-parameter:";
 const HIDDEN_STUDIES_STORAGE_KEY = "trial-atlas:optuna-hidden-studies";

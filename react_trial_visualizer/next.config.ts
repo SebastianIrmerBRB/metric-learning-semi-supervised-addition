@@ -18,5 +18,7 @@ export default function config(phase: string): NextConfig {
     ...(isShare ? { distDir: "share" } : {}),
     poweredByHeader: false,
     trailingSlash: true,
+    // GitHub Pages serves the thesis site below a path (see lib/site.ts); empty for local use.
+    ...(process.env.NEXT_PUBLIC_BASE_PATH ? { basePath: process.env.NEXT_PUBLIC_BASE_PATH } : {}),
   };
 }

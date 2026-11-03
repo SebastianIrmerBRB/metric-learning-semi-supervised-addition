@@ -11,6 +11,7 @@ metric learning with DINOv2 features. Built on
 | [`thesis/`](thesis/) | LaTeX source of the master's thesis with all figures it includes |
 | [`thesis_generator/`](thesis_generator/) | compact data of all experiments and the scripts that generate every data figure and table |
 | [`viewer/`](viewer/) | data viewer, online at https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/ |
+| [`react_trial_visualizer/`](react_trial_visualizer/) | Trial Atlas over the 235 HPO studies of the thesis, online at https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/trial-atlas/ |
 
 ## Install and run a small training job
 
