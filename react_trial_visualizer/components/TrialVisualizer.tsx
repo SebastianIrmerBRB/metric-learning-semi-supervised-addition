@@ -46,6 +46,7 @@ import { OptunaExplorer } from "@/components/OptunaExplorer";
 import { SelectedTrialPopover } from "@/components/SelectedTrialPopover";
 import { TrainingCurves } from "@/components/TrainingCurves";
 import { TrialsTable } from "@/components/TrialsTable";
+import { THESIS_SITE } from "@/lib/site";
 import type { TestResultFile } from "@/lib/test-results";
 import {
   columnLabel,
@@ -311,6 +312,9 @@ function Sidebar({ studies, repositoryStudies, selectedId, view, mobileOpen, onC
             Hyperparameters
             <span className="ml-auto rounded-full bg-[#f4c86f]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#f6d488]">Optuna</span>
           </button>
+          {/* Workspaces that need local run folders or a dev server; hidden on the hosted thesis site (lib/site.ts). */}
+          {!THESIS_SITE && (
+            <>
           <button
             type="button"
             onClick={onArchive}
@@ -378,6 +382,8 @@ function Sidebar({ studies, repositoryStudies, selectedId, view, mobileOpen, onC
             Run configs
             <span className="ml-auto rounded-full bg-[#9b8cff]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#b6acff]">Checks</span>
           </Link>
+            </>
+          )}
 
           <div className="mt-7 flex items-center justify-between px-3">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#596780]">Experiments</p>
@@ -924,12 +930,12 @@ export function TrialVisualizer({
                   : "overview",
         );
       } else {
-        setStudies([]);
+        setStudies(THESIS_SITE ? repositoryStudies : []); // hosted thesis site: start with every bundled study
         setSelectedId(null);
         setView("overview");
       }
     } catch {
-      setStudies([]);
+      setStudies(THESIS_SITE ? repositoryStudies : []); // hosted thesis site: start with every bundled study
       setSelectedId(null);
       setView("overview");
     }
@@ -945,7 +951,8 @@ export function TrialVisualizer({
     try {
       window.localStorage.setItem(WORKSPACE_SELECTION_KEY, JSON.stringify(payload));
     } catch {
-      if (!storageWarningShown.current) {
+      // On the hosted thesis site a reload starts again with every bundled study, so the warning would only confuse.
+      if (!storageWarningShown.current && !THESIS_SITE) {
         storageWarningShown.current = true;
         setNotice("The workspace is too large for browser storage, so this session may not survive a reload.");
       }
