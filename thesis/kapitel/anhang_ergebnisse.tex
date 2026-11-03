@@ -1,0 +1,170 @@
+\chapter{Vollständige Ergebnisse der Phase~1}
+\label{chap:anhang:ergebnisse}
+
+Die folgenden Tabellen enthalten die Test-\ac{MAP@R} aller Kombinationen aus Verlust, Verfahren und Budget, jeweils für einzelne Fold-Modelle (Mean) und das Ensemble (Concat), die gepaarten Gewinne aus den Abbildungen~\ref{fig:e:gewinne} und~\ref{fig:e:klassen} mit ihrer Standardabweichung, die Zahl der gepaarten Vergleiche mit negativer Differenz zu diesen Gewinnen sowie die für die Wiederholungen übernommenen Konfigurationen. Abbildung~\ref{fig:e:uebersicht} zeigt die gepaarten Gewinne über das Budget zusammen mit ihrer Spanne über die Verlustfunktionen, Abbildung~\ref{fig:e:verluste} je Verlustfunktion beim kleinsten Budget. 
+
+\input{kapitel/anhang_tabellen/map_cars}
+\input{kapitel/anhang_tabellen/map_cub}
+\input{kapitel/anhang_tabellen/map_inshop}
+\input{kapitel/anhang_tabellen/map_inshop10}
+\input{kapitel/anhang_tabellen/map_semiinat}
+\input{kapitel/anhang_tabellen/gewinne}
+\input{kapitel/anhang_tabellen/klassen}
+\clearpage %
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/phase1_uebersicht}
+  \caption[Gewinn der \acs{SSL}-Verfahren über das Label-Budget]{Gepaarter Gewinn der Test-\acs{MAP@R} der vier \acs{SSL}-Verfahren gegenüber der \UEBL, Mittel über die fünf Verlustfunktionen (Punkte) mit ihrer Spanne (senkrechte Striche). Grau gestrichelt: Trend über die vier Verfahren (lineare Anpassung an ihren Median je Budget), auf In-Shop mit nur zwei Budgets keiner. Je Datensatz links Mean, rechts Concat, die $y$-Achse ist je Datensatz anders skaliert.}
+  \label{fig:e:uebersicht}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/phase1_verluste}
+  \caption[Gewinn je Verlustfunktion und Verfahren beim kleinsten Budget]{Gepaarter Gewinn der Test-\acs{MAP@R} je Verlustfunktion und Verfahren beim kleinsten Budget (Cars196 und \acs{CUB}: $k=4$, In-Shop und Semi-iNat-2021: $k=2$). (a) bis (d): Mean (M), (e) bis (h): Concat (C). Fett: Vorzeichen in allen fünf Seeds gleich. Farbskala je Datensatz symmetrisch um null.}
+  \label{fig:e:verluste}
+\end{figure}
+
+\input{kapitel/anhang_tabellen/negativ}
+\clearpage
+\input{kapitel/cars_tabellen/phase1_hpo}
+\input{kapitel/cub_tabellen/phase1_hpo}
+\input{kapitel/inshop_tabellen/phase1_hpo}
+\input{kapitel/inshop10_tabellen/phase1_hpo}
+\input{kapitel/semiinat_tabellen/phase1_hpo}
+
+\chapter{Alle Varianten der Phase~2}
+\label{chap:anhang:phase2}
+
+Dieser Anhang ergänzt Abschnitt~\ref{sec:e:phase2}. Die Tabellen~\ref{tab:anhang:phase2} und~\ref{tab:anhang:phase2:inshop} enthalten die Test-\ac{MAP@R} aller Varianten auf Cars196 und In-Shop mit allen fünf Verlustfunktionen, die Tabellen~\ref{tab:anhang:phase2:concat} und~\ref{tab:anhang:phase2:inshop:concat} dieselben Varianten als Concat-\ac{MAP@R}, also für das Ensemble der Fold-Heads. Tabelle~\ref{tab:anhang:phase2:slade} enthält die Sweeps von \ac{SLADE} (Abschnitt~\ref{sec:e:sweeps}), Tabelle~\ref{tab:anhang:phase2:k8} alle Varianten auf Cars196 mit $k=8$ (Abschnitt~\ref{sec:e:2x2}). Mit der verzögerten Patience (Abschnitt~\ref{sec:training}) weichen die regulären Konfigurationen dort höchstens \num{0.22} Prozentpunkte von den Phase-1-Läufen mit Seed~2 bei $k=8$ ab. Die Tabellen~\ref{tab:anhang:extern:cars}, \ref{tab:anhang:extern:inshop} und~\ref{tab:anhang:extern:sweeps} enthalten die Einzelwerte des Versuchs mit externen ungelabelten Bildern (Abschnitt~\ref{sec:e:extern}), der wie Phase~2 mit Seed~2 läuft.
+
+\clearpage
+\begingroup\small\setstretch{1}
+\begin{longtable}{@{}>{\raggedright\arraybackslash\hspace{0pt}}p{4.0cm}>{\raggedright\arraybackslash\hspace{0pt}}p{5.5cm}>{\raggedright\arraybackslash\hspace{0pt}}p{4.4cm}@{}}
+  \caption[Eingriffe der Phase~2 und vorab festgelegte Erwartungen]{Eingriffe der Phase~2 und die vor den Läufen festgelegten Erwartungen. Oracle-Varianten dienen nur der Diagnose. Sie verwenden die verdeckten Labels der ungelabelten Bilder, die sonst nie in das Training oder die Auswahl eingehen.}\label{tab:phase2:eingriffe}\\
+    \toprule
+    Eingriff & Umsetzung & Erwartung \\
+    \midrule
+    \endfirsthead
+    \multicolumn{3}{@{}l}{\small Tabelle~\thetable{} (Fortsetzung)}\\
+    \toprule
+    Eingriff & Umsetzung & Erwartung \\
+    \midrule
+    \endhead
+    \bottomrule
+    \endlastfoot
+    ohne ungelabelte Bilder & mit der \acs{SSL}-Konfiguration erhält der \acs{SSL}-Mechanismus statt der ungelabelten die gelabelten Bilder, ohne deren Labels und mit derselben Zahl von Updates je Epoche. Mit den Hyperparametern der \UEBL ist der Lauf ohne ungelabelte Bilder die \UEBL selbst ($2\times2$) & \acs{MAP@R} sinkt mit beiden Hyperparametersätzen \\
+    \addlinespace
+    \acs{SSL}-Term abgeschaltet & \acs{SSL}-Konfiguration ohne \acs{SSL}-Term, bei \acs{LP} ohne Pseudo-Labels & Niveau der \UEBL \\
+    \addlinespace
+    Oracle-Pseudo-Labels (\acs{LP}) & genau die von \acs{LP} übernommenen Bilder erhalten ihr wahres Label, von dem ein Anteil von 0, 10, 20, 40 oder \SI{60}{\percent} zufällig durch ein falsches ersetzt wird & \acs{MAP@R} fällt mit dem Anteil, reguläres \acs{LP} liegt auf dieser Kurve \\
+    \addlinespace
+    Pseudo-Labels bzw.\ Graph eingefroren & nach dem Warm-up einmal berechnet und nicht mehr erneuert & ungerichtet \\
+    \addlinespace
+    Graph umverdrahtet (\acs{LP}, \acs{LRML}) & Kanten werden unter Erhalt der Knotengrade zufällig getauscht~\cite{maslov_specificity_2002} & Gewinn verschwindet \\
+    \addlinespace
+    Oracle-Kanten entfernt, Kontrolle: zufällige Kanten entfernt & mit den verdeckten Labels werden alle Kanten zwischen verschiedenen Klassen entfernt, als Kontrolle dieselbe Zahl zufälliger Kanten & Oracle besser als regulär, Kontrolle nicht \\
+    \addlinespace
+    ohne Warm-up & \acs{SSL}-Konfiguration ohne Warm-up & ungerichtet \\
+    \addlinespace
+    Sweeps & je ein Hyperparameter wird variiert (bei \acs{LP} Nachbarzahl, Konfidenzschwelle und Warm-up, bei \acs{LRML} Nachbarzahl und $\eta$, bei Hoffer $\gamma_{\mathrm{H}}$ und $\eta$, bei \acs{SLADE} Clusterverhältnis, Intervall der Teacher-Aktualisierung, $\eta$, Basis-Zielverhältnis, ungelabelte Batchgröße und Marge von $\mathcal{L}_{\mathrm{SD}}$) & \acs{LP}: umgekehrt U-förmig in der Nachbarzahl, Abdeckung wichtiger als Genauigkeit, langes Warm-up vorteilhaft. \acs{LRML}: Optimum, solange die Kanten rein sind, Abfall bei zu großem $\eta$. Hoffer: zu kleine $\gamma_{\mathrm{H}}$ schaden, Abfall bei zu großem $\eta$. \acs{SLADE}: ohne gerichtete Erwartung \\
+    \addlinespace
+    Vielfalt der Fold-Modelle & Anteil der falschen Nachbarn eines Fold-Modells unter den ersten $R_q$ Treffern, die ein anderes Fold-Modell ebenfalls hat & \acs{LRML}: geringerer Anteil als bei der \UEBL, daher größerer Abstand zwischen Concat und Mean \\
+\end{longtable}
+\endgroup
+
+\begin{table}[tbp]
+\centering\small\setstretch{1}\setlength{\tabcolsep}{4pt}
+\caption[Vorab festgelegte Erwartungen der Phase~2 und Ergebnis]{Vorab festgelegte Erwartungen der Phase~2 (Tabelle~\ref{tab:phase2:eingriffe} und Abschnitt~\ref{sec:m:geometrie}) und ihr Ergebnis. Cars196 bei $k=16$, In-Shop bei $k=2$, ein Seed.}
+\label{tab:a:erwartungen}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{5.0cm}l@{}}
+\toprule
+Eingriff & Erwartung & Ergebnis & Abschnitt \\
+\midrule
+Ohne ungelabelte Bilder & \acs{MAP@R} sinkt mit beiden Hyperparametersätzen & teilweise: mit den \acs{SSL}-Hyperparametern in 37 von 40 Kombinationen & \ref{sec:e:2x2} \\
+\acs{SSL}-Term abgeschaltet & Niveau der \UEBL & teilweise: in 25 von 40 Kombinationen darunter & \ref{sec:e:2x2} \\
+Oracle-Pseudo-Labels (\acs{LP}) & \acs{MAP@R} fällt mit dem Anteil, reguläres \acs{LP} liegt auf der Kurve & teilweise: auf der Kurve nur mit ArcFace und \acs{NT-Xent} auf Cars196, sonst darüber & \ref{sec:e:pseudolabels} \\
+Pseudo-Labels bzw.\ Graph eingefroren & ungerichtet & \acs{LP} verliert auf In-Shop mit jeder Verlustfunktion & \ref{sec:e:phase2} \\
+Graph umverdrahtet & Gewinn verschwindet & bestätigt, in allen 20 Kombinationen & \ref{sec:e:phase2} \\
+Oracle-Kanten entfernt, Kontrolle: zufällige Kanten entfernt & Oracle besser als regulär, Kontrolle nicht & teilweise: Oracle in 18 von 20 besser, Kontrolle bei \acs{LP} auf In-Shop mit Circle und ArcFace schlechter & \ref{sec:e:phase2} \\
+\acs{LP}: Nachbarzahl & umgekehrt U-förmig & nicht bestätigt & \ref{sec:e:sweeps} \\
+\acs{LP}: Konfidenzschwelle & Abdeckung wichtiger als Genauigkeit & teilweise: auf Cars196 mit ArcFace und \acs{MS}, auf In-Shop mit Circle & \ref{sec:e:sweeps} \\
+\acs{LP}: Warm-up & langes Warm-up vorteilhaft & nicht bestätigt & \ref{sec:e:sweeps} \\
+\acs{LRML}: Nachbarzahl und $\eta$ & Optimum, solange die Kanten rein sind, Abfall bei zu großem $\eta$ & teilweise: beste Nachbarzahl auf In-Shop viel kleiner als auf Cars196, zu großes $\eta$ schadet vor allem auf In-Shop & \ref{sec:e:sweeps} \\
+Hoffer: $\gamma_{\mathrm{H}}$ & zu kleine $\gamma_{\mathrm{H}}$ schaden & bestätigt & \ref{sec:e:sweeps} \\
+Hoffer: $\eta$ & Abfall bei zu großem $\eta$ & teilweise: zu großes $\eta$ schadet wenig, zu kleines deutlich & \ref{sec:e:sweeps} \\
+\acs{SLADE}: Sweeps & ungerichtet & kein Wert verbessert \acs{SLADE} deutlich & \ref{sec:e:sweeps} \\
+Ohne Warm-up & ungerichtet & \acs{LRML} verliert mit ArcFace und mit \acs{NT-Xent} auf Cars196 deutlich & \ref{sec:e:sweeps} \\
+Vielfalt der Fold-Modelle & \acs{LRML} teilt weniger Fehler als die \UEBL, größerer Abstand zwischen Concat und Mean & bestätigt & \ref{sec:e:phase2:concat} \\
+Geometrie & die \UEBL komprimiert bei kleinem $k$ stärker & nicht bestätigt & \ref{sec:e:geometrie} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\input{kapitel/anhang_tabellen/phase2_varianten}
+\input{kapitel/anhang_tabellen/phase2_varianten_inshop}
+\input{kapitel/anhang_tabellen/phase2_varianten_concat}
+\input{kapitel/anhang_tabellen/phase2_varianten_inshop_concat}
+\input{kapitel/anhang_tabellen/phase2_slade_sweeps}
+\input{kapitel/anhang_tabellen/phase2_varianten_k8}
+\input{kapitel/anhang_tabellen/extern_cars}
+\input{kapitel/anhang_tabellen/extern_inshop}
+\input{kapitel/anhang_tabellen/extern_sweeps}
+
+\chapter{Geometrie des Embedding-Raums}
+\label{chap:anhang:geometrie}
+
+Dieser Anhang ergänzt Abschnitt~\ref{sec:e:geometrie}. Für Cars196 zeigt Abbildung~\ref{fig:a:verlauf32} den Trainingsverlauf für $k=32$, Abbildung~\ref{fig:a:verluste} die Verläufe der \UEBL und von \ac{LP} bei $k=4$ mit allen fünf Verlustfunktionen, Abbildung~\ref{fig:a:rho} den spektralen Abfall über das Training und Abbildung~\ref{fig:e:geo:korrelation} die Kombinationen hinter den Korrelationen in Tabelle~\ref{tab:e:korrelation}. Tabelle~\ref{tab:a:geometrie} enthält die Streuung innerhalb der Klassen nach dem Training für alle Verlustfunktionen bei $k=4$ und $k=32$, Tabelle~\ref{tab:a:reinheit:lrml} die Reinheit des \ac{kNN}-Graphen von \ac{LRML}. Tabelle~\ref{tab:a:geometrie:weitere} enthält die Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/verlauf_k32}
+  \caption[Trainingsverlauf bei 32 Labels je Klasse]{Validierungs-\acs{MAP@R} und Geometrie der Klassen über das Training bei $k=32$ (Cars196, Seed~2, Mittel über die fünf Verlustfunktionen und die vier Folds, ausgerichtet am Ende des Warm-ups). (a)~Validierungs-\acs{MAP@R}, (b) bis (d)~$\pi_{\mathrm{intra}}$ der gelabelten und der ungelabelten Bilder sowie der Validierungsklassen, (e)~$\pi_{\mathrm{inter}}$, (f)~Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp. Grau: Warm-up. Marker: Stopp des ersten Laufs.}
+  \label{fig:a:verlauf32}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/verlauf_verluste}
+  \caption[Trainingsverlauf der \UEBL und von \acs{LP} mit allen Verlustfunktionen]{Validierungs-\acs{MAP@R} und $\pi_{\mathrm{intra}}$ der ungelabelten Bilder und der Validierungsklassen über das Training für die \UEBL (a bis c) und \acs{LP} (d bis f) bei $k=4$ mit allen fünf Verlustfunktionen (Cars196, Seed~2, Mittel über vier Folds, Marker am Kurvenende). Bei \acs{LP} mit ArcFace rücken bei Epoche~0 vorübergehend alle Bilder zusammen.}
+  \label{fig:a:verluste}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/verlauf_rho}
+  \caption[Spektraler Abfall über das Training]{Spektraler Abfall $\rho$ des Trainingspools über das Training bei (a)~$k=4$ und (b)~$k=32$ (Cars196, Seed~2, Mittel über die fünf Verlustfunktionen und die vier Folds, jeder Lauf am Ende seines Warm-ups ausgerichtet). Gestrichelt: DINOv2-Merkmale. Grau: Warm-up, gezeigt nur der allen Läufen gemeinsame Teil.}
+  \label{fig:a:rho}
+\end{figure}
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/geometrie_korrelation}
+  \caption[Geometrie und Retrieval-Leistung je Budget]{Test-\acs{MAP@R} der Einzelmodelle gegen $\pi_{\mathrm{ratio}}$ des Trainingspools nach dem Training für (a)~$k=4$ bis (d)~$k=32$, je Budget 25 Kombinationen aus Verfahren und Verlustfunktion (Cars196, Seed~2, Mittel über vier Folds). $r$: Korrelation nach Pearson innerhalb des Budgets.}
+  \label{fig:e:geo:korrelation}
+\end{figure}
+
+\input{kapitel/anhang_tabellen/geometrie_verluste}
+
+\input{kapitel/anhang_tabellen/geometrie_reinheit_lrml}
+\input{kapitel/anhang_tabellen/geometrie_weitere_budgets}
+
+\chapter{Verzögerte Patience}
+\label{chap:anhang:verzoegerung}
+
+Dieser Anhang ergänzt Abschnitt~\ref{sec:training}. In manchen Folds bricht die Validierungs-\ac{MAP@R} in der ersten Trainingsepoche stark ein, sodass ihr Höchstwert bereits vor dem Training liegt. Derselbe Einbruch kann auch nach einem Warm-up auftreten. Anschließend steigt die Validierungs-\ac{MAP@R} zwar wieder an, aber so langsam, dass sie den Höchstwert nicht innerhalb der Patience übertrifft und das Training abbricht. Als zu früh gilt ein Abbruch, wenn die beste Epoche vor der 20.~Epoche nach dem Warm-up liegt (ohne Warm-up vor der 20.~Trainingsepoche) und die Validierungs-\ac{MAP@R} bis zum Abbruch noch steigt. Als steigend gilt sie, wenn die Ausgleichsgerade durch ihre Werte der letzten zehn Epochen bis zum Abbruch eine positive Steigung hat. Mit verzögerter Patience verbrauchen die ersten 20 Epochen nach dem Warm-up, ohne Warm-up die ersten 20 Trainingsepochen, keine Patience. Danach zählt die Patience die Epochen, in denen die Validierungs-\ac{MAP@R} nicht über ihren höchsten Wert ab der letzten dieser Epochen steigt. Gewählt wird wie ohne Verzögerung das Modell der Epoche mit der besten Validierungs-\ac{MAP@R}.
+
+Zu früh beendet wurden 541 Folds in 339 Läufen aus beiden Phasen, dem Versuch mit externen Bildern und den Geometrieläufen. Ausgenommen sind die Läufe auf \ac{CUB} mit ihrer Patience von 40 Epochen und die Versuche der Hyperparametersuche. Die Ablationen bei $k=8$ werden für jeden Lauf mit Verzögerung trainiert (Abschnitt~\ref{sec:m:phase2}).
+
+Für die 321 Läufe mit einem zu früh beendeten Fold, für die die Arbeit die Variante ohne Verzögerung berichtet, zeigen Abbildung~\ref{fig:a:verzoegerung} und Tabelle~\ref{tab:anhang:verzoegerung} die Test-\ac{MAP@R} mit verzögerter Patience als zweiten Wert. Im Mittel ändert sie sich um \num{0.06} Prozentpunkte. Bis zum früheren Abbruch durchlaufen beide Varianten in 313 Läufen dieselbe Validierungskurve. In 188 Läufen validieren sie gleich und wählen dieselbe Epoche, in 132 validiert die Variante mit Verzögerung besser. Die Differenz in der Validierung hängt mit der im Test zusammen (Korrelation \num{0.73}), sagt sie aber nur grob voraus. In 70 der 132 Läufe sinkt die Test-\ac{MAP@R}, vor allem mit externen Bildern auf Cars196. Dort validiert die Variante mit Verzögerung in 64 der 133 Läufe besser, die Test-\ac{MAP@R} sinkt aber in 58 davon, im Mittel um \num{0.8} Prozentpunkte. Die Validierung überschätzt dort also den Nutzen eines längeren Trainings. Am stärksten steigt die Test-\ac{MAP@R} in den Ablationen der Phase~2, um bis zu \num{7.2} Prozentpunkte bei \ac{LP} mit ArcFace und der Konfidenzschwelle \num{0.7} auf In-Shop. In den beiden Läufen mit den größten Einbrüchen der Sweeps von \ac{SLADE} (Abschnitt~\ref{sec:e:sweeps}) beendet die Patience das Training in mehreren Folds zu früh. Mit verzögerter Patience verliert \ac{SLADE} beim kleinen Basis-Zielverhältnis \num{11.5} statt \num{16.6} und bei 512 ungelabelten Bildern je Batch \num{14.9} statt \num{20.5} Prozentpunkte.
+
+Für die \UEBL mit Proxy-Anchor in der In-Shop-Serie mit gelabelten Klassen bei 10 bis \qty{50}{\percent} berichtet die Arbeit die Variante mit Verzögerung, in 15 Läufen und den drei zugehörigen Geometrieläufen. Ohne Verzögerung übertrifft die Validierungs-\ac{MAP@R} dort in mindestens einem Fold innerhalb der Patience nie den Wert vor dem ersten Trainingsschritt. Ihre Test-\ac{MAP@R} läge dann bei \qty{13.3}{\percent} bis \qty{39.7}{\percent} statt \qty{48.0}{\percent} bis \qty{57.4}{\percent}, weil einzelne Folds den zufällig initialisierten Head wählen.
+
+\begin{figure}[tbp]
+  \centering
+  \includegraphics{neu/verzoegerung}
+  \caption[Wirkung der verzögerten Patience je Lauf]{Test-\acs{MAP@R} der Einzelmodelle mit verzögerter Patience minus der ohne Verzögerung für die 321 Läufe mit einem zu früh beendeten Fold, (a)~je Versuch mit der Zahl der Läufe, (b)~gegen die Differenz der Validierungs-\acs{MAP@R}. Gestrichelt: gleiche Differenz in Validierung und Test. Ohne die 18 Läufe der \UEBL mit Proxy-Anchor in der In-Shop-Serie.}
+  \label{fig:a:verzoegerung}
+\end{figure}
+
+\input{kapitel/anhang_tabellen/verzoegerung}

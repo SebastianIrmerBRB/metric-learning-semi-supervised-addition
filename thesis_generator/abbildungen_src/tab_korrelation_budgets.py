@@ -49,7 +49,7 @@ for ds in ["semiinat", "inshop", "inshop10"]:
         rows.append((ds, budget(ds, k), 25 - int(((AUS.ds == ds) & (AUS.k == k)).sum()), vals))
 
 T = ["\\begin{table}[tbp]\n\\centering\\small\\setlength{\\tabcolsep}{4pt}",
-     "\\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Korrelation nach Pearson zwischen Maßen nach dem Training und der Test-MAP@R (Mean), Seed~2, Mittel über vier Folds. Gesamt: alle $n$ gültigen Kombinationen aus Verfahren, Verlustfunktion und Budget eines Datensatzes, darunter je Budget. In der In-Shop-Serie mit gelabelten Klassen steht der Anteil gelabelter Klassen für das Budget. Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp, in dieser Serie nicht definiert (--).}",
+     "\\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Korrelation nach Pearson zwischen Maßen nach dem Training und der Test-MAP@R (Mean), Seed~2, Mittel über vier Folds. Gesamt: alle gültigen Kombinationen aus Verfahren, Verlustfunktion und Budget eines Datensatzes, darunter je Budget, Anzahl: Zahl dieser Kombinationen. In der In-Shop-Serie mit gelabelten Klassen steht der Anteil gelabelter Klassen für das Budget. Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp, in dieser Serie nicht definiert (--).}",
      "\\label{tab:e:korrelation}",
      "\\begin{tabular}{@{}l r S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] "
      "@{\\hspace{12pt}} S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] "
@@ -57,7 +57,7 @@ T = ["\\begin{table}[tbp]\n\\centering\\small\\setlength{\\tabcolsep}{4pt}",
      "\\toprule",
      "& & \\multicolumn{4}{c}{\\textbf{Trainingspool}} & \\multicolumn{3}{c}{\\textbf{Validierungsklassen}} & {\\textbf{Ungelabelt}} \\\\",
      "\\cmidrule(lr){3-6}\\cmidrule(lr){7-9}\\cmidrule(l){10-10}",
-     "& {$n$} & {$\\pi_{\\mathrm{intra}}$} & {$\\pi_{\\mathrm{inter}}$} & {$\\pi_{\\mathrm{ratio}}$} & {$\\rho$} & "
+     "& {Anzahl} & {$\\pi_{\\mathrm{intra}}$} & {$\\pi_{\\mathrm{inter}}$} & {$\\pi_{\\mathrm{ratio}}$} & {$\\rho$} & "
      "{$\\pi_{\\mathrm{intra}}$} & {$\\pi_{\\mathrm{inter}}$} & {$\\pi_{\\mathrm{ratio}}$} & {Prototyp} \\\\",
      "\\midrule"]
 last = None

@@ -1,0 +1,166 @@
+% gestaltung.tex -- Typografie und Seitenbild (ersetzt die bisherige Datei vollständig).
+% Voraussetzungen in einstellungen.tex: Klassenoptionen DIV=12, BCOR=0mm,
+% headheight=17pt, chapterprefix=false; newpxtext/newpxmath; \setstretch{1.1};
+% KEIN geometry-Paket; scrlayer-scrpage, booktabs, siunitx, caption (via subfig), tikz, pgfplots geladen.
+
+% ---------------------------------------------------------------- Absätze
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{2em}
+\emergencystretch=1.5em
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\raggedbottom
+% Keine Ein- oder Zwei-Wort-Zeilen am Absatzende (Autor, 01.11.2026): Mit endlicher Dehnung des
+% \parfillskip bewertet TeX die letzte Zeile wie jede andere und wählt die Umbrüche davor so, dass sie
+% möglichst mindestens ein Viertel der Zeile füllt. Absolute Breite, damit schmale Tabellenzellen kaum
+% betroffen sind. Im Literaturverzeichnis gilt wieder der Standard.
+\setlength{\parfillskip}{0pt plus 0.75\textwidth}
+\AtBeginBibliography{\setlength{\parfillskip}{0pt plus 1fil}}
+% Zitatnummern bleiben zusammen, kein Zeilenumbruch innerhalb von [1, 39] (Autor, 01.11.2026)
+\renewcommand*{\multicitedelim}{\addcomma\addnbspace}
+
+% ---------------------------------------------------------------- Überschriften
+\setkomafont{disposition}{\normalfont\bfseries}
+\setkomafont{chapter}{\LARGE}          % 20.74 pt
+\setkomafont{section}{\large}          % 14.4 pt
+\setkomafont{subsection}{\normalsize}  % 12 pt
+\setkomafont{subsubsection}{\normalsize}
+\setkomafont{paragraph}{\normalsize}
+\setkomafont{descriptionlabel}{\normalfont\bfseries}
+\renewcommand*{\chapterformat}{\thechapter\enskip}
+\renewcommand*{\sectionformat}{\thesection\enskip}
+\renewcommand*{\subsectionformat}{\thesubsection\enskip}
+\RedeclareSectionCommand[beforeskip=2\baselineskip,afterskip=2\baselineskip,afterindent=false]{chapter}
+\RedeclareSectionCommand[beforeskip=1.5\baselineskip plus .3\baselineskip minus .2\baselineskip,afterskip=.75\baselineskip plus .1\baselineskip,afterindent=false]{section}
+\RedeclareSectionCommand[beforeskip=1.25\baselineskip plus .2\baselineskip minus .2\baselineskip,afterskip=.5\baselineskip plus .1\baselineskip,afterindent=false]{subsection}
+\RedeclareSectionCommand[beforeskip=1\baselineskip plus .2\baselineskip minus .2\baselineskip,afterskip=.5\baselineskip,afterindent=false]{subsubsection}
+\RedeclareSectionCommand[beforeskip=.75\baselineskip plus .2\baselineskip,afterskip=-1em]{paragraph}
+
+% ---------------------------------------------------------------- Kolumnentitel
+\clearpairofpagestyles
+\automark[chapter]{chapter}
+\renewcommand*{\chaptermarkformat}{\thechapter\enskip}
+\ihead{\headmark}
+\ohead{\pagemark}
+\cfoot[\pagemark]{}
+\setkomafont{pageheadfoot}{\normalfont\small}
+\setkomafont{pagenumber}{\normalfont}
+\setkomafont{pagehead}{\normalfont}
+\setkomafont{headsepline}{\normalcolor}
+\KOMAoptions{headsepline=0.4pt}
+
+% ---------------------------------------------------------------- Verzeichnisse
+\DeclareTOCStyleEntry[beforeskip=.6\baselineskip plus 1pt,entryformat=\bfseries,pagenumberformat=\bfseries]{tocline}{chapter}
+\DeclareTOCStyleEntries[beforeskip=0pt]{tocline}{section,subsection}
+\AtBeginBibliography{\small\setstretch{1}\setlength{\bibitemsep}{.5\baselineskip}}
+\AtEveryBibitem{\iffieldundef{doi}{}{\clearfield{url}\clearfield{urlyear}\clearfield{urlmonth}\clearfield{urlday}}}
+
+% ---------------------------------------------------------------- Fußnoten
+\deffootnote{1.5em}{0pt}{\makebox[1.5em][l]{\thefootnotemark}}
+\setkomafont{footnote}{\footnotesize}   % 10 pt
+\setlength{\footnotesep}{\baselineskip}
+
+% ---------------------------------------------------------------- Beschriftungen
+\captionsetup{format=plain,font=small,labelfont=bf,textfont=normalfont,
+  labelsep=colon,justification=justified,singlelinecheck=true,
+  margin=0pt,skip=6pt}
+\captionsetup[figure]{position=bottom}
+\captionsetup[table]{position=top}
+
+% ---------------------------------------------------------------- Gleitobjekte
+\setlength{\floatsep}{12pt plus 3pt minus 2pt}
+\setlength{\textfloatsep}{16pt plus 4pt minus 3pt}
+\setlength{\intextsep}{14pt plus 3pt minus 2pt}
+% Seiten nur mit Gleitobjekten oben beginnen, nicht vertikal zentrieren
+\makeatletter
+\setlength{\@fptop}{0pt}
+\setlength{\@fpsep}{\floatsep}
+\setlength{\@fpbot}{0pt plus 1fil}
+\makeatother
+
+% ---------------------------------------------------------------- Tabellen
+\renewcommand{\arraystretch}{1}
+\setlength{\tabcolsep}{6pt}
+\setlength{\heavyrulewidth}{0.08em}
+\setlength{\lightrulewidth}{0.05em}
+\setlength{\cmidrulewidth}{0.03em}
+\AddToHook{env/table/begin}{\small\setstretch{1}}
+
+% ---------------------------------------------------------------- Symbol- und Abkürzungstabellen
+\newenvironment{notationtable}{%
+  \begingroup\small\setstretch{1}%
+  \renewcommand{\arraystretch}{1.15}%
+  \setlength{\LTpre}{6pt}\setlength{\LTpost}{6pt}%
+  \begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.29\textwidth}>{\raggedright\arraybackslash}p{\dimexpr0.71\textwidth-2\tabcolsep\relax}@{}}%
+}{%
+  \end{longtable}\endgroup
+}
+\newcommand*{\notationtablehead}{\textbf{Symbol} & \textbf{Bedeutung}\\}
+\newcommand*{\acronymgroup}[1]{\textbf{#1}}
+
+% ---------------------------------------------------------------- Listen
+\setlist{leftmargin=*,topsep=.3\baselineskip,itemsep=.1\baselineskip,parsep=0pt}
+\setlist[itemize,1]{label=\textbullet}
+\setlist[itemize,2]{label=\textendash}
+\setlist[enumerate,1]{label=\arabic*.}
+\setlist[enumerate,2]{label=\alph*)}
+
+% ---------------------------------------------------------------- Zahlen und Einheiten
+\sisetup{locale=DE,group-minimum-digits=5,group-separator={\,},
+  mode=math,reset-text-series=false,text-series-to-math=true,
+  propagate-math-font=true,reset-math-version=false,
+  uncertainty-mode=separate,per-mode=symbol,range-phrase={~bis~},
+  table-align-text-before=false}
+
+% ---------------------------------------------------------------- Farben (nur Abbildungen)
+% Paul Tol "bright" (farbenblind-sicher), neutrale Referenz dunkelgrau.
+\definecolor{tolblue}{HTML}{4477AA}
+\definecolor{tolred}{HTML}{EE6677}
+\definecolor{tolgreen}{HTML}{228833}
+\definecolor{tolpurple}{HTML}{AA3377}
+\definecolor{tolyellow}{HTML}{CCBB44}
+\definecolor{tolcyan}{HTML}{66CCEE}
+\definecolor{tolgrey}{HTML}{BBBBBB}
+\definecolor{neutral}{HTML}{4D4D4D}
+\definecolor{thbrot}{HTML}{CE1628} % Rot des THB-Logos, nur auf der Titelseite
+
+% ---------------------------------------------------------------- TikZ
+\tikzset{
+  diagram/.style={font=\footnotesize, line width=0.5pt, >={Latex[length=1.8mm,width=1.3mm]},
+    every node/.append style={execute at begin node={\setstretch{1}}}},
+  box/.style={draw=black, line width=0.5pt, rectangle, align=center, inner sep=3pt,
+    minimum height=7mm, minimum width=18mm, fill=white},
+  model/.style={box, fill=black!8},
+  op/.style={draw=black, line width=0.5pt, circle, inner sep=1pt, minimum size=5mm, font=\footnotesize},
+  arr/.style={->, line width=0.6pt, draw=black},
+  aux/.style={->, line width=0.6pt, draw=black, dash pattern=on 2pt off 1.5pt},
+  lbl/.style={font=\footnotesize, fill=white, inner sep=1pt},
+  paneltitle/.style={font=\footnotesize, anchor=south west, inner sep=0pt},
+  group/.style={draw=black, line width=0.4pt, dash pattern=on 2pt off 1.5pt, inner sep=4pt},
+  pt/.style={circle, inner sep=0pt, minimum size=1.6mm, draw=black, line width=0.3pt},
+  anchorpt/.style={pt, fill=black},
+  pospt/.style={pt, fill=tolblue},
+  negpt/.style={pt, fill=tolred},
+  proxy/.style={rectangle, inner sep=0pt, minimum size=2mm, draw=black, line width=0.4pt, fill=white},
+}
+
+% ---------------------------------------------------------------- pgfplots
+\pgfplotscreateplotcyclelist{thesis}{
+  {neutral, mark=o},
+  {tolblue, mark=square},
+  {tolred, mark=triangle},
+  {tolgreen, mark=diamond},
+  {tolpurple, mark=pentagon},
+  {tolyellow, mark=star}%
+}
+\pgfplotsset{
+  every axis/.append style={font=\footnotesize, line width=0.5pt,
+    tick style={line width=0.5pt, black}, tick align=inside,
+    major tick length=3pt, legend style={draw=none, fill=none, font=\footnotesize},
+    legend cell align=left, label style={font=\footnotesize},
+    tick label style={font=\footnotesize}},
+  every axis plot/.append style={line width=1pt, mark size=1.6pt},
+  xmajorgrids=false, ymajorgrids=false,
+  cycle list name=thesis,
+}

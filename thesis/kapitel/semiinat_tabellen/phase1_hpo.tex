@@ -1,0 +1,40 @@
+\begin{table}[htbp]
+\centering
+\caption[Übernommene Konfigurationen Semi-iNat-2021]{Für die Wiederholungen übernommene HPO-Konfigurationen (Optimierung bei $k=16$, Seed~7). Versuch: Nummer innerhalb der Suche, $B$: supervised bzw. gemischte Batchgröße, Warm-up in Epochen, Ep./Patience: Epochenlimit und Early-Stopping-Patience der Wiederholungen. Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}
+\label{tab:semiinat:hpo}
+\begin{tabular}{@{}llrrrrr@{}}
+\toprule
+Verlust & Verf. & Versuch & Lernrate & $B$ & Warm-up & Ep./Patience \\
+\midrule
+ArcFace & \UEBL & 71 & \num{7.811e-06} & 512 & 0 & 1000/10 \\
+ArcFace & LP & 49 & \num{1.255e-05} & 128 & 2 & 1000/10 \\
+ArcFace & LRML & 53 & \num{1.072e-05} & 512 & 1 & 1000/10 \\
+ArcFace & Hoffer & 55 & \num{2.133e-05} & 256 & 0 & 1000/10 \\
+ArcFace & SLADE & 57 & \num{6.447e-06} & 512 & 2 & 1000/10 \\
+\addlinespace[3pt]
+Circle & \UEBL & 61 & \num{5.660e-06} & 128 & 0 & 1000/10 \\
+Circle & LP & 75 & \num{5.812e-06} & 128 & 0 & 1000/10 \\
+Circle & LRML & 47 & \num{1.110e-05} & 256 & 0 & 1000/10 \\
+Circle & Hoffer & 23 & \num{2.042e-05} & 256 & 2 & 1000/10 \\
+Circle & SLADE & 77 & \num{2.088e-05} & 256 & 2 & 1000/10 \\
+\addlinespace[3pt]
+Multi-Similarity & \UEBL & 77 & \num{2.246e-05} & 128 & 0 & 1000/10 \\
+Multi-Similarity & LP & 53 & \num{6.428e-06} & 256 & 2 & 1000/10 \\
+Multi-Similarity & LRML & 51 & \num{1.418e-05} & 512 & 0 & 1000/10 \\
+Multi-Similarity & Hoffer & 74 & \num{5.119e-05} & 256 & 0 & 1000/10 \\
+Multi-Similarity & SLADE & 80 & \num{1.847e-05} & 512 & 0 & 1000/10 \\
+\addlinespace[3pt]
+NT-Xent & \UEBL & 71 & \num{1.989e-05} & 512 & 0 & 1000/10 \\
+NT-Xent & LP & 55 & \num{1.861e-05} & 512 & 4 & 1000/10 \\
+NT-Xent & LRML & 78 & \num{9.365e-05} & 512 & 2 & 1000/10 \\
+NT-Xent & Hoffer & 76 & \num{1.576e-05} & 512 & 0 & 1000/10 \\
+NT-Xent & SLADE & 79 & \num{1.382e-05} & 512 & 1 & 1000/10 \\
+\addlinespace[3pt]
+Proxy-Anchor & \UEBL & 76 & \num{5.343e-06} & 256 & 0 & 1000/10 \\
+Proxy-Anchor & LP & 48 & \num{2.811e-05} & 256 & 6 & 1000/10 \\
+Proxy-Anchor & LRML & 57 & \num{2.349e-05} & 512 & 0 & 1000/10 \\
+Proxy-Anchor & Hoffer & 75 & \num{1.842e-05} & 512 & 1 & 1000/10 \\
+Proxy-Anchor & SLADE & 64 & \num{6.179e-06} & 256 & 1 & 1000/10 \\
+\bottomrule
+\end{tabular}
+\end{table}

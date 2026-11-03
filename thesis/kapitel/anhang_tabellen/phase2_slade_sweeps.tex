@@ -1,0 +1,52 @@
+\begin{table}[p]
+\centering
+\caption[Sweeps von SLADE in Phase~2]{Sweeps einzelner Hyperparameter von SLADE (Phase~2, Seed~2, Cars196 mit $k=16$, In-Shop mit $k=2$): Änderung der Test-MAP@R (Mean) gegenüber der regulären SLADE-Konfiguration in Prozentpunkten. Fett: Betrag über der Rauschschwelle $2\sqrt{2}\,\sigma$, kursiv: in Phase~1 gewählter Wert (Wiederholung der regulären Konfiguration, bei der Teacher-Aktualisierung alle 5~Epochen die reguläre Konfiguration selbst). $^\dagger$: außerhalb der Suchräume der Phase~1 (Clusterverhältnis 0,5 nur auf Cars196). Arc: ArcFace, Cir: Circle, NT: NT-Xent, PA: Proxy-Anchor.}
+\label{tab:anhang:phase2:slade}
+\small\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{@{}lrrrrrrrrrr@{}}
+\toprule
+ & \multicolumn{5}{c}{Cars196} & \multicolumn{5}{c}{In-Shop} \\
+\cmidrule(lr){2-6}\cmidrule(lr){7-11}
+Wert & Arc & Cir & \acs{MS} & NT & PA & Arc & Cir & \acs{MS} & NT & PA \\
+\midrule
+reguläre Konfiguration [\%] & 40{,}2 & 41{,}6 & 41{,}7 & 40{,}6 & 40{,}4 & 53{,}7 & 54{,}8 & 54{,}5 & 54{,}1 & 53{,}7 \\
+Rauschschwelle & 1{,}0 & 0{,}6 & 1{,}0 & 0{,}3 & 0{,}6 & 1{,}4 & 0{,}4 & 0{,}4 & 0{,}5 & 0{,}9 \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{Zielverhältnis $\eta$}} \\
+\quad 0{,}1$^\dagger$ & \textminus 0{,}7 & \textbf{\textminus 2{,}9} & \textminus 0{,}8 & \textbf{\textminus 1{,}8} & \textminus 0{,}5 & +0{,}6 & \textminus 0{,}1 & \textbf{\textminus 0{,}9} & \textminus 0{,}1 & +0{,}1 \\
+\quad 0{,}2$^\dagger$ & \textminus 0{,}5 & \textbf{\textminus 2{,}2} & \textminus 0{,}3 & \textbf{\textminus 1{,}5} & \textminus 0{,}1 & +0{,}2 & \textminus 0{,}1 & \textbf{\textminus 0{,}8} & \textminus 0{,}0 & \textminus 0{,}0 \\
+\quad 0{,}5 & +0{,}1 & \textminus 0{,}6 & +0{,}1 & \textbf{\textminus 1{,}2} & +0{,}1 & +0{,}7 & \textminus 0{,}0 & \textbf{\textminus 0{,}4} & \textminus 0{,}0 & \textminus 0{,}0 \\
+\quad 1 & \textminus 0{,}1 & +0{,}1 & \textminus 0{,}3 & \textbf{\textminus 0{,}5} & \textminus 0{,}6 & \textbf{\textminus 1{,}8} & \textbf{\textminus 1{,}5} & \textminus 0{,}0 & \textminus 0{,}3 & \textminus 0{,}6 \\
+\quad 1{,}5 & +0{,}2 & \textbf{\textminus 2{,}4} & +0{,}2 & \textminus 0{,}1 & \textbf{\textminus 0{,}8} & \textbf{\textminus 2{,}5} & \textbf{\textminus 6{,}9} & +0{,}2 & \textbf{\textminus 0{,}6} & \textbf{\textminus 1{,}9} \\
+\quad 3$^\dagger$ & \textminus 0{,}3 & \textbf{\textminus 8{,}6} & \textbf{\textminus 1{,}1} & \textbf{\textminus 0{,}4} & \textbf{\textminus 1{,}4} & \textbf{\textminus 3{,}5} & \textbf{\textminus 9{,}8} & \textbf{\textminus 3{,}6} & \textbf{\textminus 2{,}6} & \textbf{\textminus 1{,}6} \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{Basis: Zielverhältnis $\eta_{\mathrm{basis}}$}} \\
+\quad 0{,}1$^\dagger$ & +0{,}2 & \textbf{\textminus 0{,}9} & \textminus 0{,}1 & \textbf{\textminus 1{,}7} & \textminus 0{,}2 & \textbf{\textminus 4{,}5} & +0{,}3 & \textbf{\textminus 0{,}7} & +0{,}2 & \textbf{\textminus 16{,}6} \\
+\quad 1 & \textminus 0{,}1 & +0{,}1 & +0{,}3 & \textminus 0{,}1 & \textminus 0{,}3 & \textminus 0{,}1 & \textminus 0{,}1 & \textminus 0{,}1 & \textminus 0{,}4 & +0{,}2 \\
+\quad 3$^\dagger$ & \textminus 0{,}1 & +0{,}0 & +0{,}2 & \textbf{+0{,}4} & +0{,}2 & \textminus 0{,}1 & \textbf{\textminus 0{,}9} & \textminus 0{,}0 & \textbf{\textminus 1{,}8} & \textbf{\textminus 2{,}1} \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{Clusterverhältnis}} \\
+\quad 0{,}5$^\dagger$ & \textminus 0{,}2 & \textbf{\textminus 1{,}4} & \textminus 0{,}7 & \textbf{\textminus 1{,}2} & \textminus 0{,}5 & \textit{\textminus 0{,}0} & \textminus 0{,}2 & +0{,}0 & \textminus 0{,}3 & \textminus 0{,}8 \\
+\quad 1 & \textit{+0{,}0} & \textminus 0{,}3 & +0{,}0 & \textbf{\textminus 0{,}6} & \textit{+0{,}0} & +0{,}7 & \textit{+0{,}0} & \textit{+0{,}0} & \textminus 0{,}3 & \textbf{\textminus 1{,}0} \\
+\quad 2 & +0{,}1 & \textit{+0{,}0} & +0{,}1 & \textit{+0{,}0} & +0{,}2 & \textbf{\textminus 1{,}7} & \textminus 0{,}1 & \textbf{\textminus 0{,}4} & \textit{+0{,}0} & \textit{+0{,}0} \\
+\quad 4$^\dagger$ & \textminus 0{,}1 & +0{,}1 & \textminus 0{,}2 & \textminus 0{,}3 & +0{,}1 & \textbf{\textminus 2{,}0} & \textbf{\textminus 0{,}5} & \textbf{\textminus 1{,}2} & \textminus 0{,}1 & +0{,}0 \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{Teacher-Aktualisierung alle $n_{\mathrm{T}}$ Epochen}} \\
+\quad 1 & \textit{+0{,}0} & \textminus 0{,}0 & +0{,}0 & \textbf{\textminus 0{,}6} & \textit{+0{,}0} & +0{,}8 & +0{,}0 & \textminus 0{,}1 & \textminus 0{,}1 & \textminus 0{,}1 \\
+\quad 5 & \textminus 0{,}1 & \textit{+0{,}0} & \textit{+0{,}0} & \textminus 0{,}1 & +0{,}1 & \textminus 0{,}1 & \textit{+0{,}0} & \textit{+0{,}0} & \textminus 0{,}0 & \textit{+0{,}0} \\
+\quad 10 & +0{,}0 & \textminus 0{,}0 & \textminus 0{,}0 & \textit{+0{,}0} & \textbf{\textminus 1{,}5} & \textit{\textminus 0{,}0} & +0{,}1 & \textminus 0{,}0 & \textit{+0{,}0} & \textminus 0{,}0 \\
+\quad 100$^\dagger$ & \textminus 0{,}1 & \textminus 0{,}2 & +0{,}1 & \textminus 0{,}1 & \textbf{\textminus 4{,}6} & \textminus 1{,}0 & \textminus 0{,}0 & \textminus 0{,}1 & \textminus 0{,}2 & \textminus 0{,}1 \\
+\quad 500$^\dagger$ & \textminus 0{,}1 & \textminus 0{,}2 & +0{,}1 & \textminus 0{,}1 & \textbf{\textminus 4{,}6} & \textbf{\textminus 1{,}4} & \textminus 0{,}3 & \textminus 0{,}1 & \textminus 0{,}2 & \textminus 0{,}3 \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{Ungelabelte Batchgröße}} \\
+\quad 32 & \textminus 0{,}2 & \textbf{\textminus 3{,}3} & \textbf{\textminus 1{,}2} & \textbf{\textminus 2{,}0} & \textit{+0{,}0} & \textit{\textminus 0{,}0} & \textminus 0{,}1 & \textbf{\textminus 0{,}6} & \textminus 0{,}1 & \textit{+0{,}0} \\
+\quad 128 & +0{,}2 & \textminus 0{,}5 & \textit{+0{,}0} & \textbf{\textminus 0{,}5} & \textminus 0{,}1 & \textbf{\textminus 3{,}0} & \textit{+0{,}0} & +0{,}3 & \textbf{\textminus 0{,}6} & \textbf{\textminus 2{,}7} \\
+\quad 512 & \textit{+0{,}0} & +0{,}2 & +0{,}6 & \textminus 0{,}1 & \textminus 0{,}4 & \textbf{\textminus 3{,}8} & \textbf{\textminus 0{,}8} & \textbf{+0{,}5} & \textbf{\textminus 1{,}0} & \textbf{\textminus 20{,}5} \\
+\addlinespace
+\multicolumn{11}{@{}l}{\emph{$\mathcal{L}_{\mathrm{SD}}$: Marge}} \\
+\quad 0{,}1 & \textminus 0{,}4 & \textbf{\textminus 1{,}1} & \textminus 0{,}8 & \textminus 0{,}3 & \textbf{\textminus 1{,}5} & \textminus 1{,}2 & \textminus 0{,}2 & \textbf{\textminus 1{,}4} & \textminus 0{,}0 & +0{,}0 \\
+\quad 0{,}5 & \textminus 0{,}1 & +0{,}1 & \textminus 0{,}1 & \textminus 0{,}1 & \textminus 0{,}1 & \textminus 0{,}2 & \textminus 0{,}2 & \textbf{\textminus 0{,}8} & \textminus 0{,}0 & \textminus 0{,}0 \\
+\quad 0{,}9 & +0{,}4 & \textminus 0{,}1 & +0{,}0 & +0{,}0 & \textminus 0{,}3 & \textminus 0{,}2 & \textbf{+0{,}4} & +0{,}0 & +0{,}4 & \textminus 0{,}1 \\
+\bottomrule
+\end{tabular}
+\end{table}

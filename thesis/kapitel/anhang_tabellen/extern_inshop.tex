@@ -1,0 +1,43 @@
+\begin{table}[p]
+\centering
+\caption[Externe ungelabelte Bilder auf In-Shop]{Test-MAP@R in \% auf In-Shop mit allen Trainingslabels und einem Anteil von Fashion200k als externem ungelabeltem Pool (Seed~2). Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \acs{SSL}-Term. Zeile \UEBL: Referenz ohne externe Bilder. M: Mean, C: Concat.}
+\label{tab:anhang:extern:inshop}
+\small\setlength{\tabcolsep}{2.6pt}
+\begin{tabular}{@{}llS[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]S[table-format=2.2]@{}}
+\toprule
+ & & \multicolumn{2}{c}{ohne} & \multicolumn{2}{c}{\qty{5}{\percent}} & \multicolumn{2}{c}{\qty{10}{\percent}} & \multicolumn{2}{c}{\qty{25}{\percent}} & \multicolumn{2}{c}{\qty{50}{\percent}} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}\cmidrule(lr){11-12}
+Verlust & Verfahren & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} & {M} & {C} \\
+\midrule
+ArcFace & \UEBL & \multicolumn{10}{l}{M 60{,}72, C 61{,}69} \\
+ & LP & 50.99 & 51.99 & 38.70 & 40.33 & 38.21 & 39.85 & 38.34 & 39.89 & 38.40 & 40.02 \\
+ & \acs{LRML} & 58.57 & 59.73 & 55.44 & 58.27 & 53.88 & 55.83 & 52.11 & 52.56 & 51.59 & 52.01 \\
+ & Hoffer & 54.08 & 55.08 & 50.41 & 51.59 & 50.39 & 51.72 & 50.46 & 51.73 & 50.58 & 51.70 \\
+ & SLADE & 52.67 & 53.35 & 58.35 & 59.05 & 58.73 & 59.48 & 58.78 & 59.59 & 58.68 & 59.38 \\
+\addlinespace[2pt]
+Circle & \UEBL & \multicolumn{10}{l}{M 60{,}94, C 61{,}81} \\
+ & LP & 61.88 & 62.84 & 55.17 & 56.66 & 56.05 & 57.43 & 57.08 & 58.09 & 56.94 & 57.70 \\
+ & \acs{LRML} & 59.82 & 60.47 & 57.41 & 58.07 & 56.73 & 57.54 & 55.36 & 56.23 & 48.88 & 51.14 \\
+ & Hoffer & 61.67 & 62.79 & 55.75 & 56.80 & 56.78 & 57.80 & 57.12 & 58.22 & 56.68 & 57.69 \\
+ & SLADE & 61.70 & 62.48 & 54.69 & 55.25 & 54.66 & 55.27 & 54.75 & 55.28 & 55.02 & 55.54 \\
+\addlinespace[2pt]
+\acs{MS} & \UEBL & \multicolumn{10}{l}{M 61{,}55, C 62{,}24} \\
+ & LP & 62.02 & 63.01 & 59.04 & 60.01 & 59.29 & 60.01 & 59.80 & 60.64 & 59.95 & 60.66 \\
+ & \acs{LRML} & 59.18 & 60.06 & 56.85 & 57.78 & 54.31 & 56.81 & 52.41 & 52.64 & 52.24 & 52.46 \\
+ & Hoffer & 58.40 & 59.71 & 54.08 & 55.24 & 53.98 & 55.32 & 54.40 & 55.78 & 54.34 & 55.59 \\
+ & SLADE & 60.87 & 62.03 & 57.16 & 57.92 & 57.52 & 58.28 & 57.33 & 58.30 & 57.87 & 58.77 \\
+\addlinespace[2pt]
+NT-Xent & \UEBL & \multicolumn{10}{l}{M 59{,}93, C 60{,}50} \\
+ & LP & 60.91 & 61.86 & 53.57 & 54.93 & 53.41 & 54.59 & 53.95 & 54.91 & 54.44 & 55.39 \\
+ & \acs{LRML} & 57.68 & 59.08 & 54.74 & 57.05 & 54.34 & 56.83 & 53.35 & 55.30 & 52.77 & 53.16 \\
+ & Hoffer & 55.82 & 56.76 & 51.37 & 52.34 & 51.49 & 52.44 & 51.81 & 53.08 & 51.77 & 52.76 \\
+ & SLADE & 60.94 & 61.80 & 57.85 & 58.73 & 57.78 & 58.51 & 57.97 & 58.86 & 57.91 & 58.81 \\
+\addlinespace[2pt]
+Proxy-Anchor & \UEBL & \multicolumn{10}{l}{M 57{,}50, C 58{,}28} \\
+ & LP & 59.35 & 59.97 & 51.26 & 51.45 & 51.16 & 51.39 & 51.16 & 51.33 & 51.13 & 51.30 \\
+ & \acs{LRML} & 58.86 & 59.59 & 57.21 & 58.01 & 56.67 & 57.40 & 55.26 & 56.07 & 54.09 & 55.08 \\
+ & Hoffer & 54.88 & 55.75 & 49.08 & 50.20 & 48.96 & 50.13 & 49.40 & 50.47 & 49.33 & 50.49 \\
+ & SLADE & 39.23 & 41.20 & 52.56 & 54.78 & 51.67 & 53.41 & 52.29 & 54.00 & 51.32 & 53.40 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -58,13 +58,13 @@ def num(x):
     x = float(x)
     if 0 < abs(x) < 1e-3:
         m, e = f"{x:.0e}".split("e")
-        return (f"{m}{{\\times}}" if m != "1" else "") + f"10^{{{int(e)}}}"
+        return (f"{m}\\cdot " if m != "1" else "") + f"10^{{{int(e)}}}"
     return f"{x:g}".replace(".", "{,}")
 
 
 def interval(sp):
     lo, hi = num(sp["low"]), num(sp["high"])
-    brk = "\\allowbreak" if "\\times" in lo + hi else ""  # außerhalb des f-Strings, sonst erst ab Python 3.12 gültig
+    brk = "\\allowbreak" if "\\cdot" in lo + hi else ""  # außerhalb des f-Strings, sonst erst ab Python 3.12 gültig
     return f"$[{lo},{brk}\\,{hi}]$"
 
 
@@ -82,30 +82,30 @@ P0_SETS = [("cars", "Cars"), ("inshop", "In-Shop"), ("cub", "CUB"), ("semiinat",
 P0_ALIAS = {"inshop10": "inshop"}  # In-Shop mit gelabelten Klassen zählt in den Vorexperimenten zu In-Shop.
 P0_BLOCKS = [
     ("sup", "Supervised Basiskonfiguration", [
-        ("classifier_lr", "Klassifikator-Lernrate"), ("lr", "Lernrate"), ("batch_sampler", "Batchstruktur $B{:}\\mathrm{SPC}$"),
-        ("loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad]"), ("loss.ArcFaceLoss.scale", "ArcFace $s$"),
-        ("loss.CircleLoss.gamma", "Circle $\\gamma$"), ("loss.CircleLoss.m", "Circle $m$"),
-        ("loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\alpha$"), ("loss.MultiSimilarityLoss.base", "Multi-Similarity $\\lambda$"),
-        ("loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\beta$"), ("miner.MultiSimilarityMiner.epsilon", "MS-Mining $\\epsilon$"),
-        ("loss.NTXentLoss.temperature", "NT-Xent $\\tau$"), ("loss.ProxyAnchorLoss.alpha", "Proxy-Anchor $\\alpha$"),
-        ("loss.ProxyAnchorLoss.margin", "Proxy-Anchor $\\delta$")]),
+        ("classifier_lr", "Klassifikator-Lernrate"), ("lr", "Lernrate"), ("batch_sampler", "Batchstruktur $B{:}n_{\\mathrm{S}}$"),
+        ("loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad] (\\texttt{margin})"), ("loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"),
+        ("loss.CircleLoss.gamma", "Circle $\\gamma$ (\\texttt{gamma})"), ("loss.CircleLoss.m", "Circle $m$"),
+        ("loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\gamma^{+}$ (\\texttt{alpha})"), ("loss.MultiSimilarityLoss.base", "Multi-Similarity $m$ (\\texttt{base})"),
+        ("loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\gamma^{-}$ (\\texttt{beta})"), ("miner.MultiSimilarityMiner.epsilon", "MS-Mining $m_{\\mathrm{Miner}}$ (\\texttt{epsilon})"),
+        ("loss.NTXentLoss.temperature", "NT-Xent $\\tau$ (\\texttt{temperature})"), ("loss.ProxyAnchorLoss.alpha", "Proxy-Anchor $\\gamma$ (\\texttt{alpha})"),
+        ("loss.ProxyAnchorLoss.margin", "Proxy-Anchor $m$ (\\texttt{margin})")]),
     ("lrml", "LRML", [
-        (RP + "graph_batch_size", "Kanten-Batchgröße"), (RP + "n_neighbors", "Nachbarn $k_{\\mathrm{NN}}$ (Regularisierer)"),
-        (MP + "regularizer_target_ratio", "Zielgradienten\\-verhältnis $\\eta$"), (WARMUP, "Warm-up [Epochen]")]),
+        (RP + "graph_batch_size", "Kanten-Batchgröße"), (RP + "n_neighbors", "Nachbarzahl $k_{\\mathrm{NN}}$ (Regularisierer)"),
+        (MP + "regularizer_target_ratio", "Zielverhältnis $\\eta$"), (WARMUP, "Warm-up [Epochen]")]),
     ("hoffer", "Hoffer", [
-        (MP + "regularizer_target_ratio", "Zielgradienten\\-verhältnis $\\eta$"), (WARMUP, "Warm-up [Epochen]"),
-        (RP + "distance_scale", "Distanzskala $s_{\\mathrm{H}}$"), (RP + "reference_sets", "Referenzmengen $K_{\\mathrm{ref}}$"),
+        (MP + "regularizer_target_ratio", "Zielverhältnis $\\eta$"), (WARMUP, "Warm-up [Epochen]"),
+        (RP + "distance_scale", "Distanzskala $\\gamma_{\\mathrm{H}}$"), (RP + "reference_sets", "Referenzmengen $K_{\\mathrm{ref}}$"),
         (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße")]),
     ("iscen", "Label Propagation (\\texttt{iscen})", [
         (WARMUP, "Warm-up [Epochen]"), ("ssl_config.confidence_threshold", "Konfidenzschwelle"),
         ("labeled_batch_fraction", "Gelabelter Batchanteil"), (MP + "alpha", "Diffusionsparameter $\\alpha$"),
-        (MP + "gamma", "Affinitätsexponent $\\gamma$"), (MP + "n_neighbors", "Nachbarn $k_{\\mathrm{NN}}$ (Propagation)")]),
+        (MP + "gamma", "Exponent $\\xi$"), (MP + "n_neighbors", "Nachbarzahl $k_{\\mathrm{NN}}$ (Propagation)")]),
     ("slade", "SLADE", [
-        ("loss.NTXentLoss.temperature", "NT-Xent $\\tau$"), (WARMUP, "Warm-up [Epochen]"),
-        (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße"), (RP + "beta", "SLADE $\\beta$"),
-        (RP + "basis_warmup_epochs", "Basis-Warm-up [Epochen]"), (RP + "sd_margin", "Margin von $\\mathcal{L}_{\\mathrm{SD}}$ (\\texttt{sd\\_margin})"),
-        (RP + "sd_variance_weight", "Varianzgewicht $\\lambda_v$ von $\\mathcal{L}_{\\mathrm{SD}}$"), (RP + "contrastive_pos_margin", "Positive kontrastive Margin"),
-        (RP + "contrastive_neg_margin", "Negative kontrastive Margin"), ("ssl_config.update_interval_epochs", "Aktualisierung [Epochen]")]),
+        ("loss.NTXentLoss.temperature", "NT-Xent $\\tau$ (\\texttt{temperature})"), (WARMUP, "Warm-up [Epochen]"),
+        (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße"), (RP + "beta", "Basis: Gewicht $\\beta_{\\mathrm{basis}}$ des bisherigen Werts"),
+        (RP + "basis_warmup_epochs", "Basis: Warm-up [Epochen]"), (RP + "sd_margin", "Marge $m$ von $\\mathcal{L}_{\\mathrm{SD}}$ (\\texttt{sd\\_margin})"),
+        (RP + "sd_variance_weight", "Varianzgewicht $w_v$ von $\\mathcal{L}_{\\mathrm{SD}}$"), (RP + "contrastive_pos_margin", "Kontrastive Marge $m^{+}$"),
+        (RP + "contrastive_neg_margin", "Kontrastive Marge $m^{-}$"), ("ssl_config.update_interval_epochs", "Teacher-Aktualisierung alle $n_{\\mathrm{T}}$ Epochen")]),
 ]
 
 
@@ -120,7 +120,11 @@ def p0_values(method, param):
 
 def p0_cell(sp):
     if "choices" in sp:
-        items = [c.replace(":", "{:}") if isinstance(c, str) else plain(c).replace(".", "{,}") for c in sp["choices"]]
+        c = sp["choices"]
+        if all(isinstance(x, str) and ":" in x for x in c):  # dieselbe Schreibweise wie in Phase 1
+            spc = unique([x.split(":")[1] for x in c], "samples per class")
+            return "\\{" + ", ".join(x.split(":")[0] for x in c) + "\\}:" + spc, "kat."
+        items = [plain(x).replace(".", "{,}") for x in c]
         dist = "fest" if len(items) == 1 else "kat."
     elif "step" in sp:
         items = [plain(v).replace(".", "{,}") for v in stepped(sp)]
@@ -128,7 +132,8 @@ def p0_cell(sp):
         dist = "fest" if len(items) == 1 else "diskr."
     else:
         return interval(sp), "log." if sp.get("log") else "unif."
-    return "$\\{" + ",\\,\\allowbreak ".join(items) + "\\}$", dist
+    sep = ";" if any("{,}" in x for x in items) else ","  # Dezimalkommas: wie in Phase 1 mit Semikolon trennen
+    return "$\\{" + (sep + "\\,\\allowbreak ").join(items) + "\\}$", dist
 
 
 def phase0():
@@ -175,47 +180,47 @@ PHASE0_HEAD = [
 # ---------------------------------------------------------------- Phase 1
 GENERAL = ["sup", "iscen", "lrml", "hoffer"]
 LOSS_PARAMS = [  # Verlust, Parameter, Zeile
-    ("arc", "loss.ArcFaceLoss.scale", "ArcFace $s$"), ("arc", "loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad]"),
+    ("arc", "loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"), ("arc", "loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad] (\\texttt{margin})"),
     ("cir", "loss.CircleLoss.gamma", "Circle $\\gamma$ (\\texttt{gamma})"), ("cir", "loss.CircleLoss.m", "Circle $m$"),
-    ("ms", "loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\alpha$"), ("ms", "loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\beta$"),
-    ("ms", "loss.MultiSimilarityLoss.base", "Multi-Similarity $\\lambda$ (\\texttt{base})"),
-    ("ms", "miner.MultiSimilarityMiner.epsilon", "MS-Mining $\\epsilon$"), ("nt", "loss.NTXentLoss.temperature", "NT-Xent $\\tau$"),
-    ("prx", "loss.ProxyAnchorLoss.alpha", "Proxy-Anchor $\\alpha$ (\\texttt{alpha})"), ("prx", "loss.ProxyAnchorLoss.margin", "Proxy-Anchor $\\delta$")]
+    ("ms", "loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\gamma^{+}$ (\\texttt{alpha})"), ("ms", "loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\gamma^{-}$ (\\texttt{beta})"),
+    ("ms", "loss.MultiSimilarityLoss.base", "Multi-Similarity $m$ (\\texttt{base})"),
+    ("ms", "miner.MultiSimilarityMiner.epsilon", "MS-Mining $m_{\\mathrm{Miner}}$ (\\texttt{epsilon})"), ("nt", "loss.NTXentLoss.temperature", "NT-Xent $\\tau$ (\\texttt{temperature})"),
+    ("prx", "loss.ProxyAnchorLoss.alpha", "Proxy-Anchor $\\gamma$ (\\texttt{alpha})"), ("prx", "loss.ProxyAnchorLoss.margin", "Proxy-Anchor $m$ (\\texttt{margin})")]
 # Reihenfolge der SLADE-Abweichungen in der Tabelle; welche abweichen, ergibt sich aus den Daten.
 SLADE_DEVIATIONS = ["loss.MultiSimilarityLoss.base", "loss.NTXentLoss.temperature", "loss.ArcFaceLoss.margin",
                     "loss.ProxyAnchorLoss.alpha", "loss.ProxyAnchorLoss.margin"]
-ETA = (MP + "regularizer_target_ratio", "Zielgradienten\\-verhältnis $\\eta$")
+ETA = (MP + "regularizer_target_ratio", "Zielverhältnis $\\eta$")
 WARM = (WARMUP, "Warm-up [Epochen]")
 P1_BLOCKS = [  # Titel, Verfahren, [(Parameter, Zeile, Verluste)]
     ("Alle Verfahren außer SLADE: Optimierung und Batch", GENERAL, [
-        ("batch_sampler", "Batchstruktur $B{:}\\mathrm{SPC}$", LOSSES), ("lr", "Lernrate (Circle, MS, NT-Xent)", ["cir", "ms", "nt"]),
+        ("batch_sampler", "Batchstruktur $B{:}n_{\\mathrm{S}}$", LOSSES), ("lr", "Lernrate (Circle, MS, NT-Xent)", ["cir", "ms", "nt"]),
         ("lr", "Lernrate (ArcFace, Proxy-Anchor)", ["arc", "prx"]),
         ("classifier_lr", "Klassifikator-Lernrate (ArcFace, Proxy-Anchor)", ["arc", "prx"])]),
     ("Verlustfunktionen (alle Verfahren, Abweichungen bei SLADE siehe unten)", GENERAL,
      [(p, label, [l]) for l, p, label in LOSS_PARAMS]),
     ("Label Propagation (\\texttt{iscen})", ["iscen"], [
         WARM + (LOSSES,), (MP + "n_neighbors", "Nachbarzahl $k_{\\mathrm{NN}}$", LOSSES),
-        (MP + "alpha", "Diffusions\\-parameter $\\alpha$", LOSSES), (MP + "gamma", "Affinitätsexponent $\\gamma$", LOSSES),
+        (MP + "alpha", "Diffusions\\-parameter $\\alpha$", LOSSES), (MP + "gamma", "Exponent $\\xi$", LOSSES),
         ("ssl_config.confidence_threshold", "Konfidenzschwelle", LOSSES), ("labeled_batch_fraction", "Gelabelter Batchanteil", LOSSES)]),
     ("LRML", ["lrml"], [
         WARM + (LOSSES,), ETA + (LOSSES,), (RP + "n_neighbors", "Nachbarzahl $k_{\\mathrm{NN}}$", LOSSES),
         (RP + "graph_batch_size", "Kanten-Batchgröße", LOSSES)]),
     ("Hoffer", ["hoffer"], [
-        WARM + (LOSSES,), ETA + (LOSSES,), (RP + "distance_scale", "Distanzskala $s_{\\mathrm{H}}$", LOSSES),
+        WARM + (LOSSES,), ETA + (LOSSES,), (RP + "distance_scale", "Distanzskala $\\gamma_{\\mathrm{H}}$", LOSSES),
         (RP + "reference_sets", "Referenzmengen $K_{\\mathrm{ref}}$", LOSSES),
         (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße", LOSSES)]),
     ("SLADE", ["slade"], [
-        ("batch_sampler", "Batchstruktur $B{:}\\mathrm{SPC}$", LOSSES), ("lr", "Lernrate (alle Verluste)", LOSSES),
+        ("batch_sampler", "Batchstruktur $B{:}n_{\\mathrm{S}}$", LOSSES), ("lr", "Lernrate (alle Verluste)", LOSSES),
         ("classifier_lr", "Klassifikator-Lernrate (ArcFace, Proxy-Anchor)", ["arc", "prx"]), "deviations",
-        WARM + (LOSSES,), ("ssl_config.update_interval_epochs", "Teacher-Aktualisierung alle $n$ Epochen", LOSSES),
+        WARM + (LOSSES,), ("ssl_config.update_interval_epochs", "Teacher-Aktualisierung alle $n_{\\mathrm{T}}$ Epochen", LOSSES),
         ETA + (LOSSES,), (RP + "cluster_ratio", "Clusterverhältnis (Cluster je gelabelter Klasse)", LOSSES),
         (RP + "unlabeled_batch_size", "Ungelabelte Batchgröße", LOSSES),
-        (RP + "basis_target_ratio", "Basis: Zielgradienten\\-verhältnis", LOSSES),
-        (RP + "basis_warmup_epochs", "Basis: Warm-up [Epochen]", LOSSES), (RP + "beta", "Basis: Aktualisierungsrate $\\beta$", LOSSES),
-        (RP + "sd_margin", "$\\mathcal{L}_{\\mathrm{SD}}$: Margin (\\texttt{sd\\_margin})", LOSSES),
-        (RP + "sd_variance_weight", "$\\mathcal{L}_{\\mathrm{SD}}$: Varianzgewicht $\\lambda_v$", LOSSES),
-        (RP + "contrastive_pos_margin", "Kontrastive Margin positiv (ArcFace, Proxy-Anchor)", ["arc", "prx"]),
-        (RP + "contrastive_neg_margin", "Kontrastive Margin negativ (ArcFace, Proxy-Anchor)", ["arc", "prx"])]),
+        (RP + "basis_target_ratio", "Basis: Zielverhältnis $\\eta_{\\mathrm{basis}}$", LOSSES),
+        (RP + "basis_warmup_epochs", "Basis: Warm-up [Epochen]", LOSSES), (RP + "beta", "Basis: Gewicht $\\beta_{\\mathrm{basis}}$ des bisherigen Werts", LOSSES),
+        (RP + "sd_margin", "$\\mathcal{L}_{\\mathrm{SD}}$: Marge $m$ (\\texttt{sd\\_margin})", LOSSES),
+        (RP + "sd_variance_weight", "$\\mathcal{L}_{\\mathrm{SD}}$: Varianzgewicht $w_v$", LOSSES),
+        (RP + "contrastive_pos_margin", "Kontrastive Marge $m^{+}$ (ArcFace, Proxy-Anchor)", ["arc", "prx"]),
+        (RP + "contrastive_neg_margin", "Kontrastive Marge $m^{-}$ (ArcFace, Proxy-Anchor)", ["arc", "prx"])]),
 ]
 
 
@@ -411,9 +416,9 @@ def fixed():
             setting(SSL, "ssl_config.unlabeled_fraction")) != ("all", None, None):
         raise ValueError("unlabeled pool")
     selection = {True: "nach dem Warm-up neu begonnen"}[setting(SSL, "ssl_config.restart_selection_after_warmup")]
-    weighting = (f"über das Zielgradienten\\-verhältnis $\\eta$ (Abschnitt~\\ref{{sec:m:gewicht}}), Gradientenstatistik "
+    weighting = (f"über das Zielverhältnis $\\eta$ (Abschnitt~\\ref{{sec:m:gewicht}}), Gradientenstatistik "
                  f"{tt(setting(WEIGHTED, MP + 'regularizer_target_ratio_statistic'))}, EMA mit "
-                 f"$\\zeta = {num(setting(WEIGHTED, MP + 'regularizer_target_ratio_ema_alpha'))}$, Neuberechnung alle "
+                 f"$\\beta = {num(round(1 - setting(WEIGHTED, MP + 'regularizer_target_ratio_ema_alpha'), 6))}$, Neuberechnung alle "
                  f"\\num{{{plain(setting(WEIGHTED, MP + 'regularizer_target_ratio_update_interval_samples'))}}} Trainingsbeispiele, "
                  f"Startgewicht ${num(setting(WEIGHTED, MP + 'regularizer_weight'))}$")
     lp_update = {("every_epoch", 1): "in jeder Epoche neu berechnet"}[
@@ -445,10 +450,10 @@ def fixed():
         ("Hoffer", "Obergrenze des Gradienten\\-verhältnisses", cap("hoffer", None)), None,
         ("SLADE", "Obergrenze des Gradienten\\-verhältnisses", cap("slade", None)),
         ("", "Verlust der ungelabelten Paare", unlabeled),
-        ("", "Basisverlust", f"Startgewicht $\\lambda_{{\\mathrm{{basis}}}} = {num(setting(['slade'], RP + 'lambda_basis'))}$, "
-                             "kalibriert über das Basis-Zielgradienten\\-verhältnis"),
+        ("", "Basisverlust", f"Startgewicht $w_{{\\mathrm{{basis}}}} = {num(setting(['slade'], RP + 'lambda_basis'))}$, "
+                             "kalibriert über das Basis-Zielverhältnis $\\eta_{\\mathrm{basis}}$"),
         ("", "Gradient von $\\mathcal{L}_{\\mathrm{SD}}$",
-         {"damped": "gedämpft mit dem Faktor $(1-\\beta)$ (\\texttt{damped})"}[setting(["slade"], RP + "sd_gradient_mode")]),
+         {"damped": "gedämpft mit dem Faktor $(1-\\beta_{\\mathrm{basis}})$ (\\texttt{damped})"}[setting(["slade"], RP + "sd_gradient_mode")]),
         ("", "Clusterzahl", clusters)]
     body = ["\\addlinespace" if r is None else (f"{r[0]} & {r[1]} & {r[2]} \\\\" if r[0] else f" & {r[1]} & {r[2]} \\\\")
             for r in rows]

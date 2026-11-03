@@ -1,0 +1,92 @@
+\begingroup
+\newcommand*{\spVier}[1]{\multicolumn{4}{>{\centering\arraybackslash}p{\dimexpr0.62\textwidth-20.8pt+6\tabcolsep\relax}}{#1}}
+\newcommand*{\spFuenf}[1]{\multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr0.775\textwidth-26pt+8\tabcolsep\relax}}{#1}}
+\small\setstretch{1}
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=1em\hangafter=1}p{0.22\textwidth}*{5}{>{\centering\arraybackslash}p{\dimexpr0.155\textwidth-5.2pt\relax}}@{}}
+\caption[Hyperparametersuchräume der Phase~1]{Hyperparametersuchräume der Phase~1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\label{tab:hyperparameter-spaces}\\
+\toprule
+Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\,\% & Semi-iNat \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\tablename~\thetable: Phase~1 (Fortsetzung)}\\
+\toprule
+Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\,\% & Semi-iNat \\
+\midrule
+\endhead
+\midrule
+\multicolumn{6}{r}{\emph{Fortsetzung auf der nächsten Seite}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{Alle Verfahren außer SLADE: Optimierung und Batch}}\\*
+\midrule
+Batchstruktur $B{:}n_{\mathrm{S}}$ & \{32, 64, 128, 256\}:4 & \{32, 64, 128, 256\}:4 & \{64, 128, 256, 512\}:2 & \{64, 128, 256, 512\}:8 & \{128, 256, 512\}:2 \\
+Lernrate (Circle, MS, NT-Xent) & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[5\cdot 10^{-6},\allowbreak\,10^{-4}]$ log. & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[5\cdot 10^{-6},\allowbreak\,10^{-4}]$ log. \\
+Lernrate (ArcFace, Proxy-Anchor) & \spVier{$[10^{-5},\,10]$ log.} & $[5\cdot 10^{-6},\allowbreak\,10^{-4}]$ log. \\
+Klassifikator-Lernrate (ArcFace, Proxy-Anchor) & \spVier{$[10^{-5},\,10]$ log.} & $[10^{-5},\,100]$ log. \\
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{Verlustfunktionen (alle Verfahren, Abweichungen bei SLADE siehe unten)}}\\*
+\midrule
+ArcFace $\gamma$ (\texttt{scale}) & \spFuenf{$[0{,}1,\,80]$ log.} \\
+ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) & \spVier{$[1,\,80]$} & $[1,\,70]$ \\
+Circle $\gamma$ (\texttt{gamma}) & \spFuenf{$[1,\,512]$ log.} \\
+Circle $m$ & \spFuenf{$[0{,}01,\,0{,}5]$ log.} \\
+Multi-Similarity $\gamma^{+}$ (\texttt{alpha}) & \spFuenf{$[0{,}1,\,30]$ log.} \\
+Multi-Similarity $\gamma^{-}$ (\texttt{beta}) & \spFuenf{$[1,\,280]$ log.} \\
+Multi-Similarity $m$ (\texttt{base}) & \spVier{$[0{,}4,\,0{,}99]$} & $[0{,}01,\,0{,}7]$ \\
+MS-Mining $m_{\mathrm{Miner}}$ (\texttt{epsilon}) & \spFuenf{$[0{,}1,\,0{,}99]$} \\
+NT-Xent $\tau$ (\texttt{temperature}) & \spVier{$[0{,}01,\,0{,}4]$ log.} & $[0{,}005,\,0{,}15]$ log. \\
+Proxy-Anchor $\gamma$ (\texttt{alpha}) & \spVier{$[0{,}1,\,30]$ log.} & $[1,\,80]$ log. \\
+Proxy-Anchor $m$ (\texttt{margin}) & \spVier{$[0{,}01,\,1]$ log.} & $[0{,}01,\,1]$ \\
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{Label Propagation (\texttt{iscen})}}\\*
+\midrule
+Warm-up [Epochen] & \{0, 5, \dots, 30\} & \{0, 2, \dots, 12\} & \{0, 5, \dots, 30\} & \{0, 5, \dots, 30\} & \{0, 2, \dots, 10\} \\
+Nachbarzahl $k_{\mathrm{NN}}$ & \{2, 3, \dots, 100\} & \{2, 3, \dots, 200\} & \{2, 3, \dots, 100\} & \{2, 3, \dots, 100\} & \{2, 3, \dots, 100\} \\
+Diffusions\-parameter $\alpha$ & \spFuenf{$[0{,}1,\,0{,}99]$} \\
+Exponent $\xi$ & \spFuenf{\{1, 2, \dots, 10\}} \\
+Konfidenzschwelle & \spFuenf{$[0{,}1,\,0{,}9]$} \\
+Gelabelter Batchanteil & \spFuenf{\{0,125; 0,25; 0,5\}} \\
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{LRML}}\\*
+\midrule
+Warm-up [Epochen] & \{0, 5, \dots, 30\} & \{0, 2, \dots, 12\} & \{0, 5, \dots, 30\} & \{0, 5, \dots, 30\} & \{0, 1, 2\} \\
+Zielverhältnis $\eta$ & \spVier{$[0{,}5,\,1{,}5]$} & $[0{,}5,\,1{,}25]$ \\
+Nachbarzahl $k_{\mathrm{NN}}$ & \{2, 3, \dots, 100\} & \{2, 3, \dots, 200\} & \{2, 3, \dots, 50\} & \{2, 3, \dots, 50\} & \{2, 3, \dots, 100\} \\
+Kanten-Batchgröße & \spVier{\{16, 32, 64, 128, 256, 512\}} & \{16, 32, 64\} \\
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{Hoffer}}\\*
+\midrule
+Warm-up [Epochen] & \{0, 5, \dots, 30\} & \{0, 2, \dots, 12\} & \{0, 5, \dots, 30\} & \{0, 5, \dots, 30\} & \{0, 1, 2\} \\
+Zielverhältnis $\eta$ & \spVier{$[0{,}5,\,1{,}5]$} & $[0{,}5,\,1{,}25]$ \\
+Distanzskala $\gamma_{\mathrm{H}}$ & $[1,\,30]$ log. & $[1,\,30]$ log. & $[1,\,30]$ log. & $[1,\,100]$ & $[4,\,256]$ log. \\
+Referenzmengen $K_{\mathrm{ref}}$ & \{1, 2, 3, 5\} & \{1, 2, 3, 5\} & \{1\} (fest) & \{1\} (fest) & \{1\} (fest) \\
+Ungelabelte Batchgröße & \{16, 32, 64, 128\} & \{16, 32, 64, 128\} & \{16, 32, 64\} & \{16, 32, 64\} & \{16, 32, 64, 128\} \\
+\addlinespace
+\multicolumn{6}{@{}l}{\emph{SLADE}}\\*
+\midrule
+Batchstruktur $B{:}n_{\mathrm{S}}$ & \{32, 64, 128, 256\}:4 & \{64, 128, 256\}:4 & \{128, 256, 512\}:2 & \{128, 256, 512\}:8 & \{128, 256, 512\}:2 \\
+Lernrate (alle Verluste) & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[5\cdot 10^{-6},\allowbreak\,10^{-4}]$ log. & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[5\cdot 10^{-6},\allowbreak\,10^{-4}]$ log. \\
+Klassifikator-Lernrate (ArcFace, Proxy-Anchor) & \spFuenf{$[10^{-5},\,10]$ log.} \\
+Multi-Similarity $m$ (\texttt{base}) (abweichend) & \spFuenf{$[0{,}4,\,0{,}9]$} \\
+NT-Xent $\tau$ (\texttt{temperature}) (abweichend) & \spVier{$[0{,}05,\,0{,}3]$ log.} & $[0{,}02,\,0{,}15]$ log. \\
+ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) (abweichend) & \spVier{wie oben} & $[1,\,80]$ \\
+Proxy-Anchor $\gamma$ (\texttt{alpha}) (abweichend) & \spVier{wie oben} & $[0{,}1,\,30]$ log. \\
+Proxy-Anchor $m$ (\texttt{margin}) (abweichend) & \spVier{wie oben} & $[0{,}01,\,1]$ log. \\
+Warm-up [Epochen] & \{0, 5, \dots, 30\} & \{0, 2, \dots, 12\} & \{0, 5, \dots, 30\} & \{0, 5, \dots, 30\} & \{0, 1, 2\} \\
+Teacher-Aktualisierung alle $n_{\mathrm{T}}$ Epochen & \{1, 5, 10\} & \{1, 2, 5\} & \{1, 5, 10\} & \{1, 5, 10\} & \{1, 2, 5\} \\
+Zielverhältnis $\eta$ & \spVier{$[0{,}5,\,1{,}5]$} & $[0{,}5,\,1{,}25]$ \\
+Clusterverhältnis (Cluster je gelabelter Klasse) & \{1, 2, 3\} & \{1, 2, 3\} & \{0,1; 0,5; 1; 2\} & \{0,1; 0,5; 1; 2\} & \{1, 2, 3\} \\
+Ungelabelte Batchgröße & \spVier{\{32, 64, 128, 256, 512\}} & \{32, 64, 128\} \\
+Basis: Zielverhältnis $\eta_{\mathrm{basis}}$ & \spVier{$[0{,}5,\,1{,}5]$} & $[0{,}5,\,1{,}25]$ \\
+Basis: Warm-up [Epochen] & \{0; 0,25; 0,5; 1; 5\} & \{0; 0,25; 0,5; 1; 2,5\} & \{0; 0,25; 0,5; 1; 5\} & \{0; 0,25; 0,5; 1; 5\} & \{0; 0,25; 0,5; 1\} \\
+Basis: Gewicht $\beta_{\mathrm{basis}}$ des bisherigen Werts & \spFuenf{$[0{,}1,\,0{,}99]$} \\
+$\mathcal{L}_{\mathrm{SD}}$: Marge $m$ (\texttt{sd\_margin}) & \spFuenf{$[0{,}1,\,0{,}99]$} \\
+$\mathcal{L}_{\mathrm{SD}}$: Varianzgewicht $w_v$ & \spFuenf{$[0{,}1,\,20]$ log.} \\
+Kontrastive Marge $m^{+}$ (ArcFace, Proxy-Anchor) & \spFuenf{$[0,\,0{,}5]$} \\
+Kontrastive Marge $m^{-}$ (ArcFace, Proxy-Anchor) & \spFuenf{$[0{,}5,\,2]$} \\
+\end{longtable}
+\endgroup

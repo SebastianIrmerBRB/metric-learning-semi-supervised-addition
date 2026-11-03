@@ -1,0 +1,33 @@
+\chapter{Hyperparametersuchräume}
+\label{chap:anhang:suchraeume}
+
+Die Suchräume sind in zwei Tabellen zusammengefasst: Tabelle~\ref{tab:first-run-hyperparameter-spaces} enthält die Vorexperimente, Tabelle~\ref{tab:hyperparameter-spaces} die anschließende \acs{HPO} der Phase~1. Beide Tabellen umfassen die supervised Basiskonfiguration sowie \ac{LRML}, Hoffer, Label Propagation (\texttt{iscen}) und \ac{SLADE} für Cars196 (Cars), In-Shop, \ac{CUB} und Semi-iNat-2021 (Semi-iNat). Phase~1 umfasst zusätzlich In-Shop mit 10\,\% gelabelten Klassen. In Tabelle~\ref{tab:first-run-hyperparameter-spaces} bezeichnet \emph{alle} die Datensätze, auf denen ein Verfahren in den Vorexperimenten lief. Hoffer lief dort nicht auf \ac{CUB}. Jeder Verfahrensblock ergänzt die Basiswerte oder überschreibt sie für die ausdrücklich genannten Datensätze. Nicht aufgeführte verfahrensspezifische Parameter besitzen in den ausgewerteten Dateien keinen eigenen Suchraum, woraus kein bestimmter Festwert folgt.
+
+
+Die Symbole entsprechen den Verlustdefinitionen im Haupttext, in Klammern steht der Parametername der Implementierung~\cite{musgrave_pytorch_losses_code_2026}. Die ArcFace-Marge ist in Grad angegeben. In den trigonometrischen Formeln gilt $m=(\pi/180)m_{\mathrm{deg}}$~\cite{musgrave_pytorch_losses_code_2026}. $B{:}n_{\mathrm{S}}$ bezeichnet die Batchgröße und die Beispiele pro Klasse. \emph{log.} bedeutet logarithmische, \emph{unif.} kontinuierliche Gleichverteilung, \emph{kat.} kategoriale Auswahl und \emph{diskr.} gleichverteilte Auswahl aus der angegebenen diskreten Menge. \emph{fest} bezeichnet einen Suchraum mit nur einem Wert. Bei Schrittweiten werden ausschließlich erreichbare Werte aufgeführt.
+
+\section{Vorexperimente}
+\label{sec:anhang:phase0}
+
+
+
+\input{kapitel/anhang_tabellen/suchraum_phase0}
+
+
+
+\section{Phase 1: Hyperparameteroptimierung}
+\label{sec:anhang:phase1}
+
+Grundlage dieses Abschnitts sind die gespeicherten Konfigurationen der Phase-1-Suchen, auf denen die Ergebnisse beruhen: je Datensatz fünf Verfahren mit je fünf Verlustfunktionen. Tabelle~\ref{tab:phase1:hpo-protokoll} fasst das Protokoll der Suche zusammen und Tabelle~\ref{tab:hyperparameter-spaces} die Suchräume.
+
+\input{kapitel/anhang_tabellen/hpo_protokoll} %
+
+
+So ist Tabelle~\ref{tab:hyperparameter-spaces} zu lesen: Ist der Suchraum auf allen Datensätzen gleich, steht er zentriert über allen Spalten. Getrennte Zellen zeigen, wo sich die Datensätze unterscheiden. Ein Intervall ohne Zusatz ist kontinuierlich gleichverteilt, \emph{log.} kennzeichnet eine logarithmische Gleichverteilung. Mengen werden gleichverteilt ausgewählt (ganzzahlige Parameter mit Schrittweite und kategoriale Parameter). \emph{fest} bezeichnet eine Menge mit nur einem Wert. $B{:}n_{\mathrm{S}}$ bezeichnet die Batchgröße und die Beispiele pro Klasse. Bei ArcFace und Proxy-Anchor werden die Lernrate und die Klassifikator-Lernrate unabhängig voneinander gesucht. \emph{wie oben} verweist auf die Zeile im Block der Verlustfunktionen.
+
+\input{kapitel/anhang_tabellen/suchraum_phase1}
+
+
+
+
+

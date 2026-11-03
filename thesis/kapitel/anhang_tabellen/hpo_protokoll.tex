@@ -1,0 +1,31 @@
+\begin{table}[htbp]
+	\centering
+	\caption[Protokoll der Phase-1-\acs{HPO}]{Protokoll der Phase-1-\acs{HPO} je Datensatz. In-Shop 10\,\%: 10\,\% der Trainingsklassen vollständig gelabelt, übrige Klassen ungelabelt. \UEBL: supervised Referenz. Obergrenze: Begrenzung des Gradientenverhältnisses (Abschnitt~\ref{sec:m:gewicht}).}
+	\label{tab:phase1:hpo-protokoll}
+	\setlength{\tabcolsep}{4pt}
+	\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.2cm}>{\centering\arraybackslash}p{1.9cm}>{\centering\arraybackslash}p{1.9cm}>{\centering\arraybackslash}p{1.9cm}>{\centering\arraybackslash}p{2.3cm}>{\centering\arraybackslash}p{2.0cm}@{}}
+		\toprule
+		Merkmal & Cars196 & CUB & In-Shop & In-Shop 10\,\% & Semi-iNat \\
+		\midrule
+		Label-Budget der \acs{HPO} & $k=16$ & $k=16$ & $k=2$ & 10\,\% der Klassen & $k=16$ \\
+		\addlinespace
+		Folds (klassendisjunkt) & 4 & 5 & 4 & 4 & 4 \\
+		\addlinespace
+		Versuche je Suche & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{80: zuerst 40 zufällige Versuche, danach 40 \acs{TPE}-Versuche} \\
+		\addlinespace
+		Sampler & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{Optuna-\acs{TPE}, multivariat und gruppiert} \\
+		\addlinespace
+		Pruning & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{keines} \\
+		\addlinespace
+		Seeds & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{7 für \acs{HPO}, Training und Auswahl der gelabelten Beispiele} \\
+		\addlinespace
+		Zielgröße & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{Validierungs-\acs{MAP@R}: beste Epoche je Fold, Mittel über die Folds} \\
+		\addlinespace
+		Max.\ Epochen (Patience) & \multicolumn{4}{>{\centering\arraybackslash}p{\dimexpr8.0cm+6\tabcolsep\relax}}{höchstens 600 (20)} & höchstens 600 (10) \\
+		\addlinespace
+		Obergrenze des Gradienten\-verhältnisses & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{\acs{LRML}: keine, Hoffer: 3, \acs{SLADE}: 3} \\
+		\addlinespace
+		Gesuchte Hyperparameter je Suche & \multicolumn{5}{>{\centering\arraybackslash}p{\dimexpr10.0cm+8\tabcolsep\relax}}{\UEBL: 3--6, \acs{LP}: 9--12, \acs{LRML}: 7--10, Hoffer: 8--11, \acs{SLADE}: 13--17} \\
+		\bottomrule
+	\end{tabular}
+\end{table}

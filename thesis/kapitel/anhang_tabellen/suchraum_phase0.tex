@@ -1,0 +1,89 @@
+\begingroup
+\small\setstretch{1}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=1em\hangafter=1}p{0.30\textwidth}>{\raggedright\arraybackslash}p{0.16\textwidth}>{\raggedright\arraybackslash}p{\dimexpr0.42\textwidth-6\tabcolsep\relax}>{\raggedright\arraybackslash}p{0.12\textwidth}@{}}
+\caption[Hyperparametersuchräume der Vorexperimente]{Hyperparametersuchräume der Vorexperimente: Basiskonfiguration und verfahrensspezifische Ergänzungen bzw. Überschreibungen.}\label{tab:first-run-hyperparameter-spaces}\\
+\toprule
+Hyperparameter & Datensatz & Suchraum & Verteilung \\
+\midrule
+\endfirsthead
+\multicolumn{4}{l}{\tablename~\thetable: Vorexperimente (Fortsetzung)}\\
+\toprule
+Hyperparameter & Datensatz & Suchraum & Verteilung \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\emph{Fortsetzung auf der nächsten Seite}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+\addlinespace
+\multicolumn{4}{@{}l}{\emph{Supervised Basiskonfiguration}}\\*
+\midrule
+Klassifikator-Lernrate & alle & $[10^{-4},\,100]$ & log. \\
+Lernrate & alle & $[10^{-5},\,10]$ & log. \\
+Batchstruktur $B{:}n_{\mathrm{S}}$ & Cars, CUB & \{32, 64, 128, 256\}:4 & kat. \\
+Batchstruktur $B{:}n_{\mathrm{S}}$ & In-Shop & \{32, 64, 128, 256, 512\}:2 & kat. \\
+Batchstruktur $B{:}n_{\mathrm{S}}$ & Semi-iNat & \{128, 256, 512\}:2 & kat. \\
+ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) & alle & $[15,\,75]$ & unif. \\
+ArcFace $\gamma$ (\texttt{scale}) & alle & $[10,\,250]$ & log. \\
+Circle $\gamma$ (\texttt{gamma}) & alle & $[32,\,512]$ & log. \\
+Circle $m$ & alle & $[0{,}01,\,0{,}5]$ & unif. \\
+Multi-Similarity $\gamma^{+}$ (\texttt{alpha}) & alle & $[2,\,25]$ & unif. \\
+Multi-Similarity $m$ (\texttt{base}) & alle & $[0{,}3,\,0{,}9]$ & unif. \\
+Multi-Similarity $\gamma^{-}$ (\texttt{beta}) & alle & $[20,\,160]$ & log. \\
+MS-Mining $m_{\mathrm{Miner}}$ (\texttt{epsilon}) & alle & $[0{,}1,\,0{,}9]$ & unif. \\
+NT-Xent $\tau$ (\texttt{temperature}) & alle & $[0{,}001,\,0{,}5]$ & log. \\
+Proxy-Anchor $\gamma$ (\texttt{alpha}) & alle & $[1,\,100]$ & log. \\
+Proxy-Anchor $m$ (\texttt{margin}) & alle & $[0{,}01,\,1]$ & unif. \\
+\addlinespace
+\multicolumn{4}{@{}l}{\emph{LRML}}\\*
+\midrule
+Kanten-Batchgröße & Cars, In-Shop, CUB & $\{16,\,\allowbreak 32,\,\allowbreak 64,\,\allowbreak 128,\,\allowbreak 256,\,\allowbreak 512\}$ & kat. \\
+Kanten-Batchgröße & Semi-iNat & $\{16,\,\allowbreak 32,\,\allowbreak 64,\,\allowbreak 128,\,\allowbreak 256,\,\allowbreak 512,\,\allowbreak 1024,\,\allowbreak 2048\}$ & kat. \\
+Nachbarzahl $k_{\mathrm{NN}}$ (Regularisierer) & Cars, In-Shop, CUB & $\{3,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 50,\,\allowbreak 100,\,\allowbreak 200\}$ & kat. \\
+Nachbarzahl $k_{\mathrm{NN}}$ (Regularisierer) & Semi-iNat & $\{5,\,\allowbreak 10,\,\allowbreak 50,\,\allowbreak 100,\,\allowbreak 200,\,\allowbreak 500\}$ & kat. \\
+Zielverhältnis $\eta$ & Cars, In-Shop, CUB & $[0{,}5,\,1{,}25]$ & unif. \\
+Zielverhältnis $\eta$ & Semi-iNat & $[0{,}25,\,1{,}25]$ & unif. \\
+Warm-up [Epochen] & Cars, In-Shop & $\{0,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 15,\,\allowbreak 20,\,\allowbreak 25,\,\allowbreak 30\}$ & diskr. \\
+Warm-up [Epochen] & CUB & $\{0,\,\allowbreak 2,\,\allowbreak 4,\,\allowbreak 6,\,\allowbreak 8,\,\allowbreak 10,\,\allowbreak 12\}$ & diskr. \\
+Warm-up [Epochen] & Semi-iNat & $\{0\}$ & fest \\
+\addlinespace
+\multicolumn{4}{@{}l}{\emph{Hoffer}}\\*
+\midrule
+Zielverhältnis $\eta$ & Cars, In-Shop & $[0{,}5,\,1{,}25]$ & unif. \\
+Zielverhältnis $\eta$ & Semi-iNat & $[0{,}5,\,1{,}5]$ & unif. \\
+Warm-up [Epochen] & Cars, In-Shop & $\{0,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 15,\,\allowbreak 20,\,\allowbreak 25,\,\allowbreak 30\}$ & diskr. \\
+Distanzskala $\gamma_{\mathrm{H}}$ & alle & $[0{,}1,\,100]$ & log. \\
+Referenzmengen $K_{\mathrm{ref}}$ & Cars & $\{1,\,\allowbreak 2,\,\allowbreak 3,\,\allowbreak 5\}$ & kat. \\
+Referenzmengen $K_{\mathrm{ref}}$ & In-Shop, Semi-iNat & $\{1,\,\allowbreak 2,\,\allowbreak 3\}$ & kat. \\
+Ungelabelte Batchgröße & alle & $\{16,\,\allowbreak 32,\,\allowbreak 64,\,\allowbreak 128\}$ & kat. \\
+\addlinespace
+\multicolumn{4}{@{}l}{\emph{Label Propagation (\texttt{iscen})}}\\*
+\midrule
+Warm-up [Epochen] & Cars, In-Shop & $\{0,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 15,\,\allowbreak 20,\,\allowbreak 25,\,\allowbreak 30\}$ & diskr. \\
+Warm-up [Epochen] & CUB & $\{0,\,\allowbreak 2,\,\allowbreak 4,\,\allowbreak 6,\,\allowbreak 8,\,\allowbreak 10,\,\allowbreak 12\}$ & diskr. \\
+Konfidenzschwelle & alle & $[0{,}1,\,0{,}99]$ & unif. \\
+Gelabelter Batchanteil & alle & $\{0{,}125;\,\allowbreak 0{,}25;\,\allowbreak 0{,}5\}$ & kat. \\
+Diffusionsparameter $\alpha$ & alle & $[0{,}2,\,0{,}99]$ & unif. \\
+Exponent $\xi$ & alle & $\{1,\,\allowbreak 2,\,\allowbreak 3,\,\allowbreak \dots,\,\allowbreak 10\}$ & diskr. \\
+Nachbarzahl $k_{\mathrm{NN}}$ (Propagation) & Cars, In-Shop, CUB & $\{3,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 50,\,\allowbreak 100,\,\allowbreak 200\}$ & kat. \\
+Nachbarzahl $k_{\mathrm{NN}}$ (Propagation) & Semi-iNat & $\{5,\,\allowbreak 10,\,\allowbreak 50,\,\allowbreak 100,\,\allowbreak 200,\,\allowbreak 500\}$ & kat. \\
+\addlinespace
+\multicolumn{4}{@{}l}{\emph{SLADE}}\\*
+\midrule
+NT-Xent $\tau$ (\texttt{temperature}) & alle & $[0{,}05,\,0{,}5]$ & log. \\
+Warm-up [Epochen] & Cars, In-Shop, CUB & $\{0,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 15,\,\allowbreak 20,\,\allowbreak 25,\,\allowbreak 30\}$ & diskr. \\
+Ungelabelte Batchgröße & alle & $\{32,\,\allowbreak 64,\,\allowbreak 128,\,\allowbreak 256\}$ & kat. \\
+Basis: Gewicht $\beta_{\mathrm{basis}}$ des bisherigen Werts & alle & $[0{,}1,\,0{,}99]$ & unif. \\
+Basis: Warm-up [Epochen] & Cars, In-Shop, CUB & $\{0;\,\allowbreak 0{,}25;\,\allowbreak 0{,}5;\,\allowbreak 1;\,\allowbreak 5\}$ & kat. \\
+Basis: Warm-up [Epochen] & Semi-iNat & $\{0;\,\allowbreak 0{,}25;\,\allowbreak 0{,}5;\,\allowbreak 1;\,\allowbreak 2\}$ & kat. \\
+Marge $m$ von $\mathcal{L}_{\mathrm{SD}}$ (\texttt{sd\_margin}) & alle & $[0{,}1,\,1]$ & unif. \\
+Varianzgewicht $w_v$ von $\mathcal{L}_{\mathrm{SD}}$ & alle & $[0{,}5,\,20]$ & log. \\
+Kontrastive Marge $m^{+}$ & alle & $[0,\,0{,}5]$ & unif. \\
+Kontrastive Marge $m^{-}$ & alle & $[0{,}5,\,2]$ & unif. \\
+Teacher-Aktualisierung alle $n_{\mathrm{T}}$ Epochen & Cars, In-Shop, CUB & $\{1,\,\allowbreak 10,\,\allowbreak 50,\,\allowbreak 100\}$ & kat. \\
+Teacher-Aktualisierung alle $n_{\mathrm{T}}$ Epochen & Semi-iNat & $\{1,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 20\}$ & kat. \\
+\end{longtable}
+\endgroup
