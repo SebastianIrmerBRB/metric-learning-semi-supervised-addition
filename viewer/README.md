@@ -7,6 +7,10 @@ filter, sorting and CSV download. Plain JavaScript without external libraries, r
 **Online:** https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/ (rebuilt by
 `.github/workflows/datenansicht.yml` on every push to `main` that touches the data, the generators or the viewer).
 
+The same workflow publishes the Trial Atlas (`../react_trial_visualizer`) at
+https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/trial-atlas/, linked from the viewer's
+navigation.
+
 **Locally:**
 
 ```bash

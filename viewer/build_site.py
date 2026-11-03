@@ -48,6 +48,7 @@ def main():
     p.add_argument("--ausgabe", type=Path, help="output folder of thesis_generator/generate.py (Figures page)")
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--label", default=os.environ.get("SITE_LABEL", ""), help="text shown as the data source")
+    p.add_argument("--atlas", help="relative URL of the Trial Atlas, adds a link to the navigation")
     a = p.parse_args()
     data, out = a.data.resolve(), a.out.resolve()
     if out.exists() and any(out.iterdir()):
@@ -61,6 +62,11 @@ def main():
                 if text.count(old) != n:
                     raise SystemExit(f"{name}: expected {n}x {old!r}, found {text.count(old)}")
                 text = text.replace(old, new)
+        if name == "index.html" and a.atlas:
+            nav = '<a href="#/explore">All tables</a>'
+            if text.count(nav) != 1:
+                raise SystemExit("index.html: navigation anchor for the Trial Atlas link not found")
+            text = text.replace(nav, nav + f'\n        <a href="{a.atlas}">Trial Atlas ↗</a>')
         (out / name).write_text(text, encoding="utf-8")
     (out / ".nojekyll").write_text("", encoding="utf-8")
 
