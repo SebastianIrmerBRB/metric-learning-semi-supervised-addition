@@ -312,9 +312,6 @@ function Sidebar({ studies, repositoryStudies, selectedId, view, mobileOpen, onC
             Hyperparameters
             <span className="ml-auto rounded-full bg-[#f4c86f]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#f6d488]">Optuna</span>
           </button>
-          {/* Workspaces that need local run folders or a dev server; hidden on the hosted thesis site (lib/site.ts). */}
-          {!THESIS_SITE && (
-            <>
           <button
             type="button"
             onClick={onArchive}
@@ -326,6 +323,9 @@ function Sidebar({ studies, repositoryStudies, selectedId, view, mobileOpen, onC
             HPO archive
             <span className="ml-auto rounded-full bg-[#9b8cff]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[#b6acff]">Sorted</span>
           </button>
+          {/* Workspaces that need local run folders or a dev server; hidden on the hosted thesis site (lib/site.ts). */}
+          {!THESIS_SITE && (
+            <>
           <Link
             href="/studio/spaces/"
             className="focus-ring mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-[#8895aa] transition hover:bg-white/[0.035] hover:text-white"
