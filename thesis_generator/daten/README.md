@@ -1,3 +1,13 @@
+## Pseudo-label views — 2026-11-05
+
+Four LP members were replaced or added in place, all other members are byte-identical:
+- `phase2/lp_hersteller.csv` now comes from the geometry runs at all four Cars196 budgets (new column `k`).
+- `phase2/lp_schwellen.csv` now reads coverage and accuracy of the first update from `pseudo_label_diagnostics.jsonl` of the 100 sweep folds named by `cv_summary.json`, instead of the rounded line in `info.log`. Counts and coverage are identical, accuracy differs by at most 0.005 percentage points.
+- New view `geometrie/lp_verfolgung.csv`: per fold, first versus last LP update of the whole pool (class switches, kept and corrected wrong pseudo-labels), 200 folds.
+- New view `geometrie/lp_pseudolabels_inshop.csv`: coverage and accuracy at every epoch of the In-Shop geometry runs (k=2 and k=4, seed 2).
+
+Sources by measurement: MAP@R of each threshold-sweep run from `cv_summary.json`, coverage and accuracy with the selected configuration from the geometry runs, coverage and accuracy at other thresholds from the diagnostics of the separate sweep runs. A condensed reading view of these measurements is in [`../datenansicht/diagnostics`](../datenansicht/diagnostics/README.md).
+
 ## Added series — 2026-10-28
 
 `phase2_klassen`: the 2×2 decomposition for LRML in the In-Shop series with fully labelled classes at 10 %, seed 2, all five

@@ -90,7 +90,7 @@ function update(changes) {
   history.replaceState(null, "", hashFor(current.page, p));
   route(true);
 }
-const PAGES = { "": overview, phase1, phase2, external, figures, hp, details, explore };
+const PAGES = { "": overview, phase1, phase2, diagnostics, external, figures, hp, details, explore };
 async function route(keepScroll) {
   current = parseHash();
   closeDrawer(); untip();
@@ -190,6 +190,40 @@ const smallTable = (cols, rows, opts = {}) => h("div", { class: "scrollx" }, h("
   h("tbody", {}, rows.map(r => h("tr", { class: opts.onRow ? "click" : null, onclick: opts.onRow ? () => opts.onRow(r) : null },
     r.cells.map((c, i) => h("td", { class: cols[i][1] ? "num" : null }, c)))))));
 
+/* ---------- Diagnostics ---------- */
+const DIAG = "/diagnostics/";
+const isNumeric = c => /^(?:[+\-–]?[\d.]+(?: → [\d.]+)?|–|[\d/]+)$/.test(String(c).replaceAll("**", ""));
+const diagCell = c => {
+  const m = String(c).match(/^\*\*(.*)\*\*$/);
+  return m ? h("strong", {}, m[1]) : String(c);
+};
+function diagTable(t) {
+  const cols = t.columns.map((name, i) => [name, t.rows.every(r => isNumeric(r[i]))]);
+  const rows = t.rows.map((r, n) => ({
+    cells: r.map((c, i) => h("span", { class: i === 0 && n && t.rows[n - 1][0] === c ? "muted" : null, style: { whiteSpace: "nowrap" } }, diagCell(c))),
+  }));
+  return card(t.title, `${t.rows.length} rows`, smallTable(cols, rows), t.note ? h("p", { class: "foot" }, t.note) : null);
+}
+async function diagnostics(p) {
+  const doc = await json(DIAG + "tables.json");
+  const sec = doc.sections.find(s => s.id === p.part) || doc.sections[0];
+  const titles = sec.tables.map(t => t.title);
+  const chosen = sec.tables.find(t => t.title === p.t) || sec.tables[0];
+  const filters = h("div", { class: "filters" },
+    seg("Part", doc.sections.map(s => [s.id, s.title]), sec.id, v => update({ part: v, t: null })),
+    seg("Table", titles.map(t => [t, t]), chosen.title, v => update({ t: v })));
+  const files = sec.file.split(", ").map(f => h("a", { href: DIAG + f, download: f, style: { marginRight: "1em" } }, f));
+  return [
+    head(doc.title, "Condensed view of the diagnostic measurements behind Chapters 5 and 6 of the thesis, per dataset, budget and loss."),
+    filters,
+    h("div", { class: "stack" },
+      card(sec.title, null, h("p", {}, sec.intro), h("p", { class: "foot" }, "Download: ", files)),
+      diagTable(chosen),
+      card("Keep in mind", null, h("ul", {}, doc.notes.map(n => h("li", {}, n))),
+        h("p", { class: "foot" }, "ÜBl. is the supervised baseline, LP is label propagation."))),
+  ];
+}
+
 /* ---------- Übersicht ---------- */
 async function overview() {
   const [info, man, readme, check, outl, zl] = await Promise.all([INFO(), MAN(), text(daten("README.md")).catch(() => ""),
@@ -215,7 +249,7 @@ async function overview() {
     : card("Validator", null, h("p", { class: "ink2" }, "No ausgabe/pruefung.json yet. Run python3 abbildungen_src/pruefe_daten.py."));
   const start = card("Start here", "ausgabe/uebersicht.csv",
     h("p", {}, "One row per dataset, method, loss and budget (450 settings): Mean and Concat MAP@R with seed standard deviations, paired gains over ÜBl. and selected / trained epochs. It is derived from the six source tables."),
-    h("p", {}, a("Open the 450 settings", () => go("explore", { src: "out:uebersicht.csv" })), " · ", a("Phase 1 matrices", () => go("phase1")), " · ",
+    h("p", {}, a("Open the 450 settings", () => go("explore", { src: "out:uebersicht.csv" })), " · ", a("Phase 1 matrices", () => go("phase1")), " · ", a("Geometry, pseudo-labels and neighborhoods", () => go("diagnostics")), " · ",
       a("All tables and manifest views", () => go("explore"))));
   return [
     head("Condensed thesis data", "Everything the figure and table generators read, in one portable bundle. This page reads daten/ and ausgabe/ directly and never changes them."),

@@ -7,6 +7,8 @@ condensed result view across Phase 1, all ablation series, sweeps, the fold-ense
 experiment, external images and all-label references. Other measurements
 (geometry, timing, diagnostics, HPO, qualitative examples) are indexed in
 [`datenansicht/dateninventar.csv`](datenansicht/dateninventar.csv).
+[`datenansicht/diagnostics`](datenansicht/diagnostics/README.md) condenses geometry, pseudo-label quality and
+neighborhood structure into short tables (`python export_diagnostics.py` rewrites them).
 [`datenansicht/README.md`](datenansicht/README.md) explains the complete data view;
 [`datenansicht/spalten.csv`](datenansicht/spalten.csv) describes the overview columns.
 The core hand-in consists of the six source CSVs in `daten/`, `details.zip`,

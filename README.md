@@ -82,10 +82,13 @@ both training and figure generation; no extra installation is needed.
 For the submission data, start with the
 [cross-experiment result overview](thesis_generator/datenansicht/ergebnisuebersicht.csv)
 and [complete data inventory](thesis_generator/datenansicht/dateninventar.csv).
+Geometry, pseudo-label quality and neighborhood structure are condensed into short tables in
+[`thesis_generator/datenansicht/diagnostics`](thesis_generator/datenansicht/diagnostics/README.md),
+also online on the [Diagnostics page](https://sebastianirmerbrb.github.io/metric-learning-semi-supervised-addition/#/diagnostics).
 The core bundle is six CSVs plus `details.zip`, `manifest.json` and the
 [data guide](thesis_generator/daten/README.md). It covers results, folds,
 hyperparameters, provenance, ablations, external-image experiments, geometry,
-timing, HPO and qualitative measurements. The inventory documents 87 logical
+timing, HPO and qualitative measurements. The inventory documents 89 logical
 views without duplicating their compressed detail data.
 
 The submission includes the 15,529 recorded trials of 235 evaluated HPO studies

@@ -205,6 +205,9 @@ externe Bilder und die Referenz mit allen Labels. Sie ist ein Leseeinstieg;
 Geometrie, Laufzeiten, HPO und Diagnosen bleiben kompakt in `../daten/details.zip`.
 `spalten.csv` erklärt die Übersichtsspalten und Einheiten.
 
+Geometrie, Pseudo-Label-Qualität und Nachbarschaftsstruktur stehen als kurze Tabellen in
+[`diagnostics/`](diagnostics/README.md), erzeugt mit `python export_diagnostics.py`.
+
 `dateninventar.csv` erschließt **alle {views} dokumentierten Datensichten** und
 {assets} zusätzliche Bild-/Schriftdateien. Jede Zeile nennt Datei, Umfang,
 Auswahl und vorhandene Quellreferenz. `file` nennt die Quelldatei, `member` den
