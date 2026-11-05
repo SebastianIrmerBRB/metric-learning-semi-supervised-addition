@@ -26,6 +26,7 @@ PATCHES = [
     ("core.js", "`/zip/${", "`zip/${", 1),
     ("app.js", 'from "/core.js"', 'from "./core.js"', 1),
     ("app.js", '"/ausgabe/', '"ausgabe/', 7),
+    ("app.js", 'const DIAG = "/diagnostics/"', 'const DIAG = "diagnostics/"', 1),
 ]
 
 
@@ -69,6 +70,9 @@ def main():
             text = text.replace(nav, nav + f'\n        <a href="{a.atlas}">Trial Atlas ↗</a>')
         (out / name).write_text(text, encoding="utf-8")
     (out / ".nojekyll").write_text("", encoding="utf-8")
+
+    # condensed tables of the Diagnostics page
+    shutil.copytree(data.parent / "datenansicht" / "diagnostics", out / "diagnostics")
 
     # daten/ and /info
     manifest = json.loads((data / "manifest.json").read_text(encoding="utf-8")).get("files", {})

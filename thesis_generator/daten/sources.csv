@@ -7714,8 +7714,8 @@ s_e024afe6c7016ec3,rohdaten/ausgangsleistung/semiinat_2026-10-18/untrained_basel
 s_770e02b2373faea2,rohdaten/cars_ergebnisse/data/phase1_validation_vs_test.csv,True,21b0e7bb2a0cd526d314ebe1e68f4ddf8282309a806d1ef1190dcee4c880ceee,4005,all
 s_519b0e02b7ac4f7c,rohdaten/phase2/tuned.csv,True,5c7002fc747fcde57a1cc4c6faa6a5189179ba525f3969e007b145f05e5655a7,6987,all
 s_d9019945b52f013c,rohdaten/phase2_lp_diagnostik.csv,True,718dffb2deeeae2efb75e6cac24ce922a5e9300284288e534eaae0a7447c74a0,1523120,all
-s_ef97daec0719ccd7,rohdaten/phase2/lp_schwellen.csv,True,39a797dcc56992886e995cd2980def762654e01c575f3540dd27431c2f7f2b48,28850,all
-s_dfeaf3812663d15f,rohdaten/phase2/lp_hersteller.csv,True,c52476da3a79d3d3e32ba9af78a10584e2c6d85841df8ab0da5250f277655710,3566,all
+s_ef97daec0719ccd7,rohdaten/phase2/lp_schwellen.csv,True,d7bf36a7fc33965e4a883d87b31da530575f2dd39356fde7d53771c06567bee8,32180,all
+s_dfeaf3812663d15f,rohdaten/phase2/lp_hersteller.csv,True,2a0d24558a86eab459e614228621f4fc36a6aba901b8de6b9e74d10925ce37e9,14623,"Geometrieläufe (Phase-1-Konfiguration, Seed 2), alle vier Budgets; erste und letzte Aktualisierung"
 s_f8253d82c2b8ae56,rohdaten/phase2_k4_ensemble/geteilte_fehler.jsonl,True,28d55922a64b96a920f5d1c5ec6768508f5c87b518e0ca92b0502b63183acbb9,69639,all
 s_ab419d632cc40f81,rohdaten/timings/faelle.csv,True,f4372906defadbdb9ed035f948ec76ee16a870074ca635d8c99d178a73c4e220,161234,all
 s_79fc8dc587b5b83e,rohdaten/patience_delay/auswahl.csv,True,0aa8f91a9c32e0efc049ac5ed115b5d94b6b4c7c247af27ab50637047f1e8ae5,182170,all
@@ -8020,3 +8020,4 @@ s_d048d5e7dcb4d661,/mnt/f/Thesis/rohdaten/phase0_vergleich/data/trials.csv,True,
 s_3ae4fdaf042037ab,/mnt/f/Thesis/rohdaten/phase0_vergleich/data/sources.json,True,763b420fdd6968dd0dd66eb4475841acd38e3cabce4396e6351dfcd876ea19a7,74965,Phase-0 trial comparison used for search-space discussion
 s_710dd6e97da14e28,/mnt/f/Thesis/rohdaten/phase0_vergleich/data/plot_audit.json,True,d3af191cfb5b54f1a0600b7375152a8e976a3d842029a9032f6cf14e99812ffd,20516,Phase-0 trial comparison used for search-space discussion
 s_144ca0a558572a83,/tmp/thesis-retrieval-all-queries.csv,True,4574b7985b82a1c6e7a0673bdb1fd88ab6cfddec68f9f702c7fe08fd38e3ebec,1074439,"Recomputed six nearest neighbors for all 8131 queries, DINOv2/supervised/LP"
+s_9b63c2553b780b3a,rohdaten/geometrie/lp_verfolgung.csv,True,e02c3845bbd61ed94b9b3621b1849c25f6929119c67bfff64e943e6db43bfa89,83322,"Geometrieläufe von LP, erste und letzte Aktualisierung je Fold, ganzer ungelabelter Pool"

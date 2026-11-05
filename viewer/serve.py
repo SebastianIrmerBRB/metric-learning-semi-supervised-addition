@@ -11,6 +11,7 @@ Liest daten/ nur, schreibt nichts (wie abbildungen_src/datensammlung.py auch THE
   /info              Dateien in daten/ mit Größe, Änderungszeit und SHA-256, verglichen mit manifest.json
   /ausgabe           Dateiliste der erzeugten Ausgaben (erzeuge_aus_daten.py, Ordner ausgabe/ oder --ausgabe)
   /ausgabe/<pfad>    eine Datei daraus (Vorschau-PNG, PDF, Tabellen, uebersicht.csv, pruefung.json)
+  /diagnostics/<datei>  eine Datei aus datenansicht/diagnostics (kondensierte Tabellen, export_diagnostics.py)
 """
 import argparse
 import hashlib
@@ -26,6 +27,7 @@ from urllib.parse import unquote, urlparse
 HIER = Path(__file__).resolve().parent
 DATEN = Path(os.environ.get("THESIS_DATA_DIR", HIER.parent / "thesis_generator" / "daten")).resolve()
 AUSGABE = (HIER.parent / "thesis_generator" / "ausgabe").resolve()
+DIAGNOSE = DATEN.parent / "datenansicht" / "diagnostics"
 SEITE = {"/": "index.html", "/app.js": "app.js", "/core.js": "core.js", "/style.css": "style.css"}
 TYPEN = {".csv": "text/csv; charset=utf-8", ".json": "application/json; charset=utf-8", ".jsonl": "text/plain; charset=utf-8",
          ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -104,6 +106,10 @@ class Handler(SimpleHTTPRequestHandler):
             p = (AUSGABE / pfad[len("/ausgabe/"):]).resolve()
             if p.is_file() and AUSGABE in p.parents:
                 return self.datei(p)
+        if pfad.startswith("/diagnostics/"):
+            name = pfad[len("/diagnostics/"):]
+            if "/" not in name and (DIAGNOSE / name).is_file():
+                return self.datei(DIAGNOSE / name)
         if pfad == "/info":
             return self.senden(json.dumps(info()).encode(), TYPEN[".json"])
         if pfad == "/zip" or pfad.startswith("/zip/"):

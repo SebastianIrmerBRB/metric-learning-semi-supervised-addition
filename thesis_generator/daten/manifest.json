@@ -1120,7 +1120,7 @@
     "phase2/lp_hersteller.csv": {
       "member": "tables/phase2/lp_hersteller.csv",
       "source_id": "s_dfeaf3812663d15f",
-      "selection": "all"
+      "selection": "Geometrieläufe (Phase-1-Konfiguration, Seed 2), alle vier Budgets; erste und letzte Aktualisierung"
     },
     "phase2_k4_ensemble/geteilte_fehler.jsonl": {
       "member": "tables/phase2_k4_ensemble/geteilte_fehler.jsonl",
@@ -1295,6 +1295,50 @@
     "qualitative/retrieval_all_queries_provenance.json": {
       "member": "tables/qualitative/retrieval_all_queries_provenance.json",
       "selection": "Source embeddings and backbone feature cache hashes, extraction method and checks"
+    },
+    "geometrie/lp_verfolgung.csv": {
+      "member": "tables/geometrie/lp_verfolgung.csv",
+      "source_id": "s_9b63c2553b780b3a",
+      "selection": "Geometrieläufe von LP, erste und letzte Aktualisierung je Fold, ganzer ungelabelter Pool",
+      "rows": 200,
+      "columns": [
+        "ds",
+        "k",
+        "loss",
+        "fold",
+        "epoch_first",
+        "epoch_last",
+        "n_pool",
+        "cov0",
+        "cov1",
+        "acc0",
+        "acc1",
+        "n_both",
+        "n_changed",
+        "changed",
+        "right_stay",
+        "wrong_keep",
+        "wrong_fixed",
+        "switch_fix",
+        "n_new",
+        "new_acc",
+        "source"
+      ]
+    },
+    "geometrie/lp_pseudolabels_inshop.csv": {
+      "member": "tables/geometrie/lp_pseudolabels_inshop.csv",
+      "source_id": "s_36a267c26f85857d",
+      "selection": "LP (iscen), every epoch with pseudo-labels, pseudo-label columns",
+      "rows": 9264,
+      "columns": [
+        "method",
+        "loss",
+        "k",
+        "fold",
+        "epoch",
+        "pl_coverage",
+        "pl_accuracy"
+      ]
     }
   },
   "notes": [
@@ -1336,8 +1380,10 @@
     "trials": 15529,
     "description": "Added evidence for prose-only empirical claims: Phase-0 selection, HPO sensitivity, and all-query retrieval counts.",
     "snapshot_sha256": {
-      "sources.csv": "36b6ee43df8c9bad2722073142d7eeb6ed5a923169d75104815f58c9107cac58",
-      "details.zip": "08a3c1973b8354bcfecd7efa8ffc2f32b942b60772f48bf8ddca238106eeb714"
-    }
+      "sources.csv": "ebd295b9662075ace52e5f3fc2f140c5ca85a755d21426cba8aafcfb85c70fed",
+      "details.zip": "6c708bd8413d7c8570ad946103611f92bdcd6b3dd6384b59689ed47dc28fef24"
+    },
+    "updated": "2026-11-05",
+    "update_description": "LP pseudo-label views replaced or added: phase2/lp_hersteller.csv (geometry runs, all budgets), phase2/lp_schwellen.csv (full-precision sweep diagnostics), geometrie/lp_verfolgung.csv, geometrie/lp_pseudolabels_inshop.csv."
   }
 }

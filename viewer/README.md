@@ -1,6 +1,7 @@
 # Data viewer
 
-Website over the compact thesis data in `../thesis_generator/daten`: Phase-1 results, ablations, external images, the
+Website over the compact thesis data in `../thesis_generator/daten`: Phase-1 results, ablations, a condensed Diagnostics
+page for geometry, pseudo-labels and neighborhoods (`../thesis_generator/datenansicht/diagnostics`), external images, the
 generated figures and tables, all hyperparameter configurations, every member of `details.zip` and every table with
 filter, sorting and CSV download. Plain JavaScript without external libraries, read-only.
 
