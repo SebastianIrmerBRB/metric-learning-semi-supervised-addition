@@ -31,8 +31,7 @@ venv/
 /images/
 /sample_images/
 /scripts/reports/
-/exporter/optuna-studies/
-/exporter/trials-files/
+/exporter/
 *.pt
 *.pth
 *.ckpt

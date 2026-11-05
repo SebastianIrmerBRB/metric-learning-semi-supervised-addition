@@ -15,10 +15,6 @@ IscenLabelSpreadingPseudoLabeler.generate_pseudo_labels
     -> PseudoLabelResult(position, mapped_label, confidence)
 ```
 
-The full implementation audit, including how propagation is integrated into
-metric-learning training, is in
-[`docs/iscen_label_spreading.md`](iscen_label_spreading.md).
-
 ## Notation
 
 | Symbol | Meaning | Shape |
@@ -528,6 +524,42 @@ A minimal SSL configuration is:
 }
 ```
 
+## Training integration
+
+`warmup_epochs` trains on labeled support before propagation starts.
+`update_mode="every_epoch"` rebuilds embeddings, graph, pseudo-labels, and
+certainties before each subsequent epoch. `"once"` reuses the first result;
+`"every_n_samples"` uses `update_interval_samples` to schedule refreshes by
+consumed training samples. See [sample-scoped refreshes](lrml.md#sample-scoped-refreshes).
+
+`confidence_threshold` rejects low-certainty pseudo-labels. Accepted samples
+enter the metric-learning dataset with mapped class labels. Confidence weights
+reach a loss only when it declares `supports_sample_weights`; ordinary metric
+losses train accepted pseudo-labels at full weight.
+
+### Two-stream batches
+
+Set `labeled_batch_size` for a fixed true-labeled portion and an
+originally-unlabeled portion in each batch. Both sizes must be divisible by
+`sampler_m`. Without an explicit epoch length, the pseudo-labeled stream
+defines its duration and the labeled stream repeats as needed.
+
+| `class_overlap` | Class selection | Cross-stream positive pairs |
+| --- | --- | --- |
+| `independent` (default) | Each stream selects classes independently; a shared class contributes `sampler_m` samples per stream. | Possible when both streams select the same class. |
+| `disjoint` | Each class belongs to one stream per batch; the union needs `batch_size / sampler_m` distinct classes. | None. |
+
+`pseudo_label_rescue_confidence_floor` can admit the best otherwise-rejected
+candidates when the sampler lacks enough classes.
+
+### In-batch propagation
+
+`graph_batch_mode="in_batch"` builds a local graph from detached embeddings at
+each optimizer step. It propagates labels within that graph and adds an
+auxiliary metric loss over labeled and accepted pseudo-labeled graph nodes.
+The main supervised loss remains separate. This has a different objective and
+graph scope from whole-pool propagation.
+
 ## Implementation map
 
 | Responsibility | File and symbol |
@@ -539,7 +571,6 @@ A minimal SSL configuration is:
 | Cosine kNN affinity | [`training/ssl/algorithms.py`](../training/ssl/algorithms.py), `make_mixed_label_affinity` |
 | Sparse solver dispatch | [`training/ssl/algorithms.py`](../training/ssl/algorithms.py), `solve_sparse_label_system` |
 | Confidence filtering | [`training/ssl/pseudo_labels.py`](../training/ssl/pseudo_labels.py), `filter_pseudo_labels` |
-| Focused regression tests | [`tests/test_iscen_label_spreading.py`](../tests/test_iscen_label_spreading.py) |
 
 ## Practical checks when results look wrong
 
@@ -555,3 +586,8 @@ A minimal SSL configuration is:
    cosine edges extremely small.
 6. Treat the returned certainty as a relative entropy score, not as the model's
    calibrated probability of being correct.
+
+## References
+
+- [Iscen et al., Label Propagation for Deep Semi-Supervised Learning, CVPR 2019](https://openaccess.thecvf.com/content_CVPR_2019/html/Iscen_Label_Propagation_for_Deep_Semi-Supervised_Learning_CVPR_2019_paper.html)
+- [LP-DeepSSL reference implementation](https://github.com/ahmetius/LP-DeepSSL)

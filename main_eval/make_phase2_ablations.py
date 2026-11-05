@@ -56,7 +56,7 @@ Three kinds of ablation, all replaying a tuned Phase-1 study:
 ``external``  External unlabeled data, the pairing SLADE (Duan et al., CVPR 2021,
               Sec. 4.1) uses -- Cars-196 + CompCars filtered to 16,537 images /
               145 models, CUB + NABirds, In-Shop + Fashion200k
-              (docs/slade_implementation_vs_paper.md, 2.3) -- at several shares of
+              (docs/slade.md, external CompCars pool) -- at several shares of
               that pool (``--fractions``, like Semi-iNat's out-of-class fraction;
               nested, so 25 % holds the 10 % images). An SSL combo gets one
               ``external_<pct>`` variant per share (``--source split_and_external``

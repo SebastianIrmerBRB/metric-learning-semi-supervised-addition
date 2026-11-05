@@ -6,10 +6,7 @@ Distance Metric Learning"* (Duan, Lin, Tran, Davis, Kuo — CVPR 2021,
 `training/ssl/slade.py` as a `BaseTrainingRegularizer`, so it never replaces the
 configured metric-learning loss — it adds two unlabeled terms on top of it.
 
-This document explains the method and the implementation together. For the
-line-by-line ledger of where this implementation departs from the paper, see
-[slade_implementation_vs_paper.md](slade_implementation_vs_paper.md); for using
-an external unlabeled pool, see [slade_compcars.md](slade_compcars.md).
+This guide explains the objective, training stages, and configuration.
 
 ---
 
@@ -257,20 +254,11 @@ Note what mining selects: **the pairs the model is already most confident
 about.** That is the point of the method — and it is also the source of its main
 failure mode (§5).
 
-Eq 7 as written never looks at the pseudo labels, so a mined positive can
-cross clusters. How often that happens depends on how the batch is built. With the
-default uniform shuffle, a pseudo-positive pair is ~1/k of all pairs, and the
-upper tail of the ~k times more numerous unrelated pairs clears `T1` too. With two
-Gaussians d′ = 2 standard deviations apart and k ≈ 73, roughly 23% of mined
-positives share a cluster, which matches the ~25% measured. Sampling 4 members of
-each of 8 clusters per batch of 32 raises the pseudo-positive share to ~10% and
-the same estimate to ~70%. The paper says "we use the pseudo labels to sample a
-set of pseudo positive pairs and pseudo negative pairs", and its framework [21]
-samples m per class. Neither is explicit about the unlabeled stream, and no
-reference code is public. Two switches therefore test the other reading instead of
-changing the default: `unlabeled_sampler: "pseudo_label_m_per_class"` and
-`mining_pseudo_label_filter: true`. Both are in
-`configs/ablations/slade_pseudo_label_sampling.json`.
+Eq 7 mines from basis similarity without consulting pseudo-label equality, so
+a mined positive can cross clusters. `unlabeled_sampler="pseudo_label_m_per_class"`
+balances cluster membership within a batch. `mining_pseudo_label_filter=true`
+additionally requires positive pairs to share a cluster and negative pairs to
+cross clusters.
 
 ### 3.4 The unlabeled ranking loss (Eq 9's middle term)
 
@@ -314,19 +302,10 @@ multi-similarity. Two modes are available here:
   |---|---|---|---|---|---|---|---|---|---|
   | `d` | 0.00 | 0.45 | 0.63 | 0.89 | 1.10 | 1.27 | 1.41 | 1.61 | 2.00 |
 
-  Unrelated pairs pile up near `sqrt(2) ≈ 1.414`. Measured on the cached
-  DINOv2-B Cars196 features (768-d, L2-normed) the pairwise median is `1.348`
-  (cos `0.09`), with only 1.4% of pairs below `0.8` and 98.5% below `1.5`. So
-  the negative hinge is dead below roughly `1.2` and saturated above roughly
-  `1.55`; `make_equation_one_contrastive_loss` warns below
-  `CONTRASTIVE_NEG_MARGIN_LIVE_FLOOR = 1.2`, because an unfired repulsion turns
-  Eq 1 into attraction-only on pseudo-labeled pairs — the collapse mode.
-
-  This is also why the library's own defaults (`pos_margin=0`, `neg_margin=1`)
-  are not the right shipped values here despite being the standard contrastive
-  setting: `neg_margin=1` fires on about 6% of pairs, and Eq 7 mines negatives
-  from the *far* tail, so in practice it fires on far less than that.
-  `paper_contrastive.json` uses `0.3 / 1.4` instead.
+  Unrelated normalized embeddings can lie near `sqrt(2)`. A negative margin
+  below those distances leaves repulsion inactive, turning the unlabeled term
+  into attraction alone. Inspect active pairs when setting margins.
+  `make_equation_one_contrastive_loss` warns for a negative margin below `1.2`.
 
   **Margin orientation.** `m_neg > m_pos` is the satisfiable ordering only for a
   non-inverted distance. pytorch-metric-learning's guidance is that the default
@@ -369,9 +348,6 @@ indices_tuple = (
 )
 return supervised_criterion(embeddings, cluster_labels, indices_tuple)
 ```
-
-Measured on a 64-sample Cars batch over 73 clusters: 13 of 64 anchors reached the
-loss before, 26 of 64 after — the mined signal was being halved.
 
 ### 3.5 Basis warm-up
 
@@ -490,14 +466,6 @@ the forward pass and has derivative `beta` in the backward one, so `(1 - beta) +
 beta = 1` restores full scale while the value Eq 5 reads — and the buffers Eq 7
 mines against — stay bit-identical. The Gaussians remain global, which is the
 paper's stated reason for using them.
-
-`"damped"` is the default so that new runs stay comparable with the studies in
-`exporter/optuna-studies/`, all of which predate this option. Be aware of what
-that costs: those studies searched `beta` over `[0.3, 0.99]` (Cars) and
-`[0.3, 0.999]` (CUB), which under `"damped"` is also a sweep of L_SD's weight
-across 70x and 700x respectively, confounded with `sd_variance_weight` and
-`lambda_basis`. Switch to `"full"` for a run meant to isolate `beta` as the
-updating rate, and do not mix the two modes inside one study.
 
 ### 3.7 Per-iteration resets
 
@@ -622,11 +590,7 @@ The same cliff exists for `NTXentLoss` at low temperature.
 
 At `_optimizer_steps == basis_warmup_steps`, `f` stops being detached and mining
 turns on, so both unlabeled terms start reaching the model **on the same step**.
-Measured on a Cars trial (`lr = 4.9`, `gamma = 265`, `basis_warmup_steps = 500`):
-the basis gradient arrived at 4245× the supervised one and the ranking gradient
-at 20×, batch loss went 14 → 7725, and validation MAP@R fell 57.1 → 29.9 within
-one epoch. Keep `basis_warmup_steps` short, and keep the learning rate in a range
-where a single out-of-scale step is survivable.
+A long basis-only warm-up can leave the ranking term inactive until late in training.
 
 ### 5.3 Gradient-ratio calibration and small gradients
 
@@ -692,8 +656,8 @@ guard does not rewrite study history.
 | `unlabeled_sampler` | `"random"` | `"random"` shuffles the pool uniformly, so only ~1/k of batch pairs share a cluster. `"pseudo_label_m_per_class"` draws `unlabeled_batch_size / unlabeled_sampler_m` clusters with `unlabeled_sampler_m` members each, which is the m-per-class sampling of the framework the paper builds on. Clusters smaller than m are never drawn, so no image is duplicated. With fewer clusters than slots, a cluster fills several. The step count per epoch is unchanged. Ablation: `configs/ablations/slade_pseudo_label_sampling.json` |
 | `unlabeled_sampler_m` | `4` | Members per cluster under `"pseudo_label_m_per_class"`. The unlabeled batch size must be divisible by it |
 | `mining_pseudo_label_filter` | `false` | `false` is Eq 7 read literally: basis similarity alone, so mined pairs may disagree with the clusters (~25% of mined positives shared one). `true` keeps a mined positive only within a cluster and a mined negative only across clusters, with the same thresholds. The mining diagnostics count the filtered pairs |
-| `pair_source` | `"basis_mining"` | Which unlabeled pairs the ranking term trains on. `"basis_mining"` is Eq 7. `"pseudo_label"` trains on every same-cluster pair as a positive and every cross-cluster pair as a negative (Table 4's pseudo-label rows; add `lambda_basis: 0` for the row without the basis). `"pseudo_label_matched"` draws pseudo-label pairs at random, as many as Eq 7 mines on the same step. All three wait for the basis warm-up, and the mining diagnostics count the pairs actually used. See §7 |
-| `basis_unlabeled_loss` | `"sd"` | The unlabeled half of Eq 2 (Table 5). `"sd"` is Eq 5, `"local_ce"` a per-pair cross entropy against the pseudo labels, `"global_ce"` the same cross entropy on the Eq 6 means, `"none"` leaves Eq 3 alone. The cross entropies read a cosine as the probability `(1 + s) / 2` and average the two pair kinds separately; the paper specifies neither. `train/slade/similarity_distribution_loss` reports whichever term is active. See §7 |
+| `pair_source` | `"basis_mining"` | Which unlabeled pairs the ranking term trains on. `"basis_mining"` is Eq 7. `"pseudo_label"` trains on every same-cluster pair as a positive and every cross-cluster pair as a negative (Table 4's pseudo-label rows; add `lambda_basis: 0` for the row without the basis). `"pseudo_label_matched"` draws pseudo-label pairs at random, as many as Eq 7 mines on the same step. All three wait for the basis warm-up, and the mining diagnostics count the pairs actually used. |
+| `basis_unlabeled_loss` | `"sd"` | The unlabeled half of Eq 2 (Table 5). `"sd"` is Eq 5, `"local_ce"` a per-pair cross entropy against the pseudo labels, `"global_ce"` the same cross entropy on the Eq 6 means, `"none"` leaves Eq 3 alone. The cross entropies read a cosine as the probability `(1 + s) / 2` and average the two pair kinds separately; the paper specifies neither. `train/slade/similarity_distribution_loss` reports whichever term is active. |
 | `reset_basis_on_refresh` | `false` | Re-initialize `W_a` and clear the Eq 6 Gaussians at every re-clustering after the first, so each self-training iteration gets a fresh basis. Requires a refreshing `update_mode`. See §3.7 |
 | `reset_basis_warmup_on_refresh` | `false` | Restart the `basis_warmup_steps` counter at every re-clustering after the first, so each iteration re-runs the `W_a`-only warm-up. Requires a refreshing `update_mode`. See §3.7 |
 | `within_fold_teacher_student` | `false` | With `update_mode: "once"` and labeled warm-up, make a real teacher/student stage boundary: retain teacher weights, reset optimizer/scheduler, fix pseudo-labels, and select only student epochs |
@@ -717,38 +681,7 @@ concurrent trials rarely overlap in them; without `low_memory_mode` FAISS would
 reserve its own ~1.5 GiB per caller instead, which at `max_concurrent_per_gpu: 10`
 is worth avoiding.
 
-Measured on an RTX 5070 Ti against a **single-threaded** FAISS CPU build, which
-is what a trial actually gets: `num_threads=1` is the run default and several
-trials share a GPU.
-
-| Setting | n | k | n·k | CPU (1 thread) | GPU | Speed-up |
-| --- | --- | --- | --- | --- | --- | --- |
-| CUB / Cars, 16-shot | 3,392 | 80 | 0.27M | **0.09 s** | 0.17 s | 0.5x |
-| — | 5,000 | 200 | 1.0M | 0.38 s | 0.19 s | 2x |
-| — | 8,000 | 500 | 4.0M | 1.23 s | 0.18 s | 7x |
-| — | 10,000 | 1,000 | 10M | 3.52 s | 0.27 s | 13x |
-| In-Shop, 2-shot, per fold | 13,500 | 3,000 | 40M | 18.35 s | 0.58 s | **32x** |
-| In-Shop, all labels | 25,882 | 3,997 | 103M | 61.34 s | 0.72 s | **85x** |
-
-The GPU has a flat ~0.17 s floor while the CPU grows linearly in `n·k`, so the
-crossover sits near `n·k = 5·10^5`. CUB and Cars are two orders of magnitude
-below it — k-means there is 0.09 s and not worth a device transfer. In-Shop is
-two orders above it, and at `update_interval_epochs: 1` the CPU cost compounds:
-~40 refreshes per fold x 4 folds x 18 s is roughly 48 minutes of pure clustering
-per trial, against under two minutes on the GPU.
-
-Objectives agree to five significant figures and the assignments are identical at
-CUB scale (99.7% agreement at In-Shop scale, from float ordering inside Lloyd
-iterations).
-
-The index is built through `faiss_gpu_flat_index`, not `faiss.Kmeans(gpu=True)`.
-The latter routes through `index_cpu_to_all_gpus`, which builds its own
-`StandardGpuResources` that the SSL low-memory policy cannot size — measured at
-~1.25 GiB of extra device memory per caller, which at `max_concurrent_per_gpu: 10`
-would exhaust the card on its own.
-
-`ssl_device: cpu` suppresses the GPU path entirely, through the same
-`_configured_ssl_device` check the other FAISS helpers use.
+`ssl_device: cpu` disables GPU clustering.
 
 ### Diagnostics
 
@@ -769,35 +702,47 @@ is why the two are not summed inside `compute_loss`.
 
 ---
 
-## 7. The paper's ablations and the Phase-2 controls
+## 7. External CompCars pool
 
-`python main_eval/make_phase2_ablations.py paper --dataset <ds> --combo slade_<loss>`
-rebuilds Sec. 4.5 of the paper on a tuned study, one change per variant:
+To train SLADE with Cars196 and an external CompCars pool, set these experiment
+fields alongside the SSL configuration:
 
-| Paper | Variant | Change |
-| --- | --- | --- |
-| Table 4, Teacher | `zero_weight` (controls) | no unlabeled term, no basis |
-| Table 4, Student (pseudo label) | `t4_pseudo_label` | `pair_source: "pseudo_label"`, `lambda_basis: 0` |
-| Table 4, + Basis | `t4_pseudo_label_basis` | `pair_source: "pseudo_label"` |
-| Table 4, + Basis + Mining | the replay itself | — |
-| — (Phase-2 plan B5) | `t4_matched_count` | `pair_source: "pseudo_label_matched"` |
-| Table 5, local-CE / global-CE | `t5_local_ce`, `t5_global_ce` | `basis_unlabeled_loss` |
-| — | `t5_ce_only` | `basis_unlabeled_loss: "none"` |
-| Table 6, number of clusters | `t6_cluster_ratio_<r>` | `cluster_ratio` over `--cluster-ratios` |
-| Sec. 4.3 settings | `paper_beta`, `paper_unlabeled_batch`, `paper_weights` | `beta: 0.99`; batch 32; fixed `λ1 = 1`, `λ2 = 0.25` |
-| Sec. 3.3.3 | `paper_no_basis_warmup`, `paper_teacher_student`, `paper_new_student_per_iteration` | no `W_a`-only warm-up; one teacher clustering and a fresh student; a fresh basis at every re-clustering |
+```json
+{
+  "dataset": "Cars196",
+  "mode": "ssl",
+  "unlabeled_source": "external",
+  "external_unlabeled_dir": "data/CompCars",
+  "external_unlabeled_filter": "compcars_slade_paper",
+  "compcars_min_model_images": 100,
+  "compcars_strict_paper_counts": true
+}
+```
 
-Table 3 (teacher initialization) has no counterpart: the backbone is a frozen
-DINOv2 for every run (§4).
+The pool uses whole-car web-nature images under
+`image/<make>/<model>/<year>/`. Each make/model/year directory is a category;
+categories below the minimum image count are dropped. Parts and surveillance
+images are excluded. The expected retained pool is 16,537 images in 145
+categories. `compcars_strict_paper_counts` turns a count mismatch into an error.
 
-`t4_pseudo_label_basis` differs from the method in both the number of pairs and
-which pairs, since Eq 7 keeps fewer and easier pairs. `t4_matched_count` keeps
-Eq 7's count per step and draws that many pseudo-label pairs at random, so
-comparing it with each neighbour separates the two.
+The 100-image threshold is inferred from the published pool counts. Automatic
+threshold calibration searches nearby counts when a local copy differs; set
+`compcars_paper_threshold_calibration="off"` to use the requested threshold
+verbatim. Inspect a local copy with:
 
-`controls` adds, for SLADE, `clusters_once` (`update_mode: "once"`: the first
-teacher's clusters are kept for the whole run) and `oracle_noise_<p>`
-(`pseudo_label_source: "oracle"`). The oracle replaces k-means with the hidden
-classes of the pool, so k becomes the pool's class count, and moves a seeded,
-nested p % of the images into a wrong class. Like LP's oracle it is diagnostic
-only.
+```bash
+python scripts/check_compcars_slade_subset.py data/CompCars
+```
+
+Retained images are appended after the Cars196 train/validation split with
+hidden label `-1`. The filter records counts and its effective settings in
+`split/split_info.json` under `external_unlabeled_pool.filter_info`.
+`external_unlabeled_fraction` selects a share of each retained category.
+
+CompCars is available for non-commercial research from
+[CUHK MMLab](https://mmlab.ie.cuhk.edu.hk/datasets/comp_cars/index.html).
+The loader can download an absent pool; archive extraction requires `zip` and
+`unzip`. `external_unlabeled_dir` may point to the release root or its parent.
+
+STML's `compcars_stml_paper` filter builds the same pool; see [STML](stml.md)
+for its training configuration.

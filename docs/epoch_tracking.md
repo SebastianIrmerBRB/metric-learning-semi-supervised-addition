@@ -199,12 +199,7 @@ AMI (which share a k-means over the query embeddings) plus full-depth MAP and
 MRR — exactly the set validation deliberately avoids because of its cost. An
 ordinary run pays that once, at the end; tracking makes it recur every interval.
 
-Measured on Cars196 (8131 test queries, frozen DINOv2-B, `cv_k=4`) at
-`--track_epoch_interval 5`: 15 full test evaluations per fold against 65 cheap
-two-metric validation ones, with `VmRSS` ~3.0 GB and **`VmHWM` 7.2 GB** — against
-a ~2.2 GB steady-state floor for a training process with no tracking. Size
-concurrency on the peak, not the steady state, and read `VmHWM` from
-`/proc/<pid>/status` rather than a sampled `VmRSS`.
+Size concurrency for evaluation peak memory as well as steady training memory.
 
 If that is too expensive, the lever is the measurement set rather than the
 interval: `test` tracking currently inherits `--test_measurements`, so narrowing

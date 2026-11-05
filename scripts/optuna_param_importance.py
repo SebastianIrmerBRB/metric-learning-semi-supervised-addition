@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     source.add_argument(
         "--studies-root",
         type=Path,
-        default=r"exporter/optuna-studies",
+        default="logs",
         help="Recursively analyze every optuna_study.db below this directory.",
     )
     parser.add_argument(

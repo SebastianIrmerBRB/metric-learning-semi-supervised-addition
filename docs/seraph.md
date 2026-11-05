@@ -10,10 +10,8 @@ supervised_weight * L_supervised(labeled batch)
   + regularizer_weight * L_seraph(unlabeled batch)
 ```
 
-so SERAPH never replaces the configured metric-learning loss, it only adds a term
-on top of it. `training/ssl/seraph.py`'s module docstring is the authority on how
-the implementation deviates from the paper; this document is the operational
-reference for what each knob does and which direction moves it.
+SERAPH adds an unlabeled entropy term to the configured metric-learning loss.
+This guide explains its parameters and their effects.
 
 ## Config layout
 
@@ -43,12 +41,7 @@ reference for what each knob does and which direction moves it.
 }
 ```
 
-Registered as `"seraph"` in `semi_supervised.REGULARIZER_REGISTRY`. The older
-name `"seraph_entropy"` under `method: "regularized"` no longer resolves — any
-config still carrying it (`configs/ssl_methods/seraph.json`) fails at
-`make_regularizer` with `Unknown regularizer 'seraph_entropy'`, and its
-`temperature` / `eta_mode` / `eta` keys are the pre-rename spellings of `kappa` /
-`threshold_mode` / `threshold`.
+Registered as `"seraph"` in `semi_supervised.REGULARIZER_REGISTRY`.
 
 ---
 
@@ -69,9 +62,8 @@ logit = kappa_eff * (eta - d_A^2)        p(similar) = sigmoid(logit)
 The objective is the mean binary entropy of that posterior, whose gradient w.r.t.
 the logit is `-l * sigmoid'(l)`. **That vanishes at both ends** — at `l = 0` the
 posterior is undecided and there is nothing to sharpen, at large `|l|` it is
-saturated and the sigmoid is flat. Measured across sweeps, the gradient norm
-peaks at **mean `|logit|` ≈ 2.4**, i.e. pair entropy ≈ 0.32 of the 0.693 nat
-maximum.
+saturated and the sigmoid is flat. Intermediate logits give the strongest
+sharpening signal.
 
 > **The single number to read when tuning: mean `|logit|`.** Aim for ~2.4.
 > `kappa`, `positive_pair_prior`, `threshold_mode` and `metric` are four
@@ -91,19 +83,8 @@ maximum.
 
 **`em_sharpening = 1.0` produces an identically zero gradient.** Validation
 permits it (the check is `>= 1`), but `q = p` exactly, so the M-step's cross
-entropy is taken against the posterior's own detached value. Measured: 0.00000.
+entropy is taken against the posterior's own detached value.
 Never put `1.0` in a search space.
-
-Measured at a fixed operating point (Cars196, `metric="identity"`, `kappa=1.105`):
-
-| `objective` | reg/sup ratio |
-|---|---|
-| `em`, sharpening 1.0 | 0.0000 (no-op) |
-| `em`, sharpening 1.5 | 0.0233 |
-| `em`, sharpening 2.0 | 0.0393 |
-| `em`, sharpening 4.0 | 0.0656 |
-| `em`, sharpening 8.0 | 0.0742 |
-| `entropy` | 0.0546 |
 
 ### 2.2 The metric `A = B^T B`
 
@@ -112,30 +93,11 @@ Measured at a fixed operating point (Cars196, `metric="identity"`, `kappa=1.105`
 | `metric` | `"identity"`, `"scale"`, `"diag"`, `"lowrank"` | `"identity"` | Parameterization of `B`. All are PSD by construction and all start at the plain squared Euclidean distance of the L2-normalized embedding. `identity` = no metric parameters; `scale` = one learnable scalar; `diag` = per-dimension weights via softplus; `lowrank` = a `metric_dim x feat_dim` matrix, the paper's own setting. |
 | `metric_dim` | int in `(0, feat_dim]` or `null` | `null` (= `feat_dim`) | Rows of `B`. Only valid with `metric="lowrank"`; raises otherwise. |
 
-[`docs/seraph_metric_trace.md`](seraph_metric_trace.md) writes out the full
-objective a run optimizes and shows where `metric` enters it: it changes
-`d_A^2` and nothing else, and never affects retrieval or evaluation.
-
-**A learnable metric inflates itself instead of moving the embedding.** Module
-docstring deviation 2 warns about this; measured at `B`'s initialization it
-dominates:
-
-| `metric` | reg/sup ratio | fraction of that gradient landing on `B` |
-|---|---|---|
-| `identity` | 0.055 | 0.000 |
-| `diag` | 0.056 | 0.214 |
-| `lowrank` (768) | 0.245 | **0.976** |
-| `scale` | 0.516 | **0.994** |
-| `lowrank`, `metric_dim=64` | 1.195 | 0.193 |
-
-With `scale` and full-rank `lowrank`, 97–99% of the regularizer's gradient is
-SERAPH sharpening its own posterior by growing `A` — the retrieval embedding
-barely moves, and nothing bounds the growth except `weight_decay` (the paper's
-`tr(A)` term is not implemented; deviation 2). A high
-`regularizer_to_supervised_ratio` with these settings is **not** evidence the
-term is shaping the embedding. Restricting the rank (`metric_dim=64`) flips it:
-`B` can no longer absorb the sharpening, so 81% of the gradient reaches the
-embedding.
+`metric` changes the pair distance used by SERAPH. Retrieval and evaluation
+always use the model's ordinary embedding. A learnable metric can sharpen its
+own posterior without moving that embedding; reducing `metric_dim` limits the
+directions available to it. Inspect the gradient's `head_share` alongside its
+overall magnitude.
 
 ### 2.2b The trace term `- lambda tr(A)` (Eq 7)
 
@@ -163,9 +125,8 @@ the measured norm would be exactly `0`, the calibration would exhaust its
 dead-term budget and raise `FloatingPointError` several epochs into the run.
 Set `trace_weight` directly there.
 
-**The scale has to be identifiable or `tr(A)` does nothing.** Deviations 3 and
-4 remove exactly that, in two independent ways, and the constructor warns on
-both:
+**Scale identifiability matters for `tr(A)`.** The constructor warns when
+calibration or output normalization makes the objective insensitive to scale:
 
 | setting | is `A`'s scale visible to the objective? |
 |---|---|
@@ -173,22 +134,10 @@ both:
 | either one `"fixed"` | yes — this is the paper's setting, and the one where `nuclear` behaves as published |
 | `trace_target="projection"`, any calibration | no — `project_features` L2-normalizes the head, so the objective is invariant to `(W, b) -> (cW, cb)` |
 
-Measured on the last row: the loss gradient's cosine with `(W, b)` is `-1.8e-08`
-(exactly orthogonal, as Euler's theorem requires of a degree-0 homogeneous
-function), while `tr(A)`'s gradient is `2M` — exactly parallel. So on a
-normalized head `nuclear` is a pure rescaling, an effective learning rate in the
-sense of arXiv:1706.05350, and moves no part of the spectrum. `soft_rank` is the
-form that survives: its gradient is 100% tangential, and descending it alone
-takes a 16-dimensional head from a participation ratio of 8.08 to 1.00. Its
-`||M||_F` rises over that run (2.35 to 4.40) rather than falling — there is no
-radial component to shrink it, and finite steps taken orthogonal to `M` land
-outside its sphere. A scale penalty pulls the other way; that sign is the
-cleanest way to tell the two modes apart in a log.
-
-The bias rides along in `M = [W | b]` on purpose. Penalizing `W` alone leaves
-8.4% of the gradient off the rescaling ray, and that component shrinks `W`
-relative to `b` — which pulls the normalized embedding towards the constant
-direction `b / ||b||`. That is a collapse, not a low rank.
+On an L2-normalized projection head, `nuclear` rescales the parameters without
+changing the normalized embeddings. `soft_rank` measures the spectrum after
+dividing out scale. Include the bias in `M = [W | b]`: penalizing `W` alone can
+shrink it relative to the bias and pull embeddings toward a constant direction.
 
 Two combinations raise instead of warning, because they are constants rather
 than weak: `trace_target="metric"` with `metric="identity"` (`tr(I) = feat_dim`),
@@ -208,26 +157,10 @@ trace alone cannot distinguish a metric that shrank from one that lost rank.
 | `kappa` | float > 0 | `1.0` | Inverse temperature of the pair posterior. Never trainable — that would re-add the redundant scale Theorem 2 removes, and entropy minimization would inflate it without moving any embedding (deviation 3). |
 | `kappa_mode` | `"fixed"`, `"batch_std"` | `"batch_std"` | `fixed` uses `kappa` as-is. `batch_std` uses `kappa / std(d^2)` over the batch's own distances, making the posterior independent of how concentrated the frozen embedding's distances happen to be. Falls back to raw `kappa` if the spread is zero or non-finite. |
 
-`kappa` is the **only** scale available under `metric="identity"`, and it enters
-the gradient twice (once in the logit, once in the chain rule to `d^2`), so the
-term's magnitude grows roughly quadratically until saturation. Measured on
-Cars196 / ProxyAnchor, 3000 steps in:
-
-| nominal `kappa` | `batch_std` reg/sup | `fixed` reg/sup |
-|---|---|---|
-| 0.5 | 0.353 | 0.013 |
-| 1.0 | 0.788 | 0.052 |
-| **1.5** | **0.948** (peak) | 0.112 |
-| 2.0 | 0.939 | 0.188 |
-| 3.0 | 0.779 | 0.363 |
-| 5.0 | 0.502 | 0.684 |
-| 8.0 | 0.309 | 0.925 (still rising) |
-
-**The two modes are not on the same scale.** Here `std(d^2) ≈ 1/5.8`, so
-`batch_std` at nominal 1.0 equals `fixed` at ≈ 5.8. A search range tuned for one
-mode is wrong for the other by roughly that factor, and `batch_std`'s effective
-kappa drifts during training as the embedding's distance spread changes (measured
-2.7 → 6.2 over 3000 steps).
+With `metric="identity"`, `kappa` controls posterior sharpness. Increasing it
+can strengthen gradients until the sigmoid saturates. `batch_std` divides by
+the current distance spread, so its effective scale changes during training;
+a search range for `fixed` should not be reused without checking the logits.
 
 ### 2.4 Decision threshold `eta`
 
@@ -253,25 +186,9 @@ term, and it was what anchored `eta`. Without it, minimizing entropy over a free
 collapse unreachable. The estimate is detached — it calibrates the posterior, it
 is not something the entropy term may optimize.
 
-**`positive_pair_prior` is U-shaped, not monotonic.** It moves `eta` through the
-distance distribution, and the gradient is weakest when `eta` sits at the bulk of
-it (`|eta - d^2| -> 0`). Which side you are on depends on the embedding, so the
-same change flips sign between setups:
-
-| prior | Cars196 / NTXent (`E[d^2] = 2.00`) | Cars196 / ProxyAnchor (`E[d^2] = 1.38`) |
-|---|---|---|
-| ~0.05 | 0.055 | 0.939 |
-| 0.30 | 0.041 | 0.669 |
-| 0.50 / 0.90 | 0.038 | 0.989 |
-
-Same story for `fixed` eta, which bottoms out at `eta ≈ E[d^2]`: 0.0573 / 0.0572
-/ 0.0544 / 0.0374 / 0.0513 for eta = 0.5 / 1.0 / 1.25 / 2.0 / 3.0.
-
-**`threshold_momentum` barely matters.** Measured 0.0546 / 0.0546 / 0.0547 for
-momentum 0.1 / 0.5 / 0.99 — the running estimate converges to the same place
-regardless, so this only controls how fast `eta` tracks a shifting distance
-distribution and how much it jitters. It is a low-value search dimension despite
-appearing in every HPO space.
+`positive_pair_prior` moves the threshold through the distance distribution.
+Its effect depends on that distribution. `threshold_momentum` controls how
+quickly the running quantile follows a change and how much batch noise it retains.
 
 ### 2.5 Which pairs are scored
 
@@ -287,20 +204,9 @@ differ systematically and a shared quantile would sit wrong for both. They are
 combined by their share of the *pool's* pair counts (`n_u^2/2` vs `n_l * n_u`),
 not the batch's, so batch composition cannot silently reweight the objective.
 
-Turning the lu block on has little effect on gradient magnitude (0.0553 with,
-0.0574 without) but changes what is regularized — it is a modelling choice, not a
-strength knob.
-
-**`unlabeled_batch_size` is an inverse strength knob.** The loss is a *mean* over
-pairs so its value does not depend on batch size (deviation 5), but the gradient
-still shrinks as incoherent per-pair pushes average out — roughly `1/sqrt(batch)`:
-
-| `unlabeled_batch_size` | pairs scored | reg gradient norm |
-|---|---|---|
-| 32 | 496 | 0.140 |
-| 64 | 2 016 | 0.100 |
-| 128 | 8 128 | 0.073 |
-| 256 | 32 640 | 0.055 |
+Including labeled-unlabeled pairs changes which relationships are regularized.
+The loss averages over pairs, while batch size changes the noise and cancellation
+in the resulting gradient. Use the mixing weight to control overall strength.
 
 ---
 
@@ -430,19 +336,9 @@ Direction that **increases** the gradient contribution:
 | `metric` | `scale` / `lowrank` | large, but mostly self-gradient | read `head_share`, not the ratio |
 | `threshold_momentum` | — | flat | negligible in `quantile` mode, inert in `fixed` |
 
-Worked example of how these compose: trial 0036 of `logs/ssl/seraph_nt/.../cars_imb_search`
-drew `regularizer_weight=1.35` (near the floor of `[1, 10]`),
-`unlabeled_batch_size=256` (the largest choice), and `kappa=1.105` (`fixed` mode,
-a third of the `[0.6, 3]` ceiling) and logged a
-`regularizer_to_supervised_ratio` of 0.059 with a cosine of 0.08 — effectively a
-no-op run of SERAPH. The three factors are 7.4x, 2.5x and 2.2x off the strongest
-in-space corner, and they compose almost exactly: 7.4 × 2.5 × 2.2 ≈ 41, and
-0.055 × 41 = 2.24 against a measured 2.26.
-
 When writing a search space:
 
-- Set `kappa`'s range from `kappa_mode`. For `batch_std` on Cars196, `[1, 2]`
-  brackets the peak. For `fixed`, the same peak is near 5–8.
+- Set `kappa`'s range from `kappa_mode` and inspect posterior saturation.
 - Do not put `em_sharpening: 1.0` in a range.
 - Prefer raising `regularizer_weight`'s floor over widening `kappa` — it is
   linear and has no saturation to overshoot.

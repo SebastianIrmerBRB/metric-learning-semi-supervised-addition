@@ -196,7 +196,7 @@ at every sampler size:
 ```
 
 It only takes effect once `labeled_batch_size` selects the two-stream sampler.
-See [Iscen / LP-DeepSSL label propagation](iscen_label_spreading.md) for what
+See [Iscen / LP-DeepSSL label propagation](iscen_label_propagation_walkthrough.md#training-integration) for what
 the two modes change.
 
 Crossing the two dimensions this way makes the marginal over batch sizes
@@ -906,9 +906,3 @@ python main.py `
 ```
 
 As long as `study_name`, `study_dir`, and storage location are unchanged, the second command resumes the same study.
-
-## Files Changed
-
-- `main.py`: adds `--hparam_config`, Optuna config parsing, search-space suggestion, trial execution, study resume behavior, trial summaries, and run config export.
-- `configs/hparam_search.json`: example Optuna search config.
-- `requirements.txt`: adds `optuna`.

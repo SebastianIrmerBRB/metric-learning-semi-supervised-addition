@@ -393,34 +393,6 @@ be tuned through the existing component HPO keys
 `loss.MixedLabelPropagationProxyLoss.alpha` and
 `loss.MixedLabelPropagationProxyLoss.b`.
 
-## Relationship To The Paper's Experiments
-
-The algorithmic method follows paper equations (14)-(29), but the provided
-experiment configuration is adapted to this repository rather than intended as
-an exact reproduction of the published numbers.
-
-| Paper setup | This project |
-|---|---|
-| BN-Inception backbone | DINOv2 through `DinoWrapper` |
-| 64-dimensional embeddings | Combined example uses `feat_dim=64` |
-| Five labeled samples per class | Default MLP SSL config uses `labeled_per_class=5` |
-| Five labeled-only warmup epochs | Default MLP SSL config uses `warmup_epochs=5` |
-| Regenerate mixed LP every epoch | Default MLP SSL config uses `update_mode="every_epoch"` |
-| `beta=1`, `gamma=3`, `alpha=32`, `lambda=4`, `b=0.1`, `mu=1/99`, `k=50` | Same defaults |
-| AdamW and learning rate `1e-4` | Same optimizer and learning rate in the combined example; no optimizer regularization is configured |
-| NMI, Recall@k, Precision@k | Repository currently selects/reports Precision@1 and MAP@R |
-| Paper-specific class-disjoint CBIR split | Repository dataset protocols and validation configuration |
-
-Additional implementation details not specified by the paper are exposed
-explicitly: exact FAISS search, conjugate-gradient tolerances, edge batching,
-and optional confidence filtering.
-
-On Windows, the effective training/evaluation `num_workers` and SSL
-`embedding_num_workers` are automatically set to `0`. Windows `spawn` can fail
-while serializing the large nested CIFAR subsets used by these experiments.
-The configured worker counts remain unchanged and are used normally on other
-platforms.
-
 ## Practical Considerations
 
 - Mixed label propagation is substantially more expensive than majority-vote

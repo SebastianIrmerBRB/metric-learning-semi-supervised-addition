@@ -277,33 +277,6 @@ loss_miner_grid
 The exact loss and miner classes are fixed outside Optuna. Their constructor
 parameters can vary inside Optuna.
 
-## Current Config Audit
-
-The HPO files under `configs/supervised/contrastive/` do not select a loss or
-miner. They define search spaces that become meaningful only when a top-level
-experiment scenario selects the matching fixed loss/miner pair.
-
-For example,
-`configs/supervised/contrastive/triplet_config_cifar10_k_shot_400_and_above.json`
-contains:
-
-```text
-loss.TripletMarginLoss.margin
-miner.TripletMarginMiner.type_of_triplets
-```
-
-Those spaces apply only to a scenario selecting:
-
-```text
-TripletMarginLoss:TripletMarginMiner
-```
-
-The current checked-in top-level supervised experiment configs do not select a
-valid standard loss. They request `ProxyAnchor:no_miner`, but `ProxyAnchor` is
-not registered; the classification-style class is named `ProxyAnchorLoss`.
-Therefore, none of those top-level configs currently reaches this standard-loss
-batch path without a CLI override or config correction.
-
 ## Primary Code Path
 
 | Step | Implementation |

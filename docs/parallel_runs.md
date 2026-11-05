@@ -315,33 +315,16 @@ one slot and a heavier run can reserve two.
 The launcher rejects an HPO config with `n_jobs != 1` by default. Set
 `allow_parallel_trials: true` only when nested Optuna parallelism is deliberate.
 
-## Choosing concurrency for the H100 host
+## Choosing concurrency
 
-The shown processes use roughly 1.5 GiB each, so VRAM is not the limiting
-resource on a 95.8 GiB H100 NVL. The busy GPUs are already commonly at 80--99%
-SM utilization, while GPU 3 is idle. For the twelve-run workload shown, start
-with:
+Set `gpus` to the available devices and `max_concurrent_per_gpu` to the number
+of runs each device can sustain. Increase concurrency only when completed
+trials per hour improve. Memory, CPU, kernel scheduling, and cache I/O can all
+limit throughput.
 
-```json
-{
-  "gpus": [0, 1, 2, 3],
-  "max_concurrent_per_gpu": 3,
-  "default_gpu_memory_mib": 2048
-}
-```
-
-That distributes twelve studies as three per GPU instead of four on GPUs 0--2
-and zero on GPU 3. If only the four loss studies are active, the scheduler puts
-one on each GPU. Increase the per-GPU value only if aggregate completed
-trials/hour improves; instantaneous GPU utilization alone does not measure
-throughput, and extra processes can add kernel, CPU, PCIe, and cache-I/O
-contention.
-
-Frozen feature tensors are reused in memory within one HPO process. Separate
-run processes share the persistent on-disk DINO cache, whose writes are atomic,
-but they do not share the process-local materialized tensor. For a cold cache,
-pre-warming it with one run avoids redundant simultaneous backbone work. A
-small `launch_delay_seconds` can also reduce startup bursts.
+Separate processes share the persistent DINO feature cache but keep their own
+materialized tensors. Pre-warm a cold cache with one run, or use
+`launch_delay_seconds` to spread out startup work.
 
 ## Logs, failures, and resuming
 

@@ -62,49 +62,6 @@ carries the paper's values (`sigma=1`, `num_neighbors=5`, `topk=10`,
 `graph_unlabeled_batch_size` like every other in-batch graph method here.
 `supervised_weight` and `regularizer_weight` are accepted only in that mode.
 
-### Fidelity to the paper
-
-Checked against the official implementation
-([sung-yeon-kim/STML-CVPR22](https://github.com/sung-yeon-kim/STML-CVPR22), `code/loss.py`
-and `code/main.py`).
-
-Kept: `W_P = exp(-T_dist^2 / sigma)`, the reciprocal nearest-neighbor graph `V`,
-the shared-neighbor contextual term, half-`topk` query expansion, and
-`W = (W_P + W_C)/2` — a test asserts the sparse graph reproduces the dense
-implementation of that formula to 1e-7. The teacher is an EMA of the student
-with gradients disabled, as in `Momentum_Update`.
-
-The teacher is held as an EMA of the trainable weights and swapped into the
-student for the relation forward, rather than as a second model. A cached
-backbone carries a thread lock that cannot be deep-copied, and a frozen backbone
-would duplicate weights that never diverge; tracking only trainable parameters
-avoids both.
-
-Changed, and why:
-
-* **Teacher cadence** — `global` only. A pseudo-label method has no per-step
-  hook, so that teacher advances once per refresh; `0.999` per step over a
-  ~40-step epoch is ~0.96 per epoch, which is the range its default sits in.
-  `in_batch` keeps the paper's per-step update.
-* **No `g` head or KL self-distillation.** Both exist to serve the relaxed
-  contrastive objective this method replaces, and nothing would train `g` once
-  that objective is gone, so the teacher trails the retrieval embedding directly.
-* **No nearest-neighbor batch sampler** — `global` only, where `w` covers the
-  whole pool and the sampler has nothing left to arrange. `in_batch` uses it.
-* **One view per sample, not two.** The joint labeled/unlabeled forward
-  concatenates image tensors, so a two-view batch cannot travel that path; in
-  `global` mode the deterministic eval transform is also what keeps pseudo labels
-  independent of random augmentation. The nearest-neighbor sampler still puts
-  related samples in every `in_batch` batch.
-* **Labels come from your labeled split.** This is the substantive departure.
-  STML is label-free: `w` itself is the training signal and no sample is ever
-  assigned a class. Turning `w` into class ids requires seeds, so the thresholded
-  graph propagates the labeled split outward, and unlabeled samples in components
-  with no seed are dropped rather than trained on. The literal "STML but
-  thresholded" alternative keeps relations pairwise — positives at `w >= t`,
-  negatives at `w <= 1 - t`, handed to a loss as a mined `indices_tuple` — which
-  needs the per-step training path and excludes proxy and classification losses.
-
 ## How a relation becomes a label
 
 1. **Embed** the labeled and unlabeled pools with the EMA teacher, at the
@@ -176,7 +133,7 @@ the graph, raising the second prunes long propagation chains.
 `global` relabels the whole pool offline, so a training batch can be composed
 from the two streams explicitly. Setting `labeled_batch_size` swaps the plain
 `MPerClassSampler` for `TwoStreamMPerClassBatchSampler`, exactly as for
-[Iscen label spreading](iscen_label_spreading.md#optional-two-stream-m-per-class-batches):
+[Iscen label spreading](iscen_label_propagation_walkthrough.md#two-stream-batches):
 
 ```json
 {

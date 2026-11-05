@@ -27,7 +27,6 @@ const skipImportance = process.env.OPTUNA_SKIP_IMPORTANCE === "1";
 const forceImportance = process.env.OPTUNA_FORCE_IMPORTANCE === "1";
 
 const defaultStudyRoots = [
-  path.join(repositoryRoot, "exporter", "optuna-studies"),
   path.join(repositoryRoot, "logs"),
 ];
 
@@ -45,8 +44,8 @@ function splitRootSetting(value) {
 
 /**
  * Every configured study tree that exists on disk. Each root keeps its own
- * parameter_importance_summary.csv, so `logs` and the downloaded
- * `exporter/optuna-studies` mirror can be exported side by side.
+ * parameter_importance_summary.csv. Set OPTUNA_STUDIES_DIR to include
+ * additional local study directories alongside `logs`.
  */
 function resolveStudyRoots() {
   const configured = process.env.OPTUNA_STUDIES_DIR?.trim()

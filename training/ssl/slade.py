@@ -18,8 +18,7 @@ numbers used throughout:
   ``L_rank(D^l) + lambda1 * L_rank(D^u) + lambda2 * L_Basis``.
 
 Three departures from the paper follow from this project's setup rather than from
-a choice about SLADE; ``docs/slade_implementation_vs_paper.md`` records them in
-full alongside the ones that are genuine method differences.
+a choice about SLADE. See ``docs/slade.md`` for the method and configuration.
 
 * **No dataset-specific self-supervised stage.** Sec 3.1 initializes the teacher
   with SwAV and fine-tunes it on the union of labeled and unlabeled images. Here

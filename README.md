@@ -177,9 +177,12 @@ includes `SHA256SUMS` and the validation report `pruefung.json`.
 
 ## Code and optional visualizer
 
+The [documentation index](docs/README.md) links the method explanations,
+configuration guides, and evaluation references.
+
 `main.py` dispatches experiments; `launch_runs.py` schedules independent runs.
 `training/`, `models/`, `losses/`, and `utils/` implement training, SSL, model,
-loss, and dataset functionality. `evaluate/`, `main_eval/`, `exporter/`, and
+loss, and dataset functionality. `evaluate/`, `main_eval/`, and
 `scripts/` contain evaluation and analysis tools.
 
 `react_trial_visualizer/` is an optional experiment browser. Its Node/npm

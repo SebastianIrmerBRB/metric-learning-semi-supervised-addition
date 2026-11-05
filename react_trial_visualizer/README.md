@@ -2,7 +2,7 @@
 
 A React + Tailwind dashboard for Optuna/HPO CSV files. It recreates and extends the diagrams from `build_trial_dashboard.py` with live CSV import, automatic schema detection, trial inspection, cross-study comparison, TensorBoard training curves, and SVG/PNG export.
 
-The **Hyperparameters** workspace reads every `optuna_study.db` below the configured study roots: `../exporter/optuna-studies` (the mirror `exporter/export_optuna_studies.sh` downloads from the server) and `../logs` (studies run on this machine). It includes a searchable study catalog, ranked fANOVA importances, numeric slice plots with binned-median trends, categorical choice distributions, rank associations, and grouped response summaries.
+The **Hyperparameters** workspace reads every `optuna_study.db` below the configured study roots: `../logs` by default, or the local directories selected with `OPTUNA_STUDIES_DIR`. It includes a searchable study catalog, ranked fANOVA importances, numeric slice plots with binned-median trends, categorical choice distributions, rank associations, and grouped response summaries.
 
 ## Recommended start
 
@@ -29,7 +29,7 @@ Use **Log folder** to import a complete experiment collection in one step. The p
 
 The Optuna browser snapshot is refreshed automatically before `dev` and `build`. To refresh it without restarting the frontend, run `npm run sync-optuna`, then use **Reload snapshot** in the Hyperparameters workspace.
 
-`sync-optuna` walks each study root for `optuna_study.db` files. Parameter importances come from the root's `parameter_importance_summary.csv` when that file exists; every remaining study is ranked by running `../scripts/optuna_param_importance.py` (fANOVA) once and caching its report as `parameter_importance.json` next to the database. Later runs reuse the cache and finish in under a second, and a study is recomputed only when its database is newer than its cache. Studies with fewer than two completed trials are skipped. Because both roots are active, study identifiers and paths are prefixed with the root folder name (`logs/…`, `optuna-studies/…`), which is also what the catalog search box matches.
+`sync-optuna` walks each study root for `optuna_study.db` files. Parameter importances come from the root's `parameter_importance_summary.csv` when that file exists; every remaining study is ranked by running `../scripts/optuna_param_importance.py` (fANOVA) once and caching its report as `parameter_importance.json` next to the database. Later runs reuse the cache and finish in under a second, and a study is recomputed only when its database is newer than its cache. Studies with fewer than two completed trials are skipped. When several roots are configured, study identifiers and paths are prefixed with the root folder name, which is also what the catalog search box matches.
 
 | Variable | Effect |
 | --- | --- |

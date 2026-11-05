@@ -24,12 +24,6 @@ same exclusion upstream applies to `precision_at_1`, so the two stay
 comparable. With `--dataset_protocol` splits that use query/gallery evaluation,
 Recall@K is measured query-to-gallery like the other metrics.
 
-Measured on CUB with a frozen DINOv2 head, two epochs:
-
-```text
-test: Precision@1 = 86.9 , MAP@R = 51.3 , R@1 = 86.9 , R@2 = 92.4 , R@4 = 94.9 , R@8 = 96.5
-```
-
 ## Where the values land
 
 | Surface | Contents |

@@ -221,9 +221,3 @@ METHOD_REGISTRY["my_method"] = MyMethod()
 
 The method should return mapped training labels, not original dataset class IDs.
 The common filtering code drops pseudo-labels outside known training classes and applies `confidence_threshold` when confidences are available.
-
-## Files Changed
-
-- `main.py`: adds `--seed`, `--ssl_config`, CUDA-safe DataLoader settings, seed initialization, and SSL dataset expansion.
-- `utils/`: adds seed helpers, CUDA-safe DataLoader validation, seeded dataset splitting, seeded loaders, and reusable dataset-bundle setup.
-- `training/semi_supervised.py`: contains warmup and update-mode handling, the method registry, and method orchestration; focused configuration, algorithms, pseudo-label filtering, and data wrappers live in `training/ssl/`.

@@ -158,12 +158,10 @@ directory and use:
 }
 ```
 
-STML adopts SLADE's semi-supervised protocol, so `compcars_stml_paper` and
-`compcars_slade_paper` build the same pool: the official CompCars classification
-split, filtered at model level to 16,537 images across 145 classes, verified
-against those counts. [slade_compcars.md](slade_compcars.md) documents that
-filter, its layout expectations, the threshold calibration, and
-`scripts/check_compcars_slade_subset.py` for checking a local copy.
+`compcars_stml_paper` and `compcars_slade_paper` build the same pool: whole-car
+web-nature images grouped by make/model/year and filtered to 16,537 images in
+145 categories. The [CompCars pool guide](slade.md#7-external-compcars-pool)
+explains the layout, count checks, and threshold calibration.
 
 `compcars_model_min_count` is the unverified variant for CompCars copies that
 lack the split files: images are discovered recursively, common container

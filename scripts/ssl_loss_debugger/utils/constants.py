@@ -19,7 +19,7 @@ REGULARIZER_SCENARIOS = (
 )
 
 # Regularizer scenario names are ``semi_supervised.REGULARIZER_REGISTRY`` keys.
-# ``seraph_entropy`` was that key before the rename recorded in docs/seraph.md and
+# ``seraph_entropy`` was that key before the rename and
 # still appears in saved run commands, so it keeps resolving to the current name.
 SCENARIO_ALIASES = {"seraph_entropy": "seraph"}
 

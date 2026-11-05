@@ -32,7 +32,7 @@ Examples::
 
     python scripts/make_ssl_ablation.py --list
     python scripts/make_ssl_ablation.py --dimension graph_batch_size \\
-        --study exporter/optuna-studies/ssl/in_shop/lrml_prx/.../hpo/cars_imb_search \\
+        --study logs/ssl/in_shop/lrml_prx/.../hpo/cars_imb_search \\
         --experiment-config configs/phase_1/ssl_methods/lrml/in_shop/in_shop_nt.json
     python scripts/make_ssl_ablation.py --dimension confidence_threshold \\
         --values 0.0 0.2 0.4 0.6 0.8 0.99 --study ... --experiment-config ...

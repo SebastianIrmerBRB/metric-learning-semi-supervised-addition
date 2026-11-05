@@ -268,12 +268,6 @@ h_i=\operatorname{projection}(\operatorname{DINO}(x_i)),
 z_i=\frac{h_i}{\|h_i\|_2}.
 $$
 
-In the associated CIFAR experiment, omitted command-line settings retain the
-defaults `dino_size="b"`, `backbone_tuning="full"`, `feat_dim=null`, and
-`optim="adam"`. Consequently, the default model fine-tunes DINOv2-B and uses
-its normalized 768-dimensional output without an extra learned projection.
-Those defaults remain overridable.
-
 ### 4.2 Exact stochastic objective
 
 At a post-warmup outer iteration $t$, joint mode minimizes
@@ -297,15 +291,9 @@ Alternating contrastive mode uses the same raw component estimators and weights
 but applies them sequentially rather than differentiating this displayed sum;
 section 9 writes that update explicitly.
 
-The associated outer experiment runs separate scenarios for
-`NTXentLoss:no_miner`, `MultiSimilarityLoss:MultiSimilarityMiner`,
-`CircleLoss:no_miner`, `ArcFaceLoss:no_miner`, and
-`ProxyAnchorLoss:no_miner`. Therefore there is deliberately no single expanded
-formula for $\ell_{\mathrm{DML}}$ in the LRML configuration. Original LRML's
-separate $\gamma_s V_s$ and $\gamma_d V_d$ terms are replaced by whichever of
-these supervised losses is selected. The local $\alpha$ and $\lambda$ are not
-numerically comparable to the paper's $\gamma_s$ and $\gamma_d$, especially
-because the local graph term uses a mean reduction by default.
+The supervised term is whichever metric loss the run selects. Its mixing
+weights depend on that loss and the graph reduction, so they should be chosen
+for the combined objective.
 
 ### 4.3 Shared embedding and graph normalization
 
@@ -571,34 +559,11 @@ $$
 
 where $C_L$ is the number of labeled classes.
 
-Every attached choice has $m=8$:
-
-| HPO value | $B$ examples | $m$ per class | Classes per batch $B/m$ |
-|---|---:|---:|---:|
-| `16:8` | 16 | 8 | 2 |
-| `32:8` | 32 | 8 | 4 |
-| `64:8` | 64 | 8 | 8 |
-| `128:8` | 128 | 8 | 16 |
-| `256:8` | 256 | 8 | 32 |
-
-The associated CIFAR experiment requests `length_before_new_iter=22800`.
-`MPerClassSampler` rounds this down to a complete multiple of $B$, so the
-supervised-update/outer-iteration count $S$ is:
-
-| $B$ | Sampled labeled occurrences per epoch | Outer iterations $S$ |
-|---:|---:|---:|
-| 16 | 22,800 | 1,425 |
-| 32 | 22,784 | 712 |
-| 64 | 22,784 | 356 |
-| 128 | 22,784 | 178 |
-| 256 | 22,784 | 89 |
-
-These are sampled occurrences, not distinct labeled images. In the HPO
-training split there are only 1,200 distinct labeled images, so the sampler
-revisits them across an epoch. Changing $B$ changes not only batch composition
-but also the number of outer iterations and, consequently, the number of graph
-batches consumed per epoch. That is $S$ model-optimizer steps in joint mode and
-$3S$ in alternating mode.
+`MPerClassSampler` rounds the epoch sample count down to a complete multiple
+of `B`. These are sampled occurrences, so an image may appear several times.
+Changing the batch size also changes the number of supervised iterations and
+the paired graph batches consumed per epoch. Joint mode performs one optimizer
+step per outer iteration; alternating mode performs three.
 
 ## 7. Graph-Edge Batch Construction
 
@@ -1072,114 +1037,7 @@ iterations. The graph sampler is explicitly created with the same number of
 batches. The model therefore receives one optimizer update per outer iteration
 in joint mode and three in alternating mode.
 
-## 11. Exact CIFAR Experiment Numbers
-
-The associated experiment uses `dataset_protocol="cifar100_fine_class_disjoint"`.
-The protocol pools CIFAR-100's official splits, reserves 60 fine classes
-(36,000 images) for development, and holds out 40 fine classes for final test.
-With `cv_k=1` and `cv_mode="superclass_balanced_group_kfold"`, the HPO training
-run makes an 80/20 class holdout inside development:
-
-```text
-48 training fine classes * 600 images = 28,800 training images
-12 validation fine classes * 600      =  7,200 validation images
-```
-
-The outer scenario overwrites the base label settings with
-`class_subset_k_shot`, class fraction 1.0, and 25 labeled examples per selected
-class. During HPO this gives
-
-$$
-|P_L|=48\cdot25=1{,}200,
-\qquad
-|P_U|=28{,}800-1{,}200=27{,}600.
-$$
-
-Therefore:
-
-| `graph_on` | HPO graph nodes $N$ |
-|---|---:|
-| `all` | 28,800 |
-| `unlabeled` | 27,600 |
-
-`val_mode="match_train"` downsamples the validation evaluation set to match
-the 1,200-example labeled support size. After HPO, `final_test_after_hpo=true`
-trains the selected configuration on all 60 development classes. Its new
-support has $60\cdot25=1{,}500$ labeled images and 34,500 unlabeled images, so
-the final graph has either 36,000 or 34,500 nodes.
-
-The supplied HPO file runs 60 random-search trials per fixed outer
-loss/miner scenario and maximizes best validation MAP@R. Its spaces are:
-
-| Parameter | Search |
-|---|---|
-| Model learning rate $\eta$ | log-uniform $[10^{-7},10^{-5}]$ |
-| Proxy/classifier learning rate | log-uniform $[10^{-4},10^2]$ when the selected loss owns trainable proxy/class weights |
-| $\alpha$ (`supervised_weight`) | log-uniform $[0.1,2.0]$ |
-| $\lambda$ (`regularizer_weight`) | log-uniform $[10^{-3},10]$ |
-| $k$ (`n_neighbors`) | $\{3,6,10,15,25\}$ |
-| $b_G$ (`graph_batch_size`) | $\{16,32,64,128\}$ edges |
-| Laplacian | symmetric-normalized only |
-| Graph node pool | `all` or `unlabeled` |
-| Supervised batch | `16:8`, `32:8`, `64:8`, `128:8`, or `256:8` |
-
-The following relevant base settings are fixed rather than searched:
-
-| Setting | Fixed value |
-|---|---|
-| Warmup | 5 labeled-only epochs |
-| Graph refresh | every epoch after warmup |
-| Graph reduction | global binary-edge mean |
-| Neighbor-search L2 normalization | enabled |
-| Graph-extraction batch | 32 nodes |
-| Maximum unlabeled samples | no cap |
-| Pseudo-labeling | none |
-
-## 12. What Is and Is Not Faithful to Original LRML
-
-The following parts are mathematically faithful adaptations:
-
-- the binary symmetric-union kNN adjacency;
-- the unnormalized and symmetric-normalized Laplacian edge energies;
-- the identity between the edge sum and the Laplacian trace;
-- inclusion of unlabeled examples through label-free graph geometry; and
-- direct uniform edge sampling with inverse-inclusion scaling.
-
-The following parts make this a deep LRML variant rather than a reproduction
-of the original solver:
-
-- $U^\top x$ is replaced by nonlinear $f_\theta(x)$;
-- the original similar/dissimilar squared-distance terms are replaced by a
-  configurable supervised DML loss;
-- the graph is normally rebuilt from learned embeddings every epoch instead of
-  remaining fixed in the original input feature space;
-- the implementation optimizes with stochastic gradient descent/Adam rather
-  than SDP or matrix inversion;
-- there is no explicit $A$, PSD constraint, log-determinant constraint, or
-  closed-form inverse;
-- `reduction="mean"` optimizes trace divided by total graph weight, not the
-  paper's raw trace;
-- supervised and graph losses are combined in the same optimizer step by
-  default; `contrastive_update_mode="alternating"` provides three ordered,
-  batched updates for the Weston branch, but not the paper's one-example/one-pair
-  stochastic granularity; and
-- `contrastive` can add a repulsive term (section 8.1) that belongs to
-  Weston et al. (2012) rather than to LRML. It is off by default, so the
-  configured default remains the plain Laplacian regularizer.
-
-The graph energy by itself has a constant-embedding collapse solution. L2
-normalization prevents collapse to the zero vector but does not prevent every
-sample from becoming the same unit vector. In the supplied search space,
-$\alpha>0$, so the supervised loss is the main anti-collapse force; the optional
-random-pair repulsion of section 8.1 is a second one that acts on the
-unlabeled term itself.
-
-One implementation boundary is also worth recording: `IndexFlatIP` relies on
-the shared forward path returning normalized vectors. Under that contract,
-inner-product and Euclidean rankings are equivalent. Alternative models must
-retain that contract for the graph to keep its Euclidean-neighbor interpretation.
-
-## 13. Source Map and Verification
+## 11. Source Map
 
 - [`training/semi_supervised.py`](../training/semi_supervised.py): `LRMLRegularizer`, sampled
   energy scaling, graph lifecycle, and combined loss.
@@ -1195,15 +1053,6 @@ retain that contract for the graph to keep its Euclidean-neighbor interpretation
   output L2 normalization.
 - [`utils/`](../utils): supervised M-per-class loader and retrieval
   evaluation.
-- [`tests/test_lrml.py`](../tests/test_lrml.py): graph rebuild cadence, edge
-  coverage, endpoint deduplication, independent batch sizes, trace estimator,
-  absence of incidental edges, and empirical joint-versus-alternating optimizer
-  step/forward ordering.
-- [`tests/test_lrml_manifold_preserving.py`](../tests/test_lrml_manifold_preserving.py):
-  paper-mode defaults, density/Gaussian weights, and equivalence to Equation (7).
-- [`docs/deep_lrml_sampling.md`](deep_lrml_sampling.md): shorter design note
-  focused specifically on the independent graph-edge batch contract.
-
 Primary reference:
 
 - Steven C. H. Hoi, Wei Liu, and Shih-Fu Chang. 2010.
