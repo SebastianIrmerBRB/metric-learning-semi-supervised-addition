@@ -3,7 +3,7 @@
 Reads only the views of the data bundle and writes, into --output (default ../datenansicht/diagnostics next to daten/):
   geometry.csv, pseudo_labels.csv, threshold_sweeps.csv, neighborhood.csv, graph_interventions.csv   one row per setting
   README.md     the same results as short tables, readable directly on GitHub
-  tables.json   the same tables for the Diagnostics page of the data viewer
+  tables.json   the same tables for the Diagnostics page of the data viewer, plus the geometry tables for each loss on its own
 
 Sources per measurement, as in the thesis:
   MAP@R of the Phase-2 runs                                 cv_summary.json (phase2/variants.csv, phase2_k8/variants.csv)
@@ -221,25 +221,34 @@ def zahl(x, d=1):
     return "–" if x is None or pd.isna(x) else f"{x:.{d}f}"
 
 
+def geozeile(b, mn, x):
+    """One row of the geometry tables: means over the rows of x (several losses, or one loss whose values are already fold means)."""
+    return [b, mn, zahl(x.test_map.mean()), zahl(x.pi_ratio.mean(), 2), zahl(x.pi_intra.mean(), 2), zahl(x.pi_inter.mean(), 2),
+            zahl(x.rho.mean(), 2), zahl(x.pi_intra_labeled.mean(), 2), zahl(x.pi_intra_unlabeled.mean(), 2),
+            zahl(x.prototype_accuracy.mean()), zahl(x.selected_epoch.mean(), 0)]
+
+
 def seite(G, H, N, P, S, I, bad):
     sections = []
-    # Geometry
+    # Geometry: means over the losses (README and viewer), and each loss on its own (viewer, key "losses")
     tabellen = []
     for ds, name in DS.items():
-        rows = []
+        rows, je_loss = [], {ln: [] for ln in LOSSES.values()}
         for k in sorted(G[G.dataset == ds].budget.unique()):
             h = H[(H.dataset == ds) & (H.budget == k)].iloc[0]
-            rows.append([budget(ds, k), "untrained head", zahl(h.test_map), zahl(h.pi_ratio, 2), zahl(h.pi_intra, 2), zahl(h.pi_inter, 2), zahl(h.rho, 2),
-                         zahl(h.pi_intra_labeled, 2), zahl(h.pi_intra_unlabeled, 2), zahl(h.prototype_accuracy), "–"])
+            kopf = [budget(ds, k), "untrained head", zahl(h.test_map), zahl(h.pi_ratio, 2), zahl(h.pi_intra, 2), zahl(h.pi_inter, 2), zahl(h.rho, 2),
+                    zahl(h.pi_intra_labeled, 2), zahl(h.pi_intra_unlabeled, 2), zahl(h.prototype_accuracy), "–"]
+            rows.append(kopf)
+            for z in je_loss.values():
+                z.append(kopf)  # the untrained head is the same for every loss
             g = G[(G.dataset == ds) & (G.budget == k)]
             gemeinsam = set.intersection(*[set(x.loss) for _, x in g.groupby("method")])
             for m, mn in METHODS.items():
-                x = g[(g.method == m) & g.loss.isin(gemeinsam)]
-                rows.append([budget(ds, k), mn, zahl(x.test_map.mean()), zahl(x.pi_ratio.mean(), 2), zahl(x.pi_intra.mean(), 2), zahl(x.pi_inter.mean(), 2),
-                             zahl(x.rho.mean(), 2), zahl(x.pi_intra_labeled.mean(), 2), zahl(x.pi_intra_unlabeled.mean(), 2),
-                             zahl(x.prototype_accuracy.mean()), zahl(x.selected_epoch.mean(), 0)])
+                rows.append(geozeile(budget(ds, k), mn, g[(g.method == m) & g.loss.isin(gemeinsam)]))
+                for l, ln in LOSSES.items():
+                    je_loss[ln].append(geozeile(budget(ds, k), mn, g[(g.method == m) & (g.loss == l)]))
         tabellen.append(dict(title=name, columns=["Budget", "Method", "Test MAP@R %", "π ratio", "π intra", "π inter", "ρ", "π intra labeled",
-                                                  "π intra unlabeled", "Prototype acc. %", "Epoch"], rows=rows))
+                                                  "π intra unlabeled", "Prototype acc. %", "Epoch"], rows=rows, losses=je_loss))
     sections.append(dict(
         id="geometry", title="Geometry of the embedding space", file="geometry.csv",
         intro=("Section 5.7 of the thesis. Means over the five losses of four fold models at the epoch selected by validation, whole training pool. "

@@ -197,28 +197,33 @@ const diagCell = c => {
   const m = String(c).match(/^\*\*(.*)\*\*$/);
   return m ? h("strong", {}, m[1]) : String(c);
 };
-function diagTable(t) {
+function diagTable(t, hint) {
   const cols = t.columns.map((name, i) => [name, t.rows.every(r => isNumeric(r[i]))]);
   const rows = t.rows.map((r, n) => ({
     cells: r.map((c, i) => h("span", { class: i === 0 && n && t.rows[n - 1][0] === c ? "muted" : null, style: { whiteSpace: "nowrap" } }, diagCell(c))),
   }));
-  return card(t.title, `${t.rows.length} rows`, smallTable(cols, rows), t.note ? h("p", { class: "foot" }, t.note) : null);
+  return card(t.title, hint ? `${t.rows.length} rows · ${hint}` : `${t.rows.length} rows`, smallTable(cols, rows), t.note ? h("p", { class: "foot" }, t.note) : null);
 }
 async function diagnostics(p) {
   const doc = await json(DIAG + "tables.json");
   const sec = doc.sections.find(s => s.id === p.part) || doc.sections[0];
   const titles = sec.tables.map(t => t.title);
   const chosen = sec.tables.find(t => t.title === p.t) || sec.tables[0];
+  // Geometry tables also carry each loss on its own (tables.json, key "losses")
+  const loss = chosen.losses && chosen.losses[p.loss] ? p.loss : "";
   const filters = h("div", { class: "filters" },
-    seg("Part", doc.sections.map(s => [s.id, s.title]), sec.id, v => update({ part: v, t: null })),
-    seg("Table", titles.map(t => [t, t]), chosen.title, v => update({ t: v })));
+    seg("Part", doc.sections.map(s => [s.id, s.title]), sec.id, v => update({ part: v, t: null, loss: null })),
+    seg("Table", titles.map(t => [t, t]), chosen.title, v => update({ t: v })),
+    chosen.losses ? seg("Loss", [["", "Mean"], ...Object.keys(chosen.losses).map(l => [l, l])], loss, v => update({ loss: v })) : null);
+  const shown = loss ? { ...chosen, title: `${chosen.title} · ${loss}`, rows: chosen.losses[loss] } : chosen;
+  const hint = !chosen.losses ? null : loss ? `${loss} only, means over four folds` : "means over the losses";
   const files = sec.file.split(", ").map(f => h("a", { href: DIAG + f, download: f, style: { marginRight: "1em" } }, f));
   return [
     head(doc.title, "Condensed view of the diagnostic measurements behind Chapters 5 and 6 of the thesis, per dataset, budget and loss."),
     filters,
     h("div", { class: "stack" },
       card(sec.title, null, h("p", {}, sec.intro), h("p", { class: "foot" }, "Download: ", files)),
-      diagTable(chosen),
+      diagTable(shown, hint),
       card("Keep in mind", null, h("ul", {}, doc.notes.map(n => h("li", {}, n))),
         h("p", { class: "foot" }, "ÜBl. is the supervised baseline, LP is label propagation."))),
   ];
