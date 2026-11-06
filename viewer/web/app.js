@@ -287,6 +287,93 @@ function phase1Index(rows, bcol) {
   };
   return { get, gain };
 }
+/* Mittel über fünf Seeds und fünf Verluste: die Werte, die die Arbeit berichtet */
+const ACROSS_SCOPES = [["mean", "Mean (single model)"], ["concat", "Concat (ensemble)"]];
+const THESIS_TABLES = {
+  cars: "Figure 5.1 and Table B.6, the negative counts are Table B.8", cub: "Figure 5.1 and Table B.6, the negative counts are Table B.8",
+  inshop: "Figure 5.1 and Table B.6, the negative counts are Table B.8", semiinat: "Figure 5.1 and Table B.6, the negative counts are Table B.8",
+  inshop10: "Figure 5.3 and Table B.7",
+};
+const acrossValues = (P, mk, b, scope, metric, gain) => LOSSES.map(([lk, ln]) => ({
+  lk, ln, seeds: gain ? P.gain(`${mk}_${lk}`, b, scope, metric).map(x => [x.seed, x.d])
+    : P.get(`${mk}_${lk}`, b, scope).filter(o => o[metric] != null).map(o => [o.seed, pct(o[metric])]),
+}));
+function across(P, mk, b, scope, metric, gain) {
+  const v = acrossValues(P, mk, b, scope, metric, gain).flatMap(l => l.seeds.map(x => x[1]));
+  return { m: mean(v), s: sd(v), n: v.length, neg: v.filter(x => x < 0).length };
+}
+// Eine Nachkommastelle wie in der Arbeit; was auf null rundet, trägt kein Vorzeichen
+const oneDecimal = (x, gain) => (x == null ? "–" : !gain ? fix(x, 1) : +x.toFixed(1) === 0 ? "0.0" : signed(x, 1));
+function acrossCard(P, ds, view, budgets, metric, on) {
+  const gain = view === "gain", ssl = METHODS.filter(([mk]) => mk !== "sup");
+  const gainOf = (mk, b, scope) => across(P, mk, b, scope, metric, true);
+  const vmax = !gain ? 1 : Math.max(0.5, ...ACROSS_SCOPES.flatMap(([sc]) => ssl.flatMap(([mk]) => budgets.map(b => Math.abs(gainOf(mk, b, sc).m ?? 0)))));
+  // Fett wie in der Arbeit: über alle vier SSL-Verfahren, auch wenn einzelne ausgeblendet sind
+  const top = (b, scope) => Math.max(...ssl.map(([mk]) => +(gainOf(mk, b, scope).m ?? -Infinity).toFixed(1)));
+  const tbody = h("tbody", {});
+  for (const [scope, name] of ACROSS_SCOPES) {
+    tbody.append(h("tr", { class: "section" }, h("td", { colspan: budgets.length + 1 }, name)));
+    for (const [mk, mn] of on) {
+      const asGain = gain && mk !== "sup";
+      tbody.append(h("tr", {}, h("td", { class: "rowh" }, swatch(mcolor(mk)), mn), budgets.map(b => {
+        const x = across(P, mk, b, scope, metric, asGain), title = `${mn} · ${scope === "mean" ? "Mean" : "Concat"} · ${blabel(ds, b)}`;
+        if (!x.n) return h("td", {}, cellEl({ main: "–", kind: "empty" }));
+        const open = () => acrossDrawer(ds, mk, b, metric, asGain);
+        const unit = asGain ? " pp" : " %", three = v => (asGain ? signed(v, 3) : fix(v, 3));
+        const tipBuild = () => [tipTitle(title), tipRow(`Mean of ${x.n} ${asGain ? "differences" : "runs"}`, three(x.m) + unit), tipRow("SD", fix(x.s, 3) + " pp"),
+          ...acrossValues(P, mk, b, scope, metric, asGain).map(l => tipRow(l.ln, three(mean(l.seeds.map(v => v[1]))) + unit)), tipSub(`Click for all ${x.n} values.`)];
+        if (gain && mk === "sup") return h("td", {}, cellEl({ main: fix(x.m, 1), sub: "baseline", kind: "ref", onClick: open, tipBuild }));
+        const rounded = +x.m.toFixed(1), t = gain ? top(b, scope) : 0;
+        return h("td", {}, cellEl({ main: oneDecimal(x.m, gain), sub: x.s != null ? "± " + fix(x.s, 1) : null, n: gain ? `${x.neg}/${x.n} negative` : null,
+          bg: gain ? diverging(x.m / vmax) : null, best: gain && t > 0 && rounded === t, onClick: open, tipBuild }));
+      })));
+    }
+  }
+  const isMap = metric === "mean_average_precision_at_r";
+  return card(gain ? `Thesis values · gain over ÜBl. · ${MET[metric]}` : `Mean over seeds and losses · ${MET[metric]} [%]`,
+    (gain ? "arithmetic mean ± SD of the 25 paired differences (five seeds × five losses), in percentage points, rounded as in the thesis; ▲ bold: largest rounded gain per scope and budget over all four SSL methods, if positive"
+      : "arithmetic mean ± SD of the 25 runs (five seeds × five losses)"),
+    h("div", { class: "scrollx" }, h("table", { class: "matrix" },
+      h("thead", {}, h("tr", {}, h("th", { class: "rowh" }, "Method"), budgets.map(b => h("th", {}, blabel(ds, b))))), tbody)),
+    gain ? divLegend(+vmax.toFixed(1), "worse than ÜBl.", "better than ÜBl.") : null,
+    h("p", { class: "foot" }, gain && isMap ? `In the thesis these are ${THESIS_TABLES[ds]}. They average the per-loss values in the next table. Click a cell for all 25 differences.`
+      : gain ? "The thesis reports these gains for MAP@R. They average the per-loss values in the next table. Click a cell for all values."
+        : "They average the per-loss values in the next table. Click a cell for all values."));
+}
+async function acrossDrawer(ds, mk, b, metric, gain) {
+  const r = await R();
+  const bcol = ds === "inshop10" ? "budget_percent" : "k";
+  const P = phase1Index(r.objects().filter(o => o.dataset_key === ds && o[bcol] === b), bcol);
+  const fmt = gain ? signed : fix, unit = gain ? "pp" : "%";
+  const block = ([scope, name]) => {
+    const losses = acrossValues(P, mk, b, scope, metric, gain), maps = losses.map(l => new Map(l.seeds));
+    const seeds = uniq(losses.flatMap(l => l.seeds.map(x => x[0]))).sort((x, y) => x - y);
+    const x = across(P, mk, b, scope, metric, gain);
+    return h("section", {}, h("h3", {}, `${name} · ${MET[metric]} [${unit}]`),
+      kv([[`Mean of the ${x.n} values`, fmt(x.m, 3)], ["As printed", `${oneDecimal(x.m, gain)} ± ${fix(x.s, 1)}`], ["SD of the values", fix(x.s, 3)], ...(gain ? [["Negative differences", `${x.neg} of ${x.n}`]] : [])]),
+      smallTable([["Loss"], ...seeds.map(sd_ => [`Seed ${sd_}`, 1]), ["Mean", 1]], [
+        ...losses.map((l, i) => ({ cells: [a(l.ln, () => runDrawer(ds, `${mk}_${l.lk}`, b, metric)), ...seeds.map(sd_ => fmt(maps[i].get(sd_))), fmt(mean(l.seeds.map(v => v[1])))] })),
+        { cells: [h("strong", {}, "Mean"), ...seeds.map(sd_ => h("strong", {}, fmt(mean(maps.map(m => m.get(sd_)))))), h("strong", {}, fmt(x.m))] }]));
+  };
+  drawer(DS[ds], `${MNAME[mk]} · all five losses · ${blabel(ds, b)}`,
+    h("section", {}, h("p", {}, gain ? `Each value is a run of ${MNAME[mk]} minus the ÜBl. run with the same loss, budget, seed and scope (results.csv), in percentage points. The thesis reports their arithmetic mean.`
+      : `Each value is one run of ${MNAME[mk]} (results.csv). The summary is their arithmetic mean.`)),
+    ...ACROSS_SCOPES.map(block),
+    h("p", {}, a("Show these rows in results.csv", () => go("explore", { src: "file:results.csv", "f.dataset_key": "=" + ds, "f.method": mk + "_", ["f." + bcol]: "=" + b }))));
+}
+function methodToggles(on, shown) {
+  const set = next => update({ show: next.length === METHODS.length ? null : METHODS.filter(([mk]) => next.includes(mk)).map(([mk]) => mk).join(",") });
+  return h("div", { class: "field" }, h("span", {}, "Methods"),
+    h("div", { class: "seg", role: "group", "aria-label": "Methods shown" },
+      METHODS.map(([mk, mn]) => h("button", {
+        type: "button", "aria-pressed": String(shown(mk)), title: shown(mk) ? `Hide ${mn}` : `Show ${mn}`,
+        onclick: () => {
+          const now = on.map(([k]) => k), next = shown(mk) ? now.filter(k => k !== mk) : [...now, mk];
+          if (next.length) set(next);  // mindestens ein Verfahren bleibt sichtbar
+        },
+      }, swatch(mcolor(mk)), mn)),
+      h("button", { type: "button", "aria-pressed": String(on.length === METHODS.length), onclick: () => set(METHODS.map(([mk]) => mk)) }, "All")));
+}
 async function phase1(p) {
   const r = await R();
   const ds = DS[p.ds] ? p.ds : "cars", scope = p.scope === "concat" ? "concat" : "mean";
@@ -297,21 +384,25 @@ async function phase1(p) {
   const metrics = METRICS.filter(([m]) => rows.some(o => o[m] != null));
   const metric = metrics.some(([m]) => m === p.metric) ? p.metric : "mean_average_precision_at_r";
   const P = phase1Index(rows, bcol);
+  const picked = String(p.show || "").split(",").filter(m => METHODS.some(([mk]) => mk === m));
+  const on = picked.length ? METHODS.filter(([mk]) => picked.includes(mk)) : METHODS;
+  const shown = mk => on.some(([k]) => k === mk);
   const stat = (method, b) => {
     if (view === "gain") { const d = P.gain(method, b, scope, metric).map(x => x.d); return { m: mean(d), s: sd(d), n: d.length, pos: d.filter(x => x > 0).length, d }; }
     const v = P.get(method, b, scope).map(o => pct(o[metric])); return { m: mean(v), s: sd(v), n: v.length, v };
   };
   const sections = by === "method"
-    ? METHODS.map(([mk, mn]) => ({ title: mn, color: mcolor(mk), rows: LOSSES.map(([lk, ln]) => ({ label: ln, mk, lk })) }))
-    : LOSSES.map(([lk, ln]) => ({ title: ln, rows: METHODS.map(([mk, mn]) => ({ label: mn, color: mcolor(mk), mk, lk })) }));
+    ? on.map(([mk, mn]) => ({ title: mn, color: mcolor(mk), rows: LOSSES.map(([lk, ln]) => ({ label: ln, mk, lk })) }))
+    : LOSSES.map(([lk, ln]) => ({ title: ln, rows: on.map(([mk, mn]) => ({ label: mn, color: mcolor(mk), mk, lk })) }));
   const stats = new Map();
   for (const [mk] of METHODS) for (const [lk] of LOSSES) for (const b of budgets) stats.set(`${mk}_${lk}|${b}`, stat(`${mk}_${lk}`, b));
   // Hervorhebung je Verlust (bestes Verfahren) oder je Verfahren (bester Verlust), getrennt für jedes Budget
   const best = new Map();
   for (const b of budgets) {
-    const groups = bestBy === "loss" ? LOSSES.map(([lk]) => METHODS.filter(([mk]) => !(view === "gain" && mk === "sup")).map(([mk]) => `${mk}_${lk}`))
-      : METHODS.filter(([mk]) => !(view === "gain" && mk === "sup")).map(([mk]) => LOSSES.map(([lk]) => `${mk}_${lk}`));
+    const groups = bestBy === "loss" ? LOSSES.map(([lk]) => on.filter(([mk]) => !(view === "gain" && mk === "sup")).map(([mk]) => `${mk}_${lk}`))
+      : on.filter(([mk]) => !(view === "gain" && mk === "sup")).map(([mk]) => LOSSES.map(([lk]) => `${mk}_${lk}`));
     for (const g of groups) {
+      if (g.length < 2) continue;  // nur ein gezeigtes Verfahren: nichts zu vergleichen
       let bm = -Infinity, arg = null;
       for (const c of g) { const x = stats.get(`${c}|${b}`).m; if (x != null && x > bm) { bm = x; arg = c; } }
       if (arg) best.set(`${arg}|${b}`, true);
@@ -347,11 +438,11 @@ async function phase1(p) {
     }
   }
   const panels = LOSSES.map(([lk, ln]) => ({
-    title: ln, series: METHODS.filter(([mk]) => view === "abs" || mk !== "sup").map(([mk, mn]) => ({
+    title: ln, series: on.filter(([mk]) => view === "abs" || mk !== "sup").map(([mk, mn]) => ({
       name: mn, color: mcolor(mk), values: budgets.map(b => stats.get(`${mk}_${lk}|${b}`).m),
     })),
   }));
-  const legendItems = METHODS.filter(([mk]) => view === "abs" || mk !== "sup").map(([mk, mn]) => ({ name: mn, color: mcolor(mk) }));
+  const legendItems = on.filter(([mk]) => view === "abs" || mk !== "sup").map(([mk, mn]) => ({ name: mn, color: mcolor(mk) }));
   const xt = ds === "inshop10" ? "labeled classes (%)" : "labeled images per class (k)";
   return {
     nodes: [
@@ -362,11 +453,13 @@ async function phase1(p) {
         select("Metric", metrics, metric, v => update({ metric: v })),
         seg("Show", [["abs", "Values"], ["gain", "Gain over ÜBl."]], view, v => update({ view: v })),
         seg("Rows", [["method", "By method"], ["loss", "By loss"]], by, v => update({ by: v })),
-        seg("Bold", [["loss", "Best method per loss"], ["method", "Best loss per method"]], bestBy, v => update({ best: v }))),
+        seg("Bold", [["loss", "Best method per loss"], ["method", "Best loss per method"]], bestBy, v => update({ best: v })),
+        methodToggles(on, shown)),
       h("div", { class: "stack" },
-        card(view === "gain" ? `Paired gain over ÜBl. · ${MET[metric]} · ${scope === "mean" ? "Mean" : "Concat"}` : `${MET[metric]} · ${scope === "mean" ? "Mean" : "Concat"} [%]`,
+        acrossCard(P, ds, view, budgets, metric, on),
+        card(view === "gain" ? `Per loss · paired gain over ÜBl. · ${MET[metric]} · ${scope === "mean" ? "Mean" : "Concat"}` : `Per loss · ${MET[metric]} · ${scope === "mean" ? "Mean" : "Concat"} [%]`,
           (view === "gain" ? "mean ± SD of the five seed-wise differences to ÜBl. with the same loss, budget and seed" : "mean ± sample SD over five seeds")
-            + (bestBy === "loss" ? "; ▲ bold: best method for this loss and budget" : "; ▲ bold: best loss for this method and budget"),
+            + (bestBy === "loss" ? `; ▲ bold: best ${on.length < METHODS.length ? "shown " : ""}method for this loss and budget` : "; ▲ bold: best loss for this method and budget"),
           h("div", { class: "scrollx" }, h("table", { class: "matrix" }, thead, tbody)),
           view === "gain" ? divLegend(dmax, "worse than ÜBl.", "better than ÜBl.") : null),
         card(view === "gain" ? "Gain by budget" : `${MET[metric]} by budget`, "one panel per loss, shared y-axis; hover for every method at a budget",
