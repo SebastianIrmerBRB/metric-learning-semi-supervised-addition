@@ -175,7 +175,7 @@ function quantileAbs(vals, q = 0.95) {
   return v.length ? v[Math.min(v.length - 1, Math.floor(q * (v.length - 1)))] : 1;
 }
 function multiples(panels, opts) {
-  const all = panels.flatMap(pn => pn.series.flatMap(se => se.values)).filter(v => v != null);
+  const all = panels.flatMap(pn => [...pn.series.flatMap(se => se.values), ...(pn.marks || []).map(k => k.y)]).filter(v => v != null);
   if (!all.length) return h("div", { class: "empty-note" }, "No values for this selection.");
   let lo = Math.min(...all), hi = Math.max(...all);
   if (opts.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
@@ -510,7 +510,47 @@ async function runDrawer(ds, method, b, metric = "mean_average_precision_at_r") 
 
 /* ---------- Phase 2 ---------- */
 const P2T = [["phase2|Cars196", "Cars196 · k = 16"], ["phase2|DeepFashionInShop", "In-Shop · k = 2"], ["phase2_k8|Cars196", "Cars196 · k = 8"]];
-const tunedTable = () => once("tuned", () => csv(zip("tables/phase2/tuned.csv")).then(t => t.objects()).catch(() => []));
+const LOSSKEY = { ArcFaceLoss: "arc", CircleLoss: "cir", MultiSimilarityLoss: "ms", NTXentLoss: "nt", ProxyAnchorLoss: "prx" };
+const HPO_BUDGET = { Cars196: "k = 16", DeepFashionInShop: "k = 2" };
+// Bester Trial jeder Phase-1-Studie: "Datensatz|Methode" -> Parameter -> Verlust -> Wert. Ohne die Serie mit gelabelten Klassen (class_subset_label_*)
+const hpoChosen = () => once("hpoChosen", () => csv(zip("tables/hpo_sensitivitaet/best_params.csv")).then(t => {
+  const m = new Map();
+  for (const o of t.objects()) {
+    if (o.phase !== 1 || !o.study_id.includes("k_shot_label_1_k_")) continue;
+    const key = `${o.dataset}|${o.method}`;
+    if (!m.has(key)) m.set(key, new Map());
+    if (!m.get(key).has(o.short)) m.get(key).set(o.short, {});
+    m.get(key).get(o.short)[LOSSKEY[o.loss]] = o.best_raw;
+  }
+  return m;
+}).catch(() => new Map()));
+const fmtChosen = v => (v == null ? "–" : Number.isFinite(+v) ? fmtNum(+v) : v);
+const chosenLine = vals => tipSub("Chosen by HPO: " + LOSSES.map(([lk, ln]) => `${ln} ${fmtChosen(vals[lk])}`).join(", "));
+// Rauten: x = Wert der HPO, y = regulärer Lauf in der gewählten Ansicht. result(Verlust) liefert [y, Wert in %]
+const chosenMarks = (vals, result) => LOSSES.flatMap(([lk, ln]) => {
+  const x = vals[lk] == null ? NaN : +vals[lk], [y, value] = result(lk);
+  return Number.isFinite(x) && y != null && value != null ? [{ x, y, value, name: ln, color: lcolor(lk) }] : [];
+});
+const markTip = hit => [tipTitle("Chosen by HPO → regular run"),
+  ...hit.map(k => tipRow(k.name, `${fmtNum(k.x)} → ${fix(k.value)} %`, h("span", { class: "linekey", style: { background: k.color } })))];
+const logAxis = (xs, marks) => { const all = [...xs, ...marks.map(k => k.x)], lo = Math.min(...all); return lo > 0 && Math.max(...all) / lo >= 8; };
+function lossLegend() {
+  const el = legend(LOSSES.map(([lk, ln]) => ({ name: ln, color: lcolor(lk) })));
+  el.append(h("span", { class: "item" }, h("span", { class: "diamondkey" }), "value chosen by HPO, at the result of the regular run"));
+  return el;
+}
+// Tabelle über den Diagrammen: gewählte Werte je Verlust neben den Werten des Sweeps, darunter die übrigen Parameter der Suche
+function chosenBlock(params, swept, note) {
+  if (!params) return h("p", { class: "ink2" }, "The values chosen by HPO could not be loaded.");
+  const name = n => h("span", { class: "mono" }, n);
+  const lossCols = () => LOSSES.map(([lk, ln]) => [h("span", {}, swatch(lcolor(lk)), ln), 1]);
+  const values = n => LOSSES.map(([lk]) => fmtChosen(params.get(n)?.[lk]));
+  const rest = [...params.keys()].filter(n => !swept.has(n)).sort((x, y) => /^(loss|miner):/.test(x) - /^(loss|miner):/.test(y) || x.localeCompare(y));
+  return h("div", { class: "chosen" }, h("h4", {}, "Chosen by HPO"), h("p", { class: "note" }, note),
+    smallTable([["Parameter"], ...lossCols(), ["Swept values"]], [...swept].map(([n, xs]) => ({ cells: [name(n), ...values(n), xs.map(fmtNum).join(", ")] }))),
+    rest.length ? h("details", {}, h("summary", {}, `${rest.length} more parameters chosen by HPO and not swept`),
+      smallTable([["Parameter"], ...lossCols()], rest.map(n => ({ cells: [name(n), ...values(n)] })))) : null);
+}
 async function phase2(p) {
   const ab = await A();
   const tab = ["variants", "sweeps", "slade", "k4"].includes(p.tab) ? p.tab : "variants";
@@ -519,14 +559,14 @@ async function phase2(p) {
   const scopeSeg = seg("Scope", [["mean", "Mean"], ["concat", "Concat"]], scope, v => update({ scope: v }));
   const intro = head("Phase 2", "Ablations on Cars196 (k = 16 and k = 8) and In-Shop (k = 2), seed 2, all five losses (ablations.csv). Values in %, differences in percentage points.");
   if (tab === "k4") return [intro, h("div", { class: "filters" }, tabs), ...k4View(ab, p)];
-  if (tab === "slade") return [intro, ...sladeView(ab, p, tabs, scopeSeg, scope)];
+  if (tab === "slade") return [intro, ...await sladeView(ab, p, tabs, scopeSeg, scope)];
   const tsel = P2T.some(([k]) => k === p.t) ? p.t : P2T[0][0], [tk, dsn] = tsel.split("|");
   const view = ["base", "sup", "abs"].includes(p.view) ? p.view : "base";
   const filters = h("div", { class: "filters" }, tabs, seg("Table", P2T, tsel, v => update({ t: v })), scopeSeg,
     seg("Show", [["base", "Δ regular run"], ["sup", "Δ ÜBl."], ["abs", "Values"]], view, v => update({ view: v })));
   const rows = ab.objects().filter(o => o.table_key === tk && o.dataset === dsn);
   const val = o => (o == null ? null : view === "abs" ? o[`${scope}_value`] : view === "base" ? o[`${scope}_diff_baseline`] : o[`${scope}_diff_supervised`]);
-  if (tab === "sweeps") return [intro, filters, await sweepsView(rows.filter(o => o.group === "Sweep"), rows, dsn, val, view, scope)];
+  if (tab === "sweeps") return [intro, filters, await sweepsView(rows.filter(o => o.group === "Sweep"), rows, dsn, tk, val, view, scope)];
   const vrows = rows.filter(o => o.group && o.group !== "Sweep");
   const methods = ["lp", "lrml", "hoffer", "slade", "sup"].filter(m => vrows.some(o => o.method === m));
   const shown = vrows.map(val).filter(v => v != null);
@@ -565,8 +605,8 @@ async function phase2(p) {
     h("p", { class: "foot" }, "Each cell is one run with seed 2. The 2×2 decomposition separates the hyperparameters (SSL or ÜBl.) from the use of unlabeled images. Oracle variants use labels that are hidden from the method.")))];
 }
 const parseSweep = v => { const m = String(v || "").match(/^(.*?)_(-?\d+(?:p\d+)?)$/); return m ? [m[1], +m[2].replace("p", ".")] : null; };
-async function sweepsView(rows, all, dsn, val, view, scope) {
-  const tuned = await tunedTable();
+async function sweepsView(rows, all, dsn, tk, val, view, scope) {
+  const chosen = await hpoChosen();
   const regular = (m, l) => all.find(o => o.method === m && o.loss === l && o.cell === "ssl_hp/with_data");
   const byMethod = new Map();
   for (const o of rows) {
@@ -579,34 +619,38 @@ async function sweepsView(rows, all, dsn, val, view, scope) {
   }
   const out = [];
   for (const [m, params] of byMethod) {
+    const picks = chosen.get(`${dsn}|${m}`), swept = new Map();
     const panels = [...params].map(([param, list]) => {
-      const xs = uniq(list.map(o => o.x)).sort((x, y) => x - y);
+      const xs = uniq(list.map(o => o.x)).sort((x, y) => x - y), vals = picks?.get(param) || {};
+      swept.set(param, xs);
+      const marks = chosenMarks(vals, lk => { const o = regular(m, lk); return [view === "base" ? 0 : val(o), o?.[`${scope}_value`]]; });
       return {
-        title: param, note: `${xs.length} values`, xs, log: xs[0] > 0 && xs[xs.length - 1] / xs[0] >= 8,
+        title: param, note: xs.length === 1 ? "1 value" : `${xs.length} values`, xs, marks, marktip: markTip, log: logAxis(xs, marks),
         series: LOSSES.map(([lk, ln]) => ({ name: ln, color: lcolor(lk), values: xs.map(x => val(list.find(o => o.loss === lk && o.x === x))) })),
-        extra: i => {
-          const tv = tuned.filter(t => t.dataset === dsn && normM(t.method) === normM(m) && t.param === param);
-          return [tipSub(`Phase-1 value: ${tv.map(t => `${LNAME[t.loss]} ${fmtNum(t.value)}`).join(", ") || "–"}`),
-            view === "abs" ? tipSub("Regular run: " + LOSSES.map(([lk, ln]) => `${ln} ${fix(regular(m, lk)?.[`${scope}_value`])}`).join(", ")) : null];
-        },
+        extra: () => [chosenLine(vals),
+          view === "abs" ? tipSub("Regular run: " + LOSSES.map(([lk, ln]) => `${ln} ${fix(regular(m, lk)?.[`${scope}_value`])}`).join(", ")) : null],
       };
     });
     out.push(card(`${MNAME[m]} sweeps`, view === "abs" ? "values in %" : "difference in pp; 0 = regular run (Phase-1 value of the parameter)",
-      legend(LOSSES.map(([lk, ln]) => ({ name: ln, color: lcolor(lk) }))),
+      chosenBlock(picks, swept, `Best trial of each Phase-1 study, tuned at ${HPO_BUDGET[dsn]}${tk === "phase2_k8" ? "; the k = 8 runs reuse these values" : ""}.`),
+      lossLegend(),
       multiples(panels, { zero: view !== "abs", xlabel: x => fmtNum(x), tipfmt: v => (view === "abs" ? fix(v) + " %" : signed(v) + " pp"), yfmt: v => fmtNum(v) })));
   }
   return h("div", { class: "stack" }, out.length ? out : [card("No sweeps", null, h("p", { class: "ink2" }, "This table has no sweep variants."))]);
 }
-function sladeView(ab, p, tabs, scopeSeg, scope) {
+async function sladeView(ab, p, tabs, scopeSeg, scope) {
   const dsn = p.sds === "DeepFashionInShop" ? "DeepFashionInShop" : "Cars196";
   const view = p.view === "abs" ? "abs" : "diff";
   const rows = ab.objects().filter(o => o.table_key === "slade_sweeps" && o.dataset === dsn);
   const params = uniq(rows.map(o => o.param));
+  const picks = (await hpoChosen()).get(`${dsn}|slade`), swept = new Map();
   const panels = params.map(param => {
     const list = rows.filter(o => o.param === param), xs = uniq(list.map(o => o.value)).sort((x, y) => x - y);
-    const pick = (lk, x) => list.find(o => o.loss === lk && o.value === x);
+    const pick = (lk, x) => list.find(o => o.loss === lk && o.value === x), vals = picks?.get(param) || {};
+    swept.set(param, xs);
+    const marks = chosenMarks(vals, lk => { const reg = list.find(o => o.loss === lk)?.[`regular_${scope}`]; return [view === "abs" ? reg : 0, reg]; });
     return {
-      title: param, xs, log: xs[0] > 0 && xs[xs.length - 1] / xs[0] >= 8,
+      title: param, xs, marks, marktip: markTip, log: logAxis(xs, marks),
       series: LOSSES.map(([lk, ln]) => ({
         name: ln, color: lcolor(lk),
         values: xs.map(x => { const o = pick(lk, x); return o ? (view === "abs" ? o[`${scope}_value`] : o[`diff_${scope}`]) : null; }),
@@ -615,7 +659,7 @@ function sladeView(ab, p, tabs, scopeSeg, scope) {
       })),
       extra: i => {
         const os = LOSSES.map(([lk]) => pick(lk, xs[i])).filter(Boolean);
-        return [tipSub("Threshold: " + os.map(o => `${LNAME[o.loss]} ${fix(o[`threshold_${scope}`])}`).join(", ") + " pp"),
+        return [chosenLine(vals), tipSub("Threshold: " + os.map(o => `${LNAME[o.loss]} ${fix(o[`threshold_${scope}`])}`).join(", ") + " pp"),
           os.some(o => String(o.is_tuned) === "True") ? tipSub("Large marker: the Phase-1 value of this parameter") : null];
       },
     };
@@ -623,9 +667,10 @@ function sladeView(ab, p, tabs, scopeSeg, scope) {
   return [h("div", { class: "filters" }, tabs, seg("Dataset", [["Cars196", "Cars196 · k = 16"], ["DeepFashionInShop", "In-Shop · k = 2"]], dsn, v => update({ sds: v })), scopeSeg,
     seg("Show", [["diff", "Δ regular run"], ["abs", "Values"]], view, v => update({ view: v }))),
   h("div", { class: "stack" }, card(`SLADE sweeps · ${dsn === "Cars196" ? "Cars196" : "In-Shop"}`, `${rows.length} runs; one parameter per panel, the others at their Phase-1 values`,
-    legend(LOSSES.map(([lk, ln]) => ({ name: ln, color: lcolor(lk) }))),
+    chosenBlock(picks, swept, `Best trial of each Phase-1 study, tuned at ${HPO_BUDGET[dsn]}.`),
+    lossLegend(),
     multiples(panels, { zero: view !== "abs", xlabel: x => fmtNum(x), tipfmt: v => (view === "abs" ? fix(v) + " %" : signed(v) + " pp"), yfmt: v => fmtNum(v) }),
-    h("p", { class: "foot" }, "Filled markers: the difference exceeds the seed-noise threshold of that loss (threshold_mean / threshold_concat). Hollow markers: within the threshold. Large markers: the value used in Phase 1."),
+    h("p", { class: "foot" }, "Filled markers: the difference exceeds the seed-noise threshold of that loss (threshold_mean / threshold_concat). Hollow markers: within the threshold. Large markers: sweep values equal to the value chosen by HPO."),
     h("p", {}, a("Open as table", () => go("explore", { src: "file:ablations.csv", "f.table_key": "=slade_sweeps", "f.dataset": "=" + dsn })))))];
 }
 function k4View(ab, p) {

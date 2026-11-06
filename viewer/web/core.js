@@ -458,12 +458,14 @@ export class VirtualTable {
 }
 
 /* ---------- Liniendiagramm ---------- */
-// opts: xs (Zahlen), xlabel(x), log, series [{name, color, values, hollow?: [bool], ring?: [bool]}], yfmt, ydomain, zero, refs [{y, label}], height, ytitle, xtitle, extra(i) -> tooltip rows
+// opts: xs (Zahlen), xlabel(x), log, series [{name, color, values, hollow?: [bool], ring?: [bool]}], yfmt, ydomain, zero, refs [{y, label}], height, ytitle, xtitle, extra(i) -> tooltip rows, marks [{x, y, color}] (Rauten), marktip(getroffene marks) -> tooltip rows
 export function lineChart(opts) {
   const W = opts.width || 320, H = opts.height || 220, m = { l: 44, r: 12, t: 10, b: opts.xtitle ? 38 : 26 };
-  const xs = opts.xs, n = xs.length;
+  const xs = opts.xs;
   const xv = opts.categorical ? xs.map((_, i) => i) : opts.log ? xs.map(Math.log) : xs;
-  const x0 = Math.min(...xv), x1 = Math.max(...xv);
+  // Rauten (opts.marks: x, y, color) liegen meist zwischen den Rasterwerten, die Achse reicht bis zu ihnen
+  const marks = opts.marks || [], xm = marks.map(k => (opts.log ? Math.log(k.x) : k.x));
+  const x0 = Math.min(...xv, ...xm), x1 = Math.max(...xv, ...xm);
   const X = v => m.l + (x1 === x0 ? (W - m.l - m.r) / 2 : ((v - x0) / (x1 - x0)) * (W - m.l - m.r));
   let [y0, y1] = opts.ydomain;
   const step = niceStep(y1 - y0, 4);
@@ -486,10 +488,13 @@ export function lineChart(opts) {
     if (r.label) svg.append(s("text", { x: W - m.r, y: Y(r.y) - 4, "text-anchor": "end" }, r.label));
   }
   // Achsenbeschriftung ohne Überlappung: zu nahe Marken entfallen, die letzte bleibt immer
+  const ticks = xs.map((x, i) => [x, xv[i]]);
+  for (const v of [x0, x1]) if (xm.includes(v) && !xv.includes(v)) ticks.push([marks[xm.indexOf(v)].x, v]);
+  ticks.sort((p, q) => p[1] - q[1]);
   let lastX = -Infinity, lastEl = null;
-  xs.forEach((x, i) => {
-    const px = X(xv[i]), close = px - lastX < 22;
-    if (close && i < n - 1) return;
+  ticks.forEach(([x, v], i) => {
+    const px = X(v), close = px - lastX < 22;
+    if (close && i < ticks.length - 1) return;
     if (close && lastEl) lastEl.remove();
     lastEl = s("text", { x: px, y: H - m.b + 15, "text-anchor": "middle", class: "num" }, opts.xlabel ? opts.xlabel(x) : fmtNum(x));
     svg.append(lastEl); lastX = px;
@@ -506,19 +511,29 @@ export function lineChart(opts) {
       svg.append(s("circle", { class: hollow ? "hollow" : "dot", cx: X(xv[i]), cy: Y(v), r: se.ring && se.ring[i] ? 6 : 4, fill: hollow ? null : se.color, stroke: hollow ? se.color : null }));
     });
   }
+  marks.forEach((k, i) => {
+    const px = X(xm[i]), py = Y(k.y), r = 6;
+    svg.append(s("path", { class: "mark", fill: k.color, d: `M${px} ${py - r}L${px + r} ${py}L${px} ${py + r}L${px - r} ${py}Z` }));
+  });
   const hair = s("line", { class: "hair", y1: m.t, y2: H - m.b, visibility: "hidden" });
   const over = s("rect", { x: m.l - 10, y: 0, width: W - m.l - m.r + 20, height: H, fill: "transparent" });
   svg.append(hair, over);
-  const nearest = ev => {
+  const pointer = ev => {
     const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY;
-    const q = p.matrixTransform(svg.getScreenCTM().inverse());
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  };
+  const nearest = q => {
     let best = 0, bd = Infinity;
     xv.forEach((v, i) => { const dd = Math.abs(X(v) - q.x); if (dd < bd) { bd = dd; best = i; } });
     return best;
   };
   over.addEventListener("pointermove", ev => {
-    const i = nearest(ev);
-    hair.setAttribute("x1", X(xv[i])); hair.setAttribute("x2", X(xv[i])); hair.setAttribute("visibility", "visible");
+    const q = pointer(ev), i = nearest(q);
+    // Über einer Raute deren Werte statt der ganzen Spalte
+    const hit = opts.marktip ? marks.filter((k, j) => Math.hypot(X(xm[j]) - q.x, Y(k.y) - q.y) <= 9) : [];
+    const hx = hit.length ? X(xm[marks.indexOf(hit[0])]) : X(xv[i]);
+    hair.setAttribute("x1", hx); hair.setAttribute("x2", hx); hair.setAttribute("visibility", "visible");
+    if (hit.length) { tip(ev, opts.marktip(hit)); return; }
     const rows = opts.series.map(se => [se, se.values[i]]).filter(([, v]) => v != null).sort((a, b) => b[1] - a[1])
       .map(([se, v]) => tipRow(se.name, (opts.tipfmt || yfmt)(v), h("span", { class: "linekey", style: { background: se.color } })));
     tip(ev, tipTitle(opts.xlabel ? opts.xlabel(xs[i]) : fmtNum(xs[i])), rows, opts.extra ? opts.extra(i) : null);
