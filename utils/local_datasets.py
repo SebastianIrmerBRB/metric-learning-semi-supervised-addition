@@ -6894,6 +6894,10 @@ class Cars196(_DinoSizedImageDownloadMixin, _Cars196):
     upstream class already downloaded is ready as it is.
     """
 
+    # Frozen-feature cache keys hash the dataset class. This class loads the
+    # same paths and labels as the upstream one, so it keeps the upstream
+    # identity and every Cars196 cache written before it still matches.
+    CACHE_TYPE_IDENTITY = (_Cars196.__module__, _Cars196.__qualname__)
     ARCHIVE_NAME = "stanford-car-dataset-by-classes-folder.zip"
     NAMES_FILE = "names.csv"
     ANNOTATION_FILES = {"train": "anno_train.csv", "test": "anno_test.csv"}
