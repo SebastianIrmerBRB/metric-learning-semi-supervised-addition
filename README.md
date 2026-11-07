@@ -73,6 +73,30 @@ is sufficient for these examples and is also used in the CUDA environment.
 For another CUDA generation, choose matching PyTorch and CuPy builds using the
 upstream installation instructions.
 
+### Quick runs on the thesis datasets
+
+The same two-epoch example runs on the four datasets of the thesis. Flags on
+the command line override the values in the config, so only the dataset, the
+device and the output folder change. `--evaluate-test` also evaluates the
+held-out test classes at the end.
+
+```bash
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset Cars196 --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/cars_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset CUB --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/cub_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset DeepFashionInShop --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/inshop_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset iNat --dataset_protocol semi_inat_known_810 --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/semi_inat_ssl
+```
+
+Use `supervised.json` instead of `ssl.json` for the supervised baseline. Without
+a GPU, leave out `--device cuda --ssl-device cuda`. The run then takes longer,
+because the backbone features of every image are computed once on the CPU.
+`--dataset_protocol semi_inat_known_810` selects the Semi-iNat class split used
+in the thesis, and Semi-iNat needs a Kaggle API token (see
+[Run the recovered thesis experiments](#run-the-recovered-thesis-experiments)).
+Logs are written to `logs/quickstart/<name>/`. These runs check that a dataset
+works end to end. They do not reproduce thesis numbers, since they train for
+two epochs with four labeled images per class and at most 128 unlabeled images.
+
 ## Reproduce thesis figures and tables
 
 The complete generator and compact data are included in
