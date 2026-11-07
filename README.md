@@ -91,7 +91,8 @@ Use `supervised.json` instead of `ssl.json` for the supervised baseline. Without
 a GPU, leave out `--device cuda --ssl-device cuda`. The run then takes longer,
 because the backbone features of every image are computed once on the CPU.
 `--dataset_protocol semi_inat_known_810` selects the Semi-iNat class split used
-in the thesis, and Semi-iNat needs a Kaggle API token (see
+in the thesis. Semi-iNat needs a Kaggle API token and In-Shop has to be
+downloaded by hand (see
 [Run the recovered thesis experiments](#run-the-recovered-thesis-experiments)).
 Logs are written to `logs/quickstart/<name>/`. These runs check that a dataset
 works end to end. They do not reproduce thesis numbers, since they train for
@@ -176,6 +177,26 @@ of the test and unlabeled images come from
 [cvl-umass/ssl-evaluation](https://github.com/cvl-umass/ssl-evaluation) on
 GitHub and need no account. The Fashion200k pool is downloaded from Kaggle
 without a token.
+
+**In-Shop has to be downloaded by hand.** The loader stops with
+"DeepFashion In-shop does not support automatic download" until the files are
+in place. Download the *In-shop Clothes Images* and the *Train/Val/Test
+Partitions* from the
+[In-shop Clothes Retrieval Benchmark page](https://mmlab.ie.cuhk.edu.hk/projects/DeepFashion/InShopRetrieval.html)
+of CUHK MMLab, which links to the Google Drive folder *In-shop Clothes
+Retrieval Benchmark*. The code needs `Eval/list_eval_partition.txt` and the
+images from `Img/img.zip`, extracted so that the image paths listed in the
+partition file (they start with `img/`) exist below `Img/`:
+
+```text
+data/DeepFashionInShop/
+├── Eval/list_eval_partition.txt
+└── Img/img/...
+```
+
+The high-resolution images are not used. DeepFashion may be used for
+non-commercial research only, see the agreement on the
+[DeepFashion page](https://mmlab.ie.cuhk.edu.hk/projects/DeepFashion.html).
 
 Historical Phase-0 searches sometimes resumed with changed fixed settings;
 those regimes are retained in the recorded trial inputs. The
