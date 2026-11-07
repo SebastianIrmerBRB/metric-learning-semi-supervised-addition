@@ -143,6 +143,7 @@ def normalize_dataset_name(dataset_name):
 LOCAL_DATASET_CLASSES = {
     "StanfordOnlineProducts": "StanfordOnlineProducts",
     "CUB": "CUB",
+    "Cars196": "Cars196",
     "DeepFashionInShop": "DeepFashionInShop",
     "iNat": "SemiINaturalist2021",
     "iNat2018": "INaturalist2018",

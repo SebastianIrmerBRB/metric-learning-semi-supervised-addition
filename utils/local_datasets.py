@@ -10,6 +10,7 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 
 from pytorch_metric_learning.datasets.cub import CUB as _CUB
+from pytorch_metric_learning.datasets.cars196 import Cars196 as _Cars196
 from pytorch_metric_learning.datasets.inaturalist2018 import (
     INaturalist2018 as _INaturalist2018,
 )
@@ -6875,3 +6876,113 @@ class CUB(_DinoSizedImageDownloadMixin, _CUB):
             "gzip",
             "Caltech most likely served an error page",
         )
+
+
+class Cars196(_DinoSizedImageDownloadMixin, _Cars196):
+    """Cars196 (Stanford Cars) with a readiness-driven download.
+
+    The upstream ``BaseDataset`` only downloads when the root is missing or
+    empty. The backbone cache this project creates under ``data/Cars196``
+    before the dataset loads makes the root non-empty, so on a fresh machine
+    the download was skipped and the run died on a missing ``names.csv``; an
+    interrupted download did the same.
+
+    Readiness is structural: the class-name file and both annotation files
+    must be present, and the last image each annotation file lists must exist,
+    which catches an interrupted extraction without stat-ing all 16,185
+    images. Images keep the upstream layout and resolution, so a root the
+    upstream class already downloaded is ready as it is.
+    """
+
+    ARCHIVE_NAME = "stanford-car-dataset-by-classes-folder.zip"
+    NAMES_FILE = "names.csv"
+    ANNOTATION_FILES = {"train": "anno_train.csv", "test": "anno_test.csv"}
+    ZIP_MAGIC = b"PK\x03\x04"
+
+    def __init__(
+        self,
+        root,
+        split="train+test",
+        transform=None,
+        target_transform=None,
+        download=False,
+    ):
+        self.root = str(root)
+        if download and not self.is_ready(self.root):
+            self.download_and_remove()
+        if not self.is_ready(self.root):
+            raise ValueError(
+                f"Cars196 was not found under {self.root}. "
+                "Initialize the dataset with download=True."
+            )
+        if split not in self.get_available_splits():
+            raise ValueError(
+                f"Supported splits are: {', '.join(self.get_available_splits())}"
+            )
+
+        self.split = split
+        self.transform = transform
+        self.target_transform = target_transform
+        self.generate_split()
+
+    @classmethod
+    def is_ready(cls, root):
+        root = Path(root)
+        names = cls._read_lines(root / cls.NAMES_FILE)
+        if not names:
+            return False
+        for split, filename in cls.ANNOTATION_FILES.items():
+            rows = cls._read_lines(root / filename)
+            if not rows:
+                return False
+            # Same path rule as the upstream _load_csv: the label is the last
+            # column and indexes names.csv from 1.
+            fields = rows[-1].split(",")
+            try:
+                class_name = names[int(fields[-1]) - 1]
+            except (IndexError, ValueError):
+                return False
+            image_path = (
+                root / "car_data" / "car_data" / split
+                / class_name.replace("/", "-") / fields[0]
+            )
+            if not image_path.is_file():
+                return False
+        return True
+
+    @staticmethod
+    def _read_lines(path):
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as source:
+                return [line.strip() for line in source if line.strip()]
+        except OSError:
+            return []
+
+    def download_and_remove(self):
+        root = Path(self.root)
+        if self.is_ready(root):
+            return
+
+        root.mkdir(parents=True, exist_ok=True)
+        temporary_path = self._temporary_path(root / self.ARCHIVE_NAME)
+        temporary_path.unlink(missing_ok=True)
+        try:
+            # Kaggle answers a refused request with an HTML page, so the body
+            # is checked before it is extracted.
+            self._download_checked_archive(
+                temporary_path,
+                "Cars196",
+                self.ZIP_MAGIC,
+                "zip",
+                "Kaggle most likely served an error page",
+            )
+            with zipfile.ZipFile(temporary_path, "r") as archive:
+                archive.extractall(root)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+        if not self.is_ready(root):
+            raise RuntimeError(
+                f"The Cars196 archive from {self.DOWNLOAD_URL} extracted to "
+                f"{root} without a complete dataset"
+            )
