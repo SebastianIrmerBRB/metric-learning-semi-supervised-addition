@@ -73,6 +73,30 @@ is sufficient for these examples and is also used in the CUDA environment.
 For another CUDA generation, choose matching PyTorch and CuPy builds using the
 upstream installation instructions.
 
+### Quick runs on the thesis datasets
+
+The same two-epoch example runs on the four datasets of the thesis. Flags on
+the command line override the values in the config, so only the dataset, the
+device and the output folder change. `--evaluate-test` also evaluates the
+held-out test classes at the end.
+
+```bash
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset Cars196 --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/cars_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset CUB --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/cub_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset DeepFashionInShop --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/inshop_ssl
+python main.py --experiment_config configs/other/quickstart/ssl.json --dataset iNat --dataset_protocol semi_inat_known_810 --device cuda --ssl-device cuda --evaluate-test --save_dir quickstart/semi_inat_ssl
+```
+
+Use `supervised.json` instead of `ssl.json` for the supervised baseline. Without
+a GPU, leave out `--device cuda --ssl-device cuda`. The run then takes longer,
+because the backbone features of every image are computed once on the CPU.
+`--dataset_protocol semi_inat_known_810` selects the Semi-iNat class split used
+in the thesis, and Semi-iNat needs a Kaggle API token (see
+[Run the recovered thesis experiments](#run-the-recovered-thesis-experiments)).
+Logs are written to `logs/quickstart/<name>/`. These runs check that a dataset
+works end to end. They do not reproduce thesis numbers, since they train for
+two epochs with four labeled images per class and at most 128 unlabeled images.
+
 ## Reproduce thesis figures and tables
 
 The complete generator and compact data are included in
@@ -138,6 +162,20 @@ Semi-iNaturalist, and other restricted datasets require the corresponding
 source access and terms; see [dataset protocols](docs/dataset_protocols.md) and
 the download scripts in `scripts/`. Existing datasets can be placed or linked
 under `data/<dataset-name>/`. Never delete a dataset while a training job uses it.
+
+**Semi-iNaturalist 2021 needs a Kaggle API token.** Its images come from the
+Kaggle competition
+[semi-inat-2021](https://www.kaggle.com/competitions/semi-inat-2021/data),
+downloaded with `kagglehub`. Before the first download, sign in on Kaggle,
+accept the competition rules on that page, and create an API token under
+*Settings → API*. The first run that needs the images, or
+`python scripts/download_semi_inaturalist2021_224.py`, then asks for the token
+in the terminal. If `l_train.tar.gz`, `val.tar.gz`, `test.tar.gz` and
+`u_train.tar.gz` are already in `data/iNat/`, no token is needed. The labels
+of the test and unlabeled images come from
+[cvl-umass/ssl-evaluation](https://github.com/cvl-umass/ssl-evaluation) on
+GitHub and need no account. The Fashion200k pool is downloaded from Kaggle
+without a token.
 
 Historical Phase-0 searches sometimes resumed with changed fixed settings;
 those regimes are retained in the recorded trial inputs. The
