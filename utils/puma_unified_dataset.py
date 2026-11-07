@@ -52,7 +52,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import pytorch_metric_learning.datasets as pml_datasets
 from torch.utils.data import Dataset
 
 from . import local_datasets
@@ -165,7 +164,7 @@ def member_dataset_class(member_name):
     if member_name == "CUB":
         return local_datasets.CUB
     if member_name == "Cars196":
-        return pml_datasets.Cars196
+        return local_datasets.Cars196
     if member_name == "StanfordOnlineProducts":
         return local_datasets.StanfordOnlineProducts
     if member_name == "DeepFashionInShop":
