@@ -132,9 +132,17 @@ def _update_dataset_digest(digest, dataset, seen):
         _update_digest(digest, ("dataset_ref", seen[object_id]))
         return
     seen[object_id] = len(seen)
+    # A class that replaces an upstream dataset class without changing what it
+    # loads can name that class here, so caches written before it still match.
+    dataset_type = type(dataset)
+    type_identity = getattr(
+        dataset_type,
+        "CACHE_TYPE_IDENTITY",
+        (dataset_type.__module__, dataset_type.__qualname__),
+    )
     _update_digest(
         digest,
-        ("dataset_type", type(dataset).__module__, type(dataset).__qualname__, len(dataset)),
+        ("dataset_type", *type_identity, len(dataset)),
     )
     for attr_name in _DATASET_SIGNATURE_ATTRS:
         if hasattr(dataset, attr_name):
