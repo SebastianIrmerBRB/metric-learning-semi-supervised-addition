@@ -139,6 +139,20 @@ source access and terms; see [dataset protocols](docs/dataset_protocols.md) and
 the download scripts in `scripts/`. Existing datasets can be placed or linked
 under `data/<dataset-name>/`. Never delete a dataset while a training job uses it.
 
+**Semi-iNaturalist 2021 needs a Kaggle API token.** Its images come from the
+Kaggle competition
+[semi-inat-2021](https://www.kaggle.com/competitions/semi-inat-2021/data),
+downloaded with `kagglehub`. Before the first download, sign in on Kaggle,
+accept the competition rules on that page, and create an API token under
+*Settings → API*. The first run that needs the images, or
+`python scripts/download_semi_inaturalist2021_224.py`, then asks for the token
+in the terminal. If `l_train.tar.gz`, `val.tar.gz`, `test.tar.gz` and
+`u_train.tar.gz` are already in `data/iNat/`, no token is needed. The labels
+of the test and unlabeled images come from
+[cvl-umass/ssl-evaluation](https://github.com/cvl-umass/ssl-evaluation) on
+GitHub and need no account. The Fashion200k pool is downloaded from Kaggle
+without a token.
+
 Historical Phase-0 searches sometimes resumed with changed fixed settings;
 those regimes are retained in the recorded trial inputs. The
 [configuration guide](configs/README.md) explains which files are runnable
