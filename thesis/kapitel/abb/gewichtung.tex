@@ -1,0 +1,26 @@
+\begin{tikzpicture}[diagram,
+  st/.style={box, align=flush center, text width=#1, minimum height=14mm,
+    execute at begin node={\setstretch{1}\hyphenpenalty=10000}},
+  st/.default=27mm,
+]
+\node[st=29mm, fill=tolcyan!25] (grad) at (1.5,0)
+  {Gradienten nach $\bm{\theta}$\\[2pt] $\bm{g}_{\mathrm{sup},t}=\nabla_{\bm{\theta}}\mathcal{L}_{\mathrm{sup}}$\\[1pt] $\bm{g}_{\mathrm{reg},t}=\nabla_{\bm{\theta}}\mathcal{L}_{\mathrm{reg}}$};
+\node[st=30mm, fill=tolcyan!25] (stat) at (5.15,0)
+  {Max-Mean-Statistik\\[2pt] $u_t=\dfrac{\max_j|g_{\mathrm{sup},t,j}|}{\operatorname{mean}_j|g_{\mathrm{reg},t,j}|}$};
+\node[st=34mm, fill=tolcyan!25] (ema) at (9.05,0)
+  {EMA\\[2pt] $\hat u_t=\beta\hat u_{t-1}+(1-\beta)\,a u_t$\\[1pt] $\beta=0{,}9$};
+\node[st=24mm, fill=tolyellow!30] (w) at (12.85,0) {Gewicht\\[2pt] $w_{\mathrm{reg},t}=\eta\,\hat u_t$};
+\draw[arr] (grad) -- (stat);
+\draw[arr] (stat) -- (ema);
+\draw[arr] (ema) -- (w);
+\node[st=50mm, minimum height=12mm, anchor=north, fill=tolgrey!35] (cal) at (6.15,-1.15)
+  {nur bei der ersten Messung\\[2pt] $a=\dfrac{\lVert\bm{g}_{\mathrm{sup},0}\rVert_2}{u_0\,\lVert\bm{g}_{\mathrm{reg},0}\rVert_2}$,\quad $\hat u_0=a u_0$};
+\coordinate (xs) at (8.1,0);
+\draw[aux] (cal.north -| xs) -- (ema.south -| xs);
+\node[st=52mm, minimum height=12mm, anchor=north, fill=tolyellow!30] (train) at (11.95,-1.15)
+  {Training mit\\[1pt] $\mathcal{L}=\mathcal{L}_{\mathrm{sup}}+w_{\mathrm{reg},t}\,\mathcal{L}_{\mathrm{reg}}$\\[2pt]
+   Hoffer, \acs{SLADE}: je Schritt\\ $\lVert w_{\mathrm{reg},t}\,\bm{g}_{\mathrm{reg}}\rVert_2\le3\,\lVert\bm{g}_{\mathrm{sup}}\rVert_2$};
+\draw[arr] (w.south) -- (w.south |- train.north);
+\coordinate (unten) at ($(train.south)+(0,-0.35)$);
+\draw[arr] (train.south) -- (unten) -| node[lbl, pos=0.3, above] {nach \num{1000} gelabelten Bildern} (grad.south);
+\end{tikzpicture}

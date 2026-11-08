@@ -14,18 +14,17 @@ METRIC = "mean_average_precision_at_r"
 FAM = ["iscen", "lrml", "hoffer", "slade"]
 METHOD = {"iscen": "\\acs{LP}", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "\\acs{SLADE}"}
 LOSS = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
-# Reihenfolge wie Abschnitt 5.3, danach die In-Shop-Serie mit gelabelten Klassen (Budget in Prozent der Klassen)
+# Reihenfolge wie Abschnitt 5.3. Die In-Shop-Serie mit gelabelten Klassen steht in Tabelle tab:anhang:inshop10.
 DATA = [("cars", "Cars196", [4, 8, 16, 32]), ("cub", "\\acs{CUB}", [4, 8, 16, 32]), ("inshop", "In-Shop", [2, 4]),
-        ("semiinat", "Semi-iNat-2021", [2, 4, 16, 100]),
-        ("inshop10", "In-Shop-Serie mit gelabelten Klassen", [5, 10, 25, 50])]
-HPO = {"cars": 16, "cub": 16, "inshop": 2, "semiinat": 16, "inshop10": 10}
+        ("semiinat", "Semi-iNat-2021", [2, 4, 16, 100])]
+HPO = {"cars": 16, "cub": 16, "inshop": 2, "semiinat": 16}
 SCOPES = ["mean", "concat"]
 
 
 def runs(key):
     r = sammlung.read_csv(f"{key}_ergebnisse/data/phase1_runs.csv")
     r = r.copy()
-    r["budget"] = r["budget_percent"] if key == "inshop10" else r["k"]
+    r["budget"] = r["k"]
     r["mech"] = r.method.str.split("_").str[0]
     r["loss"] = r.method.str.split("_").str[1]
     r["m"] = 100 * r[METRIC]
@@ -41,14 +40,14 @@ def cells(r, budget, scope):
 
 
 def budget_label(key, b):
-    return f"\\qty{{{b}}}{{\\percent}}" if key == "inshop10" else f"$k={b}$"
+    return f"$k={b}$"
 
 
 lines = ["\\begin{table}[tbp]",
          "\\centering\\small\\setlength{\\tabcolsep}{4pt}",
          "\\caption[Beste Kombination aus Verfahren und Verlustfunktion]{Höchste Test-MAP@R in \\% je Datensatz, Budget "
          "und Modelltyp, Mittel über die fünf Seeds. \\acs{SSL}: beste der 20 Kombinationen aus den vier "
-         "\\acs{SSL}-Verfahren und den fünf Verlustfunktionen (Spalten Verfahren und Verlust), \\UEBL: mit der besten "
+         "\\acs{SSL}-Mechanismen und den fünf Verlustfunktionen (Spalten Verfahren und Verlust), \\UEBL: mit der besten "
          "der fünf Verlustfunktionen.}",
          "\\label{tab:e:beste}",
          "\\begin{tabular}{@{}l *{2}{l l S[table-format=2.1] S[table-format=2.1]}@{}}",

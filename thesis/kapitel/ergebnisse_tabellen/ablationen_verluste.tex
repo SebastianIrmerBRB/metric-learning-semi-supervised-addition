@@ -1,6 +1,6 @@
 \begin{table}[tbp]
 \centering
-\caption[Ablationen der Phase~2 auf Cars196 und In-Shop]{Ablationen der Phase~2 auf Cars196 und In-Shop (Seed~2): Änderung der Test-MAP@R (Mean) gegenüber der regulären Konfiguration in Prozentpunkten, \UEBL und regulär absolut in \%. Eingriffe wie in den Tabellen~\ref{tab:phase2:eingriffe} und~\ref{tab:m:2x2}, eingefroren: Pseudo-Labels bzw.\ Graph, Rauschschwelle $2\sqrt{2}\,\sigma$ (Abschnitt~\ref{sec:m:phase2}). Fett: Änderung größer als die Rauschschwelle. Ohne Warm-up: gleich der regulären Konfiguration, wo Phase~1 kein Warm-up gewählt hat. Arc: ArcFace, Cir: Circle, NT: NT-Xent, PA: Proxy-Anchor.}
+\caption[Ablationen der Phase 2 auf Cars196 und In-Shop]{Ablationen der Phase 2 auf Cars196 und In-Shop (Seed 2): Änderung der Test-MAP@R (Mean) gegenüber der regulären Konfiguration in Prozentpunkten, \UEBL und regulär absolut in \%. Eingriffe wie in Tabelle \ref{tab:phase2:eingriffe} und Abschnitt \ref{sec:m:phase2}, eingefroren: Pseudo-Labels bzw.\ Graph. Fett: Änderung größer als die Rauschschwelle. Ohne Warm-up: gleich der regulären Konfiguration, wo Phase 1 kein Warm-up gewählt hat. Arc: ArcFace, Cir: Circle, NT: NT-Xent, PA: Proxy-Anchor.}
 \label{tab:e:ablationen:verluste}
 \footnotesize\setlength{\tabcolsep}{3.2pt}\setlength{\hfuzz}{1.2pt}\renewcommand{\arraystretch}{0.95}
 \begin{tabular}{@{}l *{5}{S[table-format=+2.1, retain-explicit-plus]} @{\hspace{12pt}} *{5}{S[table-format=+2.1, retain-explicit-plus]}@{}}
@@ -15,8 +15,7 @@
 \quad\textit{regulär (MAP@R)} & 41.9 & 42.3 & 43.3 & 41.4 & 42.6 & 58.9 & 57.8 & 58.8 & 58.0 & 56.3 \\
 \quad\textit{Rauschschwelle} & 0.8 & 0.5 & 0.6 & 0.6 & 0.3 & 0.1 & 0.3 & 0.2 & 0.4 & 0.4 \\
 \cmidrule{1-11}
-\quad SSL-Term abgeschaltet & \bfseries -4.5 & \bfseries -3.2 & \bfseries -2.7 & \bfseries -2.2 & \bfseries -2.7 & \bfseries -10.8 & \bfseries -3.1 & \bfseries -3.0 & \bfseries -4.2 & \bfseries -3.4 \\
-\quad ohne ungelabelte Bilder & \bfseries -4.5 & \bfseries -3.4 & \bfseries -3.0 & \bfseries -2.3 & \bfseries -2.7 & \bfseries -6.7 & \bfseries -3.2 & \bfseries -3.0 & \bfseries -4.3 & \bfseries -3.4 \\
+\quad SSL-Mechanismus abgeschaltet & \bfseries -4.5 & \bfseries -3.2 & \bfseries -2.7 & \bfseries -2.2 & \bfseries -2.7 & \bfseries -10.8 & \bfseries -3.1 & \bfseries -3.0 & \bfseries -4.2 & \bfseries -3.4 \\
 \quad Hyperparameter der \UEBL & -0.5 & -0.5 & +0.5 & +0.1 & \bfseries -2.4 & \bfseries -0.7 & \bfseries -1.0 & +0.2 & \bfseries -0.7 & \bfseries -2.6 \\
 \quad ohne Warm-up & \bfseries -1.0 & +0.1 & -0.4 & +0.0 & +0.0 & -0.1 & -0.1 & \bfseries +0.2 & -0.1 & \bfseries -0.4 \\
 \addlinespace[2pt]
@@ -29,7 +28,7 @@
 \quad\textit{regulär (MAP@R)} & 40.9 & 40.9 & 40.4 & 39.9 & 41.7 & 58.0 & 57.6 & 56.6 & 55.7 & 53.7 \\
 \quad\textit{Rauschschwelle} & 0.5 & 0.7 & 1.1 & 0.7 & 0.5 & 1.3 & 0.3 & 0.7 & 0.4 & 0.7 \\
 \cmidrule{1-11}
-\quad SSL-Term abgeschaltet & \bfseries -5.3 & \bfseries -2.1 & \bfseries -4.4 & \bfseries -3.1 & \bfseries -3.1 & \bfseries -11.0 & \bfseries -4.6 & \bfseries -2.5 & \bfseries -2.6 & \bfseries -2.7 \\
+\quad SSL-Mechanismus abgeschaltet & \bfseries -5.3 & \bfseries -2.1 & \bfseries -4.4 & \bfseries -3.1 & \bfseries -3.1 & \bfseries -11.0 & \bfseries -4.6 & \bfseries -2.5 & \bfseries -2.6 & \bfseries -2.7 \\
 \quad ohne ungelabelte Bilder & \bfseries -3.1 & -0.4 & \bfseries -1.9 & -0.7 & \bfseries -1.1 & \bfseries -3.3 & \bfseries -4.1 & \bfseries -2.8 & \bfseries -2.5 & \bfseries -2.3 \\
 \quad Hyperparameter der \UEBL & \bfseries -4.1 & +0.0 & +0.1 & \bfseries -3.2 & \bfseries -3.8 & \bfseries -5.6 & \bfseries -1.6 & +0.6 & \bfseries -1.0 & +0.4 \\
 \quad ohne Warm-up & \bfseries -9.6 & -0.7 & \bfseries -2.2 & \bfseries -6.4 & \bfseries -2.1 & \bfseries -8.4 & -0.3 & -0.3 & -0.1 & \bfseries +0.7 \\
@@ -43,7 +42,7 @@
 \quad\textit{regulär (MAP@R)} & 40.5 & 40.6 & 39.5 & 40.3 & 40.6 & 57.7 & 58.1 & 57.9 & 58.2 & 57.6 \\
 \quad\textit{Rauschschwelle} & 0.3 & 0.4 & 0.5 & 0.7 & 0.5 & 0.2 & 0.2 & 0.2 & 0.2 & 0.3 \\
 \cmidrule{1-11}
-\quad SSL-Term abgeschaltet & \bfseries -1.3 & \bfseries -1.7 & \bfseries -0.9 & \bfseries -2.2 & \bfseries -1.1 & \bfseries -5.0 & \bfseries -3.7 & \bfseries -4.8 & \bfseries -6.2 & \bfseries -5.7 \\
+\quad SSL-Mechanismus abgeschaltet & \bfseries -1.3 & \bfseries -1.7 & \bfseries -0.9 & \bfseries -2.2 & \bfseries -1.1 & \bfseries -5.0 & \bfseries -3.7 & \bfseries -4.8 & \bfseries -6.2 & \bfseries -5.7 \\
 \quad ohne ungelabelte Bilder & \bfseries -2.3 & \bfseries -1.3 & \bfseries -1.0 & \bfseries -1.8 & \bfseries -1.3 & \bfseries -4.1 & \bfseries -3.6 & \bfseries -4.0 & \bfseries -3.5 & \bfseries -4.0 \\
 \quad Hyperparameter der \UEBL & +0.1 & \bfseries -1.3 & -0.2 & -0.7 & \bfseries -1.6 & \bfseries -0.6 & \bfseries -0.6 & \bfseries -0.9 & \bfseries -1.1 & \bfseries -1.0 \\
 \quad ohne Warm-up & \bfseries -0.3 & \bfseries -1.0 & \bfseries -0.6 & -0.2 & +0.0 & \bfseries -0.5 & -0.1 & \bfseries -0.2 & -0.2 & +0.0 \\
@@ -52,7 +51,7 @@
 \quad\textit{regulär (MAP@R)} & 40.2 & 41.6 & 41.7 & 40.6 & 40.4 & 53.7 & 54.8 & 54.5 & 54.1 & 53.7 \\
 \quad\textit{Rauschschwelle} & 1.0 & 0.6 & 1.0 & 0.3 & 0.6 & 1.4 & 0.4 & 0.4 & 0.5 & 0.9 \\
 \cmidrule{1-11}
-\quad SSL-Term abgeschaltet & -0.7 & \bfseries -3.1 & \bfseries -1.5 & \bfseries -2.3 & \bfseries -1.5 & -1.0 & -0.1 & \bfseries -1.8 & +0.0 & \bfseries -10.6 \\
+\quad SSL-Mechanismus abgeschaltet & -0.7 & \bfseries -3.1 & \bfseries -1.5 & \bfseries -2.3 & \bfseries -1.5 & -1.0 & -0.1 & \bfseries -1.8 & +0.0 & \bfseries -10.6 \\
 \quad ohne ungelabelte Bilder & -0.2 & \bfseries -3.5 & -0.8 & \bfseries -1.8 & \bfseries -0.9 & +0.3 & -0.3 & \bfseries -0.5 & +0.1 & +0.0 \\
 \quad Hyperparameter der \UEBL & \bfseries -4.5 & -0.5 & \bfseries -2.8 & \bfseries -5.3 & \bfseries -2.1 & \bfseries -7.1 & \bfseries -1.4 & \bfseries -3.4 & -0.3 & \bfseries -1.6 \\
 \quad ohne Warm-up & \bfseries -1.2 & \bfseries -2.1 & -0.4 & \bfseries -1.4 & +0.0 & +0.0 & -0.2 & -0.1 & +0.1 & -0.1 \\

@@ -88,9 +88,9 @@ AHEAD = ("{Budget} & {Modell} & {Anzahl} & {$\\rho$} & {$\\pi_{\\mathrm{ratio}}$
 A = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\begin{longtable}{@{}ll S[table-format=1.0] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]"
      " S[table-format=2.1] S[table-format=3.0] S[table-format=2.1]@{}}",
-     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed~2, Mittel über die vier Folds und die Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen, Anzahl: Zahl dieser Verlustfunktionen). $\\pi^{\\mathrm{U}}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{\\mathrm{V}}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle~\\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
+     "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed 2, Mittel über die vier Folds und die Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen, Anzahl: Zahl dieser Verlustfunktionen). $\\pi^{\\mathrm{U}}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{\\mathrm{V}}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle \\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
      "\\toprule", AHEAD, "\\endfirsthead",
-     "\\multicolumn{10}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\", "\\toprule", AHEAD, "\\endhead",
+     "\\multicolumn{10}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\", "\\toprule", AHEAD, "\\endhead",
      "\\bottomrule", "\\endlastfoot"]
 ALL = []
 for i, ds in enumerate(DS):
@@ -125,11 +125,13 @@ for ds in DS:
     for row in ROWS:
         col = row + P if row.endswith(("intra", "inter", "ratio")) else row
         if ds == "inshop10" and row == "prototype_unlabeled_accuracy":
-            K.append(dict(ds=ds, row=row, n=len(kk), pearson=np.nan, spearman=np.nan, within=""))
+            K.append(dict(ds=ds, row=row, n=len(kk), pearson=np.nan, spearman=np.nan, within="", within_spearman=""))
             continue
         w = [round(pearsonr(g[col], g.test_map)[0], 2) for _, g in kk.groupby("k")]
+        ws = [round(spearmanr(g[col], g.test_map)[0], 2) for _, g in kk.groupby("k")]
         K.append(dict(ds=ds, row=row, n=len(kk), pearson=pearsonr(kk[col], kk.test_map)[0],
-                      spearman=spearmanr(kk[col], kk.test_map)[0], within=" ".join(map(str, w))))
+                      spearman=spearmanr(kk[col], kk.test_map)[0], within=" ".join(map(str, w)),
+                      within_spearman=" ".join(map(str, ws))))
     se = [round(spearmanr(g.selected_epoch, g.test_map)[0], 2) for _, g in kk.groupby("k")]
     print(ds, "Kombinationen", len(kk), "gewählte Epoche vs. MAP@R (Spearman je Budget)", se)
 K = pd.DataFrame(K)

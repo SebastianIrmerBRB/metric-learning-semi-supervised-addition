@@ -1,11 +1,11 @@
 \begingroup\small\setstretch{1}\setlength{\tabcolsep}{4pt}
 \begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=2em\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}
-\caption[Alle Varianten der Phase~2 auf Cars196]{Alle Varianten der Phase~2 auf Cars196 ($k=16$, Seed~2): Test-MAP@R (Mean) in \%. Bezeichnungen wie in den Tabellen~\ref{tab:phase2:eingriffe} und~\ref{tab:m:2x2}, Rauschschwelle $2\sqrt{2}\,\sigma$ in Prozentpunkten (Abschnitt~\ref{sec:m:phase2}). Bei \acs{LRML} sind \enquote{ohne Warm-up} und \enquote{Warm-up $= 0$} dieselbe Einstellung. --: Lauf nicht vorhanden.}\label{tab:anhang:phase2}\\
+\caption[Alle Varianten der Phase 2 auf Cars196]{Alle Varianten der Phase 2 auf Cars196 ($k=16$, Seed 2): Test-MAP@R (Mean) in \%. Bezeichnungen wie in Tabelle \ref{tab:phase2:eingriffe} und Abschnitt \ref{sec:m:phase2}, Rauschschwelle $2\sqrt{2}\,\sigma$ in Prozentpunkten (Abschnitt \ref{sec:m:phase2}). Bei \acs{LRML} sind \enquote{ohne Warm-up} und \enquote{Warm-up $= 0$} dieselbe Einstellung. --: Lauf nicht vorhanden.}\label{tab:anhang:phase2}\\
 \toprule
 Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \midrule
 \endfirsthead
-\multicolumn{6}{@{}l}{\small Tabelle~\thetable{} (Fortsetzung)}\\
+\multicolumn{6}{@{}l}{\small Tabelle \thetable{} (Fortsetzung)}\\
 \toprule
 Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \midrule
@@ -18,8 +18,7 @@ Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \quad Rauschschwelle & 0.8 & 0.5 & 0.6 & 0.6 & 0.3 \\
 \quad reguläre Konfiguration & 41.95 & 42.28 & 43.30 & 41.37 & 42.60 \\
 \quad Wiederholung mit Diagnose & 41.95 & 42.33 & 43.30 & 41.37 & 42.60 \\
-\quad SSL-Term abgeschaltet & 37.45 & 39.04 & 40.56 & 39.19 & 39.94 \\
-\quad ohne ungelabelte Bilder & 37.49 & 38.89 & 40.33 & 39.07 & 39.92 \\
+\quad SSL-Mechanismus abgeschaltet & 37.45 & 39.04 & 40.56 & 39.19 & 39.94 \\
 \quad Hyperparameter der \UEBL & 41.45 & 41.83 & 43.77 & 41.52 & 40.24 \\
 \quad ohne Warm-up & 40.96 & 42.40 & 42.88 & 41.38 & 42.60 \\
 \quad Pseudo-Labels eingefroren & 41.60 & 41.35 & 42.63 & 41.15 & 41.15 \\
@@ -47,7 +46,7 @@ Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \multicolumn{6}{@{}l}{\textit{\acs{LRML}}} \\*
 \quad Rauschschwelle & 0.5 & 0.7 & 1.1 & 0.7 & 0.5 \\
 \quad reguläre Konfiguration & 40.91 & 40.89 & 40.37 & 39.85 & 41.72 \\
-\quad SSL-Term abgeschaltet & 35.56 & 38.80 & 35.96 & 36.72 & 38.64 \\
+\quad SSL-Mechanismus abgeschaltet & 35.56 & 38.80 & 35.96 & 36.72 & 38.64 \\
 \quad ohne ungelabelte Bilder & 37.79 & 40.49 & 38.48 & 39.19 & 40.58 \\
 \quad Hyperparameter der \UEBL & 36.78 & 40.92 & 40.44 & 36.70 & 37.91 \\
 \quad ohne Warm-up & 31.29 & 40.22 & 38.20 & 33.42 & 39.67 \\
@@ -75,7 +74,7 @@ Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \multicolumn{6}{@{}l}{\textit{Hoffer}} \\*
 \quad Rauschschwelle & 0.3 & 0.4 & 0.5 & 0.7 & 0.5 \\
 \quad reguläre Konfiguration & 40.52 & 40.62 & 39.47 & 40.31 & 40.65 \\
-\quad SSL-Term abgeschaltet & 39.20 & 38.89 & 38.56 & 38.11 & 39.56 \\
+\quad SSL-Mechanismus abgeschaltet & 39.20 & 38.89 & 38.56 & 38.11 & 39.56 \\
 \quad ohne ungelabelte Bilder & 38.26 & 39.30 & 38.46 & 38.51 & 39.39 \\
 \quad Hyperparameter der \UEBL & 40.58 & 39.37 & 39.25 & 39.63 & 39.02 \\
 \quad ohne Warm-up & 40.21 & 39.63 & 38.88 & 40.15 & 40.64 \\
@@ -100,7 +99,7 @@ Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \multicolumn{6}{@{}l}{\textit{SLADE}} \\*
 \quad Rauschschwelle & 1.0 & 0.6 & 1.0 & 0.3 & 0.6 \\
 \quad reguläre Konfiguration & 40.20 & 41.60 & 41.68 & 40.61 & 40.38 \\
-\quad SSL-Term abgeschaltet & 39.50 & 38.55 & 40.16 & 38.31 & 38.86 \\
+\quad SSL-Mechanismus abgeschaltet & 39.50 & 38.55 & 40.16 & 38.31 & 38.86 \\
 \quad ohne ungelabelte Bilder & 40.04 & 38.12 & 40.84 & 38.79 & 39.52 \\
 \quad Hyperparameter der \UEBL & 35.65 & 41.07 & 38.87 & 35.33 & 38.24 \\
 \quad ohne Warm-up & 38.97 & 39.53 & 41.23 & 39.16 & 40.38 \\

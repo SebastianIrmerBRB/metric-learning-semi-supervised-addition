@@ -5,12 +5,12 @@
 \setlength{\tabcolsep}{2.5pt}
 \renewcommand{\arraystretch}{1.15}
 \begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=1em\hangafter=1}p{0.22\textwidth}*{5}{>{\centering\arraybackslash}p{\dimexpr0.155\textwidth-5.2pt\relax}}@{}}
-\caption[Hyperparametersuchräume der Phase~1]{Hyperparametersuchräume der Phase~1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\label{tab:hyperparameter-spaces}\\
+\caption[Hyperparametersuchräume der Phase 1]{Hyperparametersuchräume der Phase 1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\label{tab:hyperparameter-spaces}\\
 \toprule
 Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\,\% & Semi-iNat \\
 \midrule
 \endfirsthead
-\multicolumn{6}{l}{\tablename~\thetable: Phase~1 (Fortsetzung)}\\
+\multicolumn{6}{l}{\tablename \thetable: Phase 1 (Fortsetzung)}\\
 \toprule
 Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\,\% & Semi-iNat \\
 \midrule
@@ -31,7 +31,7 @@ Klassifikator-Lernrate (ArcFace, Proxy-Anchor) & \spVier{$[10^{-5},\,10]$ log.} 
 \multicolumn{6}{@{}l}{\emph{Verlustfunktionen (alle Verfahren, Abweichungen bei SLADE siehe unten)}}\\*
 \midrule
 ArcFace $\gamma$ (\texttt{scale}) & \spFuenf{$[0{,}1,\,80]$ log.} \\
-ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) & \spVier{$[1,\,80]$} & $[1,\,70]$ \\
+ArcFace $m$ [Grad] (\texttt{margin}) & \spVier{$[1,\,80]$} & $[1,\,70]$ \\
 Circle $\gamma$ (\texttt{gamma}) & \spFuenf{$[1,\,512]$ log.} \\
 Circle $m$ & \spFuenf{$[0{,}01,\,0{,}5]$ log.} \\
 Multi-Similarity $\gamma^{+}$ (\texttt{alpha}) & \spFuenf{$[0{,}1,\,30]$ log.} \\
@@ -73,7 +73,7 @@ Lernrate (alle Verluste) & $[10^{-5},\allowbreak\,5\cdot 10^{-4}]$ log. & $[5\cd
 Klassifikator-Lernrate (ArcFace, Proxy-Anchor) & \spFuenf{$[10^{-5},\,10]$ log.} \\
 Multi-Similarity $m$ (\texttt{base}) (abweichend) & \spFuenf{$[0{,}4,\,0{,}9]$} \\
 NT-Xent $\tau$ (\texttt{temperature}) (abweichend) & \spVier{$[0{,}05,\,0{,}3]$ log.} & $[0{,}02,\,0{,}15]$ log. \\
-ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) (abweichend) & \spVier{wie oben} & $[1,\,80]$ \\
+ArcFace $m$ [Grad] (\texttt{margin}) (abweichend) & \spVier{wie oben} & $[1,\,80]$ \\
 Proxy-Anchor $\gamma$ (\texttt{alpha}) (abweichend) & \spVier{wie oben} & $[0{,}1,\,30]$ log. \\
 Proxy-Anchor $m$ (\texttt{margin}) (abweichend) & \spVier{wie oben} & $[0{,}01,\,1]$ log. \\
 Warm-up [Epochen] & \{0, 5, \dots, 30\} & \{0, 2, \dots, 12\} & \{0, 5, \dots, 30\} & \{0, 5, \dots, 30\} & \{0, 1, 2\} \\

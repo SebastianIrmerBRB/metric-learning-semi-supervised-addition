@@ -80,10 +80,14 @@ def plain(v):
 # ---------------------------------------------------------------- Phase 0
 P0_SETS = [("cars", "Cars"), ("inshop", "In-Shop"), ("cub", "CUB"), ("semiinat", "Semi-iNat")]
 P0_ALIAS = {"inshop10": "inshop"}  # In-Shop mit gelabelten Klassen zählt in den Vorexperimenten zu In-Shop.
+# study_config.json hält nur den Bereich der letzten Fortsetzung einer Suche. Die Hoffer-Suchen auf In-Shop zogen η zuerst
+# aus einem anderen Bereich (distribution_json in optuna_study.db, Nachrechnung in review/hpo_herkunft_2026-11-06).
+P0_RANGE_SWITCH = {("hoffer", MP + "regularizer_target_ratio", "inshop"):
+                   ("$[0{,}25,\\,1{,}5]$ für 36 bis 49 der 50 Versuche je Suche, $[0{,}5,\\,1{,}25]$ für die übrigen", "unif.")}
 P0_BLOCKS = [
     ("sup", "Supervised Basiskonfiguration", [
         ("classifier_lr", "Klassifikator-Lernrate"), ("lr", "Lernrate"), ("batch_sampler", "Batchstruktur $B{:}n_{\\mathrm{S}}$"),
-        ("loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad] (\\texttt{margin})"), ("loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"),
+        ("loss.ArcFaceLoss.margin", "ArcFace $m$ [Grad] (\\texttt{margin})"), ("loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"),
         ("loss.CircleLoss.gamma", "Circle $\\gamma$ (\\texttt{gamma})"), ("loss.CircleLoss.m", "Circle $m$"),
         ("loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\gamma^{+}$ (\\texttt{alpha})"), ("loss.MultiSimilarityLoss.base", "Multi-Similarity $m$ (\\texttt{base})"),
         ("loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\gamma^{-}$ (\\texttt{beta})"), ("miner.MultiSimilarityMiner.epsilon", "MS-Mining $m_{\\mathrm{Miner}}$ (\\texttt{epsilon})"),
@@ -155,10 +159,11 @@ def phase0():
             groups = {}
             for d, _ in P0_SETS:
                 if d in values:
-                    groups.setdefault(canon(values[d]), []).append(d)
+                    switched = (method, param, d) in P0_RANGE_SWITCH
+                    groups.setdefault(("switch", d) if switched else canon(values[d]), []).append(d)
             for members in groups.values():
                 names = "alle" if set(members) == ran[method] else ", ".join(n for d, n in P0_SETS if d in members)
-                cell, dist = p0_cell(values[members[0]])
+                cell, dist = P0_RANGE_SWITCH.get((method, param, members[0])) or p0_cell(values[members[0]])
                 lines.append(f"{label} & {names} & {cell} & {dist} \\\\")
         rest = {p for p in searched - listed
                 if method == "sup" or any(canon(v) != canon(p0_values("sup", p).get(d, {"x": v})) for d, v in p0_values(method, p).items())}
@@ -172,7 +177,7 @@ PHASE0_HEAD = [
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=1em\\hangafter=1}p{0.30\\textwidth}>{\\raggedright\\arraybackslash}p{0.16\\textwidth}>{\\raggedright\\arraybackslash}p{\\dimexpr0.42\\textwidth-6\\tabcolsep\\relax}>{\\raggedright\\arraybackslash}p{0.12\\textwidth}@{}}",
     "\\caption[Hyperparametersuchräume der Vorexperimente]{Hyperparametersuchräume der Vorexperimente: Basiskonfiguration und verfahrensspezifische Ergänzungen bzw. Überschreibungen.}\\label{tab:first-run-hyperparameter-spaces}\\\\",
     "\\toprule", "Hyperparameter & Datensatz & Suchraum & Verteilung \\\\", "\\midrule", "\\endfirsthead",
-    "\\multicolumn{4}{l}{\\tablename~\\thetable: Vorexperimente (Fortsetzung)}\\\\", "\\toprule",
+    "\\multicolumn{4}{l}{\\tablename \\thetable: Vorexperimente (Fortsetzung)}\\\\", "\\toprule",
     "Hyperparameter & Datensatz & Suchraum & Verteilung \\\\", "\\midrule", "\\endhead", "\\midrule",
     "\\multicolumn{4}{r}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
 
@@ -180,7 +185,7 @@ PHASE0_HEAD = [
 # ---------------------------------------------------------------- Phase 1
 GENERAL = ["sup", "iscen", "lrml", "hoffer"]
 LOSS_PARAMS = [  # Verlust, Parameter, Zeile
-    ("arc", "loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"), ("arc", "loss.ArcFaceLoss.margin", "ArcFace $m_{\\mathrm{deg}}$ [Grad] (\\texttt{margin})"),
+    ("arc", "loss.ArcFaceLoss.scale", "ArcFace $\\gamma$ (\\texttt{scale})"), ("arc", "loss.ArcFaceLoss.margin", "ArcFace $m$ [Grad] (\\texttt{margin})"),
     ("cir", "loss.CircleLoss.gamma", "Circle $\\gamma$ (\\texttt{gamma})"), ("cir", "loss.CircleLoss.m", "Circle $m$"),
     ("ms", "loss.MultiSimilarityLoss.alpha", "Multi-Similarity $\\gamma^{+}$ (\\texttt{alpha})"), ("ms", "loss.MultiSimilarityLoss.beta", "Multi-Similarity $\\gamma^{-}$ (\\texttt{beta})"),
     ("ms", "loss.MultiSimilarityLoss.base", "Multi-Similarity $m$ (\\texttt{base})"),
@@ -291,9 +296,9 @@ PHASE1_HEAD = [
     "\\newcommand*{\\spFuenf}[1]{\\multicolumn{5}{>{\\centering\\arraybackslash}p{\\dimexpr0.775\\textwidth-26pt+8\\tabcolsep\\relax}}{#1}}",
     "\\small\\setstretch{1}", "\\setlength{\\tabcolsep}{2.5pt}", "\\renewcommand{\\arraystretch}{1.15}",
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=1em\\hangafter=1}p{0.22\\textwidth}*{5}{>{\\centering\\arraybackslash}p{\\dimexpr0.155\\textwidth-5.2pt\\relax}}@{}}",
-    "\\caption[Hyperparametersuchräume der Phase~1]{Hyperparametersuchräume der Phase~1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\\label{tab:hyperparameter-spaces}\\\\",
+    "\\caption[Hyperparametersuchräume der Phase 1]{Hyperparametersuchräume der Phase 1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\\label{tab:hyperparameter-spaces}\\\\",
     "\\toprule", "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endfirsthead",
-    "\\multicolumn{6}{l}{\\tablename~\\thetable: Phase~1 (Fortsetzung)}\\\\", "\\toprule",
+    "\\multicolumn{6}{l}{\\tablename \\thetable: Phase 1 (Fortsetzung)}\\\\", "\\toprule",
     "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endhead", "\\midrule",
     "\\multicolumn{6}{r}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
 
@@ -396,7 +401,7 @@ def protocol():
 
 PROTOCOL_HEAD = [
     "\\begin{table}[htbp]", "\t\\centering",
-    "\t\\caption[Protokoll der Phase-1-\\acs{HPO}]{Protokoll der Phase-1-\\acs{HPO} je Datensatz. In-Shop 10\\,\\%: 10\\,\\% der Trainingsklassen vollständig gelabelt, übrige Klassen ungelabelt. \\UEBL: supervised Referenz. Obergrenze: Begrenzung des Gradientenverhältnisses (Abschnitt~\\ref{sec:m:gewicht}).}",
+    "\t\\caption[Protokoll der Phase-1-\\acs{HPO}]{Protokoll der Phase-1-\\acs{HPO} je Datensatz. In-Shop 10\\,\\%: 10\\,\\% der Trainingsklassen vollständig gelabelt, übrige Klassen ungelabelt. \\UEBL: supervised Referenz. Obergrenze: Begrenzung des Gradientenverhältnisses (Abschnitt \\ref{sec:m:gewicht}).}",
     "\t\\label{tab:phase1:hpo-protokoll}", "\t\\setlength{\\tabcolsep}{4pt}",
     "\t\\begin{tabular}{@{}>{\\raggedright\\arraybackslash}p{3.2cm}" + "".join(f">{{\\centering\\arraybackslash}}p{{{w}cm}}" for w in WIDTHS) + "@{}}",
     "\t\t\\toprule", "\t\tMerkmal & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\t\t\\midrule"]
@@ -416,7 +421,7 @@ def fixed():
             setting(SSL, "ssl_config.unlabeled_fraction")) != ("all", None, None):
         raise ValueError("unlabeled pool")
     selection = {True: "nach dem Warm-up neu begonnen"}[setting(SSL, "ssl_config.restart_selection_after_warmup")]
-    weighting = (f"über das Zielverhältnis $\\eta$ (Abschnitt~\\ref{{sec:m:gewicht}}), Gradientenstatistik "
+    weighting = (f"über das Zielverhältnis $\\eta$ (Abschnitt \\ref{{sec:m:gewicht}}), Gradientenstatistik "
                  f"{tt(setting(WEIGHTED, MP + 'regularizer_target_ratio_statistic'))}, EMA mit "
                  f"$\\beta = {num(round(1 - setting(WEIGHTED, MP + 'regularizer_target_ratio_ema_alpha'), 6))}$, Neuberechnung alle "
                  f"\\num{{{plain(setting(WEIGHTED, MP + 'regularizer_target_ratio_update_interval_samples'))}}} Trainingsbeispiele, "
@@ -465,7 +470,7 @@ FIXED_HEAD = [
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash}p{0.13\\textwidth}>{\\raggedright\\arraybackslash}p{0.30\\textwidth}>{\\raggedright\\arraybackslash}p{\\dimexpr0.57\\textwidth-4\\tabcolsep\\relax}@{}}",
     "\\caption[Fest gesetzte Einstellungen der SSL-Verfahren]{Fest gesetzte Einstellungen der SSL-Verfahren in den Phase-1-Suchen (nicht gesucht, auf allen Datensätzen gleich, sofern nicht anders angegeben).}\\label{tab:phase1:feste-einstellungen}\\\\",
     "\\toprule", "Verfahren & Einstellung & Wert \\\\", "\\midrule", "\\endfirsthead",
-    "\\multicolumn{3}{l}{\\tablename~\\thetable: Fortsetzung}\\\\", "\\toprule", "Verfahren & Einstellung & Wert \\\\",
+    "\\multicolumn{3}{l}{\\tablename \\thetable: Fortsetzung}\\\\", "\\toprule", "Verfahren & Einstellung & Wert \\\\",
     "\\midrule", "\\endhead", "\\bottomrule", "\\endlastfoot"]
 
 

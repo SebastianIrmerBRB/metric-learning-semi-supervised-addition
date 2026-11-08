@@ -1,6 +1,6 @@
 \begin{table}[tbp]
 \centering\small\setlength{\tabcolsep}{4pt}
-\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Korrelation nach Pearson zwischen Maßen nach dem Training und der Test-MAP@R (Mean), Seed~2, Mittel über vier Folds. Gesamt: alle gültigen Kombinationen aus Verfahren, Verlustfunktion und Budget eines Datensatzes, darunter je Budget, Anzahl: Zahl dieser Kombinationen. In der In-Shop-Serie mit gelabelten Klassen steht der Anteil gelabelter Klassen für das Budget. Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp, in dieser Serie nicht definiert (--).}
+\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Rangkorrelation nach Spearman zwischen Maßen nach dem Training und der Test-MAP@R (Mean), Seed 2, Mittel über vier Folds. Gesamt: alle gültigen Kombinationen aus Verfahren, Verlustfunktion und Budget eines Datensatzes, darunter je Budget, Anzahl: Zahl dieser Kombinationen. In der In-Shop-Serie mit gelabelten Klassen steht der Anteil gelabelter Klassen für das Budget. Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp, in dieser Serie nicht definiert (--).}
 \label{tab:e:korrelation}
 \begin{tabular}{@{}l r S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] @{\hspace{12pt}} S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] @{\hspace{12pt}} S[table-format=-1.2]@{}}
 \toprule
@@ -9,34 +9,34 @@
 & {Anzahl} & {$\pi_{\mathrm{intra}}$} & {$\pi_{\mathrm{inter}}$} & {$\pi_{\mathrm{ratio}}$} & {$\rho$} & {$\pi_{\mathrm{intra}}$} & {$\pi_{\mathrm{inter}}$} & {$\pi_{\mathrm{ratio}}$} & {Prototyp} \\
 \midrule
 \multicolumn{10}{@{}l}{\textbf{Cars196}} \\*
-\quad \textit{gesamt} & 100 & -0.73 & 0.06 & -0.86 & -0.02 & -0.61 & 0.04 & -0.79 & 0.91 \\
+\quad \textit{gesamt} & 100 & -0.72 & 0.03 & -0.80 & 0.22 & -0.60 & 0.04 & -0.71 & 0.87 \\
 \cmidrule{1-10}
-\quad $k=4$ & 25 & -0.56 & 0.09 & -0.75 & -0.07 & -0.46 & 0.08 & -0.70 & 0.89 \\
-\quad $k=8$ & 25 & -0.54 & -0.01 & -0.70 & -0.22 & -0.44 & -0.02 & -0.61 & 0.80 \\
-\quad $k=16$ & 25 & -0.51 & -0.31 & -0.49 & -0.22 & -0.48 & -0.30 & -0.43 & 0.56 \\
-\quad $k=32$ & 25 & -0.45 & -0.54 & -0.12 & -0.08 & -0.56 & -0.51 & -0.24 & 0.43 \\
+\quad $k=4$ & 25 & -0.56 & 0.15 & -0.80 & 0.28 & -0.49 & 0.19 & -0.73 & 0.77 \\
+\quad $k=8$ & 25 & -0.51 & 0.07 & -0.68 & 0.32 & -0.40 & 0.04 & -0.61 & 0.72 \\
+\quad $k=16$ & 25 & -0.50 & -0.28 & -0.50 & 0.05 & -0.45 & -0.20 & -0.48 & 0.45 \\
+\quad $k=32$ & 25 & -0.51 & -0.55 & -0.21 & -0.40 & -0.60 & -0.59 & -0.31 & 0.36 \\
 \midrule
 \multicolumn{10}{@{}l}{\textbf{Semi-iNat-2021}} \\*
-\quad \textit{gesamt} & 100 & -0.79 & -0.11 & -0.80 & 0.59 & -0.61 & -0.15 & -0.42 & 0.95 \\
+\quad \textit{gesamt} & 100 & -0.80 & 0.14 & -0.80 & 0.74 & -0.69 & 0.12 & -0.51 & 0.95 \\
 \cmidrule{1-10}
-\quad $k=2$ & 25 & -0.65 & -0.25 & -0.49 & 0.41 & -0.57 & -0.28 & -0.17 & 0.89 \\
-\quad $k=4$ & 25 & -0.56 & -0.21 & -0.41 & 0.40 & -0.45 & -0.24 & -0.02 & 0.86 \\
-\quad $k=16$ & 25 & 0.10 & -0.06 & 0.25 & -0.36 & 0.08 & -0.07 & 0.22 & 0.81 \\
-\quad $k=100$ & 25 & 0.42 & 0.15 & 0.24 & -0.47 & 0.43 & 0.13 & 0.17 & 0.83 \\
+\quad $k=2$ & 25 & -0.23 & 0.17 & -0.09 & 0.13 & -0.24 & 0.24 & -0.12 & 0.17 \\
+\quad $k=4$ & 25 & -0.14 & 0.27 & -0.19 & 0.23 & -0.09 & 0.24 & -0.13 & 0.35 \\
+\quad $k=16$ & 25 & 0.24 & 0.10 & 0.41 & -0.63 & 0.20 & 0.03 & 0.46 & 0.69 \\
+\quad $k=100$ & 25 & 0.42 & 0.25 & 0.33 & -0.45 & 0.46 & 0.21 & 0.37 & 0.84 \\
 \midrule
 \multicolumn{10}{@{}l}{\textbf{In-Shop}} \\*
-\quad \textit{gesamt} & 50 & -0.13 & 0.14 & -0.44 & 0.28 & -0.06 & 0.14 & -0.38 & 0.87 \\
+\quad \textit{gesamt} & 50 & -0.10 & -0.03 & -0.37 & 0.21 & -0.04 & -0.05 & -0.31 & 0.89 \\
 \cmidrule{1-10}
-\quad $k=2$ & 25 & -0.08 & 0.11 & -0.42 & 0.59 & -0.03 & 0.11 & -0.35 & 0.91 \\
-\quad $k=4$ & 25 & 0.50 & 0.32 & 0.50 & -0.18 & 0.50 & 0.32 & 0.50 & 0.59 \\
+\quad $k=2$ & 25 & -0.11 & -0.12 & -0.32 & 0.55 & -0.04 & -0.18 & -0.23 & 0.94 \\
+\quad $k=4$ & 25 & 0.38 & -0.17 & 0.45 & -0.17 & 0.37 & -0.17 & 0.45 & 0.67 \\
 \midrule
 \multicolumn{10}{@{}l}{\textbf{In-Shop mit gelabelten Klassen}} \\*
-\quad \textit{gesamt} & 97 & -0.12 & 0.26 & -0.60 & 0.24 & -0.02 & 0.26 & -0.49 & {--} \\
+\quad \textit{gesamt} & 97 & -0.24 & 0.31 & -0.62 & 0.45 & -0.15 & 0.31 & -0.53 & {--} \\
 \cmidrule{1-10}
-\quad \qty{5}{\percent} & 25 & 0.32 & 0.31 & 0.13 & -0.63 & 0.32 & 0.30 & 0.13 & {--} \\
-\quad \qty{10}{\percent} & 25 & 0.49 & 0.60 & -0.15 & -0.23 & 0.51 & 0.60 & -0.14 & {--} \\
-\quad \qty{25}{\percent} & 24 & 0.65 & 0.64 & 0.04 & -0.12 & 0.66 & 0.64 & 0.10 & {--} \\
-\quad \qty{50}{\percent} & 23 & 0.60 & 0.60 & 0.02 & -0.11 & 0.64 & 0.60 & 0.15 & {--} \\
+\quad \qty{5}{\percent} & 25 & 0.06 & 0.13 & -0.12 & -0.02 & 0.08 & 0.13 & -0.10 & {--} \\
+\quad \qty{10}{\percent} & 25 & 0.17 & 0.31 & -0.22 & 0.09 & 0.19 & 0.32 & -0.20 & {--} \\
+\quad \qty{25}{\percent} & 24 & 0.66 & 0.63 & 0.13 & 0.05 & 0.69 & 0.61 & 0.17 & {--} \\
+\quad \qty{50}{\percent} & 23 & 0.59 & 0.60 & 0.17 & -0.06 & 0.65 & 0.59 & 0.29 & {--} \\
 \bottomrule
 \end{tabular}
 \end{table}

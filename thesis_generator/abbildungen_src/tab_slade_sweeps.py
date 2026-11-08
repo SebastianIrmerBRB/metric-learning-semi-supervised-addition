@@ -39,7 +39,7 @@ def selbst():
     """Teilsatz der Bildunterschrift: in Phase 1 gewählte Werte ohne eigenen Sweep-Lauf, deren kursive Zelle die reguläre
     Konfiguration selbst ist (die Tabelle setzt dort +0,0)."""
     satz = {"regularizer_target_ratio": "$\\eta$ = {}", "basis_target_ratio": "dem Basis-Zielgradientenverhältnis {}",
-            "cluster_ratio": "dem Clusterverhältnis {}", "update_interval_epochs": "der Teacher-Aktualisierung alle {}~Epochen",
+            "cluster_ratio": "dem Clusterverhältnis {}", "update_interval_epochs": "der Teacher-Aktualisierung alle {} Epochen",
             "unlabeled_batch_size": "der ungelabelten Batchgröße {}", "sd_margin": "der Marge {}"}
     teile = []
     for p, _ in PARAM:
@@ -93,14 +93,14 @@ def ausserhalb():
         return ""
     nur = [KURZ[p].format(val(v).replace("{,}", ",")) + " nur auf " + ("Cars196" if ds == {"Cars196"} else "In-Shop")
            for (p, v), ds in sorted(AUS.items()) if len(ds) == 1]
-    return "$^\\dagger$: außerhalb der Suchräume der Phase~1" + (" (" + liste(nur) + ")" if nur else "") + ". "
+    return "$^\\dagger$: außerhalb der Suchräume der Phase 1" + (" (" + liste(nur) + ")" if nur else "") + ". "
 
 
 L = ["\\begin{table}[p]\n\\centering",
-     "\\caption[Sweeps von SLADE in Phase~2]{Sweeps einzelner Hyperparameter von SLADE (Phase~2, Seed~2, Cars196 mit $k=16$, "
+     "\\caption[Sweeps von SLADE in Phase 2]{Sweeps einzelner Hyperparameter von SLADE (Phase 2, Seed 2, Cars196 mit $k=16$, "
      "In-Shop mit $k=2$): Änderung der Test-MAP@R (Mean) gegenüber der regulären SLADE-Konfiguration in "
      "Prozentpunkten. Fett: Betrag über der Rauschschwelle $2\\sqrt{2}\\,\\sigma$, "
-     "kursiv: in Phase~1 gewählter Wert (Wiederholung der regulären Konfiguration" + selbst() + "). "
+     "kursiv: in Phase 1 gewählter Wert (Wiederholung der regulären Konfiguration" + selbst() + "). "
      + ausserhalb() + "Arc: ArcFace, Cir: Circle, "
      "NT: NT-Xent, PA: Proxy-Anchor.}",
      "\\label{tab:anhang:phase2:slade}",

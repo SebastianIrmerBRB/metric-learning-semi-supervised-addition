@@ -64,11 +64,11 @@ for key, name, ep_column, small in DATA:
                    f"von {patience} Epochen")
         names = delayed(settings)
         if names:
-            legend += ". Verzögerte Patience (Abschnitt~\\ref{sec:training}) für " + " und ".join(names)
+            legend += ". Verzögerte Patience (Abschnitt \\ref{sec:training}) für " + " und ".join(names)
         legend += "."
     lines = ["\\begin{table}[htbp]", "\\centering",
              f"\\caption[Übernommene Konfigurationen {name}]{{Für die Wiederholungen übernommene HPO-Konfigurationen "
-             f"(Optimierung bei {budget}, Seed~{seed}). "
+             f"(Optimierung bei {budget}, Seed {seed}). "
              f"{legend} Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}}",
              f"\\label{{tab:{key}:hpo}}"]
     if small:

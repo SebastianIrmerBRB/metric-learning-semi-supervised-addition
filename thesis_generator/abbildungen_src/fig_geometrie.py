@@ -99,7 +99,7 @@ for j, (ax, k) in enumerate(zip(axes, KS)):
     for m in M:
         d = g[g.method == m]
         ax.scatter(d.pr, d.m, s=12, color=C[m], marker=MK[m], label=LB[m])
-    stil.panel(ax, "abcd"[j], f"$k={k}$, $r={stil.de(pearsonr(g.pr, g.m)[0], 2)}$")
+    stil.panel(ax, "abcd"[j], f"$k={k}$, $r_{{\\mathrm{{S}}}}={stil.de(spearmanr(g.pr, g.m)[0], 2)}$")
     if j == 0:
         ax.set_ylabel("Test-MAP@R in %")
 fig.supxlabel(r"$\pi_{\mathrm{ratio}}$ des Trainingspools", fontsize=10)
@@ -128,7 +128,7 @@ NW = {ds: int(KW.loc[ds].n.iloc[0]) for ds in WDS}
 
 
 K = ["\\begin{table}[tbp]\n\\centering\\small\\setlength{\\tabcolsep}{4pt}",
-     "\\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Korrelation nach Pearson zwischen Maßen nach dem Training und der Test-MAP@R der einzelnen Fold-Modelle (Seed~2, Mittel über vier Folds), auf Cars196 über alle 100 Kombinationen aus Verfahren, Verlustfunktion und Budget und innerhalb jedes Budgets, auf Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen über alle gültigen Kombinationen und Budgets ("
+     "\\caption[Korrelation der Geometrie mit der Retrieval-Leistung]{Korrelation nach Pearson zwischen Maßen nach dem Training und der Test-MAP@R der einzelnen Fold-Modelle (Seed 2, Mittel über vier Folds), auf Cars196 über alle 100 Kombinationen aus Verfahren, Verlustfunktion und Budget und innerhalb jedes Budgets, auf Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen über alle gültigen Kombinationen und Budgets ("
      + f"{NW['semiinat']}, {NW['inshop']} und {NW['inshop10']}" + "). Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp, in der Serie mit gelabelten Klassen nicht definiert.}",
      "\\label{tab:e:korrelation}",
      "\\begin{tabular}{@{}l S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2] S[table-format=-1.2]@{}}",
@@ -160,7 +160,7 @@ full = S.groupby(["method", "k"]).agg(
     rho=("train_rho_roth", "mean"), pin=("train_pi_intra_roth", "mean"), pie=("train_pi_inter_roth", "mean"),
     pr=("train_pi_ratio_roth", "mean"), m=("test_map", "mean"), ep=("selected_epoch", "mean")).reset_index()
 T = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Geometrie des Embedding-Raums nach dem Training]{Geometrie des Trainingspools nach dem Training (Cars196, Seed~2, Mittel über die fünf Verlustfunktionen und die vier Folds), Maße wie in Abschnitt~\\ref{sec:geometrie}. Head ($-1$): vor dem ersten Optimierungsschritt, Epoche: Mittel der gewählten Epochen, MAP@R: Test-MAP@R (Mean) in \\%.}",
+     "\\caption[Geometrie des Embedding-Raums nach dem Training]{Geometrie des Trainingspools nach dem Training (Cars196, Seed 2), Maße wie in Abschnitt \\ref{sec:geometrie}. Head ($-1$): vor dem ersten Optimierungsschritt, Epoche: Mittel der gewählten Epochen, MAP@R: Test-MAP@R (Mean) in \\%.}",
      "\\label{tab:e:geometrie}",
      "\\begin{tabular}{@{}ll S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=3.0] S[table-format=2.1]@{}}\n\\toprule",
      "{$k$} & {Modell} & {$\\rho$} & {$\\pi_{\\mathrm{intra}}$} & {$\\pi_{\\mathrm{inter}}$} & {$\\pi_{\\mathrm{ratio}}$} & {Epoche} & {MAP@R} \\\\\n\\midrule"]
@@ -189,7 +189,7 @@ print(full.round(3).to_string())
 g = S.groupby(["k", "loss", "method"]).agg(lab=("labeled_pi_intra_roth", "mean"), unl=("unlabeled_pi_intra_roth", "mean"),
                                            m=("test_map", "mean")).reset_index()
 A = ["\\begin{table}[tbp]\n\\centering\\small\\setlength{\\tabcolsep}{3.2pt}",
-     "\\caption[Geometrie nach dem Training je Verlustfunktion]{$\\pi_{\\mathrm{intra}}$ der ungelabelten und, in Klammern, der gelabelten Bilder des Trainingspools und Test-MAP@R (Mean) nach dem Training je Verlustfunktion (Cars196, Seed~2, Mittel über vier Folds). Fett: kleinstes $\\pi_{\\mathrm{intra}}$ der ungelabelten Bilder und größte MAP@R je Zeile, bei gleichen gerundeten Werten nach dem ungerundeten Wert.}",
+     "\\caption[Geometrie nach dem Training je Verlustfunktion]{$\\pi_{\\mathrm{intra}}$ der ungelabelten und, in Klammern, der gelabelten Bilder des Trainingspools und Test-MAP@R (Mean) nach dem Training je Verlustfunktion (Cars196, Seed 2, Mittel über vier Folds). Fett: kleinstes $\\pi_{\\mathrm{intra}}$ der ungelabelten Bilder und größte MAP@R je Zeile, bei gleichen gerundeten Werten nach dem ungerundeten Wert.}",
      "\\label{tab:a:geometrie}",
      "\\begin{tabular}{@{}l S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]"
      " S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1]@{}}",
@@ -232,7 +232,7 @@ nn = L.groupby("loss").graph_n_neighbors.first().astype(int)
 pur = (100 * L.groupby(["loss", "k"]).graph_edge_purity.mean()).unstack()
 pre = 100 * E[(E.method == "lrml") & (E.epoch == -1)].groupby("loss").graph_edge_purity.mean()
 P = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Reinheit des $k$NN-Graphen von LRML]{Reinheit des $k$NN-Graphen von \\acs{LRML} nach dem Training (Anteil der Kanten innerhalb einer Klasse in \\%) mit der Nachbarzahl der Konfiguration der Geometrieläufe (Cars196, Seed~2, Mittel über vier Folds). Head ($-1$): vor dem ersten Optimierungsschritt. Nur innerhalb einer Zeile vergleichbar, weil sich die Nachbarzahlen unterscheiden.}",
+     "\\caption[Reinheit des $k$NN-Graphen von LRML]{Reinheit des $k$NN-Graphen von \\acs{LRML} nach dem Training (Anteil der Kanten innerhalb einer Klasse in \\%) mit der Nachbarzahl der Konfiguration der Geometrieläufe (Cars196, Seed 2, Mittel über vier Folds). Head ($-1$): vor dem ersten Optimierungsschritt. Nur innerhalb einer Zeile vergleichbar, weil sich die Nachbarzahlen unterscheiden.}",
      "\\label{tab:a:reinheit:lrml}",
      "\\begin{tabular}{@{}l S[table-format=2.0] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1] S[table-format=2.1]@{}}",
      "\\toprule",

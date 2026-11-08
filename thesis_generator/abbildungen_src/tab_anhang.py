@@ -51,7 +51,7 @@ for key, name, kc, ks, fmt in DATA:
     lines.append("\\begin{table}[p]\n\\centering")
     extra = ""  # seit 15.10.2026 alle Mean-Werte exakt aus cv_summary.json, keine gerundeten Fold-Werte mehr
     sdnote = ("" if key != "inshop10" else
-              " Die großen Standardabweichungen bei LP mit ArcFace bei 25 und 50\\,\\% entstehen, weil dort einzelne Fold-Modelle deutlich schlechter sind.")
+              " Die großen Standardabweichungen bei LP mit ArcFace bei 25 und 50\\,\\% entstehen, weil dort einzelne Fold-Modelle deutlich schlechter waren.")
     lines.append(f"\\caption[Test-MAP@R {name}]{{Test-MAP@R in \\% auf {name}, Mittel $\\pm$ Standardabweichung über fünf Seeds. M: einzelne Fold-Modelle (Mean), C: Ensemble (Concat). Fett: bester Mittelwert je Verlustfunktion, Budget und Modelltyp; zusätzlich unterstrichen: bester Mittelwert je Budget und Modelltyp.{sdnote}{extra}}}")
     lines.append(f"\\label{{tab:anhang:{key}}}\n\\footnotesize\\setlength{{\\tabcolsep}}{{4pt}}")
     lines.append("\\begin{tabular}{@{}ll" + f"S[{FORMAT}]" * len(LOSS) + "@{}}\n\\toprule")

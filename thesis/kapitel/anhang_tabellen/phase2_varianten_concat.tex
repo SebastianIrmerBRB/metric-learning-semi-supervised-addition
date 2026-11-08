@@ -1,11 +1,11 @@
 \begingroup\small\setstretch{1}\setlength{\tabcolsep}{4pt}
 \begin{longtable}{@{}>{\raggedright\arraybackslash\hangindent=2em\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}
-\caption[Alle Varianten der Phase~2 auf Cars196 als Ensemble]{Alle Varianten der Phase~2 auf Cars196 wie in Tabelle~\ref{tab:anhang:phase2}, aber für das Ensemble (Test-MAP@R Concat in \%). Rauschschwelle aus der Seed-Standardabweichung der Concat-MAP@R in Phase~1 (Abschnitt~\ref{sec:m:phase2}).}\label{tab:anhang:phase2:concat}\\
+\caption[Alle Varianten der Phase 2 auf Cars196 als Ensemble]{Alle Varianten der Phase 2 auf Cars196 wie in Tabelle \ref{tab:anhang:phase2}, aber für das Ensemble (Test-MAP@R Concat in \%). Rauschschwelle aus der Seed-Standardabweichung der Concat-MAP@R in Phase 1 (Abschnitt \ref{sec:m:phase2}).}\label{tab:anhang:phase2:concat}\\
 \toprule
 Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \midrule
 \endfirsthead
-\multicolumn{6}{@{}l}{\small Tabelle~\thetable{} (Fortsetzung)}\\
+\multicolumn{6}{@{}l}{\small Tabelle \thetable{} (Fortsetzung)}\\
 \toprule
 Variante & {ArcFace} & {Circle} & {\acs{MS}} & {NT-Xent} & {Proxy-Anchor} \\
 \midrule
@@ -19,8 +19,7 @@ Rauschschwelle \UEBL & 0.7 & 0.5 & 0.6 & 0.7 & 0.9 \\
 \quad Rauschschwelle & 0.5 & 0.6 & 0.3 & 0.3 & 0.3 \\
 \quad reguläre Konfiguration & 44.59 & 44.65 & 46.23 & 44.29 & 45.06 \\
 \quad Wiederholung mit Diagnose & 44.59 & 44.72 & 46.23 & 44.29 & 45.06 \\
-\quad SSL-Term abgeschaltet & 41.61 & 41.99 & 43.92 & 42.50 & 42.87 \\
-\quad ohne ungelabelte Bilder & 41.45 & 42.02 & 44.18 & 42.55 & 42.96 \\
+\quad SSL-Mechanismus abgeschaltet & 41.61 & 41.99 & 43.92 & 42.50 & 42.87 \\
 \quad Hyperparameter der \UEBL & 43.96 & 44.88 & 45.92 & 44.22 & 44.16 \\
 \quad ohne Warm-up & 43.78 & 44.92 & 46.08 & 44.21 & 45.05 \\
 \quad Pseudo-Labels eingefroren & 44.36 & 44.14 & 45.85 & 43.95 & 43.82 \\
@@ -48,7 +47,7 @@ Rauschschwelle \UEBL & 0.7 & 0.5 & 0.6 & 0.7 & 0.9 \\
 \multicolumn{6}{@{}l}{\textit{\acs{LRML}}} \\*
 \quad Rauschschwelle & 0.7 & 0.7 & 0.6 & 0.8 & 0.3 \\
 \quad reguläre Konfiguration & 44.39 & 44.48 & 45.20 & 43.97 & 45.22 \\
-\quad SSL-Term abgeschaltet & 39.89 & 41.64 & 40.72 & 41.81 & 41.28 \\
+\quad SSL-Mechanismus abgeschaltet & 39.89 & 41.64 & 40.72 & 41.81 & 41.28 \\
 \quad ohne ungelabelte Bilder & 41.38 & 43.38 & 43.39 & 43.57 & 42.71 \\
 \quad Hyperparameter der \UEBL & 37.44 & 43.44 & 41.63 & 37.31 & 42.90 \\
 \quad ohne Warm-up & 37.50 & 44.24 & 43.36 & 39.67 & 44.13 \\
@@ -76,7 +75,7 @@ Rauschschwelle \UEBL & 0.7 & 0.5 & 0.6 & 0.7 & 0.9 \\
 \multicolumn{6}{@{}l}{\textit{Hoffer}} \\*
 \quad Rauschschwelle & 0.6 & 0.5 & 0.6 & 0.7 & 0.6 \\
 \quad reguläre Konfiguration & 44.13 & 44.34 & 43.46 & 44.22 & 44.03 \\
-\quad SSL-Term abgeschaltet & 42.49 & 41.82 & 42.08 & 40.16 & 42.75 \\
+\quad SSL-Mechanismus abgeschaltet & 42.49 & 41.82 & 42.08 & 40.16 & 42.75 \\
 \quad ohne ungelabelte Bilder & 41.73 & 42.74 & 42.31 & 42.25 & 42.58 \\
 \quad Hyperparameter der \UEBL & 44.16 & 43.36 & 43.43 & 43.72 & 43.41 \\
 \quad ohne Warm-up & 44.02 & 43.88 & 43.10 & 44.06 & 43.89 \\
@@ -101,7 +100,7 @@ Rauschschwelle \UEBL & 0.7 & 0.5 & 0.6 & 0.7 & 0.9 \\
 \multicolumn{6}{@{}l}{\textit{SLADE}} \\*
 \quad Rauschschwelle & 0.7 & 0.7 & 0.7 & 0.7 & 0.6 \\
 \quad reguläre Konfiguration & 43.51 & 44.91 & 44.95 & 44.26 & 43.62 \\
-\quad SSL-Term abgeschaltet & 42.73 & 41.52 & 43.38 & 41.36 & 41.41 \\
+\quad SSL-Mechanismus abgeschaltet & 42.73 & 41.52 & 43.38 & 41.36 & 41.41 \\
 \quad ohne ungelabelte Bilder & 42.34 & 43.03 & 44.42 & 42.58 & 42.62 \\
 \quad Hyperparameter der \UEBL & 39.44 & 43.52 & 43.27 & 39.81 & 42.66 \\
 \quad ohne Warm-up & 42.77 & 43.36 & 44.37 & 43.59 & 43.62 \\

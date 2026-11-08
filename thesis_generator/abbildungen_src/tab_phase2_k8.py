@@ -17,7 +17,7 @@ LOSS2 = ["arc", "cir", "ms", "nt", "prx"]
 LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
 METHOD_NAME = {"lp": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
 PRE = {"sup": "sup", "iscen": "lp", "lrml": "lrml", "hoffer": "hoffer", "slade": "slade"}
-NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Term abgeschaltet",
+NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Mechanismus abgeschaltet",
          "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter der \\UEBL", "no_warmup": "ohne Warm-up",
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
@@ -30,6 +30,8 @@ SWEEP = {"n_neighbors": "Nachbarzahl", "confidence_threshold": "Konfidenzschwell
 def load(path):
     V = sammlung.read_csv(path)
     V["variant"] = V.variant.fillna("defaults").replace("", "defaults")
+    # Bei LP deckt die Kontrolle mit abgeschaltetem SSL-Mechanismus die Variante ohne ungelabelte Bilder ab (6.11.2026).
+    V = V[~((V.method == "lp") & (V.variant == "pool_labeled"))]
     return V[V.dataset == "Cars196"]
 
 
@@ -75,12 +77,12 @@ def f2(x):
     return "{--}" if np.isnan(x) else f"{x:.2f}"
 
 
-cap = ("\\caption[Alle Varianten der Phase~2 auf Cars196 mit $k=8$]{Alle Varianten der Phase~2 auf Cars196 mit $k=8$ (Seed~2, verzögerte Patience für jeden Lauf), aufgebaut wie Tabelle~\\ref{tab:anhang:phase2}, hier mit den Sweeps von SLADE. Rauschschwelle aus den fünf Seeds der Phase~1 bei $k=8$. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:k8}")
+cap = ("\\caption[Alle Varianten der Phase 2 auf Cars196 mit $k=8$]{Alle Varianten der Phase 2 auf Cars196 mit $k=8$ (Seed 2, verzögerte Patience für jeden Lauf), aufgebaut wie Tabelle \\ref{tab:anhang:phase2}, hier mit den Sweeps von SLADE. Rauschschwelle aus den fünf Seeds der Phase 1 bei $k=8$. --: Lauf nicht vorhanden.}\\label{tab:anhang:phase2:k8}")
 head = "\\toprule\nVariante & " + " & ".join(f"{{{LOSS_NAME[l]}}}" for l in LOSS2) + " \\\\\n\\midrule"
 L = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=2em\\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}",
      cap + "\\\\", head + "\n\\endfirsthead",
-     "\\multicolumn{6}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
+     "\\multicolumn{6}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
      "\\bottomrule\n\\endlastfoot",
      "\\UEBL & " + " & ".join(f2(val(V8, "sup", "defaults", l)) for l in LOSS2) + " \\\\"]
 n = 0
