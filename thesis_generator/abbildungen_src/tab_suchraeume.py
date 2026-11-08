@@ -177,9 +177,9 @@ PHASE0_HEAD = [
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=1em\\hangafter=1}p{0.30\\textwidth}>{\\raggedright\\arraybackslash}p{0.16\\textwidth}>{\\raggedright\\arraybackslash}p{\\dimexpr0.42\\textwidth-6\\tabcolsep\\relax}>{\\raggedright\\arraybackslash}p{0.12\\textwidth}@{}}",
     "\\caption[Hyperparametersuchräume der Vorexperimente]{Hyperparametersuchräume der Vorexperimente: Basiskonfiguration und verfahrensspezifische Ergänzungen bzw. Überschreibungen.}\\label{tab:first-run-hyperparameter-spaces}\\\\",
     "\\toprule", "Hyperparameter & Datensatz & Suchraum & Verteilung \\\\", "\\midrule", "\\endfirsthead",
-    "\\multicolumn{4}{l}{\\tablename \\thetable: Vorexperimente (Fortsetzung)}\\\\", "\\toprule",
+    "\\multicolumn{4}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\", "\\toprule",
     "Hyperparameter & Datensatz & Suchraum & Verteilung \\\\", "\\midrule", "\\endhead", "\\midrule",
-    "\\multicolumn{4}{r}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
+    "\\multicolumn{4}{r@{}}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
 
 
 # ---------------------------------------------------------------- Phase 1
@@ -298,9 +298,9 @@ PHASE1_HEAD = [
     "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=1em\\hangafter=1}p{0.22\\textwidth}*{5}{>{\\centering\\arraybackslash}p{\\dimexpr0.155\\textwidth-5.2pt\\relax}}@{}}",
     "\\caption[Hyperparametersuchräume der Phase 1]{Hyperparametersuchräume der Phase 1, gelesen aus den Konfigurationen der ausgewerteten Suchen.}\\label{tab:hyperparameter-spaces}\\\\",
     "\\toprule", "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endfirsthead",
-    "\\multicolumn{6}{l}{\\tablename \\thetable: Phase 1 (Fortsetzung)}\\\\", "\\toprule",
+    "\\multicolumn{6}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\", "\\toprule",
     "Hyperparameter & Cars196 & CUB & In-Shop & In-Shop 10\\,\\% & Semi-iNat \\\\", "\\midrule", "\\endhead", "\\midrule",
-    "\\multicolumn{6}{r}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
+    "\\multicolumn{6}{r@{}}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
 
 
 # ---------------------------------------------------------------- Protokoll der Phase-1-HPO

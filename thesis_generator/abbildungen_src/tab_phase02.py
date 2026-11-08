@@ -133,7 +133,7 @@ def all_variants(ds, caption, path):
          "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=2em\\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}",
          caption + "\\\\", head + "\n\\endfirsthead",
          "\\multicolumn{6}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
-         "\\bottomrule\n\\endlastfoot",
+         "\\midrule\n\\multicolumn{6}{r@{}}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\\n\\endfoot\n\\bottomrule\n\\endlastfoot",
          "\\UEBL & " + " & ".join(f2(val2(ds, "sup", "defaults", l)) for l in LOSS2) + " \\\\"]
     n = 0
     for m in ["lp", "lrml", "hoffer", "slade"]:

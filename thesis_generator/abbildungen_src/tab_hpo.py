@@ -30,7 +30,7 @@ def search(key):
     seed = unique((a["hparam_seed"] for a in args), f"HPO seed {key}")
     if key == "inshop10":
         share = unique((tuple(a["label_budget_grid"]) for a in args), f"HPO budget {key}")
-        return f"{round(100 * share[0])}\\% vollständig gelabelten Klassen", seed
+        return f"{round(100 * share[0])}\\,\\% vollständig gelabelten Klassen", seed
     k = unique((tuple(a["k_shot_grid"]) for a in args), f"HPO budget {key}")
     return f"$k={k[0]}$", seed
 
@@ -47,7 +47,7 @@ def delayed(settings):
         if "budget_percent" in g:
             shares = sorted(g.budget_percent.dropna().astype(int).unique())
             if shares:
-                name += f" bei {shares[0]} bis {shares[-1]}\\% gelabelter Klassen"
+                name += f" bei {shares[0]} bis {shares[-1]}\\,\\% gelabelter Klassen"
         names.append(name)
     return names
 
@@ -69,7 +69,7 @@ for key, name, ep_column, small in DATA:
     lines = ["\\begin{table}[htbp]", "\\centering",
              f"\\caption[Übernommene Konfigurationen {name}]{{Für die Wiederholungen übernommene HPO-Konfigurationen "
              f"(Optimierung bei {budget}, Seed {seed}). "
-             f"{legend} Übrige Loss-, Miner- und SSL-Parameter im digitalen Anhang.}}",
+             f"{legend} Übrige Loss-, Miner- und SSL-Parameter im GitHub-Repository.}}",
              f"\\label{{tab:{key}:hpo}}"]
     if small:
         lines.append("\\small")

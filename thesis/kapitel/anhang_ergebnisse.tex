@@ -53,9 +53,12 @@ Dieser Anhang ergänzt Abschnitt \ref{sec:e:phase2}. Die Tabellen \ref{tab:anhan
     Eingriff & Umsetzung & Erwartung \\
     \midrule
     \endhead
+    \midrule
+    \multicolumn{3}{r@{}}{\emph{Fortsetzung auf der nächsten Seite}}\\
+    \endfoot
     \bottomrule
     \endlastfoot
-    ohne ungelabelte Bilder & mit der \acs{SSL}-Konfiguration erhält der \acs{SSL}-Mechanismus statt der ungelabelten die gelabelten Bilder, ohne deren Labels und mit derselben Zahl von Updates je Epoche. Mit den Hyperparametern der \UEBL ist der Lauf ohne ungelabelte Bilder die \UEBL selbst, also auch ohne \acs{SSL}-Mechanismus. Bei \acs{LP} tritt die Kontrolle mit abgeschaltetem \acs{SSL}-Mechanismus an ihre Stelle & \acs{MAP@R} sinkt mit beiden Hyperparametersätzen \\
+    ohne ungelabelte Bilder & mit der \acs{SSL}-Konfiguration erhält der \acs{SSL}-Mechanismus statt der ungelabelten die gelabelten Bilder, ohne deren Labels und mit derselben Zahl von Updates je Epoche. Bei \acs{LP} tritt die Kontrolle mit abgeschaltetem \acs{SSL}-Mechanismus an ihre Stelle & \acs{MAP@R} sinkt gegenüber der regulären Konfiguration \\
     \addlinespace
     \acs{SSL}-Mechanismus abgeschaltet & \acs{SSL}-Konfiguration ohne \acs{SSL}-Term, bei \acs{LP} ohne Pseudo-Labels & Niveau der \UEBL \\
     \addlinespace
@@ -79,11 +82,11 @@ Dieser Anhang ergänzt Abschnitt \ref{sec:e:phase2}. Die Tabellen \ref{tab:anhan
 \centering\small\setstretch{1}\setlength{\tabcolsep}{4pt}
 \caption[Vorab festgelegte Erwartungen der Phase 2 und Ergebnis]{Vorab festgelegte Erwartungen der Phase 2 (Tabelle \ref{tab:phase2:eingriffe} und Abschnitt \ref{sec:m:geometrie}) und ihr Ergebnis. Cars196 bei $k=16$ und In-Shop bei $k=2$ mit einem Seed, die Vielfalt der Fold-Modelle auf Cars196 bei $k=4$ mit fünf Seeds und die Geometrie über alle Budgets.}
 \label{tab:a:erwartungen}
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.0cm}>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{5.0cm}l@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.7cm}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}p{6.2cm}l@{}}
 \toprule
 Eingriff & Erwartung & Ergebnis & Abschnitt \\
 \midrule
-Ohne ungelabelte Bilder & \acs{MAP@R} sinkt mit beiden Hyperparametersätzen & teilweise: mit den \acs{SSL}-Hyperparametern sank sie in 32 von 40 Kombinationen. Mit den Hyperparametern der \UEBL lag die Variante mit \acs{SSL}-Mechanismus und ungelabelten Bildern in 18 über und in 14 unter der \UEBL & \ref{sec:e:2x2} \\
+Ohne ungelabelte Bilder & \acs{MAP@R} sinkt gegenüber der regulären Konfiguration & teilweise: mit den \acs{SSL}-Hyperparametern sank die \acs{MAP@R} in 37 von 40 Kombinationen, in 32 um mehr als die Rauschschwelle & \ref{sec:e:2x2} \\
 \acs{SSL}-Mechanismus abgeschaltet & Niveau der \UEBL & teilweise: nur in 14 von 40 Kombinationen, in 25 darunter, in einer darüber & \ref{sec:e:2x2} \\
 Oracle-Pseudo-Labels (\acs{LP}) & \acs{MAP@R} fällt mit dem Anteil, reguläres \acs{LP} liegt auf der Kurve & teilweise: auf der Kurve nur mit ArcFace und \acs{NT-Xent} auf Cars196, sonst darüber & \ref{sec:e:pseudolabels} \\
 Pseudo-Labels bzw.\ Graph eingefroren & ungerichtet & \acs{LP} verlor auf In-Shop mit jeder Verlustfunktion & \ref{sec:e:nachbarschaft} \\

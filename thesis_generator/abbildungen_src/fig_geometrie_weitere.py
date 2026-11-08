@@ -91,7 +91,7 @@ A = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
      "\\caption[Geometrie auf Semi-iNat-2021 und In-Shop für alle Budgets]{Geometrie nach dem Training für alle Budgets von Semi-iNat-2021, In-Shop und der In-Shop-Serie mit gelabelten Klassen (Seed 2, Mittel über die vier Folds und die Verlustfunktionen, die bei diesem Budget für alle Verfahren vollständig vorliegen, Anzahl: Zahl dieser Verlustfunktionen). $\\pi^{\\mathrm{U}}_{\\mathrm{intra}}$: ungelabelte Bilder, $\\pi^{\\mathrm{V}}_{\\mathrm{ratio}}$: Validierungsklassen, Prototyp: Anteil der ungelabelten Bilder mit richtigem nächstem Klassenprototyp in \\%, übrige Spalten wie in Tabelle \\ref{tab:e:geometrie}.}\\label{tab:a:geometrie:weitere}\\\\",
      "\\toprule", AHEAD, "\\endfirsthead",
      "\\multicolumn{10}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\", "\\toprule", AHEAD, "\\endhead",
-     "\\bottomrule", "\\endlastfoot"]
+     "\\midrule", "\\multicolumn{10}{r@{}}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\", "\\endfoot", "\\bottomrule", "\\endlastfoot"]
 ALL = []
 for i, ds in enumerate(DS):
     if i:
