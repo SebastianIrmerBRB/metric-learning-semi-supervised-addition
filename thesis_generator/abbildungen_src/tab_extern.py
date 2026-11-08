@@ -58,7 +58,7 @@ M = D[D.kind.isin(["regulär", "kontrolle"])]  # Haupttabelle: Kontrolle (Anteil
 cols = [(ds, p) for ds in PCT for p in PCT[ds]]
 nx = {(ds, p): int(M[(M.dataset == ds) & (M.pct == p)].n_external.iloc[0]) for ds, p in cols}
 T = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Externe ungelabelte Bilder]{Externe ungelabelte Bilder bei vollständig gelabelten Trainingsklassen (Seed~2): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL ohne externe Bilder in Prozentpunkten, Mittel über die fünf Verlustfunktionen. Anteil: genutzter Anteil von CompCars (Cars196) bzw.\\ Fashion200k (In-Shop), darunter die Bildzahl. Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \\acs{SSL}-Term. \\UEBL: Test-MAP@R in \\%. Fett: größter Gewinn je Spalte, sofern er positiv ist. M: Mean, C: Concat.}",
+     "\\caption[Externe ungelabelte Bilder]{Externe ungelabelte Bilder bei vollständig gelabelten Trainingsklassen (Seed 2): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL ohne externe Bilder in Prozentpunkten, Mittel über die fünf Verlustfunktionen. Anteil: genutzter Anteil von CompCars (Cars196) bzw.\\ Fashion200k (In-Shop), darunter die Bildzahl. Ohne: Kontrolle ohne externe Bilder, bei Hoffer und SLADE mit abgeschaltetem \\acs{SSL}-Term. \\UEBL: Test-MAP@R in \\%. Fett: größter Gewinn je Spalte, sofern er positiv ist. M: Mean, C: Concat.}",
      "\\label{tab:e:extern}",
      "\\setlength{\\tabcolsep}{2.9pt}\n\\small\n\\begin{tabular}{@{}ll *{10}{S[table-format=+2.1, retain-explicit-plus]}@{}}\n\\toprule",
      " & & \\multicolumn{5}{c}{Cars196 + CompCars} & \\multicolumn{5}{c}{In-Shop + Fashion200k} \\\\",
@@ -86,7 +86,7 @@ for ds, key, ext in (("Cars196", "cars", "CompCars"), ("In-Shop", "inshop", "Fas
     ps = PCT[ds]
     L = ["\\begin{table}[p]\n\\centering",
          f"\\caption[Externe ungelabelte Bilder auf {ds}]{{Test-MAP@R in \\% auf {ds} mit allen Trainingslabels und "
-         f"einem Anteil von {ext} als externem ungelabeltem Pool (Seed~2). Ohne: Kontrolle ohne externe Bilder, "
+         f"einem Anteil von {ext} als externem ungelabeltem Pool (Seed 2). Ohne: Kontrolle ohne externe Bilder, "
          f"bei Hoffer und SLADE mit abgeschaltetem \\acs{{SSL}}-Term. Zeile \\UEBL: Referenz ohne externe Bilder. "
          f"M: Mean, C: Concat.}}",
          f"\\label{{tab:anhang:extern:{key}}}\n\\small\\setlength{{\\tabcolsep}}{{2.6pt}}",
@@ -112,7 +112,7 @@ for ds, key, ext in (("Cars196", "cars", "CompCars"), ("In-Shop", "inshop", "Fas
 S = D[(D.dataset == "Cars196") & (D.kind.isin(["regulär", "sweep"])) & (D.method.isin(["iscen", "lrml", "slade"]))]
 ps = [10, 25, 50, 100]
 L = ["\\begin{table}[p]\n\\centering",
-     "\\caption[Nachbar- und Clusterzahl bei externen Bildern auf Cars196]{Externe ungelabelte Bilder auf Cars196 (CompCars, Seed~2) mit veränderter Nachbarzahl (LP, \\acs{LRML}) bzw.\\ fester Clusterzahl (SLADE): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL, Mittel über die fünf Verlustfunktionen. Phase~1: Wert aus Phase~1 (Tabelle~\\ref{tab:e:extern}). Positiv: Läufe mit positivem Gewinn (Mean) von 20. M: Mean, C: Concat.}",
+     "\\caption[Nachbar- und Clusterzahl bei externen Bildern auf Cars196]{Externe ungelabelte Bilder auf Cars196 (CompCars, Seed 2) mit veränderter Nachbarzahl (LP, \\acs{LRML}) bzw.\\ fester Clusterzahl (SLADE): gepaarter Gewinn der Test-MAP@R gegenüber der \\UEBL, Mittel über die fünf Verlustfunktionen. Phase 1: Wert aus Phase 1 (Tabelle \\ref{tab:e:extern}). Positiv: Läufe mit positivem Gewinn (Mean) von 20. M: Mean, C: Concat.}",
      "\\label{tab:anhang:extern:sweeps}\n\\small\\setlength{\\tabcolsep}{3.2pt}",
      "\\begin{tabular}{@{}ll" + "S[table-format=+1.1, retain-explicit-plus]" * (2 * len(ps)) + "S[table-format=1.0]@{}}\n\\toprule",
      " & & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{\\qty{{{p}}}{{\\percent}}}}" for p in ps) + " & \\\\",
@@ -127,7 +127,7 @@ for mi, (m, mn, what) in enumerate((("iscen", "LP", "Nachbarn"), ("lrml", "\\acs
         for p in ps:
             x = h[h.pct == p]
             cells.append(f"{n(x.gain_m.mean(), plus=True)} & {n(x.gain_c.mean(), plus=True)}")
-        label = "Phase~1" if np.isnan(v) else f"{int(v)} {what}"
+        label = "Phase 1" if np.isnan(v) else f"{int(v)} {what}"
         L.append(f"{mn if vi == 0 else ''} & {label} & " + " & ".join(cells) + f" & {int((h.gain_m > 0).sum())} \\\\")
     if mi < 2:
         L.append("\\addlinespace")

@@ -1,0 +1,53 @@
+\begin{table}[tbp]
+\centering\small\setlength{\tabcolsep}{4pt}
+\caption[Rechenzeit der Verfahren]{Rechenzeit der Verfahren beim Budget der Hyperparametersuche (Abschnitt \ref{sec:m:aufwand}), Median über die Verlustfunktionen. Schritt und Epoche nach dem Warm-up, Neuberechnung je Epoche über alle Batchgrößen $B$. Epochen und Fold: trainierte Epochen der Phase-1-Folds und daraus berechnete Dauer, Median über 100 Folds. Auf Semi-iNat-2021 fehlt \acs{NT-Xent} bei Hoffer für $B=128$ und bei \acs{SLADE} für $B=32$ und 64.}
+\label{tab:anhang:aufwand}
+\begin{tabular}{@{}l *{5}{c}@{}}
+\toprule
+ & \UEBL & \acs{LP} & \acs{LRML} & Hoffer & \acs{SLADE} \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{Cars196 ($k=16$)}} \\*
+\quad Schritt in ms bei $B=128$ & \num{2.8} & \num{4.2} & \num{7.5} & \num{9.4} & \num{16.6} \\
+\quad Epoche in s bei $B=32$ & \num{0.50} & \num{1.07} & \num{1.47} & \num{1.84} & \num{3.46} \\
+\quad \phantom{Epoche in s bei }$B=64$ & \num{0.30} & \num{0.84} & \num{1.02} & \num{0.87} & \num{2.01} \\
+\quad \phantom{Epoche in s bei }$B=128$ & \num{0.22} & \num{0.65} & \num{0.81} & \num{0.56} & \num{1.00} \\
+\quad \phantom{Epoche in s bei }$B=256$ & \num{0.16} & \num{0.60} & \num{0.69} & \num{0.33} & \num{0.65} \\
+\quad Neuberechnung in s & -- & \num{0.39} & \num{0.39} & \num{0.00} & \num{0.09} \\
+\quad Epochen & \num{100} & \num{168} & \num{69} & \num{65} & \num{52} \\
+\quad Fold in min & \num{0.4} & \num{2.3} & \num{0.8} & \num{0.8} & \num{1.2} \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{Semi-iNat-2021 ($k=16$)}} \\*
+\quad Schritt in ms bei $B=128$ & \num{1.9} & \num{2.2} & \num{4.1} & \num{6.8} & \num{11.7} \\
+\quad Epoche in s bei $B=32$ & \num{1.85} & \num{3.35} & \num{6.07} & \num{8.84} & \num{16.57} \\
+\quad \phantom{Epoche in s bei }$B=64$ & \num{1.16} & \num{2.67} & \num{3.91} & \num{4.73} & \num{8.94} \\
+\quad \phantom{Epoche in s bei }$B=128$ & \num{0.85} & \num{2.36} & \num{2.81} & \num{2.60} & \num{5.01} \\
+\quad \phantom{Epoche in s bei }$B=256$ & \num{0.67} & \num{2.02} & \num{2.31} & \num{1.58} & \num{3.30} \\
+\quad \phantom{Epoche in s bei }$B=512$ & \num{0.54} & \num{1.92} & \num{2.01} & \num{0.99} & \num{2.30} \\
+\quad Neuberechnung in s & -- & \num{1.26} & \num{1.21} & \num{0.00} & \num{0.77} \\
+\quad Epochen & \num{52} & \num{63} & \num{41} & \num{31} & \num{62} \\
+\quad Fold in min & \num{0.7} & \num{2.4} & \num{1.5} & \num{0.7} & \num{2.6} \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{In-Shop ($k=2$)}} \\*
+\quad Schritt in ms bei $B=128$ & \num{3.3} & \num{4.7} & \num{6.3} & \num{24.8} & \num{16.2} \\
+\quad Epoche in s bei $B=32$ & \num{1.90} & \num{4.00} & \num{3.50} & \num{14.25} & \num{10.24} \\
+\quad \phantom{Epoche in s bei }$B=64$ & \num{1.02} & \num{2.86} & \num{2.52} & \num{7.47} & \num{5.25} \\
+\quad \phantom{Epoche in s bei }$B=128$ & \num{0.59} & \num{2.59} & \num{1.55} & \num{3.88} & \num{2.72} \\
+\quad \phantom{Epoche in s bei }$B=256$ & \num{0.43} & \num{2.22} & \num{1.19} & \num{2.09} & \num{1.66} \\
+\quad \phantom{Epoche in s bei }$B=512$ & \num{0.34} & \num{2.11} & \num{1.00} & \num{1.17} & \num{1.02} \\
+\quad Neuberechnung in s & -- & \num{1.69} & \num{0.48} & \num{0.00} & \num{0.12} \\
+\quad Epochen & \num{258} & \num{254} & \num{176} & \num{155} & \num{178} \\
+\quad Fold in min & \num{2.0} & \num{8.9} & \num{3.4} & \num{10.4} & \num{6.8} \\
+\midrule
+\multicolumn{6}{@{}l}{\textbf{In-Shop-Serie mit gelabelten Klassen (\qty{10}{\percent})}} \\*
+\quad Schritt in ms bei $B=128$ & \num{3.0} & \num{2.1} & -- & \num{10.0} & \num{16.4} \\
+\quad Epoche in s bei $B=32$ & \num{1.91} & \num{2.62} & -- & \num{6.27} & \num{10.11} \\
+\quad \phantom{Epoche in s bei }$B=64$ & \num{0.98} & \num{2.36} & -- & \num{3.05} & \num{5.41} \\
+\quad \phantom{Epoche in s bei }$B=128$ & \num{0.54} & \num{2.14} & -- & \num{1.62} & \num{2.79} \\
+\quad \phantom{Epoche in s bei }$B=256$ & \num{0.38} & \num{2.06} & -- & \num{0.89} & \num{1.57} \\
+\quad \phantom{Epoche in s bei }$B=512$ & \num{0.27} & \num{1.85} & -- & \num{0.55} & \num{1.11} \\
+\quad Neuberechnung in s & -- & \num{1.59} & -- & \num{0.00} & \num{0.15} \\
+\quad Epochen & \num{184} & \num{47} & \num{73} & \num{144} & \num{128} \\
+\quad Fold in min & \num{1.3} & \num{1.0} & -- & \num{3.8} & \num{3.3} \\
+\bottomrule
+\end{tabular}
+\end{table}

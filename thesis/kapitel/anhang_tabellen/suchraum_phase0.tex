@@ -8,13 +8,13 @@
 Hyperparameter & Datensatz & Suchraum & Verteilung \\
 \midrule
 \endfirsthead
-\multicolumn{4}{l}{\tablename~\thetable: Vorexperimente (Fortsetzung)}\\
+\multicolumn{4}{@{}l}{\small Tabelle \thetable{} (Fortsetzung)}\\
 \toprule
 Hyperparameter & Datensatz & Suchraum & Verteilung \\
 \midrule
 \endhead
 \midrule
-\multicolumn{4}{r}{\emph{Fortsetzung auf der nächsten Seite}}\\
+\multicolumn{4}{r@{}}{\emph{Fortsetzung auf der nächsten Seite}}\\
 \endfoot
 \bottomrule
 \endlastfoot
@@ -26,7 +26,7 @@ Lernrate & alle & $[10^{-5},\,10]$ & log. \\
 Batchstruktur $B{:}n_{\mathrm{S}}$ & Cars, CUB & \{32, 64, 128, 256\}:4 & kat. \\
 Batchstruktur $B{:}n_{\mathrm{S}}$ & In-Shop & \{32, 64, 128, 256, 512\}:2 & kat. \\
 Batchstruktur $B{:}n_{\mathrm{S}}$ & Semi-iNat & \{128, 256, 512\}:2 & kat. \\
-ArcFace $m_{\mathrm{deg}}$ [Grad] (\texttt{margin}) & alle & $[15,\,75]$ & unif. \\
+ArcFace $m$ [Grad] (\texttt{margin}) & alle & $[15,\,75]$ & unif. \\
 ArcFace $\gamma$ (\texttt{scale}) & alle & $[10,\,250]$ & log. \\
 Circle $\gamma$ (\texttt{gamma}) & alle & $[32,\,512]$ & log. \\
 Circle $m$ & alle & $[0{,}01,\,0{,}5]$ & unif. \\
@@ -52,7 +52,8 @@ Warm-up [Epochen] & Semi-iNat & $\{0\}$ & fest \\
 \addlinespace
 \multicolumn{4}{@{}l}{\emph{Hoffer}}\\*
 \midrule
-Zielverhältnis $\eta$ & Cars, In-Shop & $[0{,}5,\,1{,}25]$ & unif. \\
+Zielverhältnis $\eta$ & Cars & $[0{,}5,\,1{,}25]$ & unif. \\
+Zielverhältnis $\eta$ & In-Shop & $[0{,}25,\,1{,}5]$ für 36 bis 49 der 50 Versuche je Suche, $[0{,}5,\,1{,}25]$ für die übrigen & unif. \\
 Zielverhältnis $\eta$ & Semi-iNat & $[0{,}5,\,1{,}5]$ & unif. \\
 Warm-up [Epochen] & Cars, In-Shop & $\{0,\,\allowbreak 5,\,\allowbreak 10,\,\allowbreak 15,\,\allowbreak 20,\,\allowbreak 25,\,\allowbreak 30\}$ & diskr. \\
 Distanzskala $\gamma_{\mathrm{H}}$ & alle & $[0{,}1,\,100]$ & log. \\

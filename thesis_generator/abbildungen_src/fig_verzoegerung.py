@@ -82,7 +82,7 @@ def num(x, nd=1):
 
 
 L = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Wirkung der verzögerten Patience]{Läufe mit einem zu früh beendeten Fold (Abschnitt~\\ref{sec:training}): Test-MAP@R mit verzögerter Patience minus der ohne Verzögerung in Prozentpunkten, Mittel und Spanne über die Läufe sowie die Zahl der Läufe, die mit Verzögerung besser validieren.}",
+     "\\caption[Wirkung der verzögerten Patience]{Läufe mit einem zu früh beendeten Fold (Abschnitt \\ref{sec:training}): Test-MAP@R mit verzögerter Patience minus der ohne Verzögerung in Prozentpunkten, Mittel und Spanne über die Läufe sowie die Zahl der Läufe, die mit Verzögerung besser validierten.}",
      "\\label{tab:anhang:verzoegerung}",
      "\\small\n\\begin{tabular}{@{}l S[table-format=3.0] S[table-format=-1.2] c S[table-format=-1.2] S[table-format=3.0]@{}}"
      "\n\\toprule",

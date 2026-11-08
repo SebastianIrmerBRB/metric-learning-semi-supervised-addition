@@ -1,0 +1,38 @@
+\begin{tikzpicture}[diagram,
+  st/.style={box, text width=#1, minimum height=15mm,
+    execute at begin node={\setstretch{1}\hyphenpenalty=10000\exhyphenpenalty=10000}},
+  st/.default=25mm,
+  phase/.style={draw=none, rounded corners=2pt, inner sep=5pt},
+  phlbl/.style={font=\footnotesize\bfseries, anchor=north west, inner sep=2pt},
+]
+\node[st, fill=tolgrey!35] (vor) at (1.36,0)
+  {\textbf{Vorexperimente}\\50 zufällige\\Konfigurationen\\je Kombination};
+\node[st=28mm] (hpo) at (6.2,0)
+  {\textbf{Hyperparameter-}\\\textbf{optimierung}\\80 Versuche\\je Kombination\\bei einem Budget};
+\node[st=28mm] (rep) at (12.4,0)
+  {\textbf{Wiederholungen}\\5 Seeds\\alle Budgets};
+\def\yb{-2.8}
+\node[st, anchor=north] (sen)  at (1.36,\yb)  {\textbf{Sensitivitäts-}\\\textbf{analyse}\\ohne neue Läufe};
+\node[st, anchor=north] (abl)  at (4.41,\yb)   {\textbf{Ablationen}\\gezielte Eingriffe\\Cars196, In-Shop};
+\node[st, anchor=north] (ext)  at (7.46,\yb)  {\textbf{Externe Bilder}\\ungelabelter Pool\\bei allen Labels};
+\node[st, anchor=north] (geo)  at (10.51,\yb)  {\textbf{Embedding-}\\\textbf{Geometrie}\\Maße je Epoche};
+\node[st, anchor=north] (zeit) at (13.56,\yb) {\textbf{Rechenzeit}\\eigene Messläufe};
+\begin{scope}[on background layer]
+  \node[phase, fill=tolyellow!30, fit={(hpo)(rep)($(hpo.north)+(0,0.42)$)}] (p1) {};
+  \node[phase, fill=tolcyan!30, fit={(abl)(ext)(geo)($(abl.north)+(0,0.42)$)}] (p2) {};
+\end{scope}
+\node[phlbl] at (p1.north west) {Phase 1};
+\node[phlbl] at (p2.north west) {Phase 2};
+\draw[arr] (vor) -- node[lbl, above=1pt] {Suchräume} (p1.west |- vor);
+\draw[arr] (hpo) -- node[lbl, above=1pt, align=center, fill=tolyellow!30] {beste\\Konfiguration} (rep);
+\def\yk{-1.95}
+\coordinate (k0) at ($(hpo.south)+(0.8,0)$);
+\draw[line width=0.6pt] (k0) -- (k0 |- 0,\yk);
+\draw[line width=0.6pt] (abl.north |- 0,\yk) -- (zeit.north |- 0,\yk);
+\foreach \n in {abl,ext,geo,zeit} {\draw[arr] (\n.north |- 0,\yk) -- (\n.north);}
+\node[lbl, anchor=south west] at ($(k0 |- 0,\yk)+(0.1,0.05)$) {Phase-1-Konfiguration};
+\def\yv{-1.45}
+\coordinate (v0) at ($(hpo.south west)+(0.45,0)$);
+\draw[line width=0.6pt, dash pattern=on 2pt off 1.5pt] (v0) -- (v0 |- 0,\yv) -- (sen.north |- 0,\yv);
+\draw[aux] (vor.south) -- node[lbl, pos=0.75] {Versuche} (sen.north);
+\end{tikzpicture}

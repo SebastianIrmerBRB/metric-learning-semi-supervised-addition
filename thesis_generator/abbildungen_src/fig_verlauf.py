@@ -1,4 +1,4 @@
-"""Trainingsverlauf bei k=4 (seit 26.10. nicht mehr in der Arbeit) und k=32 (Anhang), Cars196, Seed 2, alle fünf Verlustfunktionen.
+"""Trainingsverlauf bei k=4 und k=32 (beide im Anhang, k=4 seit 04.11. wieder in der Arbeit), Cars196, Seed 2, alle fünf Verlustfunktionen.
 
 verlauf_k4.pdf, verlauf_k32.pdf  Mittel über fünf Verlustfunktionen und vier Folds (20 Läufe je Verfahren), jeder Lauf
     ausgerichtet am Ende seines Warm-ups: x = Epoche - Warm-up, x = 0 ist die erste Epoche mit Mechanismus (Ü: Epoche).
@@ -86,6 +86,8 @@ def draw(K, name):
         ax.set_ylim(lo, hi)
     for ax in axes[1]:
         ax.set_xlabel("Epoche nach dem Warm-up")
+    # Rand rechts: die zentrierte x-Beschriftung des rechten Teilbilds ist breiter als die Achse und lief sonst über den Rand
+    fig.get_layout_engine().set(rect=(0, 0, 0.985, 1))
     right = 10 * (right // 10) + 10
     for ax in axes.flat:
         ax.set_xlim(left - 1, right)

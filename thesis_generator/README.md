@@ -70,70 +70,74 @@ axes and text slightly differently (shifts of about one point), so the figure fi
 
 ## Outputs and their place in the thesis
 
-Numbers and pages refer to the thesis PDF built on 2026-11-03 09:23.
+Numbers and pages refer to the thesis PDF built on 2026-11-08 12:35.
 
 | Output | Script | In the thesis | Page | Chapter file | Label |
 | --- | --- | --- | --- | --- | --- |
-| `bilder/neu/geometrie_budget.pdf` | `fig_geometrie.py` | Fig. 5.9 | 70 | ergebnisse | `fig:e:geo:budget` |
-| `bilder/neu/geometrie_konzept.pdf` | `fig_konzepte.py` | Fig. 2.2 | 14 | grundlagen | `fig:geometrie:konzept` |
-| `bilder/neu/geometrie_korrelation.pdf` | `fig_geometrie.py` | Fig. D.4 | 138 | anhang_ergebnisse | `fig:e:geo:korrelation` |
-| `bilder/neu/hoffer_skala.pdf` | `fig_konzepte.py` | Fig. 4.3 | 40 | methodik | `fig:hoffer:skala` |
-| `bilder/neu/inshop10_gewinn.pdf` | `fig_inshop10.py` | Fig. 5.3 | 56 | ergebnisse | `fig:e:klassen` |
-| `bilder/neu/lp_cars.pdf` | `fig_lp_cars.py` | Fig. 5.6 | 63 | ergebnisse | `fig:e:lpcars` |
-| `bilder/neu/lp_toy.pdf` | `fig_konzepte.py` | Fig. 3.1 | 23 | ssdml | `fig:lp:toy` |
-| `bilder/neu/phase1_gewinne.pdf` | `fig_phase1_gewinne.py` | Fig. 5.1 | 51 | ergebnisse | `fig:e:gewinne` |
-| `bilder/neu/phase1_uebersicht.pdf` | `fig_phase1_uebersicht.py` | Fig. B.1 | 109 | anhang_ergebnisse | `fig:e:uebersicht` |
-| `bilder/neu/phase1_verluste.pdf` | `fig_phase1_verluste.py` | Fig. B.2 | 110 | anhang_ergebnisse | `fig:e:verluste` |
-| `bilder/neu/phase2_2x2_verluste.pdf` | `fig_phase2.py` | Fig. 5.4 | 60 | ergebnisse | `fig:e:2x2:verluste` |
-| `bilder/neu/phase2_lp_qualitaet.pdf` | `fig_phase2.py` | Fig. 5.5 | 62 | ergebnisse | `fig:e:lpqualitaet` |
-| `bilder/neu/phase2_sweeps_verluste.pdf` | `fig_phase2.py` | Fig. 5.7 | 65 | ergebnisse | `fig:e:sweeps` |
-| `bilder/neu/phase2_sweeps_verluste_inshop.pdf` | `fig_phase2.py` | Fig. 5.8 | 66 | ergebnisse | `fig:e:sweeps:inshop` |
-| `bilder/neu/retrieval_ergebnisse.pdf` | `fig_retrieval.py` | Fig. 5.2 | 55 | ergebnisse | `fig:e:retrieval` |
-| `bilder/neu/verlauf_k32.pdf` | `fig_verlauf.py` | Fig. D.1 | 136 | anhang_ergebnisse | `fig:a:verlauf32` |
-| `bilder/neu/verlauf_rho.pdf` | `fig_verlauf.py` | Fig. D.3 | 137 | anhang_ergebnisse | `fig:a:rho` |
-| `bilder/neu/verlauf_verluste.pdf` | `fig_verlauf.py` | Fig. D.2 | 137 | anhang_ergebnisse | `fig:a:verluste` |
-| `bilder/neu/verzoegerung.pdf` | `fig_verzoegerung.py` | Fig. E.1 | 141 | anhang_ergebnisse | `fig:a:verzoegerung` |
-| `kapitel/anhang_tabellen/extern_cars.tex` | `tab_extern.py` | Table C.9 | 131 | anhang_ergebnisse | `tab:anhang:extern:cars` |
-| `kapitel/anhang_tabellen/extern_inshop.tex` | `tab_extern.py` | Table C.10 | 132 | anhang_ergebnisse | `tab:anhang:extern:inshop` |
-| `kapitel/anhang_tabellen/extern_sweeps.tex` | `tab_extern.py` | Table C.11 | 133 | anhang_ergebnisse | `tab:anhang:extern:sweeps` |
-| `kapitel/anhang_tabellen/geometrie_reinheit_lrml.tex` | `fig_geometrie.py` | Table D.2 | 139 | anhang_ergebnisse | `tab:a:reinheit:lrml` |
-| `kapitel/anhang_tabellen/geometrie_verluste.tex` | `fig_geometrie.py` | Table D.1 | 138 | anhang_ergebnisse | `tab:a:geometrie` |
-| `kapitel/anhang_tabellen/geometrie_weitere_budgets.tex` | `fig_geometrie_weitere.py` | Table D.3 | 134 | anhang_ergebnisse | `tab:a:geometrie:weitere` |
-| `kapitel/anhang_tabellen/gewinne.tex` | `tab_hauptteil.py` | Table B.6 | 108 | anhang_ergebnisse | `tab:anhang:gewinne` |
-| `kapitel/anhang_tabellen/hpo_protokoll.tex` | `tab_suchraeume.py` | Table A.2 | 101 | anhang | `tab:phase1:hpo-protokoll` |
-| `kapitel/anhang_tabellen/klassen.tex` | `tab_hauptteil.py` | Table B.7 | 108 | anhang_ergebnisse | `tab:anhang:klassen` |
-| `kapitel/anhang_tabellen/map_cars.tex` | `tab_anhang.py` | Table B.1 | 103 | anhang_ergebnisse | `tab:anhang:cars` |
-| `kapitel/anhang_tabellen/map_cub.tex` | `tab_anhang.py` | Table B.2 | 104 | anhang_ergebnisse | `tab:anhang:cub` |
-| `kapitel/anhang_tabellen/map_inshop.tex` | `tab_anhang.py` | Table B.3 | 105 | anhang_ergebnisse | `tab:anhang:inshop` |
-| `kapitel/anhang_tabellen/map_inshop10.tex` | `tab_anhang.py` | Table B.4 | 106 | anhang_ergebnisse | `tab:anhang:inshop10` |
-| `kapitel/anhang_tabellen/map_semiinat.tex` | `tab_anhang.py` | Table B.5 | 107 | anhang_ergebnisse | `tab:anhang:semiinat` |
-| `kapitel/anhang_tabellen/negativ.tex` | `tab_hauptteil.py` | Table B.8 | 111 | anhang_ergebnisse | `tab:anhang:negativ` |
-| `kapitel/anhang_tabellen/phase2_slade_sweeps.tex` | `tab_slade_sweeps.py` | Table C.7 | 130 | anhang_ergebnisse | `tab:anhang:phase2:slade` |
-| `kapitel/anhang_tabellen/phase2_varianten.tex` | `tab_phase02.py` | Table C.3 | 119 | anhang_ergebnisse | `tab:anhang:phase2` |
-| `kapitel/anhang_tabellen/phase2_varianten_concat.tex` | `tab_phase2_concat.py` | Table C.5 | 123 | anhang_ergebnisse | `tab:anhang:phase2:concat` |
-| `kapitel/anhang_tabellen/phase2_varianten_inshop.tex` | `tab_phase02.py` | Table C.4 | 121 | anhang_ergebnisse | `tab:anhang:phase2:inshop` |
-| `kapitel/anhang_tabellen/phase2_varianten_inshop_concat.tex` | `tab_phase2_concat.py` | Table C.6 | 125 | anhang_ergebnisse | `tab:anhang:phase2:inshop:concat` |
-| `kapitel/anhang_tabellen/phase2_varianten_k8.tex` | `tab_phase2_k8.py` | Table C.8 | 127 | anhang_ergebnisse | `tab:anhang:phase2:k8` |
-| `kapitel/anhang_tabellen/suchraum_phase0.tex` | `tab_suchraeume.py` | Table A.1 | 96 | anhang | `tab:first-run-hyperparameter-spaces` |
-| `kapitel/anhang_tabellen/suchraum_phase1.tex` | `tab_suchraeume.py` | Table A.3 | 98 | anhang | `tab:hyperparameter-spaces` |
-| `kapitel/anhang_tabellen/verzoegerung.tex` | `fig_verzoegerung.py` | Table E.1 | 141 | anhang_ergebnisse | `tab:anhang:verzoegerung` |
-| `kapitel/cars_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.9 | 112 | anhang_ergebnisse | `tab:cars:hpo` |
+| `bilder/neu/geometrie_budget.pdf` | `fig_geometrie.py` | Fig. 5.9 | 72 | ergebnisse | `fig:e:geo:budget` |
+| `bilder/neu/geometrie_konzept.pdf` | `fig_konzepte.py` | Fig. 2.2 | 13 | grundlagen | `fig:geometrie:konzept` |
+| `bilder/neu/geometrie_korrelation.pdf` | `fig_geometrie.py` | Fig. D.5 | 146 | anhang_ergebnisse | `fig:e:geo:korrelation` |
+| `bilder/neu/hoffer_skala.pdf` | `fig_konzepte.py` | Fig. 4.5 | 41 | methodik | `fig:hoffer:skala` |
+| `bilder/neu/inshop10_gewinn.pdf` | `fig_inshop10.py` | Fig. 5.3 | 58 | ergebnisse | `fig:e:klassen` |
+| `bilder/neu/lp_cars.pdf` | `fig_lp_cars.py` | Fig. 5.5 | 63 | ergebnisse | `fig:e:lpcars` |
+| `bilder/neu/lp_pseudolabels.pdf` | `fig_lp_pseudolabels.py` | Fig. C.1 | 126 | anhang_ergebnisse | `fig:e:lppseudolabels` |
+| `bilder/neu/phase1_gewinne.pdf` | `fig_phase1_gewinne.py` | Fig. 5.1 | 53 | ergebnisse | `fig:e:gewinne` |
+| `bilder/neu/phase1_uebersicht.pdf` | `fig_phase1_uebersicht.py` | Fig. B.1 | 113 | anhang_ergebnisse | `fig:e:uebersicht` |
+| `bilder/neu/phase1_verluste.pdf` | `fig_phase1_verluste.py` | Fig. B.2 | 114 | anhang_ergebnisse | `fig:e:verluste` |
+| `bilder/neu/phase2_2x2_verluste.pdf` | `fig_phase2.py` | Fig. 5.4 | 61 | ergebnisse | `fig:e:2x2:verluste` |
+| `bilder/neu/phase2_lp_qualitaet.pdf` | `fig_phase2.py` | Fig. 5.6 | 65 | ergebnisse | `fig:e:lpqualitaet` |
+| `bilder/neu/phase2_sweeps_verluste.pdf` | `fig_phase2.py` | Fig. 5.7 | 67 | ergebnisse | `fig:e:sweeps` |
+| `bilder/neu/phase2_sweeps_verluste_inshop.pdf` | `fig_phase2.py` | Fig. 5.8 | 68 | ergebnisse | `fig:e:sweeps:inshop` |
+| `bilder/neu/retrieval_ergebnisse.pdf` | `fig_retrieval.py` | Fig. 5.2 | 57 | ergebnisse | `fig:e:retrieval` |
+| `bilder/neu/ssl_annahmen.pdf` | `fig_konzepte.py` | Fig. 3.1 | 18 | ssdml | `fig:ssl:annahmen` |
+| `bilder/neu/verlauf_k32.pdf` | `fig_verlauf.py` | Fig. D.1 | 143 | anhang_ergebnisse | `fig:a:verlauf32` |
+| `bilder/neu/verlauf_k4.pdf` | `fig_verlauf.py` | Fig. D.2 | 144 | anhang_ergebnisse | `fig:a:verlauf4` |
+| `bilder/neu/verlauf_rho.pdf` | `fig_verlauf.py` | Fig. D.4 | 145 | anhang_ergebnisse | `fig:a:rho` |
+| `bilder/neu/verlauf_verluste.pdf` | `fig_verlauf.py` | Fig. D.3 | 145 | anhang_ergebnisse | `fig:a:verluste` |
+| `bilder/neu/verzoegerung.pdf` | `fig_verzoegerung.py` | Fig. E.1 | 151 | anhang_ergebnisse | `fig:a:verzoegerung` |
+| `kapitel/anhang_tabellen/aufwand.tex` | `tab_aufwand.py` | Table B.15 | 122 | anhang_ergebnisse | `tab:anhang:aufwand` |
+| `kapitel/anhang_tabellen/extern_cars.tex` | `tab_extern.py` | Table C.9 | 139 | anhang_ergebnisse | `tab:anhang:extern:cars` |
+| `kapitel/anhang_tabellen/extern_inshop.tex` | `tab_extern.py` | Table C.10 | 140 | anhang_ergebnisse | `tab:anhang:extern:inshop` |
+| `kapitel/anhang_tabellen/extern_sweeps.tex` | `tab_extern.py` | Table C.11 | 141 | anhang_ergebnisse | `tab:anhang:extern:sweeps` |
+| `kapitel/anhang_tabellen/geometrie_reinheit_lrml.tex` | `fig_geometrie.py` | Table D.2 | 147 | anhang_ergebnisse | `tab:a:reinheit:lrml` |
+| `kapitel/anhang_tabellen/geometrie_verluste.tex` | `fig_geometrie.py` | Table D.1 | 146 | anhang_ergebnisse | `tab:a:geometrie` |
+| `kapitel/anhang_tabellen/geometrie_weitere_budgets.tex` | `fig_geometrie_weitere.py` | Table D.3 | 148 | anhang_ergebnisse | `tab:a:geometrie:weitere` |
+| `kapitel/anhang_tabellen/gewinne.tex` | `tab_hauptteil.py` | Table B.6 | 112 | anhang_ergebnisse | `tab:anhang:gewinne` |
+| `kapitel/anhang_tabellen/hpo_protokoll.tex` | `tab_suchraeume.py` | Table A.2 | 102 | anhang | `tab:phase1:hpo-protokoll` |
+| `kapitel/anhang_tabellen/klassen.tex` | `tab_hauptteil.py` | Table B.7 | 112 | anhang_ergebnisse | `tab:anhang:klassen` |
+| `kapitel/anhang_tabellen/map_cars.tex` | `tab_anhang.py` | Table B.1 | 107 | anhang_ergebnisse | `tab:anhang:cars` |
+| `kapitel/anhang_tabellen/map_cub.tex` | `tab_anhang.py` | Table B.2 | 108 | anhang_ergebnisse | `tab:anhang:cub` |
+| `kapitel/anhang_tabellen/map_inshop.tex` | `tab_anhang.py` | Table B.3 | 109 | anhang_ergebnisse | `tab:anhang:inshop` |
+| `kapitel/anhang_tabellen/map_inshop10.tex` | `tab_anhang.py` | Table B.4 | 110 | anhang_ergebnisse | `tab:anhang:inshop10` |
+| `kapitel/anhang_tabellen/map_semiinat.tex` | `tab_anhang.py` | Table B.5 | 111 | anhang_ergebnisse | `tab:anhang:semiinat` |
+| `kapitel/anhang_tabellen/metriken.tex` | `tab_metriken.py` | Table B.9 | 116 | anhang_ergebnisse | `tab:anhang:metriken` |
+| `kapitel/anhang_tabellen/negativ.tex` | `tab_hauptteil.py` | Table B.8 | 115 | anhang_ergebnisse | `tab:anhang:negativ` |
+| `kapitel/anhang_tabellen/phase2_slade_sweeps.tex` | `tab_slade_sweeps.py` | Table C.7 | 135 | anhang_ergebnisse | `tab:anhang:phase2:slade` |
+| `kapitel/anhang_tabellen/phase2_varianten.tex` | `tab_phase02.py` | Table C.3 | 127 | anhang_ergebnisse | `tab:anhang:phase2` |
+| `kapitel/anhang_tabellen/phase2_varianten_concat.tex` | `tab_phase2_concat.py` | Table C.5 | 130 | anhang_ergebnisse | `tab:anhang:phase2:concat` |
+| `kapitel/anhang_tabellen/phase2_varianten_inshop.tex` | `tab_phase02.py` | Table C.4 | 128 | anhang_ergebnisse | `tab:anhang:phase2:inshop` |
+| `kapitel/anhang_tabellen/phase2_varianten_inshop_concat.tex` | `tab_phase2_concat.py` | Table C.6 | 132 | anhang_ergebnisse | `tab:anhang:phase2:inshop:concat` |
+| `kapitel/anhang_tabellen/phase2_varianten_k8.tex` | `tab_phase2_k8.py` | Table C.8 | 136 | anhang_ergebnisse | `tab:anhang:phase2:k8` |
+| `kapitel/anhang_tabellen/suchraum_phase0.tex` | `tab_suchraeume.py` | Table A.1 | 99 | anhang | `tab:first-run-hyperparameter-spaces` |
+| `kapitel/anhang_tabellen/suchraum_phase1.tex` | `tab_suchraeume.py` | Table A.3 | 103 | anhang | `tab:hyperparameter-spaces` |
+| `kapitel/anhang_tabellen/verzoegerung.tex` | `fig_verzoegerung.py` | Table E.1 | 151 | anhang_ergebnisse | `tab:anhang:verzoegerung` |
+| `kapitel/cars_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.10 | 117 | anhang_ergebnisse | `tab:cars:hpo` |
 | `kapitel/cars_tabellen/zahlen.tex` | `zahlen_ergebnisse.py` | (numbers in the text) |  | ergebnisse | `(Zahlen im Text)` |
-| `kapitel/cub_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.10 | 113 | anhang_ergebnisse | `tab:cub:hpo` |
-| `kapitel/ergebnisse_tabellen/ablationen_verluste.tex` | `tab_phase02.py` | Table 5.5 | 59 | ergebnisse | `tab:e:ablationen:verluste` |
-| `kapitel/ergebnisse_tabellen/beste.tex` | `tab_beste.py` | Table 5.2 | 53 | ergebnisse | `tab:e:beste` |
-| `kapitel/ergebnisse_tabellen/extern.tex` | `tab_extern.py` | Table 5.4 | 57 | ergebnisse | `tab:e:extern` |
-| `kapitel/ergebnisse_tabellen/geometrie.tex` | `fig_geometrie.py` | Table 5.7 | 69 | ergebnisse | `tab:e:geometrie` |
-| `kapitel/ergebnisse_tabellen/k4_ensemble.tex` | `k4_ensemble.py` | Table 5.6 | 68 | ergebnisse | `tab:e:k4ensemble` |
-| `kapitel/ergebnisse_tabellen/klassen_2x2.tex` | `tab_klassen_2x2.py` | Table 5.3 | 56 | ergebnisse | `tab:e:klassen:2x2` |
-| `kapitel/ergebnisse_tabellen/korrelation_budgets.tex` | `tab_korrelation_budgets.py` | Table 5.8 | 72 | ergebnisse | `tab:e:korrelation` |
-| `kapitel/ergebnisse_tabellen/referenz.tex` | `tab_hauptteil.py` | Table 5.1 | 50 | ergebnisse | `tab:e:referenz` |
-| `kapitel/inshop10_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.12 | 115 | anhang_ergebnisse | `tab:inshop10:hpo` |
-| `kapitel/inshop_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.11 | 114 | anhang_ergebnisse | `tab:inshop:hpo` |
-| `kapitel/methodik_tabellen/datensaetze.tex` | `tab_datensaetze.py` | Table 4.1 | 31 | methodik | `tab:datensaetze` |
-| `kapitel/semiinat_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.13 | 116 | anhang_ergebnisse | `tab:semiinat:hpo` |
+| `kapitel/cub_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.11 | 118 | anhang_ergebnisse | `tab:cub:hpo` |
+| `kapitel/ergebnisse_tabellen/ablationen_verluste.tex` | `tab_phase02.py` | Table 5.5 | 60 | ergebnisse | `tab:e:ablationen:verluste` |
+| `kapitel/ergebnisse_tabellen/beste.tex` | `tab_beste.py` | Table 5.2 | 55 | ergebnisse | `tab:e:beste` |
+| `kapitel/ergebnisse_tabellen/extern.tex` | `tab_extern.py` | Table 5.4 | 59 | ergebnisse | `tab:e:extern` |
+| `kapitel/ergebnisse_tabellen/geometrie.tex` | `fig_geometrie.py` | Table 5.7 | 71 | ergebnisse | `tab:e:geometrie` |
+| `kapitel/ergebnisse_tabellen/k4_ensemble.tex` | `k4_ensemble.py` | Table 5.6 | 69 | ergebnisse | `tab:e:k4ensemble` |
+| `kapitel/ergebnisse_tabellen/klassen_2x2.tex` | `tab_klassen_2x2.py` | Table 5.3 | 57 | ergebnisse | `tab:e:klassen:2x2` |
+| `kapitel/ergebnisse_tabellen/korrelation_budgets.tex` | `tab_korrelation_budgets.py` | Table 5.8 | 74 | ergebnisse | `tab:e:korrelation` |
+| `kapitel/ergebnisse_tabellen/referenz.tex` | `tab_hauptteil.py` | Table 5.1 | 52 | ergebnisse | `tab:e:referenz` |
+| `kapitel/inshop10_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.13 | 120 | anhang_ergebnisse | `tab:inshop10:hpo` |
+| `kapitel/inshop_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.12 | 119 | anhang_ergebnisse | `tab:inshop:hpo` |
+| `kapitel/methodik_tabellen/datensaetze.tex` | `tab_datensaetze.py` | Table 4.1 | 32 | methodik | `tab:datensaetze` |
+| `kapitel/semiinat_tabellen/phase1_hpo.tex` | `tab_hpo.py` | Table B.14 | 121 | anhang_ergebnisse | `tab:semiinat:hpo` |
 
-Generated as well, but not used in the thesis: `bilder/neu/graphreinheit.pdf` (`fig_graphreinheit.py`), `bilder/neu/phase2_2x2.pdf` (`fig_phase2.py`), `bilder/neu/phase2_graph.pdf` (`fig_phase2.py`), `bilder/neu/phase2_sweeps.pdf` (`fig_phase2.py`), `bilder/neu/verlauf_k4.pdf` (`fig_verlauf.py`), `kapitel/anhang_tabellen/feste_einstellungen.tex` (`tab_suchraeume.py`), `kapitel/ergebnisse_tabellen/aufwand.tex` (`tab_aufwand.py`), `kapitel/ergebnisse_tabellen/korrelation.tex` (`fig_geometrie.py`).
+Generated as well, but not used in the thesis: `bilder/neu/graphreinheit.pdf` (`fig_graphreinheit.py`), `bilder/neu/lp_toy.pdf` (`fig_konzepte.py`), `bilder/neu/phase2_2x2.pdf` (`fig_phase2.py`), `bilder/neu/phase2_graph.pdf` (`fig_phase2.py`), `bilder/neu/phase2_sweeps.pdf` (`fig_phase2.py`), `kapitel/anhang_tabellen/feste_einstellungen.tex` (`tab_suchraeume.py`), `kapitel/ergebnisse_tabellen/korrelation.tex` (`fig_geometrie.py`).
 
 The script logs in `ausgabe/protokoll/` contain the further numbers quoted in the text (for example the computing
 time in the section on computational cost, from `tab_aufwand.py`).

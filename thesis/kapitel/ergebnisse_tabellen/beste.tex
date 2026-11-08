@@ -1,6 +1,6 @@
 \begin{table}[tbp]
 \centering\small\setlength{\tabcolsep}{4pt}
-\caption[Beste Kombination aus Verfahren und Verlustfunktion]{Höchste Test-MAP@R in \% je Datensatz, Budget und Modelltyp, Mittel über die fünf Seeds. \acs{SSL}: beste der 20 Kombinationen aus den vier \acs{SSL}-Verfahren und den fünf Verlustfunktionen (Spalten Verfahren und Verlust), \UEBL: mit der besten der fünf Verlustfunktionen.}
+\caption[Beste Kombination aus Verfahren und Verlustfunktion]{Höchste Test-MAP@R in \% je Datensatz, Budget und Modelltyp, Mittel über die fünf Seeds. \acs{SSL}: beste der 20 Kombinationen aus den vier \acs{SSL}-Mechanismen und den fünf Verlustfunktionen (Spalten Verfahren und Verlust), \UEBL: mit der besten der fünf Verlustfunktionen.}
 \label{tab:e:beste}
 \begin{tabular}{@{}l *{2}{l l S[table-format=2.1] S[table-format=2.1]}@{}}
 \toprule
@@ -29,12 +29,6 @@ Budget & Verfahren & Verlust & {\acs{SSL}} & {\UEBL} & Verfahren & Verlust & {\a
 \quad $k=4$ & \acs{LP} & \acs{MS} & 35.8 & 34.8 & \acs{LP} & \acs{MS} & 36.7 & 35.5 \\
 \quad $k=16$ & \acs{LP} & NT-Xent & 36.7 & 36.2 & \acs{LP} & NT-Xent & 37.6 & 37.1 \\
 \quad $k=100$ & \acs{LRML} & \acs{MS} & 37.5 & 37.3 & \acs{LRML} & \acs{MS} & 38.2 & 38.0 \\
-\midrule
-\multicolumn{9}{@{}l}{\textbf{In-Shop-Serie mit gelabelten Klassen}} \\
-\quad \qty{5}{\percent} & \acs{LRML} & Circle & 45.2 & 43.4 & \acs{LRML} & Circle & 50.9 & 47.9 \\
-\quad \qty{10}{\percent} & \acs{LRML} & Circle & 50.7 & 48.5 & \acs{LRML} & Circle & 55.4 & 52.9 \\
-\quad \qty{25}{\percent} & \acs{LRML} & Circle & 55.7 & 55.1 & \acs{LRML} & Circle & 58.5 & 58.1 \\
-\quad \qty{50}{\percent} & Hoffer & ArcFace & 58.7 & 58.5 & Hoffer & \acs{MS} & 60.4 & 60.5 \\
 \bottomrule
 \end{tabular}
 \end{table}

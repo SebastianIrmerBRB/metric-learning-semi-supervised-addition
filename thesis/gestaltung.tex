@@ -1,9 +1,4 @@
-% gestaltung.tex -- Typografie und Seitenbild (ersetzt die bisherige Datei vollständig).
-% Voraussetzungen in einstellungen.tex: Klassenoptionen DIV=12, BCOR=0mm,
-% headheight=17pt, chapterprefix=false; newpxtext/newpxmath; \setstretch{1.1};
-% KEIN geometry-Paket; scrlayer-scrpage, booktabs, siunitx, caption (via subfig), tikz, pgfplots geladen.
 
-% ---------------------------------------------------------------- Absätze
 \setlength{\parskip}{0pt}
 \setlength{\parindent}{2em}
 \emergencystretch=1.5em
@@ -11,20 +6,14 @@
 \widowpenalty=10000
 \displaywidowpenalty=10000
 \raggedbottom
-% Keine Ein- oder Zwei-Wort-Zeilen am Absatzende (Autor, 01.11.2026): Mit endlicher Dehnung des
-% \parfillskip bewertet TeX die letzte Zeile wie jede andere und wählt die Umbrüche davor so, dass sie
-% möglichst mindestens ein Viertel der Zeile füllt. Absolute Breite, damit schmale Tabellenzellen kaum
-% betroffen sind. Im Literaturverzeichnis gilt wieder der Standard.
 \setlength{\parfillskip}{0pt plus 0.75\textwidth}
 \AtBeginBibliography{\setlength{\parfillskip}{0pt plus 1fil}}
-% Zitatnummern bleiben zusammen, kein Zeilenumbruch innerhalb von [1, 39] (Autor, 01.11.2026)
-\renewcommand*{\multicitedelim}{\addcomma\addnbspace}
+\renewcommand*{\multicitedelim}{\addcomma}%
 
-% ---------------------------------------------------------------- Überschriften
 \setkomafont{disposition}{\normalfont\bfseries}
-\setkomafont{chapter}{\LARGE}          % 20.74 pt
-\setkomafont{section}{\large}          % 14.4 pt
-\setkomafont{subsection}{\normalsize}  % 12 pt
+\setkomafont{chapter}{\LARGE}          %
+\setkomafont{section}{\large}          %
+\setkomafont{subsection}{\normalsize}  %
 \setkomafont{subsubsection}{\normalsize}
 \setkomafont{paragraph}{\normalsize}
 \setkomafont{descriptionlabel}{\normalfont\bfseries}
@@ -37,7 +26,6 @@
 \RedeclareSectionCommand[beforeskip=1\baselineskip plus .2\baselineskip minus .2\baselineskip,afterskip=.5\baselineskip,afterindent=false]{subsubsection}
 \RedeclareSectionCommand[beforeskip=.75\baselineskip plus .2\baselineskip,afterskip=-1em]{paragraph}
 
-% ---------------------------------------------------------------- Kolumnentitel
 \clearpairofpagestyles
 \automark[chapter]{chapter}
 \renewcommand*{\chaptermarkformat}{\thechapter\enskip}
@@ -50,36 +38,30 @@
 \setkomafont{headsepline}{\normalcolor}
 \KOMAoptions{headsepline=0.4pt}
 
-% ---------------------------------------------------------------- Verzeichnisse
 \DeclareTOCStyleEntry[beforeskip=.6\baselineskip plus 1pt,entryformat=\bfseries,pagenumberformat=\bfseries]{tocline}{chapter}
 \DeclareTOCStyleEntries[beforeskip=0pt]{tocline}{section,subsection}
 \AtBeginBibliography{\small\setstretch{1}\setlength{\bibitemsep}{.5\baselineskip}}
-\AtEveryBibitem{\iffieldundef{doi}{}{\clearfield{url}\clearfield{urlyear}\clearfield{urlmonth}\clearfield{urlday}}}
+\AtEveryBibitem{\ifkeyword{freiefassung}{}{\iffieldundef{doi}{}{\clearfield{url}\clearfield{urlyear}\clearfield{urlmonth}\clearfield{urlday}}}}
 
-% ---------------------------------------------------------------- Fußnoten
 \deffootnote{1.5em}{0pt}{\makebox[1.5em][l]{\thefootnotemark}}
-\setkomafont{footnote}{\footnotesize}   % 10 pt
+\setkomafont{footnote}{\footnotesize}   %
 \setlength{\footnotesep}{\baselineskip}
 
-% ---------------------------------------------------------------- Beschriftungen
 \captionsetup{format=plain,font=small,labelfont=bf,textfont=normalfont,
-  labelsep=colon,justification=justified,singlelinecheck=true,
+  labelsep=colon,justification=justified,singlelinecheck=false,
   margin=0pt,skip=6pt}
 \captionsetup[figure]{position=bottom}
 \captionsetup[table]{position=top}
 
-% ---------------------------------------------------------------- Gleitobjekte
 \setlength{\floatsep}{12pt plus 3pt minus 2pt}
 \setlength{\textfloatsep}{16pt plus 4pt minus 3pt}
 \setlength{\intextsep}{14pt plus 3pt minus 2pt}
-% Seiten nur mit Gleitobjekten oben beginnen, nicht vertikal zentrieren
 \makeatletter
 \setlength{\@fptop}{0pt}
 \setlength{\@fpsep}{\floatsep}
 \setlength{\@fpbot}{0pt plus 1fil}
 \makeatother
 
-% ---------------------------------------------------------------- Tabellen
 \renewcommand{\arraystretch}{1}
 \setlength{\tabcolsep}{6pt}
 \setlength{\heavyrulewidth}{0.08em}
@@ -87,7 +69,6 @@
 \setlength{\cmidrulewidth}{0.03em}
 \AddToHook{env/table/begin}{\small\setstretch{1}}
 
-% ---------------------------------------------------------------- Symbol- und Abkürzungstabellen
 \newenvironment{notationtable}{%
   \begingroup\small\setstretch{1}%
   \renewcommand{\arraystretch}{1.15}%
@@ -99,22 +80,18 @@
 \newcommand*{\notationtablehead}{\textbf{Symbol} & \textbf{Bedeutung}\\}
 \newcommand*{\acronymgroup}[1]{\textbf{#1}}
 
-% ---------------------------------------------------------------- Listen
 \setlist{leftmargin=*,topsep=.3\baselineskip,itemsep=.1\baselineskip,parsep=0pt}
 \setlist[itemize,1]{label=\textbullet}
 \setlist[itemize,2]{label=\textendash}
 \setlist[enumerate,1]{label=\arabic*.}
 \setlist[enumerate,2]{label=\alph*)}
 
-% ---------------------------------------------------------------- Zahlen und Einheiten
 \sisetup{locale=DE,group-minimum-digits=5,group-separator={\,},
   mode=math,reset-text-series=false,text-series-to-math=true,
   propagate-math-font=true,reset-math-version=false,
-  uncertainty-mode=separate,per-mode=symbol,range-phrase={~bis~},
+  uncertainty-mode=separate,per-mode=symbol,range-phrase={\ bis\ },
   table-align-text-before=false}
 
-% ---------------------------------------------------------------- Farben (nur Abbildungen)
-% Paul Tol "bright" (farbenblind-sicher), neutrale Referenz dunkelgrau.
 \definecolor{tolblue}{HTML}{4477AA}
 \definecolor{tolred}{HTML}{EE6677}
 \definecolor{tolgreen}{HTML}{228833}
@@ -123,9 +100,8 @@
 \definecolor{tolcyan}{HTML}{66CCEE}
 \definecolor{tolgrey}{HTML}{BBBBBB}
 \definecolor{neutral}{HTML}{4D4D4D}
-\definecolor{thbrot}{HTML}{CE1628} % Rot des THB-Logos, nur auf der Titelseite
+\definecolor{thbrot}{HTML}{CE1628} %
 
-% ---------------------------------------------------------------- TikZ
 \tikzset{
   diagram/.style={font=\footnotesize, line width=0.5pt, >={Latex[length=1.8mm,width=1.3mm]},
     every node/.append style={execute at begin node={\setstretch{1}}}},
@@ -145,7 +121,6 @@
   proxy/.style={rectangle, inner sep=0pt, minimum size=2mm, draw=black, line width=0.4pt, fill=white},
 }
 
-% ---------------------------------------------------------------- pgfplots
 \pgfplotscreateplotcyclelist{thesis}{
   {neutral, mark=o},
   {tolblue, mark=square},

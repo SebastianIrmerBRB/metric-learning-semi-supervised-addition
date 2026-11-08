@@ -10,6 +10,8 @@ import pandas as pd
 AN = sammlung.output_dir("kapitel/anhang_tabellen")
 V = sammlung.read_csv("phase2/variants.csv")
 V["variant"] = V.variant.fillna("defaults").replace("", "defaults")
+# Bei LP deckt die Kontrolle mit abgeschaltetem SSL-Mechanismus die Variante ohne ungelabelte Bilder ab (6.11.2026).
+V = V[~((V.method == "lp") & (V.variant == "pool_labeled"))]
 LOSS2 = ["arc", "cir", "ms", "nt", "prx"]
 LOSS_NAME = {"arc": "ArcFace", "cir": "Circle", "ms": "\\acs{MS}", "nt": "NT-Xent", "prx": "Proxy-Anchor"}
 METHOD_NAME = {"lp": "LP", "lrml": "\\acs{LRML}", "hoffer": "Hoffer", "slade": "SLADE"}
@@ -33,7 +35,7 @@ for ds, path, k in (("Cars196", "cars_ergebnisse", 16), (IS, "inshop_ergebnisse"
         m = {v: k2 for k2, v in PREFIX.items()}[pre]
         THR[(ds, loss, m)] = 2 * np.sqrt(2) * 100 * g.mean_average_precision_at_r.std(ddof=1)
 
-NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Term abgeschaltet",
+NAMES = {"defaults": "reguläre Konfiguration", "diag": "Wiederholung mit Diagnose", "zero_weight": "SSL-Mechanismus abgeschaltet",
          "pool_labeled": "ohne ungelabelte Bilder", "sup_all_shared": "Hyperparameter der \\UEBL", "no_warmup": "ohne Warm-up",
          "pl_once": "Pseudo-Labels eingefroren", "graph_once": "Graph eingefroren", "graph_rewired": "Graph umverdrahtet",
          "graph_oracle_pruned": "Oracle-Kanten entfernt", "graph_random_pruned": "zufällige Kanten entfernt"}
@@ -74,8 +76,8 @@ def all_variants(ds, caption, path):
     L = ["\\begingroup\\small\\setstretch{1}\\setlength{\\tabcolsep}{4pt}",
          "\\begin{longtable}{@{}>{\\raggedright\\arraybackslash\\hangindent=2em\\hangafter=1}p{5.1cm} *{5}{S[table-format=2.2]}@{}}",
          caption + "\\\\", head + "\n\\endfirsthead",
-         "\\multicolumn{6}{@{}l}{\\small Tabelle~\\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
-         "\\bottomrule\n\\endlastfoot",
+         "\\multicolumn{6}{@{}l}{\\small Tabelle \\thetable{} (Fortsetzung)}\\\\\n" + head + "\n\\endhead",
+         "\\midrule\n\\multicolumn{6}{r@{}}{\\emph{Fortsetzung auf der nächsten Seite}}\\\\\n\\endfoot\n\\bottomrule\n\\endlastfoot",
          "\\UEBL & " + " & ".join(f2(val(ds, "sup", "defaults", l)) for l in LOSS2) + " \\\\",
          "Rauschschwelle \\UEBL & " + " & ".join(thr(ds, l, "sup") for l in LOSS2) + " \\\\"]
     n = 0
@@ -92,10 +94,10 @@ def all_variants(ds, caption, path):
     print(path, n, "Zeilen")
 
 
-SCHWELLE = "Rauschschwelle aus der Seed-Standardabweichung der Concat-MAP@R in Phase~1 (Abschnitt~\\ref{sec:m:phase2})."
-all_variants("Cars196", "\\caption[Alle Varianten der Phase~2 auf Cars196 als Ensemble]{Alle Varianten der Phase~2 auf Cars196 wie in Tabelle~\\ref{tab:anhang:phase2}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:concat}",
+SCHWELLE = "Rauschschwelle aus der Seed-Standardabweichung der Concat-MAP@R in Phase 1 (Abschnitt \\ref{sec:m:phase2})."
+all_variants("Cars196", "\\caption[Alle Varianten der Phase 2 auf Cars196 als Ensemble]{Alle Varianten der Phase 2 auf Cars196 wie in Tabelle \\ref{tab:anhang:phase2}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:concat}",
              "phase2_varianten_concat.tex")
-all_variants(IS, "\\caption[Alle Varianten der Phase~2 auf In-Shop als Ensemble]{Alle Varianten der Phase~2 auf In-Shop wie in Tabelle~\\ref{tab:anhang:phase2:inshop}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:inshop:concat}",
+all_variants(IS, "\\caption[Alle Varianten der Phase 2 auf In-Shop als Ensemble]{Alle Varianten der Phase 2 auf In-Shop wie in Tabelle \\ref{tab:anhang:phase2:inshop}, aber für das Ensemble (Test-MAP@R Concat in \\%). " + SCHWELLE + " --: Lauf oder Concat-Auswertung nicht vorhanden.}\\label{tab:anhang:phase2:inshop:concat}",
              "phase2_varianten_inshop_concat.tex")
 
 miss = V[V.concat_value.isna()]

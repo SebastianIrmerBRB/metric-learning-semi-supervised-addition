@@ -9,23 +9,23 @@ Skalare werden kursiv, Vektoren fett und klein, Matrizen fett und groß, Mengen 
 \endhead
 $\bm{x}_i,\ \bm{X},\ \mathcal{X},\ N$ & das Bild $i$, die Datenmatrix mit Bildern als Spalten, der Trainingspool und die Zahl seiner Bilder \\
 $\mathcal{I}_{\mathrm{L}},\ \mathcal{I}_{\mathrm{U}}$ & die Indizes der gelabelten und der ungelabelten Bilder \\
-$C,\ C_{\mathrm{L}}$ & die Zahl der Klassen im Trainingspool eines Folds und die Zahl der darin gelabelten Klassen \\
+$C$ & die Zahl der Klassen im Trainingspool eines Folds \\
 $\mathcal{C}_{\mathrm{L}},\ \mathcal{C}_{\mathcal{B}},\ y_i,\ \hat y_i$ & die Menge der gelabelten Klassen, die Klassen eines Batches, das Klassenlabel, das Pseudo-Label \\
 $k$ & das Label-Budget: gelabelte Bilder je Trainingsklasse \\
 $n_{\mathrm{F}},\ h$ & die Zahl der Folds der Kreuzvalidierung (4, auf \ac{CUB} 5) und der Index eines Fold-Modells \\
 $n_{\mathrm{S}},\ n_{\mathrm{T}}$ & die Bilder je Klasse eines Batches (\ac{SPC}) und das Intervall der Teacher-Aktualisierung von \acs{SLADE} in Epochen \\
 $\Phi,\ \bm{\theta}$ & das Embedding-Netz und seine trainierbaren Parameter \\
 $\bm{\varphi}_i$ & der gespeicherte DINOv2-Merkmalsvektor ($\mathbb{R}^{768}$) \\
-$\bm{A},\ \bm{b}$ & die lineare Abbildung und der Bias, im Projection Head nach Gl.~\eqref{eq:kopf} \\
+$\bm{A},\ \bm{b}$ & die lineare Abbildung und der Bias, im Projection Head nach Gl. \eqref{eq:kopf} \\
 $\bm{z}_i,\ \bm{f}_i,\ \bm{f}^{\mathrm{cat}}_i$ & das unnormierte Embedding von Bild $i$, das normierte und das verkettete \\
-$n_{\mathrm{D}},\ d$ & die Dimension der Embeddings ($\mathbb{R}^{n_{\mathrm{D}}}$) und eine beliebige Metrik \\
+$n_{\mathrm{D}}$ & die Dimension der Embeddings ($\mathbb{R}^{n_{\mathrm{D}}}$) \\
 $s_{ij},\ d_{ij}$ & die Kosinusähnlichkeit und die euklidische Distanz zweier Embeddings, $d_{ij}^2=2-2s_{ij}$ \\
 $d_{\bm{M}},\ \bm{M}$ & die Mahalanobis-Distanz und ihre Matrix $\bm{M}=\bm{A}^{\top}\bm{A}$ \\
-$B,\ \mathcal{B},\ \mathcal{B}_{\mathrm{U}},\ \mathcal{E}_{\mathcal{B}}$ & die Batchgröße, die Indexmenge des Batches, seine ungelabelten Bilder und ein Batch von Kanten \\
+$B,\ \mathcal{B},\ \mathcal{B}_{\mathrm{U}},\ \mathcal{E}_{\mathcal{B}}$ & die Batchgröße, die Indexmenge des Batches, die Indizes seiner ungelabelten Bilder und ein Batch von Kanten \\
 $\mathcal{P}_i,\ \mathcal{N}_i$ & die Indizes positiver Bilder außer $i$ selbst bzw.\ negativer Bilder im Batch, mit Index $c$ statt $i$ bezogen auf die Klasse $c$ \\
-$\tilde{\mathcal{P}}_i,\ \tilde{\mathcal{N}}_i$ & die vom \ac{MS}-Miner ausgewählten positiven bzw.\ negativen Bilder zu Anker $i$ \\
+$\tilde{\mathcal{P}}_i,\ \tilde{\mathcal{N}}_i$ & die Indizes der vom \ac{MS}-Miner ausgewählten positiven bzw.\ negativen Bilder zu Anker $i$ \\
 $\bm{w}_c,\ s_{ic},\ \vartheta_{ic}$ & der Proxy oder das Klassengewicht von Klasse $c$, seine Kosinusähnlichkeit und sein Winkel zu Bild $i$ \\
-$m,\ m^{\pm},\ m_{\mathrm{Miner}},\ m_{\mathrm{deg}}$ & die Marge aller Verlustfunktionen, beim Contrastive Loss getrennt für positive und negative Paare, die Marge des \ac{MS}-Miners und die Marge von ArcFace in Grad \\
+$m,\ m^{\pm},\ m_{\mathrm{Miner}}$ & die Marge aller Verlustfunktionen (beim Contrastive Loss getrennt für positive und negative Paare) und die Marge des \ac{MS}-Miners \\
 $\gamma,\ \gamma^{\pm}$ & die Skala im jeweiligen Verlust oder Kern, beim \ac{MS} Loss getrennt für positive und negative Paare \\
 $\tau$ & die Temperatur von \ac{NT-Xent}, $1/\tau$ entspricht der Skala $\gamma$ \\
 $w^{\pm}_{ij}$ & die Gewichte der Paare im Circle Loss \\
@@ -37,20 +37,20 @@ $\bm{Y},\ \bm{F}$ & die Anfangslabels und die Label-Scores aller Bilder, die bei
 $p_{ic},\ \bm{p}_i$ & die Wahrscheinlichkeit der Klasse $c$ für Bild $i$ und seine Verteilung über die Klassen \\
 $\alpha,\ \omega_i,\ \tilde\omega_i$ & der Diffusionsparameter der Label Propagation, die rohe und die auf das Maximum skalierte Konfidenz \\
 $\gamma_{\mathrm{H}},\ K_{\mathrm{ref}},\ \bm{r}^{(l)}_c$ & die Distanzskala, die Zahl der Referenzmengen und das normierte Referenz-Embedding der Klasse $c$ in Menge $l$ bei der Entropieminimierung nach Hoffer und Ailon \\
-$s^{(l)}_{ic},\ p^{(l)}_{ic}$ & die Kosinusähnlichkeit zur Referenz und die Klassenwahrscheinlichkeit für die Referenzmenge $l$ \\
-$\mathcal{L},\ \mathcal{L}_{\mathrm{sup}},\ \mathcal{L}_{\mathrm{reg}}$ & das Trainingsziel, der supervised Verlust und der \acs{SSL}-Term (Gl.~\eqref{eq:ssl:ziel}), mit weiterem Index der Verlust eines Verfahrens, hochgestellt der \acs{SSL}-Term eines Verfahrens, mit $i$, $ij$, $ip$ oder $ipn$ der Beitrag eines Bildes, Paares oder Tripels \\
+$p^{(l)}_{ic}$ & die Klassenwahrscheinlichkeit für die Referenzmenge $l$ \\
+$\mathcal{L},\ \mathcal{L}_{\mathrm{sup}},\ \mathcal{L}_{\mathrm{reg}}$ & das Trainingsziel, der supervised Verlust und der \acs{SSL}-Term (Gl. \eqref{eq:ssl:ziel}), mit weiterem Index der Verlust eines Verfahrens, hochgestellt der \acs{SSL}-Term eines Verfahrens, mit $i$, $ij$, $ip$ oder $ipn$ der Beitrag eines Bildes, Paares oder Tripels \\
 $\eta,\ w_{\mathrm{reg}}$ & das Zielverhältnis der Gradienten und das daraus bestimmte Gewicht des \acs{SSL}-Terms \\
 $\eta_{\mathrm{basis}},\ w_{\mathrm{basis}}$ & dieselben Größen für den Basisverlust von \acs{SLADE} \\
 $\bm{g}_{\mathrm{sup},t},\ \bm{g}_{\mathrm{reg},t}$ & die Gradienten des supervised Verlusts und des ungewichteten \acs{SSL}-Terms bezüglich $\bm{\theta}$ bei Messung $t$ \\
-$a,\ u_t,\ \hat u_t$ & der anfängliche Kalibrierungsfaktor, das gemessene Gradientenverhältnis und dessen kalibrierter gleitender Mittelwert \\
-$\beta,\ \beta_{\mathrm{basis}}$ & das Gewicht des bisherigen Werts in einem gleitenden Mittelwert, bei \acs{SLADE} gesondert für die Basis \\
-$\mathcal{L}_{\mathrm{SD}},\ w_v,\ \mu^{\pm},\ v^{\pm}$ & der Verteilungsverlust von \acs{SLADE}, das Gewicht seines Varianzterms, die gleitenden Mittelwerte und Varianzen der Basis-Ähnlichkeiten \\
+$a,\ u_t,\ \hat u_t$ & der anfängliche Kalibrierungsfaktor, das gemessene Gradientenverhältnis und dessen kalibrierter \acs{EMA} \\
+$\beta,\ \beta_{\mathrm{basis}}$ & das Gewicht des bisherigen Werts in einem \acs{EMA}, bei \acs{SLADE} gesondert für die Basis \\
+$\mathcal{L}_{\mathrm{SD}},\ w_v,\ \mu^{\pm},\ v^{\pm}$ & der Verteilungsverlust von \acs{SLADE}, das Gewicht seines Varianzterms, die \acsp{EMA} der Mittelwerte und Varianzen der Basis-Ähnlichkeiten je Batch \\
 $\bm{W}_a,\ \bm{a}_i$ & die Basisvektoren von \acs{SLADE} und die Basisantwort von Bild $i$ \\
 $K,\ R_q,\ \operatorname{rel}_q(r)$ & die Zahl der betrachteten Treffer bei Recall@$K$, die Zahl der relevanten Bilder zur Query $q$ und die Relevanz des Treffers auf Rang $r$ \\
 $\rho$ & der spektrale Abfall der Singulärwerte eines Embedding-Raums \\
-$\pi_{\mathrm{intra}},\ \pi_{\mathrm{inter}},\ \pi_{\mathrm{ratio}}$ & der mittlere Kosinusabstand innerhalb der Klassen, der mittlere Kosinusabstand zwischen den Klassenmittelpunkten und ihr Verhältnis \\
+$\pi_{\mathrm{intra}},\ \pi_{\mathrm{inter}},\ \pi_{\mathrm{ratio}}$ & die mittlere Kosinusdistanz innerhalb der Klassen, die mittlere Kosinusdistanz zwischen den Klassenmittelpunkten und ihr Verhältnis \\
 $H(\bm{p}_i)$ & die Entropie $-\sum_{c\in\mathcal{C}_{\mathrm{L}}}p_{ic}\log p_{ic}$ einer Verteilung \\
 $\sigma$ & die Standardabweichung über die Seeds \\
-$\operatorname{tr},\ \operatorname{sg},\ [\cdot]_+$ & die Spur, die Identität mit Ableitung null und der positive Teil \\
+$\operatorname{tr},\ [\cdot]_+$ & die Spur und der positive Teil \\
 \bottomrule
 \end{notationtable}

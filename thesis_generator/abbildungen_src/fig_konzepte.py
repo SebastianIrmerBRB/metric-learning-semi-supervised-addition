@@ -1,32 +1,115 @@
 """Konzeptabbildungen mit synthetischen Daten bzw. aus Formeln (keine Versuchsergebnisse).
 
-lp_toy.pdf            Label Propagation nach Zhou et al. auf einem kNN-Graphen synthetischer 2-D-Daten
+ssl_annahmen.pdf      Smoothness-, Mannigfaltigkeits- und Low-Density-Annahme nach van Engelen und Hoos an 2-D-Daten
+lp_toy.pdf           Label Propagation nach Zhou et al. auf einem kNN-Graphen synthetischer 2-D-Daten
 hoffer_skala.pdf      punktweise obere Schranke der Zuordnungswahrscheinlichkeit bei Hoffer und Ailon über s_H
-geometrie_konzept.pdf pi_intra / pi_inter und spektraler Abfall rho an synthetischen Embeddings
+geometrie_konzept.pdf Streuung / Abstand (euklidisches pi_ratio) und spektraler Abfall rho an synthetischen Embeddings
 """
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Circle, Ellipse
 import stil
 import sys
-SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+SEED = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
 stil.apply()
-CAT = stil.PALETTE  # drei Klassen: blau, rot, grün
+CAT = stil.PALETTE  # zwei Klassen: blau, rot
+
+
+# ------------------------------------------------------------------ SSL-Annahmen
+def ssl_annahmen():
+    """Drei Teilbilder, je ein gelabelter Punkt pro Klasse (groß, schwarz umrandet). Ungelabelte Punkte sind farbig,
+    wenn sie nach der Annahme dem gelabelten Punkt derselben Farbe ähneln (van Engelen und Hoos, Abschn. 2.2: nah im
+    Eingaberaum, auf derselben Mannigfaltigkeit, im selben Bereich hoher Dichte), sonst grau. Nicht gezeigt ist die
+    transitive Anwendung der Smoothness-Annahme über ungelabelte Zwischenpunkte.
+    (a) und (c): zwei langgestreckte Normalverteilungen mit gleicher Kovarianz (je 100 Punkte), vgl. van Engelen und
+        Hoos, Abb. 1 und 2a. (a) färbt die Punkte in einer Umgebung jedes gelabelten Punkts, (c) die Punkte in den
+        Bereichen hoher Dichte, hier innerhalb der Ellipse mit Mahalanobis-Abstand 2 um den Mittelpunkt einer der
+        erzeugenden Verteilungen (Konturen wie in Abb. 1 dort). Punkte dazwischen, im Bereich geringer Dichte, bleiben
+        grau. Durchgezogen: x = 0, die Bayes-Grenze der beiden erzeugenden Verteilungen, eine der Grenzen im Bereich
+        geringer Dichte.
+        Gestrichelt: Mittelsenkrechte der gelabelten Punkte, die Grenze allein aus den Labels.
+    (b): zwei konzentrische Ringe wie sklearn.datasets.make_circles (factor 0,5, je 100 Punkte), vgl. Abb. 2b dort
+        (dort zwei getrennte Ringe).
+    Gelabelt ist jeweils die Stichprobe, die einer festen Position am nächsten liegt, keine Seed-Auswahl (Seed 0)."""
+    rng = np.random.default_rng(0)
+    n, sx, sy, abst = 100, 0.32, 1.0, 1.0          # Streuung quer und längs, halber Abstand der Mittelpunkte
+    B = np.r_[rng.normal(size=(n, 2)) * [sx, sy] + [-abst, 0], rng.normal(size=(n, 2)) * [sx, sy] + [abst, 0]]
+    yb = np.r_[np.zeros(n, int), np.ones(n, int)]
+    lab_b = np.array([np.argmin(((B - p) ** 2).sum(1)) for p in ([-abst, 1.3], [abst, -1.3])])
+    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    R = np.r_[0.5 * np.c_[np.cos(t), np.sin(t)], np.c_[np.cos(t), np.sin(t)]] + 0.05 * rng.normal(size=(2 * n, 2))
+    yr = np.r_[np.zeros(n, int), np.ones(n, int)]
+    lab_r = np.array([np.argmin(((R - p) ** 2).sum(1)) for p in ([-0.5, 0], [1, 0])])  # gegenüberliegende Seiten
+    radius, klein, gross = 0.7, 6.0, 42.0
+    lim_x, lim_y = (-2.3, 2.3), (-3.0, 3.0)
+
+    def achsen(ax):
+        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.set_aspect("equal")
+
+    def punkte(ax, X, farbe, lab, y):
+        unl = np.setdiff1d(np.arange(len(X)), lab)
+        g = unl[farbe[unl] < 0]
+        ax.scatter(X[g, 0], X[g, 1], s=klein, color=stil.NEUTRAL_FILL, lw=0, zorder=2)
+        for c in range(2):
+            m = unl[farbe[unl] == c]
+            ax.scatter(X[m, 0], X[m, 1], s=klein, color=CAT[c], lw=0, zorder=2, marker=stil.CAT_MARKERS[c])
+            m = lab[y[lab] == c]
+            ax.scatter(X[m, 0], X[m, 1], s=gross, color=CAT[c], edgecolor=stil.BLACK, lw=0.8, zorder=4,
+                       marker=stil.CAT_MARKERS[c])
+
+    fig, axes = plt.subplots(1, 3, figsize=(stil.TEXTWIDTH, 1.9))
+    ax = axes[0]
+    farbe = np.full(len(B), -1)
+    for i in lab_b:
+        farbe[np.sqrt(((B - B[i]) ** 2).sum(1)) <= radius] = yb[i]
+        ax.add_patch(plt.Circle(B[i], radius, fill=False, color=stil.NEUTRAL, lw=0.7, zorder=3))
+    punkte(ax, B, farbe, lab_b, yb)
+    n_nah = int((farbe >= 0).sum()) - len(lab_b)
+    stil.panel(ax, "a", "Smoothness")
+    ax = axes[1]
+    punkte(ax, R, yr.copy(), lab_r, yr)
+    stil.panel(ax, "b", "Mannigfaltigkeit")
+    ax = axes[2]
+    mahal = np.stack([np.sqrt((((B - [m, 0]) / [sx, sy]) ** 2).sum(1)) for m in (-abst, abst)], 1)
+    farbe = np.where(mahal.min(1) <= 2, mahal.argmin(1), -1)
+    for m in (-abst, abst):
+        ax.add_patch(Ellipse((m, 0), 4 * sx, 4 * sy, fill=False, color=stil.NEUTRAL, lw=0.7, zorder=3))
+    punkte(ax, B, farbe, lab_b, yb)
+    ax.plot([0, 0], lim_y, color=stil.BLACK, lw=1.0, zorder=3)
+    p, q = B[lab_b[0]], B[lab_b[1]]
+    mitte, v = (p + q) / 2, q - p
+    ys = np.array(lim_y)
+    ax.plot(mitte[0] - (ys - mitte[1]) * v[1] / v[0], ys, color=stil.BLACK, lw=1.0, ls=(0, (4, 2)), zorder=3)
+    stil.panel(ax, "c", "Low Density")
+    for ax in axes:
+        achsen(ax)
+    for ax in (axes[0], axes[2]):
+        ax.set_xlim(*lim_x); ax.set_ylim(*lim_y)
+    stil.save(fig, "ssl_annahmen")
+    print("SSL-Annahmen: ungelabelte Punkte in den Umgebungen", n_nah, "in den Ellipsen", int((farbe >= 0).sum()) - 2,
+          "davon andere Klasse als erzeugt", int(((farbe >= 0) & (farbe != yb)).sum()),
+          "Mahalanobis der gelabelten", np.round(mahal[lab_b].min(1), 2))
+
+
+ssl_annahmen()
 
 # ------------------------------------------------------------------ LP-Spielbeispiel
 rng = np.random.default_rng(SEED)
-n = 70
-t = rng.uniform(0, np.pi, n)
-A = np.c_[np.cos(t), np.sin(t)] + 0.09 * rng.normal(size=(n, 2))
-t = rng.uniform(0, np.pi, n)
-B = np.c_[1 - np.cos(t), 0.45 - np.sin(t)] + 0.09 * rng.normal(size=(n, 2))
-Cc = np.c_[2.25, 0.62] + 0.2 * rng.normal(size=(40, 2))
-X = np.r_[A, B, Cc]
-y = np.r_[np.zeros(n, int), np.ones(n, int), 2 * np.ones(40, int)]
-N, C = len(X), 3
-lab = np.r_[rng.choice(np.where(y == 0)[0], 2, replace=False), rng.choice(np.where(y == 1)[0], 2, replace=False),
-            rng.choice(np.where(y == 2)[0], 2, replace=False)]
+# Zwei Monde wie sklearn.datasets.make_moons: je 100 gleichmäßig verteilte Punkte auf zwei ineinandergreifenden
+# Halbkreisen plus Gaußsches Rauschen. Je Mond zwei Labels, bei einem Viertel und der Hälfte des Bogens vom äußeren
+# Ende aus, sodass die inneren Enden, die in den anderen Mond hineinragen, am weitesten von den eigenen Labels liegen.
+n, RAUSCHEN = 100, 0.12
+t = np.linspace(0, np.pi, n)
+X = np.r_[np.c_[np.cos(t), np.sin(t)], np.c_[1 - np.cos(t), 0.5 - np.sin(t)]] + RAUSCHEN * rng.normal(size=(2 * n, 2))
+y = np.r_[np.zeros(n, int), np.ones(n, int)]
+N, C = len(X), 2
+q = n - 1 - np.array([n // 4, n // 2])
+lab = np.r_[q, n + q]
 kn = 7
 D2 = ((X[:, None] - X[None]) ** 2).sum(-1)
 np.fill_diagonal(D2, np.inf)
@@ -117,53 +200,78 @@ def rho(E):
     return float(np.sum(u * np.log(u / p)))
 
 
-def pis(E, y):
-    E = E / np.linalg.norm(E, axis=1, keepdims=True)
-    cs = np.unique(y)
-    intra = np.mean([np.mean(1 - (E[y == c] @ E[y == c].T)[np.triu_indices((y == c).sum(), 1)]) for c in cs])
-    mu = np.stack([E[y == c].mean(0) for c in cs]); mu = mu / np.linalg.norm(mu, axis=1, keepdims=True)
-    inter = np.mean(1 - (mu @ mu.T)[np.triu_indices(len(cs), 1)])
-    return intra, inter, intra / inter
+def mittlerer_paarabstand(q):
+    d = np.linalg.norm(q[:, None] - q[None], axis=-1)
+    return d[np.triu_indices(len(q), 1)].mean()
 
 
-fig = plt.figure(figsize=(stil.TEXTWIDTH, 2.7))
-gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 1.25])
-cent = np.array([[0, 0], [3.0, 0.4], [1.2, 2.6], [3.6, 2.9]])
+def zwei(v):
+    return f"{v:.2f}".replace(".", ",")
+
+
+# (a), (b): drei Klassen mit denselben Zentren und denselben Abweichungen, in (b) nur stärker skaliert. Kreisradius =
+# mittlerer euklidischer Paarabstand der Klasse, gestrichelt = alle Abstände zwischen den Zentren. "Streuung" ist der
+# Mittelwert der Radien, "Abstand" der Mittelwert der gestrichelten Längen (pi_ratio wie bei Roth et al., hier euklidisch in 2-D).
+fig = plt.figure(figsize=(stil.TEXTWIDTH, 1.9))
+gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 1.3], wspace=0.15)
+N = 12
+cent = np.array([[0.0, 0.0], [3.2, 0.2], [1.5, 2.8]])
+paare = ((0, 1), (0, 2), (1, 2))
+abw = rng.normal(size=(len(cent), N, 2))
 for j, (spread, title) in enumerate(((0.35, "Kompakte Klassen"), (0.85, "Gestreute Klassen"))):
     ax = fig.add_subplot(gs[0, j])
-    pts, ys = [], []
+    radien = []
     for c, m in enumerate(cent):
-        q = m + spread * rng.normal(size=(18, 2))
-        pts.append(q); ys += [c] * 18
-        ax.scatter(q[:, 0], q[:, 1], s=9, color=CAT[c], marker=stil.CAT_MARKERS[c], lw=0)
-    pts = np.vstack(pts); ys = np.array(ys)
-    q = pts[ys == 0]
-    for a in range(0, 6):
-        ax.plot([q[a, 0], q[a + 6, 0]], [q[a, 1], q[a + 6, 1]], color=CAT[0], lw=0.6)
-    for a, b in ((0, 1), (0, 2), (1, 3)):
-        ax.plot(cent[[a, b], 0], cent[[a, b], 1], color=stil.BLACK, lw=0.6, ls=(0, (4, 2)))
-    ax.scatter(cent[:, 0], cent[:, 1], s=24, marker="+", color=stil.BLACK, lw=0.9)
-    # Kennzahlen im selben Sinn wie Roth et al. (hier euklidisch in 2-D)
-    intra = np.mean([np.mean(np.linalg.norm(pts[ys == c][:, None] - pts[ys == c][None], axis=-1)[np.triu_indices(18, 1)]) for c in range(4)])
-    inter = np.mean(np.linalg.norm(cent[:, None] - cent[None], axis=-1)[np.triu_indices(4, 1)])
+        q = m + spread * abw[c]
+        r = mittlerer_paarabstand(q)
+        radien.append(r)
+        ax.add_patch(Circle(m, r, facecolor=CAT[c], alpha=0.15, edgecolor="none"))
+        ax.add_patch(Circle(m, r, facecolor="none", edgecolor=CAT[c], lw=0.8))
+        ax.scatter(q[:, 0], q[:, 1], s=8, color=CAT[c], marker=stil.CAT_MARKERS[c], lw=0, zorder=3)
+    for a, b in paare:
+        ax.plot(cent[[a, b], 0], cent[[a, b], 1], color=stil.BLACK, lw=0.7, ls=(0, (4, 2)), zorder=4)
+    ax.scatter(cent[:, 0], cent[:, 1], s=30, marker="+", color=stil.BLACK, lw=1.0, zorder=5)
+    intra = np.mean(radien)
+    inter = np.mean([np.linalg.norm(cent[a] - cent[b]) for a, b in paare])
+    m, r = cent[0], radien[0]
+    spitze = m + r * np.array([-np.sqrt(0.5), -np.sqrt(0.5)])
+    ax.annotate("", xy=spitze, xytext=m, arrowprops=dict(arrowstyle="-|>", lw=0.8, color=stil.BLACK,
+                                                        shrinkA=0, shrinkB=0, mutation_scale=6), zorder=6)
+    ax.text(spitze[0] - 0.1, spitze[1] - 0.05, "Streuung", ha="right", va="top", fontsize=8, zorder=6)
+    mitte = (cent[0] + cent[2]) / 2
+    ax.text(mitte[0] - 0.3, mitte[1] + 0.1, "Abstand", ha="right", va="center", fontsize=8, zorder=6)
+    ax.text(1.0, -0.09, r"$\pi_{\mathrm{ratio}}^{\mathrm{Eucl}}=\frac{\mathrm{Streuung}}{\mathrm{Abstand}}\approx$ " + zwei(intra / inter),
+            transform=ax.transAxes, ha="right", va="bottom", zorder=7)
     stil.panel(ax, "ab"[j], title)
-    ax.text(0.0, -0.02, r"$\pi_{\mathrm{ratio}}^{\mathrm{Eucl}}\approx$ " + stil.smart(intra / inter, 2), transform=ax.transAxes, va="top")
-    ax.set_xlim(-1.6, 5.2); ax.set_ylim(-1.6, 4.4)
+    ax.set_xlim(-2.3, 5.1); ax.set_ylim(-2.5, 4.4)
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
     for sp in ax.spines.values():
         sp.set_visible(False)
+    print("geometrie_konzept", title, "Streuung", round(intra, 3), "Abstand", round(inter, 3), "Verhältnis", round(intra / inter, 3))
+# (c): normierte Singulärwerte so, wie sie in rho eingehen (höchstens d-1 Werte, ohne den größten), dazu die
+# Gleichverteilung, gegen die rho die KL-Divergenz misst
 ax = fig.add_subplot(gs[0, 2])
 dim = 64
-for decay, col, name in ((0.075, stil.TOL["red"], ""),
-                         (0.02, stil.TOL["blue"], "")):
-    scales = np.exp(-decay * np.arange(dim))
-    E = rng.normal(size=(2000, dim)) * scales
-    sv = np.linalg.svd(E, compute_uv=False)
-    ax.plot(np.arange(1, dim + 1), sv / sv.sum(), color=col, label=r"$\rho=\mathrm{" + stil.smart(rho(E), 2).replace(",", "{,}") + "}$")
-ax.set_yscale("log")
+kurven = {}
+for decay, col, name in ((0.075, stil.TOL["red"], "wenige Richtungen"),
+                         (0.02, stil.TOL["blue"], "viele Richtungen")):
+    E = rng.normal(size=(2000, dim)) * np.exp(-decay * np.arange(dim))
+    sv = np.linalg.svd(E, compute_uv=False)[: dim - 1][1:]
+    p = sv / sv.sum()
+    ax.plot(np.arange(2, 2 + len(p)), p, color=col)
+    kurven[name] = (col, rho(E))
+    print("geometrie_konzept", name, "rho", round(rho(E), 4))
+ax.axhline(1 / len(p), color=stil.NEUTRAL, lw=0.9, ls=":")
+for name, (x, y) in (("wenige Richtungen", (9, 0.064)), ("viele Richtungen", (30, 0.034))):
+    ax.text(x, y, name + "\n" + r"$\rho\approx$ " + zwei(kurven[name][1]), color=kurven[name][0], ha="left", va="center")
+ax.text(64, 0.0175, r"gleichverteilt, $\rho=0$", color=stil.NEUTRAL, ha="right", va="bottom")
 ax.set_xlabel("Index des Singulärwerts")
 ax.set_ylabel("Anteil am Spektrum")
+ax.set_xlim(0, 65)
+ax.set_ylim(0, 0.08)
+ax.set_yticks([0, 0.02, 0.04, 0.06, 0.08])
+stil.comma_axis(ax, "y", 2)
 stil.panel(ax, "c", "Singulärwertspektrum")
-ax.legend(loc="lower left")
 stil.save(fig, "geometrie_konzept")
 print("ok")

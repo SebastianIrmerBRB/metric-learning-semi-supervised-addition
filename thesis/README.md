@@ -1,6 +1,6 @@
 # Thesis LaTeX source
 
-LaTeX source of the master's thesis as submitted (state of 3 November 2026), with every figure it includes.
+LaTeX source of the master's thesis as submitted (state of 8 November 2026), with every figure it includes.
 
 Build with a TeX distribution that has biblatex/biber (tested with MiKTeX):
 
@@ -16,7 +16,7 @@ pdflatex main.tex
 | `main.tex`, `einstellungen.tex`, `gestaltung.tex` | main document, packages and settings, layout |
 | `kapitel/` | chapters, front and back matter, appendix |
 | `kapitel/*_tabellen/` | tables, written by the generators in `../thesis_generator` |
-| `kapitel/abb/` | the three schematic figures (TikZ) |
+| `kapitel/abb/` | the schematic figures (TikZ) and the dataset examples |
 | `bilder/neu/` | the data figures, written by the generators in `../thesis_generator` |
 | `literatur.bib` | bibliography |
 

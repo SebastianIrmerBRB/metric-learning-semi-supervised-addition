@@ -1,6 +1,6 @@
 \begin{table}[tbp]
 \centering
-\caption[Ensemble-Gewinn von \acs{LRML} bei $k=4$]{$2\times2$-Zerlegung von \acs{LRML} auf Cars196 bei $k=4$ mit der Kontrolle mit abgeschaltetem \acs{SSL}-Term: Test-MAP@R (Mean, Concat) in \%, ihr Abstand in Prozentpunkten und der Anteil falscher Nachbarn eines Fold-Modells unter den ersten $R_q$ Treffern, die ein anderes ebenfalls zurückgibt, in \%. Mittel über die fünf Verlustfunktionen und die fünf Seeds. Bezeichnungen wie in den Tabellen~\ref{tab:phase2:eingriffe} und~\ref{tab:m:2x2}.}
+\caption[Ensemble-Gewinn von \acs{LRML} bei $k=4$]{Zerlegung von \acs{LRML} auf Cars196 bei $k=4$ mit der Kontrolle mit abgeschaltetem \acs{SSL}-Mechanismus: Test-MAP@R (Mean, Concat) in \%, ihr Abstand in Prozentpunkten und der Anteil falscher Nachbarn eines Fold-Modells unter den ersten $R_q$ Treffern, die ein anderes ebenfalls zurückgibt, in \%. Mittel über die fünf Verlustfunktionen und die fünf Seeds. Bezeichnungen wie in Tabelle \ref{tab:phase2:eingriffe} und Abschnitt \ref{sec:m:phase2}.}
 \label{tab:e:k4ensemble}
 \small
 \begin{tabular}{@{}l *{3}{S[table-format=2.1]} S[table-format=2.1]@{}}
@@ -8,7 +8,7 @@
 {Konfiguration} & {Mean} & {Concat} & {Concat $-$ Mean} & {geteilte Fehler} \\
 \midrule
 \UEBL & 32.6 & 34.9 & 2.3 & 51.9 \\
-SSL-Term abgeschaltet & 30.4 & 33.2 & 2.8 & 48.4 \\
+SSL-Mechanismus abgeschaltet & 30.4 & 33.2 & 2.8 & 48.4 \\
 ohne ungelabelte Bilder & 30.7 & 34.2 & 3.5 & 43.1 \\
 Hyperparameter der \UEBL & 34.7 & 38.2 & 3.4 & 46.8 \\
 regulär & 33.4 & 38.3 & 4.9 & 36.9 \\

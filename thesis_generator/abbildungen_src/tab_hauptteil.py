@@ -87,7 +87,7 @@ ALLE = sammlung.read_csv(R + "ausgangsleistung/alle_labels.csv")
 # seinen Budgets und je einer Zeile für Mean und Concat, In-Shop zuletzt, weil dort Spalten leer bleiben. Die Spanne über die
 # Verlustfunktionen ergibt sich aus den Tabellen map_*.tex.
 L = ["\\begin{table}[tbp]\n\\centering\\small\\setlength{\\tabcolsep}{4pt}",
-     "\\caption[Ausgangsleistung und supervised Referenz]{Test-MAP@R (Mean, Concat) der unveränderten DINOv2-Merkmale und der \\UEBL in \\%, bei der \\UEBL Mittel $\\pm$ Standardabweichung der 25 Läufe aus fünf Verlustfunktionen und fünf Seeds, die vor allem die Unterschiede zwischen den Verlustfunktionen wiedergibt. Alle Labels: alle Bilder der Trainingsklassen gelabelt, auf Cars196 und In-Shop nur Seed~2 (fünf Läufe).}",
+     "\\caption[Ausgangsleistung und supervised Referenz]{Test-MAP@R (Mean, Concat) der unveränderten DINOv2-Merkmale und der \\UEBL in \\%, bei der \\UEBL Mittel $\\pm$ Standardabweichung der 25 Läufe aus fünf Verlustfunktionen und fünf Seeds, die vor allem die Unterschiede zwischen den Verlustfunktionen wiedergibt. Alle Labels: alle Bilder der Trainingsklassen gelabelt, auf Cars196 und In-Shop nur Seed 2 (fünf Läufe).}",
      "\\label{tab:e:referenz}",
      "\\begin{tabular}{@{}l S[table-format=2.1] *{5}{S[table-format=2.1(2), retain-zero-uncertainty]}@{}}\n\\toprule",
      " & {DINOv2} & \\multicolumn{4}{c}{\\UEBL je Label-Budget} & {\\UEBL, alle Labels} \\\\"]
@@ -153,13 +153,13 @@ G[1] = G[1].replace(  # Seed-SD erst nach der Schleife bekannt
     "gemittelt über die fünf Seeds und die fünf Verlustfunktionen, $\\pm$ Standardabweichung der 25 gepaarten Differenzen. "
     "Sie gibt vor allem die Unterschiede zwischen den Verlustfunktionen wieder, "
     "die Seed-Standardabweichung des Mittels liegt bei höchstens "
-    + f"{max(SEED_SD):.1f}".replace(".", ",") + "~Prozentpunkten.")
+    + f"{max(SEED_SD):.1f}".replace(".", ",") + " Prozentpunkten.")
 G.append("\\bottomrule\n\\end{tabular}\n\\end{table}")
 open(sammlung.output_dir("kapitel/anhang_tabellen") + "gewinne.tex", "w", encoding="utf-8").write("\n".join(G) + "\n")
 
 # ---------------------------------------------------------------- Negative Vergleiche (Anhang)
 N = ["\\begin{table}[tbp]\n\\centering",
-     "\\caption[Negative Vergleiche gegenüber der supervised Referenz]{Zahl der gepaarten Vergleiche (von 25), in denen ein \\acs{SSL}-Verfahren eine niedrigere Test-MAP@R erreicht als die \\UEBL, zu den Gewinnen in Tabelle~\\ref{tab:anhang:gewinne}. M: Mean, C: Concat.}",
+     "\\caption[Negative Vergleiche gegenüber der supervised Referenz]{Zahl der gepaarten Vergleiche (von 25), in denen ein \\acs{SSL}-Verfahren eine niedrigere Test-MAP@R erreichte als die \\UEBL, zu den Gewinnen in Tabelle \\ref{tab:anhang:gewinne}. M: Mean, C: Concat.}",
      "\\label{tab:anhang:negativ}",
      "\\small\n\\begin{tabular}{@{}l *{8}{S[table-format=2.0]}@{}}\n\\toprule"]
 N += NEG

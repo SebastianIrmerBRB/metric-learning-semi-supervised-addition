@@ -1,0 +1,24 @@
+\begin{table}[tbp]
+  \centering
+  \caption[Label-Budgets und gelabelte Anteile]{Label-Budgets und gelabelter Anteil der Bilder im Trainingspool, gerundet auf ganze Prozent. In-Shop (Klassen): Anteil vollständig gelabelter Trainingsklassen. \acs{HPO}: Budget der Hyperparametersuche.}
+  \label{tab:budgets}
+  \begin{tabular}{@{}ll*{4}{>{\centering\arraybackslash}p{1.1cm}}@{\hspace{2em}}c@{}}
+    \toprule
+    Datensatz & & \multicolumn{4}{c}{Label-Budgets} & \acs{HPO} \\
+    \midrule
+    Cars196 & $k$ & 4 & 8 & 16 & 32 & 16 \\
+     & Anteil in \% & 5 & 10 & 19 & 39 & \\
+    \addlinespace
+    \acs{CUB} & $k$ & 4 & 8 & 16 & 32 & 16 \\
+     & Anteil in \% & 7 & 14 & 27 & 55 & \\
+    \addlinespace
+    In-Shop & $k$ & 2 & 4 & & & 2 \\
+     & Anteil in \% & 31 & 60 & & & \\
+    \addlinespace
+    Semi-iNat-2021 & $k$ & 2 & 4 & 16 & 100 & 16 \\
+     & Anteil in \% & 1 & 3 & 11 & 65 & \\
+    \midrule
+    In-Shop (Klassen) & Klassen in \% & 5 & 10 & 25 & 50 & 10 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
